@@ -16,9 +16,10 @@ internal static class NotificationEndpoints
             CancellationToken cancellationToken,
             int page = 1,
             int pageSize = 20,
-            bool unreadOnly = false) =>
+            bool unreadOnly = false,
+            string? category = null) =>
         {
-            var result = await sender.Send(new GetMyNotificationsQuery(page, pageSize, unreadOnly), cancellationToken);
+            var result = await sender.Send(new GetMyNotificationsQuery(page, pageSize, unreadOnly, category), cancellationToken);
             return result.ToOk();
         }).WithName("GetMyNotifications");
 
@@ -27,6 +28,15 @@ internal static class NotificationEndpoints
             var result = await sender.Send(new GetMyUnreadNotificationCountQuery(), cancellationToken);
             return result.ToOk();
         }).WithName("GetMyUnreadNotificationCount");
+
+        group.MapPost("/me/read-category", async (
+            MarkNotificationCategoryReadRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await sender.Send(new MarkNotificationCategoryReadCommand(request.Category, request.ThroughCreatedAtUtc), cancellationToken);
+            return result.ToOk();
+        }).WithName("MarkNotificationCategoryRead");
 
         group.MapPost("/{id:guid}/read", async (Guid id, ISender sender, CancellationToken cancellationToken) =>
         {

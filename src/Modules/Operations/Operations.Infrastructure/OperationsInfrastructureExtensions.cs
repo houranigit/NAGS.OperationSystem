@@ -8,7 +8,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
+using Operations.Contracts.Readers;
+using Operations.Infrastructure.BackgroundJobs;
 using Operations.Infrastructure.Persistence;
+using Operations.Infrastructure.Readers;
 
 namespace Operations.Infrastructure;
 
@@ -33,6 +36,10 @@ public static class OperationsInfrastructureExtensions
         services.AddScoped<IOperationsScope, OperationsScope>();
         services.AddScoped<IMobileFlightScope, MobileFlightScope>();
         services.AddScoped<MasterDataResolver>();
+        services.AddScoped<IFlightReminderEligibilityReader, FlightReminderEligibilityReader>();
+
+        services.Configure<FlightReminderOptions>(configuration.GetSection(FlightReminderOptions.SectionName));
+        services.AddHostedService<FlightReminderBackgroundService>();
 
         services.TryAddSingleton(TimeProvider.System);
 

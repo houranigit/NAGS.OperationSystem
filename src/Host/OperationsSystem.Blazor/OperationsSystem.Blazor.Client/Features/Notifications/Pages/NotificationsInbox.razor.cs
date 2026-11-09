@@ -1,5 +1,5 @@
-using System.Globalization;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web.Virtualization;
 using OperationsSystem.Blazor.Client.Api;
 using OperationsSystem.Blazor.Client.Localization;
 using OperationsSystem.Blazor.Client.State;
@@ -9,8 +9,6 @@ namespace OperationsSystem.Blazor.Client.Features.Notifications.Pages;
 
 public partial class NotificationsInbox : IAsyncDisposable
 {
-    private const int PageSize = 12;
-
     [Inject] private NotificationsApiClient Api { get; set; } = default!;
     [Inject] private NotificationCenterState Center { get; set; } = default!;
     [Inject] private LocaleState Locale { get; set; } = default!;
@@ -19,307 +17,206 @@ public partial class NotificationsInbox : IAsyncDisposable
     [Inject] private NotificationService Toasts { get; set; } = default!;
     [Inject] private DialogService Dialogs { get; set; } = default!;
 
-    private IReadOnlyList<NotificationDto> items = [];
-    private int page = 1;
-    private int totalPages;
-    private long totalCount;
-    private bool unreadOnly;
+    [Parameter, SupplyParameterFromQuery(Name = "category")]
+    public string? Category { get; set; }
+
+    private string selectedCategory = NotificationCategories.Invitations;
+    private string? loadedCategory;
+    private readonly CancellationTokenSource lifetimeCts = new();
+    private CancellationTokenSource? visitCts;
+    private NotificationInboxFeed? feed;
+    private Virtualize<NotificationDto>? virtualList;
+    private bool disposed;
     private bool isLoading = true;
     private bool loadError;
     private bool isUpdating;
+    private long visitGeneration;
     private Guid? busyNotificationId;
-    private long loadGeneration;
-    private long liveRevision;
-    private readonly Dictionary<Guid, PendingLiveNotification> pendingLive = [];
 
     protected override async Task OnInitializedAsync()
     {
         Center.LiveReceived += OnLiveReceived;
+        Center.Changed += OnCenterChanged;
         Center.Reconciled += OnCenterReconciled;
         await UserTimeZone.InitializeAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var requestedCategory = NotificationCategories.All.Contains(Category, StringComparer.Ordinal)
+            ? Category! : NotificationCategories.Invitations;
+        if (loadedCategory == requestedCategory)
+            return;
+        loadedCategory = requestedCategory;
+        selectedCategory = requestedCategory;
+        visitGeneration++;
+        visitCts?.Cancel();
+        visitCts?.Dispose();
+        visitCts = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCts.Token);
+        virtualList = null;
+        feed = new(Api, Center, selectedCategory);
         await LoadAsync();
     }
+
+    private void SelectCategory(string category) => Navigation.NavigateTo($"/notifications?category={category}");
 
     private async Task LoadAsync()
     {
-        var generation = ++loadGeneration;
-        var requestedPage = page;
-        var requestedUnreadOnly = unreadOnly;
-        var requestStartLiveRevision = liveRevision;
+        if (disposed || feed is null || visitCts is null)
+            return;
+        var currentFeed = feed;
+        var ct = visitCts.Token;
         isLoading = true;
         loadError = false;
-
         try
         {
-            var result = await Api.GetInboxAsync(requestedPage, PageSize, requestedUnreadOnly);
-            if (generation != loadGeneration)
-                return;
-
-            var resultTotalPages = Math.Max(1, result.TotalPages);
-            if (requestedPage > resultTotalPages)
-            {
-                requestedPage = resultTotalPages;
-                page = requestedPage;
-                result = await Api.GetInboxAsync(requestedPage, PageSize, requestedUnreadOnly);
-                if (generation != loadGeneration)
-                    return;
-            }
-
-            ApplyLoadedPage(result, requestedPage, requestedUnreadOnly, requestStartLiveRevision);
+            await Center.RetryPendingReadsAsync(ct);
+            await currentFeed.LoadAsync(0, NotificationInboxFeed.PageSize, ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception) { if (feed == currentFeed) loadError = true; }
+        finally { if (feed == currentFeed) isLoading = false; }
+    }
+
+    private async ValueTask<ItemsProviderResult<NotificationDto>> ProvideItems(ItemsProviderRequest request)
+    {
+        var currentFeed = feed;
+        if (currentFeed is null || visitCts is null)
+            return new([], 0);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(request.CancellationToken, visitCts.Token);
+        try
+        {
+            var slice = await currentFeed.LoadAsync(request.StartIndex, request.Count, linked.Token);
+            if (feed != currentFeed)
+                return new([], 0);
+            await InvokeAsync(StateHasChanged);
+            return new(slice.Items, slice.TotalCount);
+        }
+        catch (OperationCanceledException) when (linked.IsCancellationRequested) { return new([], 0); }
         catch (Exception)
         {
-            if (generation == loadGeneration)
+            if (feed == currentFeed)
+            {
                 loadError = true;
+                await InvokeAsync(StateHasChanged);
+            }
+            return new([], 0);
         }
-        finally
-        {
-            if (generation == loadGeneration)
-                isLoading = false;
-        }
-    }
-
-    private void ApplyLoadedPage(
-        PagedResult<NotificationDto> result,
-        int requestedPage,
-        bool requestedUnreadOnly,
-        long requestStartLiveRevision)
-    {
-        var merged = NotificationInboxReconciler.Merge(
-            result,
-            pendingLive,
-            requestStartLiveRevision,
-            requestedPage,
-            requestedUnreadOnly,
-            PageSize);
-
-        foreach (var id in merged.ConsumedPendingIds)
-            pendingLive.Remove(id);
-
-        items = merged.Items;
-        totalCount = merged.TotalCount;
-        totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)PageSize));
-        page = requestedPage;
-    }
-
-    private async Task SetUnreadOnlyAsync(bool value)
-    {
-        if (unreadOnly == value)
-            return;
-
-        unreadOnly = value;
-        page = 1;
-        await LoadAsync();
     }
 
     private async Task OpenAsync(NotificationDto notification)
     {
-        if (!notification.IsRead)
-            await MarkReadAsync(notification, showFailure: false);
-
-        Navigation.NavigateTo(NotificationPresentation.DeepLink(notification) ?? "/notifications");
-    }
-
-    private async Task MarkReadAsync(NotificationDto notification, bool showFailure = true)
-    {
-        if (notification.IsRead || busyNotificationId is not null)
-            return;
-
-        busyNotificationId = notification.Id;
-        try
+        using var readCts = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCts.Token);
+        readCts.CancelAfter(TimeSpan.FromSeconds(5));
+        if (!Center.Cache.IsReadLocally(notification))
         {
-            await Center.MarkAsReadAsync(notification.Id);
-            var readAt = DateTimeOffset.UtcNow;
-            items = items.Select(item => item.Id == notification.Id
-                ? item with { IsRead = true, ReadAtUtc = item.ReadAtUtc ?? readAt }
-                : item).ToArray();
-            if (pendingLive.TryGetValue(notification.Id, out var pending))
-            {
-                pendingLive[notification.Id] = pending with
-                {
-                    Notification = pending.Notification with
-                    {
-                        IsRead = true,
-                        ReadAtUtc = pending.Notification.ReadAtUtc ?? readAt
-                    }
-                };
-            }
-
-            if (unreadOnly)
-            {
-                items = items.Where(item => item.Id != notification.Id).ToArray();
-                totalCount = Math.Max(0, totalCount - 1);
-                await FillPageIfNeededAsync();
-            }
+            try { await Center.MarkAsReadAsync(notification.Id, readCts.Token); }
+            catch (Exception) { /* Category read is already queued if connectivity is unavailable. */ }
         }
-        catch (Exception)
-        {
-            if (showFailure)
-                ShowActionFailure();
-        }
-        finally
-        {
-            busyNotificationId = null;
-        }
-    }
-
-    private async Task MarkAllReadAsync()
-    {
-        isUpdating = true;
-        try
-        {
-            await Center.MarkAllAsReadAsync();
-            pendingLive.Clear();
-            await LoadAsync();
-        }
-        catch (Exception)
-        {
-            ShowActionFailure();
-        }
-        finally
-        {
-            isUpdating = false;
-        }
+        if (!disposed)
+            Navigation.NavigateTo(NotificationPresentation.DeepLink(notification) ?? NotificationPresentation.InboxLink(notification));
     }
 
     private async Task ArchiveAsync(NotificationDto notification)
     {
         if (busyNotificationId is not null)
             return;
-
         busyNotificationId = notification.Id;
         try
         {
-            await Center.ArchiveAsync(notification.Id);
-            pendingLive.Remove(notification.Id);
-            items = items.Where(item => item.Id != notification.Id).ToArray();
-            totalCount = Math.Max(0, totalCount - 1);
-            await FillPageIfNeededAsync();
+            await Center.ArchiveAsync(notification.Id, lifetimeCts.Token);
+            await RefreshRowsAsync();
         }
-        catch (Exception)
-        {
-            ShowActionFailure();
-        }
-        finally
-        {
-            busyNotificationId = null;
-        }
+        catch (Exception) { ShowActionFailure(); }
+        finally { busyNotificationId = null; }
     }
 
     private async Task ArchiveAllAsync()
     {
-        var confirmed = await Dialogs.Confirm(
-            UiStrings.Notifications.ArchiveAllConfirm,
-            UiStrings.Notifications.ArchiveAllTitle,
-            new ConfirmOptions
+        var confirmed = await Dialogs.Confirm(UiStrings.Notifications.ArchiveAllConfirm,
+            UiStrings.Notifications.ArchiveAllTitle, new ConfirmOptions
             {
                 OkButtonText = UiStrings.Notifications.ArchiveAll,
                 CancelButtonText = UiStrings.Common.Cancel
             });
-
-        if (confirmed is not true)
+        if (confirmed is not true || disposed)
             return;
-
         isUpdating = true;
         try
         {
-            await Center.ArchiveAllAsync();
-            page = 1;
-            pendingLive.Clear();
-            await LoadAsync();
+            await Center.ArchiveAllAsync(lifetimeCts.Token);
+            await RefreshRowsAsync();
         }
-        catch (Exception)
-        {
-            ShowActionFailure();
-        }
-        finally
-        {
-            isUpdating = false;
-        }
+        catch (Exception) { ShowActionFailure(); }
+        finally { isUpdating = false; }
     }
 
-    private async Task FillPageIfNeededAsync()
+    private async Task RefreshRowsAsync()
     {
-        totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)PageSize));
-        if (items.Count == 0 && totalCount > 0)
-        {
-            page = Math.Min(page, totalPages);
-            await LoadAsync();
-        }
-    }
-
-    private async Task PreviousAsync()
-    {
-        if (page <= 1)
+        if (disposed || feed is null)
             return;
-        page--;
-        await LoadAsync();
+        if (!feed.HasCurrentSession)
+        {
+            feed = new(Api, Center, selectedCategory);
+            virtualList = null;
+        }
+        feed.Invalidate();
+        if (virtualList is not null)
+            await virtualList.RefreshDataAsync();
+        else
+            await LoadAsync();
+        StateHasChanged();
     }
 
-    private async Task NextAsync()
-    {
-        if (page >= totalPages)
-            return;
-        page++;
-        await LoadAsync();
-    }
-
-    private string SegmentClass(bool unread) =>
-        unreadOnly == unread ? "os-notifications-segment os-notifications-segment--active" : "os-notifications-segment";
+    private string CategoryClass(string category) => selectedCategory == category
+        ? "os-notifications-category os-notifications-category--active" : "os-notifications-category";
 
     private static string RelativeTime(DateTimeOffset createdAtUtc)
     {
         var elapsed = DateTimeOffset.UtcNow - createdAtUtc;
-        if (elapsed < TimeSpan.FromMinutes(1))
-            return UiStrings.Common.JustNow;
-        if (elapsed < TimeSpan.FromHours(1))
-            return string.Format(UiStrings.Common.MinutesAgo, Math.Max(1, (int)elapsed.TotalMinutes));
-        if (elapsed < TimeSpan.FromDays(1))
-            return string.Format(UiStrings.Common.HoursAgo, Math.Max(1, (int)elapsed.TotalHours));
+        if (elapsed < TimeSpan.FromMinutes(1)) return UiStrings.Common.JustNow;
+        if (elapsed < TimeSpan.FromHours(1)) return string.Format(UiStrings.Common.MinutesAgo, Math.Max(1, (int)elapsed.TotalMinutes));
+        if (elapsed < TimeSpan.FromDays(1)) return string.Format(UiStrings.Common.HoursAgo, Math.Max(1, (int)elapsed.TotalHours));
         return string.Format(UiStrings.Common.DaysAgo, Math.Max(1, (int)elapsed.TotalDays));
     }
 
-    private void ShowActionFailure() =>
-        Toasts.Notify(NotificationSeverity.Error, UiStrings.Notifications.Title, UiStrings.Notifications.ActionFailed);
+    private void ShowActionFailure() => Toasts.Notify(NotificationSeverity.Error,
+        UiStrings.Notifications.Title, UiStrings.Notifications.ActionFailed);
 
-    private async void OnLiveReceived(NotificationDto notification)
+    private void OnLiveReceived(NotificationDto notification)
     {
-        try
+        if (NotificationPresentation.Category(notification) == selectedCategory)
         {
-            await InvokeAsync(() =>
-            {
-                var revision = ++liveRevision;
-                pendingLive[notification.Id] = new PendingLiveNotification(notification, revision);
-                if (page != 1 || (unreadOnly && notification.IsRead) || items.Any(item => item.Id == notification.Id))
-                    return;
+            feed?.ObserveLive(notification);
+            OnCenterReconciled();
+        }
+    }
 
-                items = items.Prepend(notification).Take(PageSize).ToArray();
-                totalCount++;
-                totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)PageSize));
-                StateHasChanged();
-            });
-        }
-        catch (Exception ex)
-        {
-            await DispatchExceptionAsync(ex);
-        }
+    private int CategoryNewCount(string category) => category == selectedCategory && feed is not null
+        ? feed.VisitNewCount : Center.GetCategoryUnreadCount(category);
+
+    private async void OnCenterChanged()
+    {
+        try { await InvokeAsync(() => { if (!disposed) StateHasChanged(); }); }
+        catch (Exception ex) { await DispatchExceptionAsync(ex); }
     }
 
     private async void OnCenterReconciled()
     {
-        try
-        {
-            await InvokeAsync(LoadAsync);
-        }
-        catch (Exception ex)
-        {
-            await DispatchExceptionAsync(ex);
-        }
+        try { await InvokeAsync(RefreshRowsAsync); }
+        catch (OperationCanceledException) when (disposed || visitCts?.IsCancellationRequested == true) { }
+        catch (Exception ex) { await DispatchExceptionAsync(ex); }
     }
 
     public ValueTask DisposeAsync()
     {
+        disposed = true;
+        lifetimeCts.Cancel();
+        visitCts?.Cancel();
+        visitCts?.Dispose();
+        lifetimeCts.Dispose();
         Center.LiveReceived -= OnLiveReceived;
+        Center.Changed -= OnCenterChanged;
         Center.Reconciled -= OnCenterReconciled;
         return ValueTask.CompletedTask;
     }

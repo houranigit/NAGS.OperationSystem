@@ -2,6 +2,9 @@ package com.nags.operations.data.api
 
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.notifications.NotificationPageDto
+import com.nags.operations.data.notifications.NotificationCategory
+import com.nags.operations.data.notifications.CategoryReadReceiptDto
+import com.nags.operations.data.notifications.ReadNotificationCategoryRequest
 import com.nags.operations.data.notifications.RegisterDeviceTokenRequest
 import com.nags.operations.data.notifications.RevokeDeviceTokenRequest
 import com.nags.operations.data.notifications.UnreadNotificationCountDto
@@ -22,15 +25,22 @@ class NotificationsApi(
 ) {
     private fun url(path: String) = HttpClientFactory.url("api/v1/notifications/${path.trimStart('/')}")
 
-    suspend fun inbox(page: Int = 1, pageSize: Int = 20, unreadOnly: Boolean = false): NotificationPageDto =
+    suspend fun inbox(page: Int = 1, pageSize: Int = 20, unreadOnly: Boolean = false, category: NotificationCategory? = null): NotificationPageDto =
         client.get(url("me")) {
             parameter("page", page)
             parameter("pageSize", pageSize)
             parameter("unreadOnly", unreadOnly)
+            category?.let { parameter("category", it.name) }
         }.bodyOrThrow()
 
     suspend fun unreadCount(): Int =
         client.get(url("me/unread-count")).bodyOrThrow<UnreadNotificationCountDto>().count
+
+    suspend fun readCategory(category: NotificationCategory, throughCreatedAtUtc: String): CategoryReadReceiptDto =
+        client.post(url("me/read-category")) {
+            contentType(ContentType.Application.Json)
+            setBody(ReadNotificationCategoryRequest(category, throughCreatedAtUtc))
+        }.bodyOrThrow()
 
     suspend fun markRead(id: String) = postNoContent("$id/read")
     suspend fun markAllRead() = postNoContent("me/mark-all-read")

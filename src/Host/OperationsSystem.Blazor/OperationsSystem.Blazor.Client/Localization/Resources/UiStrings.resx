@@ -765,7 +765,7 @@
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>Login email change failed</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>Identity could not start verification: {0}</value></data>
   <data name="Notifications.Title" xml:space="preserve"><value>Notifications</value></data>
-  <data name="Notifications.Description" xml:space="preserve"><value>Flight assignments and other updates sent to your account.</value></data>
+  <data name="Notifications.Description" xml:space="preserve"><value>Invitations, reminders, and flight updates sent to your account.</value></data>
   <data name="Notifications.BellLabel" xml:space="preserve"><value>Open notifications</value></data>
   <data name="Notifications.Recent" xml:space="preserve"><value>Recent notifications</value></data>
   <data name="Notifications.MarkAllRead" xml:space="preserve"><value>Mark all as read</value></data>
@@ -774,7 +774,7 @@
   <data name="Notifications.All" xml:space="preserve"><value>All</value></data>
   <data name="Notifications.Unread" xml:space="preserve"><value>Unread</value></data>
   <data name="Notifications.EmptyTitle" xml:space="preserve"><value>You're all caught up</value></data>
-  <data name="Notifications.EmptyDescription" xml:space="preserve"><value>New flight assignments will appear here.</value></data>
+  <data name="Notifications.EmptyDescription" xml:space="preserve"><value>New notifications in this category will appear here.</value></data>
   <data name="Notifications.UnreadEmptyTitle" xml:space="preserve"><value>No unread notifications</value></data>
   <data name="Notifications.UnreadEmptyDescription" xml:space="preserve"><value>You've reviewed every notification in your inbox.</value></data>
   <data name="Notifications.LoadFailed" xml:space="preserve"><value>We couldn't load your notifications.</value></data>
@@ -782,7 +782,7 @@
   <data name="Notifications.Archive" xml:space="preserve"><value>Archive</value></data>
   <data name="Notifications.ArchiveAll" xml:space="preserve"><value>Archive all</value></data>
   <data name="Notifications.ArchiveAllTitle" xml:space="preserve"><value>Archive all notifications?</value></data>
-  <data name="Notifications.ArchiveAllConfirm" xml:space="preserve"><value>This clears your current inbox. Archived notifications remain in history.</value></data>
+  <data name="Notifications.ArchiveAllConfirm" xml:space="preserve"><value>This archives notifications in all tabs. Archived notifications remain in history.</value></data>
   <data name="Notifications.ActionFailed" xml:space="preserve"><value>The notification could not be updated. Please try again.</value></data>
   <data name="Notifications.OpenFlight" xml:space="preserve"><value>Open flight</value></data>
   <data name="Notifications.FlightAssignment" xml:space="preserve"><value>Flight assignment</value></data>
@@ -818,4 +818,11 @@
   <data name="Account.EmailPreferenceSaveUnconfirmed" xml:space="preserve">
     <value>Could not confirm this change. The last confirmed setting is shown. Refresh to check the saved setting.</value>
   </data>
+  <data name="Notifications.Categories" xml:space="preserve"><value>Notification categories</value></data>
+  <data name="Notifications.Invitations" xml:space="preserve"><value>Invitations</value></data>
+  <data name="Notifications.Reminders" xml:space="preserve"><value>Reminders</value></data>
+  <data name="Notifications.FlightUpdates" xml:space="preserve"><value>Flight updates</value></data>
+  <data name="Notifications.ScheduleUpdated" xml:space="preserve"><value>Schedule changed</value></data>
+  <data name="Notifications.CachedDescription" xml:space="preserve"><value>Showing saved notifications. Read status will sync when connected.</value></data>
+  <data name="Notifications.NewCount" xml:space="preserve"><value>{0} new</value></data>
 </root>

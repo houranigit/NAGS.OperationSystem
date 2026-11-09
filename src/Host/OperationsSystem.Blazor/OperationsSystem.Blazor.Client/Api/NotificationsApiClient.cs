@@ -9,18 +9,26 @@ public sealed class NotificationsApiClient(BrowserApiClient api)
         int page = 1,
         int pageSize = 20,
         bool unreadOnly = false,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? category = null)
     {
         var query = string.Join('&',
             $"page={page.ToString(CultureInfo.InvariantCulture)}",
             $"pageSize={pageSize.ToString(CultureInfo.InvariantCulture)}",
             $"unreadOnly={unreadOnly.ToString().ToLowerInvariant()}");
+        if (!string.IsNullOrWhiteSpace(category))
+            query += $"&category={Uri.EscapeDataString(category)}";
 
         return api.GetAsync<PagedResult<NotificationDto>>($"/notifications/me?{query}", ct);
     }
 
     public Task<UnreadNotificationCount> GetUnreadCountAsync(CancellationToken ct = default) =>
         api.GetAsync<UnreadNotificationCount>("/notifications/me/unread-count", ct);
+
+    public Task<NotificationCategoryReadDto> MarkCategoryAsReadAsync(
+        string category, DateTimeOffset throughCreatedAtUtc, CancellationToken ct = default) =>
+        api.PostAsync<MarkNotificationCategoryReadRequest, NotificationCategoryReadDto>(
+            "/notifications/me/read-category", new(category, throughCreatedAtUtc), ct);
 
     public Task MarkAsReadAsync(Guid id, CancellationToken ct = default) =>
         api.PostAsync($"/notifications/{id}/read", ct);

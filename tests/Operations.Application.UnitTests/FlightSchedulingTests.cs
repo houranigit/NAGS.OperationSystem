@@ -1,4 +1,6 @@
+using System.Text.Json;
 using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Application.Auditing;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using MasterData.Contracts.Seeding;
@@ -6,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Features.Flights;
+using Operations.Contracts;
 using Operations.Domain.Authorization;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
@@ -70,7 +73,7 @@ public sealed class FlightSchedulingTests
         await using var db = NewDb();
         var reader = new SchedulingMasterDataReader(customerCode);
         var now = new DateTimeOffset(2026, 7, 3, 10, 0, 0, TimeSpan.Zero);
-        var result = await new ScheduleFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+        var result = await new ScheduleFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
             .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), flightNumber,
                 now, now.AddHours(1), null, [reader.ServiceId], []), CancellationToken.None);
 
@@ -128,7 +131,7 @@ public sealed class FlightSchedulingTests
         await using var db = NewDb();
         var reader = new SchedulingMasterDataReader(customerCode);
         var firstDate = new DateOnly(2026, 7, 3);
-        var result = await new ScheduleFlightsCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+        var result = await new ScheduleFlightsCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
             .Handle(new ScheduleFlightsCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), flightNumber,
                 new TimeOnly(23, 30), new TimeOnly(1, 30), [firstDate.AddDays(1), firstDate, firstDate],
                 null, [reader.ServiceId], [], "Asia/Riyadh"), CancellationToken.None);
@@ -157,7 +160,7 @@ public sealed class FlightSchedulingTests
         var reader = new SchedulingMasterDataReader(customerCode);
         var now = new DateTimeOffset(2026, 7, 3, 10, 0, 0, TimeSpan.Zero);
 
-        var result = await new ScheduleFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+        var result = await new ScheduleFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
             .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), flightNumber,
                 now, now.AddHours(1), null, [reader.ServiceId], []), CancellationToken.None);
 
@@ -174,7 +177,7 @@ public sealed class FlightSchedulingTests
         var reader = new SchedulingMasterDataReader(customerCode);
         var date = new DateOnly(2026, 7, 3);
 
-        var result = await new ScheduleFlightsCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+        var result = await new ScheduleFlightsCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
             .Handle(new ScheduleFlightsCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), flightNumber,
                 new TimeOnly(10, 0), new TimeOnly(11, 0), [date, date.AddDays(1)],
                 null, [reader.ServiceId], []), CancellationToken.None);
@@ -247,7 +250,7 @@ public sealed class FlightSchedulingTests
     {
         await using var db = NewDb();
         var reader = new SchedulingMasterDataReader();
-        var result = await new ScheduleFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(false), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+        var result = await new ScheduleFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(false), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
             .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "SV123",
                 DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), null, [reader.ServiceId], [Guid.NewGuid()]), CancellationToken.None);
 
@@ -261,7 +264,7 @@ public sealed class FlightSchedulingTests
         await using var db = NewDb();
         var scope = new StaticScope(new OperationsScopeContext(UserType.StationStaff, Guid.NewGuid(), Guid.NewGuid()));
         var reader = new SchedulingMasterDataReader();
-        var result = await new ScheduleFlightCommandHandler(db, scope, new MasterDataResolver(reader), new TestUser(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+        var result = await new ScheduleFlightCommandHandler(db, scope, new MasterDataResolver(reader), new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
             .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "SV123",
                 DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), null, [reader.ServiceId], []), CancellationToken.None);
 
@@ -312,7 +315,7 @@ public sealed class FlightSchedulingTests
         await db.SaveChangesAsync();
         var arrival = flight.Schedule.Sta.AddHours(2);
 
-        var result = await new UpdateScheduledFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+        var result = await new UpdateScheduledFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
             .Handle(new UpdateScheduledFlightCommand(flight.Id, flight.Customer.CustomerId, reader.StationId,
                 flight.OperationType.OperationTypeId, arrival, arrival.AddHours(1), null,
                 [WellKnownMasterDataIds.AircraftPerLandingService], flight.RowVersion, []), CancellationToken.None);
@@ -339,7 +342,7 @@ public sealed class FlightSchedulingTests
         var assignmentId = flight.AssignedEmployees[0].Id;
         var arrival = flight.Schedule.Sta.AddHours(2);
 
-        var result = await new UpdateScheduledFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(false), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+        var result = await new UpdateScheduledFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(false), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
             .Handle(new UpdateScheduledFlightCommand(flight.Id, flight.Customer.CustomerId, reader.StationId,
                 flight.OperationType.OperationTypeId, arrival, arrival.AddHours(1), null,
                 [reader.ServiceId], flight.RowVersion, includeRoster ? [staff.StaffMemberId] : null), CancellationToken.None);
@@ -363,7 +366,7 @@ public sealed class FlightSchedulingTests
         var arrival = flight.Schedule.Sta;
         var serviceId = flight.PlannedServices[0].Service.ServiceId;
 
-        var result = await new UpdateScheduledFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(false), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+        var result = await new UpdateScheduledFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader), new TestUser(false), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
             .Handle(new UpdateScheduledFlightCommand(flight.Id, flight.Customer.CustomerId, reader.StationId,
                 flight.OperationType.OperationTypeId, arrival.AddHours(2), arrival.AddHours(3), null,
                 [WellKnownMasterDataIds.AircraftPerLandingService], flight.RowVersion, []), CancellationToken.None);
@@ -373,6 +376,109 @@ public sealed class FlightSchedulingTests
         flight.PlannedServices.ShouldHaveSingleItem().Service.ServiceId.ShouldBe(serviceId);
         flight.AssignedEmployees.ShouldHaveSingleItem().Employee.StaffMemberId.ShouldBe(staff.StaffMemberId);
         db.ChangeTracker.HasChanges().ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task Scheduling_queues_one_notification_per_distinct_employee_and_groups_multiple_flights(int batchDates)
+    {
+        await using var db = NewDb();
+        var reader = new SchedulingMasterDataReader();
+        var employeeIds = new[] { Guid.NewGuid(), Guid.NewGuid() };
+        foreach (var id in employeeIds)
+            reader.StaffMembers.Add(id, new(id, "Employee", "E1", reader.StationId, Guid.NewGuid(), true));
+        var user = new TestUser();
+        var arrival = new DateTimeOffset(2026, 11, 10, 10, 0, 0, TimeSpan.Zero);
+        var selectedStaff = new[] { employeeIds[0], employeeIds[1], employeeIds[0] };
+
+        if (batchDates == 0)
+        {
+            var result = await new ScheduleFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader),
+                user, new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+                .Handle(new ScheduleFlightCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "123",
+                    arrival, arrival.AddHours(1), null, [reader.ServiceId], selectedStaff), CancellationToken.None);
+            result.IsSuccess.ShouldBeTrue();
+        }
+        else
+        {
+            var dates = Enumerable.Range(0, batchDates).Select(day => new DateOnly(2026, 11, 10).AddDays(day)).ToList();
+            dates.Add(dates[0]);
+            var result = await new ScheduleFlightsCommandHandler(db, AdminScope(), new MasterDataResolver(reader),
+                user, new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+                .Handle(new ScheduleFlightsCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "123",
+                    new TimeOnly(10, 0), new TimeOnly(11, 0), dates, null, [reader.ServiceId], selectedStaff), CancellationToken.None);
+            result.IsSuccess.ShouldBeTrue();
+        }
+
+        var envelopes = await db.OutboxMessages.ToListAsync();
+        envelopes.Count.ShouldBe(2);
+        (await db.Flights.CountAsync()).ShouldBe(Math.Max(1, batchDates));
+        if (batchDates > 1)
+        {
+            envelopes.ShouldAllBe(envelope => envelope.Type.Contains(nameof(FlightScheduleUpdated)));
+            var events = envelopes.Select(envelope => JsonSerializer.Deserialize<FlightScheduleUpdated>(envelope.Content)!).ToList();
+            events.Select(item => item.StaffMemberId).ShouldBe(employeeIds, ignoreOrder: true);
+            events.ShouldAllBe(item => item.FlightCount == batchDates && item.UpdatedByUserId == user.UserId);
+        }
+        else
+        {
+            envelopes.ShouldAllBe(envelope => envelope.Type.Contains(nameof(FlightEmployeeAssigned)));
+            var events = envelopes.Select(envelope => JsonSerializer.Deserialize<FlightEmployeeAssigned>(envelope.Content)!).ToList();
+            var flightId = (await db.Flights.SingleAsync()).Id;
+            events.Select(item => item.StaffMemberId).ShouldBe(employeeIds, ignoreOrder: true);
+            events.ShouldAllBe(item => item.FlightId == flightId && item.Source == FlightAssignmentSource.Roster);
+            events.ShouldAllBe(item => item.AssignedByUserId == user.UserId && item.AssignedByDisplayName == "Scheduler");
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Roster_changes_notify_only_new_employees_and_leave_repeats_and_removals_silent(bool throughPlanningEdit)
+    {
+        await using var db = NewDb();
+        var reader = new SchedulingMasterDataReader();
+        var existing = new StaffMemberSnapshot(Guid.NewGuid(), "Existing", "E1");
+        var added = new StaffMemberSnapshot(Guid.NewGuid(), "Added", "E2");
+        foreach (var employee in new[] { existing, added })
+            reader.StaffMembers.Add(employee.StaffMemberId, new(employee.StaffMemberId, employee.FullName,
+                employee.EmployeeId, reader.StationId, Guid.NewGuid(), true));
+        var flight = NewFlight(reader.StationId, [existing]);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+
+        async Task ChangeRoster(IReadOnlyList<Guid> staffIds)
+        {
+            if (throughPlanningEdit)
+            {
+                var result = await new UpdateScheduledFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader),
+                    new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+                    .Handle(new UpdateScheduledFlightCommand(flight.Id, flight.Customer.CustomerId, reader.StationId,
+                        flight.OperationType.OperationTypeId, flight.Schedule.Sta, flight.Schedule.Std, null,
+                        [reader.ServiceId], flight.RowVersion, staffIds), CancellationToken.None);
+                result.IsSuccess.ShouldBeTrue();
+            }
+            else
+            {
+                var result = await new AssignEmployeesCommandHandler(db, AdminScope(), new MasterDataResolver(reader),
+                    new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+                    .Handle(new AssignEmployeesCommand(flight.Id, staffIds, flight.RowVersion), CancellationToken.None);
+                result.IsSuccess.ShouldBeTrue();
+            }
+        }
+
+        await ChangeRoster([existing.StaffMemberId, added.StaffMemberId, added.StaffMemberId]);
+        await ChangeRoster([existing.StaffMemberId, added.StaffMemberId]);
+        await ChangeRoster([]);
+
+        var envelope = await db.OutboxMessages.SingleAsync();
+        var assignment = JsonSerializer.Deserialize<FlightEmployeeAssigned>(envelope.Content)!;
+        assignment.StaffMemberId.ShouldBe(added.StaffMemberId);
+        assignment.Source.ShouldBe(FlightAssignmentSource.Roster);
+        assignment.AssignedByDisplayName.ShouldBe("Scheduler");
+        flight.AssignedEmployees.ShouldBeEmpty();
     }
 
     private static Flight NewFlight(Guid stationId, IReadOnlyList<StaffMemberSnapshot> staff, bool perLanding = false, string stationIata = "RUH", int arrivalDay = 1, AircraftTypeSnapshot? aircraftType = null, string? customerCode = "SV") =>
@@ -399,5 +505,13 @@ public sealed class FlightSchedulingTests
         public UserType? UserType => BuildingBlocks.Contracts.Authorization.UserType.SystemAdministrator;
         public Guid? ExternalReferenceId => null;
         public bool HasPermission(string permission) => canAssign && permission == OperationsPermissions.Flights.Assign;
+    }
+
+    private sealed class AuditActor : IAuditContext
+    {
+        public Guid? ActorId => null;
+        public string? ActorDisplayName => "Scheduler";
+        public bool IsSystemActor => false;
+        public string? CorrelationId => null;
     }
 }

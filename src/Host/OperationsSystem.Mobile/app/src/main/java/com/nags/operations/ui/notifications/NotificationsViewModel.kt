@@ -2,152 +2,269 @@ package com.nags.operations.ui.notifications
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nags.operations.data.notifications.CategoryReadAcknowledgement
+import com.nags.operations.data.notifications.CategoryReadResult
+import com.nags.operations.data.notifications.NotificationCategory
 import com.nags.operations.data.notifications.NotificationDto
 import com.nags.operations.data.notifications.NotificationKinds
 import com.nags.operations.data.notifications.NotificationOpenRequest
+import com.nags.operations.data.notifications.NotificationPageDto
 import com.nags.operations.data.notifications.flightId
 import com.nags.operations.data.notifications.isExpiredReminder
 import com.nags.operations.data.repo.NotificationsRepository
 import com.nags.operations.data.userMessage
+import java.time.Instant
+import java.time.OffsetDateTime
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
 
-class NotificationsViewModel(
-    private val repository: NotificationsRepository,
+class NotificationsViewModel internal constructor(
+    private val inbox: (NotificationCategory) -> Flow<List<NotificationDto>>,
+    private val fetchPage: suspend (Int, NotificationCategory) -> NotificationPageDto,
+    private val acknowledgeCategory: suspend (NotificationCategory) -> CategoryReadResult?,
+    private val markReadOnOpen: (String) -> Unit,
+    private val archiveNotification: suspend (String) -> Unit,
+    private val archiveInbox: suspend () -> Unit,
+    readAcknowledgements: Flow<CategoryReadAcknowledgement> = emptyFlow(),
+    private val coroutineScope: CoroutineScope? = null,
 ) : ViewModel() {
+    constructor(repository: NotificationsRepository) : this(
+        inbox = { category -> repository.observeInbox(unreadOnly = false, category = category) },
+        fetchPage = { page, category -> repository.refresh(page = page, category = category) },
+        acknowledgeCategory = repository::acknowledgeCategory,
+        markReadOnOpen = repository::markReadOnOpen,
+        archiveNotification = repository::archive,
+        archiveInbox = repository::archiveAll,
+        readAcknowledgements = repository.observeReadAcknowledgements(),
+    )
+
     data class UiState(
         val items: List<NotificationDto> = emptyList(),
-        val unreadOnly: Boolean = false,
-        val unreadCount: Int = 0,
+        val category: NotificationCategory = NotificationCategory.Invitations,
+        val newIds: Set<String> = emptySet(),
+        val visitId: Long = 0,
         val isLoading: Boolean = true,
         val isRefreshing: Boolean = false,
         val isLoadingMore: Boolean = false,
+        val isFromCache: Boolean = false,
         val hasMore: Boolean = false,
         val page: Int = 1,
         val error: String? = null,
+        val loadMoreError: String? = null,
     )
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
+    private val scope: CoroutineScope get() = coroutineScope ?: viewModelScope
+    private var itemsJob: Job? = null
+    private var refreshJob: Job? = null
+    private var loadMoreJob: Job? = null
+    private var acknowledgeJob: Job? = null
+    private var requestVersion = 0L
+    private var observerVersion = 0L
+    private var visible = false
+    private var hasAcknowledgedVisit = false
+    private var acknowledgedThrough: Instant? = null
+    private val acknowledgedIds = mutableSetOf<String>()
+    private val visitReadStamps = mutableSetOf<Instant>()
+    private val visitLocalReadStamps = mutableSetOf<Instant>()
 
     init {
-        viewModelScope.launch {
-            repository.observeUnreadCount().collect { count ->
-                _state.update { it.copy(unreadCount = count) }
+        observeItems()
+        scope.launch {
+            readAcknowledgements.collect { receipt ->
+                val local = parseStamp(receipt.localReadAtUtc)
+                val server = parseStamp(receipt.serverReadAtUtc)
+                if (visible && _state.value.category == receipt.category && local != null &&
+                    local in visitLocalReadStamps && server != null) {
+                    visitReadStamps.add(server)
+                    _state.update { it.copy(newIds = it.newIds + newlyReadIds(it.items)) }
+                }
             }
         }
-        observeItems(unreadOnly = false)
+    }
+
+    fun beginVisit() {
+        if (visible) return
+        visible = true
+        resetVisit()
         refresh()
     }
 
-    fun setUnreadOnly(value: Boolean) {
-        if (_state.value.unreadOnly == value) return
-        _state.update { it.copy(unreadOnly = value) }
-        observeItems(value)
+    fun endVisit() {
+        visible = false
+        acknowledgeJob?.cancel()
+        acknowledgeJob = null
+    }
+
+    fun setCategory(category: NotificationCategory) {
+        if (_state.value.category == category) return
+        _state.update {
+            it.copy(category = category, items = emptyList(), page = 1, hasMore = false, isFromCache = false,
+                isLoading = true, isRefreshing = false, isLoadingMore = false, error = null, loadMoreError = null)
+        }
+        resetVisit()
+        observeItems()
+        refresh()
+    }
+
+    private fun resetVisit() {
+        acknowledgeJob?.cancel()
+        acknowledgeJob = null
+        hasAcknowledgedVisit = false
+        acknowledgedThrough = null
+        acknowledgedIds.clear()
+        visitReadStamps.clear()
+        visitLocalReadStamps.clear()
+        _state.update { it.copy(visitId = it.visitId + 1, newIds = it.items.filterNot(NotificationDto::isRead).mapTo(mutableSetOf()) { row -> row.id }) }
+    }
+
+    /** Called after the selected category has rendered its loaded rows. */
+    fun acknowledgeLoadedCategory() {
+        val snapshot = _state.value
+        if (!visible || snapshot.items.isEmpty() || acknowledgeJob?.isActive == true) return
+        val cutoff = snapshot.items.mapNotNull { parseStamp(it.createdAtUtc) }.maxOrNull()
+        val previousCutoff = acknowledgedThrough
+        val hasNewerRows = cutoff != null && (previousCutoff == null || cutoff > previousCutoff)
+        val unreadIds = snapshot.items.filterNot(NotificationDto::isRead).mapTo(mutableSetOf()) { it.id }
+        if (hasAcknowledgedVisit && !hasNewerRows && unreadIds.all(acknowledgedIds::contains)) return
+        _state.update { it.copy(newIds = it.newIds + unreadIds) }
+        val visit = snapshot.visitId
+        acknowledgeJob = scope.launch {
+            var acknowledged = false
+            try {
+                val result = acknowledgeCategory(snapshot.category) ?: return@launch
+                if (!isCurrentVisit(visit, snapshot.category)) return@launch
+                hasAcknowledgedVisit = true
+                acknowledgedIds.addAll(snapshot.items.map { it.id })
+                val through = parseStamp(result.throughCreatedAtUtc) ?: cutoff
+                acknowledgedThrough = listOfNotNull(acknowledgedThrough, through).maxOrNull()
+                parseStamp(result.localReadAtUtc)?.let {
+                    visitReadStamps.add(it)
+                    visitLocalReadStamps.add(it)
+                }
+                parseStamp(result.serverReadAtUtc)?.let(visitReadStamps::add)
+                _state.update { it.copy(newIds = it.newIds + newlyReadIds(it.items)) }
+                acknowledged = true
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // A failed local write can be retried by a later render or refresh.
+            } finally {
+                if (_state.value.visitId == visit) acknowledgeJob = null
+            }
+            // New rows can arrive while the repository completes its durable acknowledgment.
+            if (acknowledged && isCurrentVisit(visit, snapshot.category)) acknowledgeLoadedCategory()
+        }
     }
 
     fun refresh(userInitiated: Boolean = false) {
-        viewModelScope.launch {
-            _state.update {
-                it.copy(
-                    isLoading = !userInitiated && it.items.isEmpty(),
-                    isRefreshing = userInitiated,
-                    error = null,
-                )
+        val category = _state.value.category
+        val version = ++requestVersion
+        refreshJob?.cancel()
+        loadMoreJob?.cancel()
+        _state.update {
+            it.copy(isLoading = !userInitiated && it.items.isEmpty(), isRefreshing = userInitiated,
+                isLoadingMore = false, error = null, loadMoreError = null)
+        }
+        refreshJob = scope.launch {
+            try {
+                val page = fetchPage(1, category)
+                if (!isCurrentRequest(version, category)) return@launch
+                _state.update {
+                    it.copy(isLoading = false, isRefreshing = false, page = page.page,
+                        hasMore = page.hasNextPage, isFromCache = page.isFromCache)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (!isCurrentRequest(version, category)) return@launch
+                _state.update { it.copy(isLoading = false, isRefreshing = false, error = error.userMessage()) }
             }
-            runCatching { repository.refresh() }
-                .onSuccess { page ->
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            isRefreshing = false,
-                            page = page.page,
-                            hasMore = page.hasNextPage,
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _state.update {
-                        it.copy(
-                            isLoading = false,
-                            isRefreshing = false,
-                            error = if (it.items.isEmpty()) error.userMessage() else null,
-                        )
-                    }
-                }
         }
     }
 
     fun loadMore() {
         val snapshot = _state.value
-        if (!snapshot.hasMore || snapshot.isLoadingMore) return
-        viewModelScope.launch {
-            _state.update { it.copy(isLoadingMore = true) }
-            runCatching { repository.refresh(snapshot.page + 1) }
-                .onSuccess { page ->
-                    _state.update {
-                        it.copy(
-                            isLoadingMore = false,
-                            page = page.page,
-                            hasMore = page.hasNextPage,
-                        )
-                    }
+        if (!snapshot.hasMore || snapshot.isLoading || snapshot.isRefreshing || snapshot.isLoadingMore || !visible) return
+        val version = requestVersion
+        _state.update { it.copy(isLoadingMore = true, loadMoreError = null) }
+        loadMoreJob = scope.launch {
+            try {
+                val page = fetchPage(snapshot.page + 1, snapshot.category)
+                if (!isCurrentRequest(version, snapshot.category)) return@launch
+                _state.update { it.copy(isLoadingMore = false, page = page.page, hasMore = page.hasNextPage, isFromCache = page.isFromCache) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (isCurrentRequest(version, snapshot.category)) {
+                    _state.update { it.copy(isLoadingMore = false, loadMoreError = error.userMessage()) }
                 }
-                .onFailure { _state.update { it.copy(isLoadingMore = false) } }
+            }
         }
     }
 
-    fun open(
-        notification: NotificationDto,
-        onOpenFlight: (NotificationOpenRequest) -> Unit,
-        onOpenSchedule: (NotificationOpenRequest) -> Unit = {},
-    ) {
-        if (!notification.isRead) {
-            viewModelScope.launch { repository.markRead(notification.id) }
-        }
+    fun open(notification: NotificationDto, onOpenFlight: (NotificationOpenRequest) -> Unit,
+        onOpenSchedule: (NotificationOpenRequest) -> Unit = {}) {
+        if (!notification.isRead) markReadOnOpen(notification.id)
         if (notification.isExpiredReminder()) return
         val flightId = notification.flightId()
         if (flightId == null && notification.kind != NotificationKinds.FlightScheduleUpdated) return
-        val request = NotificationOpenRequest(
-            notificationId = notification.id,
-            flightId = flightId,
-            kind = notification.kind,
-            scheduledArrivalUtc = notification.payload["scheduledArrivalUtc"],
-            leadTimeMinutes = notification.payload["leadTimeMinutes"]?.toIntOrNull(),
-        )
-        if (flightId == null) {
-            onOpenSchedule(request)
-        } else {
-            onOpenFlight(request)
-        }
+        val request = NotificationOpenRequest(notificationId = notification.id, flightId = flightId,
+            kind = notification.kind, scheduledArrivalUtc = notification.payload["scheduledArrivalUtc"],
+            leadTimeMinutes = notification.payload["leadTimeMinutes"]?.toIntOrNull())
+        if (flightId == null) onOpenSchedule(request) else onOpenFlight(request)
     }
 
     fun archive(notification: NotificationDto) {
-        viewModelScope.launch { runCatching { repository.archive(notification.id) } }
-    }
-
-    fun markAllRead() {
-        viewModelScope.launch { runCatching { repository.markAllRead() } }
-    }
-
-    fun archiveAll(onFinished: () -> Unit = {}) {
-        viewModelScope.launch {
-            runCatching { repository.archiveAll() }
-            onFinished()
+        scope.launch {
+            runCatching { archiveNotification(notification.id) }.onFailure { if (it is CancellationException) throw it }
         }
     }
 
-    private var itemsJob: Job? = null
-    private fun observeItems(unreadOnly: Boolean) {
+    fun archiveAll() {
+        scope.launch {
+            runCatching { archiveInbox() }.onSuccess { refresh() }.onFailure { if (it is CancellationException) throw it }
+        }
+    }
+
+    private fun isCurrentRequest(version: Long, category: NotificationCategory): Boolean =
+        requestVersion == version && _state.value.category == category
+
+    private fun isCurrentVisit(visit: Long, category: NotificationCategory): Boolean =
+        visible && _state.value.visitId == visit && _state.value.category == category
+
+    private fun newlyReadIds(items: List<NotificationDto>): Set<String> = items.filter {
+        !it.isRead || parseStamp(it.readAtUtc)?.let(visitReadStamps::contains) == true
+    }.mapTo(mutableSetOf()) { it.id }
+
+    private fun observeItems() {
+        val category = _state.value.category
+        val version = ++observerVersion
         itemsJob?.cancel()
-        itemsJob = viewModelScope.launch {
-            repository.observeInbox(unreadOnly).collect { items ->
-                _state.update { it.copy(items = items) }
+        itemsJob = scope.launch {
+            inbox(category).collect { items ->
+                if (observerVersion == version) {
+                    _state.update { it.copy(items = items, newIds = it.newIds + if (visible) newlyReadIds(items) else emptySet()) }
+                }
             }
         }
     }
 }
+
+/** Page changes also trigger prefetch when a response overlaps already-cached history. */
+internal fun nextNotificationPageToLoad(state: NotificationsViewModel.UiState, lastVisibleIndex: Int): Int? {
+    if (!state.hasMore || state.isFromCache || state.isLoading || state.isRefreshing || state.isLoadingMore ||
+        state.error != null || state.loadMoreError != null) return null
+    return state.page.takeIf { state.items.isEmpty() || lastVisibleIndex >= state.items.size - 4 }
+}
+
+private fun parseStamp(value: String?): Instant? = value?.let { runCatching { OffsetDateTime.parse(it).toInstant() }.getOrNull() }

@@ -28,6 +28,25 @@ data class NotificationPageDto(
     val totalPages: Int = 0,
     val hasPreviousPage: Boolean = false,
     val hasNextPage: Boolean = false,
+    @kotlinx.serialization.Transient val isFromCache: Boolean = false,
+)
+
+@Serializable
+data class ReadNotificationCategoryRequest(val category: NotificationCategory, val throughCreatedAtUtc: String)
+
+@Serializable
+data class CategoryReadReceiptDto(val readAtUtc: String, val unreadCount: Int)
+
+data class CategoryReadResult(
+    val throughCreatedAtUtc: String,
+    val localReadAtUtc: String,
+    val serverReadAtUtc: String? = null,
+)
+
+data class CategoryReadAcknowledgement(
+    val category: NotificationCategory,
+    val localReadAtUtc: String,
+    val serverReadAtUtc: String,
 )
 
 @Serializable
@@ -67,6 +86,19 @@ object NotificationKinds {
     const val EmployeeInvitedToFlight = "EmployeeInvitedToFlight"
     const val FlightScheduleUpdated = "FlightScheduleUpdated"
     const val FlightReminder = "FlightReminder"
+}
+
+@Serializable
+enum class NotificationCategory {
+    Invitations,
+    Reminders,
+    FlightUpdates;
+
+    fun includes(kind: String): Boolean = when (this) {
+        Invitations -> kind == NotificationKinds.EmployeeInvitedToFlight
+        Reminders -> kind == NotificationKinds.FlightReminder
+        FlightUpdates -> kind != NotificationKinds.EmployeeInvitedToFlight && kind != NotificationKinds.FlightReminder
+    }
 }
 
 data class NotificationPushPayload(

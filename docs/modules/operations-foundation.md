@@ -6,7 +6,7 @@ This is the entry point for the current Operations module. This branch starts fr
 
 `Flight` owns customer, station, operation type, flight number, scheduled arrival/departure, optional aircraft type, planned services, assigned employees, operational submissions, performed services, tasks, and return-to-ramp occurrences. MasterData remains authoritative for reference records; Operations validates selections through its existing readers and stores snapshots. Planned services and assigned employees are direct flight collections.
 
-Creation/update timestamps, creator ID, and SQL rowversion support persistence and concurrency. There is one current scheduled flight number. Beyond the submission, performed-service, task, and return-to-ramp models described below, flight status, original-number history, contract placeholders, merge metadata, other actual work, work orders, handover, review, approval, timeline, file transfers, reminders, and automatic work creation remain outside this scope. Platform audit capture remains enabled independently of a flight history feature.
+Creation/update timestamps, creator ID, and SQL rowversion support persistence and concurrency. There is one current scheduled flight number. Beyond the submission, performed-service, task, and return-to-ramp models described below, flight status, original-number history, contract placeholders, merge metadata, other actual work, work orders, handover, review, approval, timeline, file transfers, and automatic work creation remain outside this scope. Platform audit capture remains enabled independently of a flight history feature.
 
 ## Arrival submissions
 
@@ -78,6 +78,16 @@ The scheduling input shows the customer code as a separate prefix. Flight number
 
 Aircraft Per Landing remains an exclusive planned designation and cannot be combined with other planned services or assigned staff. Ad Hoc is unavailable for scheduling. Batch scheduling retains the supplied time-zone conversion and overnight departure behavior; invalid or ambiguous local times fail validation rather than silently shifting the schedule.
 
+## User notifications
+
+Scheduling one flight with assigned staff, adding employees through roster replacement or the planning editor, and inviting employees queue transactional `FlightEmployeeAssigned` events for newly added employees only. Invitations use `EmployeeInvitedToFlight`; other additions use `StaffAssignedToFlight`. Repeated selections and removals are silent. A batch that creates multiple flights queues one `FlightScheduleUpdated` event per distinct assigned employee instead of one notification per flight; a batch with one distinct date uses the single-flight assignment behavior. Editing flight times alone does not produce a schedule-update notification.
+
+Notifications resolves the employee's linked user, suppresses assignment/bulk self-notifications and unlinked recipients, saves bilingual inbox entries, and attempts the existing SignalR/FCM transports. Transport retries reuse the event/notification ID and do not reverse an accepted flight change.
+
+Flight reminders retain `main`'s durable 12-hour, 2-hour, and 30-minute milestones before STA. `Operations:FlightReminders` enables the scanner by default, polling every 60 seconds with a 13-hour enrollment horizon and five-minute enrollment lateness tolerance. Milestones already too old at enrollment are skipped. Dispatch skips superseded milestones, removed assignments, missing flights, changed STA snapshots, and expired STA. Notifications rechecks live eligibility before persistence, delivery, and transport retries.
+
+This model has no terminal flight status. Any cancellation submission, including competing unaccepted submissions, suppresses reminder enrollment and delivery, matching the current cancellation/operational exclusivity rule. Arrival and departure submissions do not introduce a completion status. Reminder schedules belong to Operations; inbox entries and device delivery remain owned by Notifications. Reminder scanning and transactional outbox dispatch must both be enabled for delivery.
+
 ## Authorization and API
 
 Retained permissions are `operations.flights.view`, `view-station`, `schedule`, `update`, `assign`, and `invite`. Existing account/station scope remains enforced on the backend. Viewer accounts are read-only; station staff see assigned flights and station-wide Per Landing flights unless granted station-wide visibility. Customer contacts have no Operations access.
@@ -127,6 +137,8 @@ Submission, performed-service, task, and return-to-ramp storage uses additive Op
 The shared-signature migration is additive after the published migrations and adds required `CustomerSignatureFileName` and `CustomerSignedAtUtc` columns to normal flight departure submissions. For those legacy normal-departure rows only, the file name is derived from the existing storage key basename (normalizing both slash styles), truncated to 255 characters, and set to `customer-signature` when the basename is empty. `CustomerSignedAtUtc` is backfilled from the submission's `CreatedAtUtc`: this is a documented historical fallback to recording time, not a claim about the actual signing time. Preflight stops on legacy keys over 500 characters, content types over 100 characters, or a default submission creation time, rather than changing file references or fabricating a time. Existing RTR signature metadata is already complete and remains untouched.
 
 Keep the historical `main` EF migrations unchanged. `Operations_FlightSchedulingBaseline` preserves the existing flights, direct `flight_planned_services`, and `flight_assigned_employees` rows in place, and removes retired work-order, mobile, reminder, history, status, contract, and merge storage plus pending event envelopes for retired Operations contracts. The retained `FlightEmployeeAssigned` invitation contract and platform audit envelopes are preserved. The migration does not require a HandOver operational graph. It does not alter another module's schema or delete stored file blobs.
+
+`Operations_RestoreFlightNotifications` subsequently recreates Operations-owned durable reminder schedules with unique flight/employee/STA/milestone identities and dispatch/cleanup indexes. Existing flight, roster, submission, and notification data is preserved. Historical reminder rows removed by the scheduling baseline are not replayed; the scanner enrolls currently eligible assignments.
 
 This migration intentionally discards work-order/workflow data. Development startup migrations are disabled. Review the SQL and back up an existing database before applying the reset and running the API against that database. Restoring the previous application requires restoring its database backup; the reset migration cannot reconstruct the removed operational history. Verification uses disposable local SQL databases, never a configured remote database.
 

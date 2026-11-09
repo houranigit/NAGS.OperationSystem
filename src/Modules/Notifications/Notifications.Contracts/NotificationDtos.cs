@@ -13,4 +13,15 @@ public sealed record NotificationDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? ReadAtUtc);
 
-public sealed record UnreadNotificationCountDto(int Count);
+public sealed record UnreadNotificationCountDto(
+    int Count,
+    int? Invitations = null,
+    int? Reminders = null,
+    int? FlightUpdates = null);
+
+public sealed record NotificationCategoryReadDto(
+    DateTimeOffset ReadAtUtc,
+    int UnreadCount,
+    int? Invitations = null,
+    int? Reminders = null,
+    int? FlightUpdates = null);

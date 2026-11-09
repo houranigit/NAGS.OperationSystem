@@ -37,6 +37,8 @@ public static class NotificationsInfrastructureExtensions
         services.AddScoped<INotificationTransport, FcmNotificationPusher>();
         services.AddScoped<INotificationPusher, CompositeNotificationPusher>();
         services.AddIntegrationEventHandler<FlightEmployeeAssigned, FlightEmployeeAssignedHandler>();
+        services.AddIntegrationEventHandler<FlightScheduleUpdated, FlightScheduleUpdatedHandler>();
+        services.AddIntegrationEventHandler<FlightReminderDue, FlightReminderDueHandler>();
 
         return services;
     }

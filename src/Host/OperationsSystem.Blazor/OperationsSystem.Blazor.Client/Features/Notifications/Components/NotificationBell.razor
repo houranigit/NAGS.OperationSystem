@@ -8,7 +8,7 @@
 <div class="os-notification-bell @(isOpen ? "os-notification-bell--open" : null)">
     <button type="button" class="os-notification-bell__trigger" title="@UiStrings.Notifications.Title"
             aria-label="@UiStrings.Notifications.BellLabel" aria-haspopup="true" aria-expanded="@isOpen"
-            @onclick="Toggle">
+            @onclick="ToggleAsync">
         <RadzenIcon Icon="notifications_none" />
         @if (Center.UnreadCount > 0)
         {
@@ -30,12 +30,6 @@
                         <small>@string.Format(UiStrings.Notifications.UnreadCount, Center.UnreadCount)</small>
                     }
                 </div>
-                @if (Center.UnreadCount > 0)
-                {
-                    <button type="button" class="os-notification-bell__text-action" disabled="@isUpdating" @onclick="MarkAllReadAsync">
-                        @UiStrings.Notifications.MarkAllRead
-                    </button>
-                }
             </header>
 
             <div class="os-notification-bell__content">
@@ -72,7 +66,7 @@
                         <button @key="notification.Id" type="button"
                                 class="os-notification-bell__item @(!notification.IsRead ? "os-notification-bell__item--unread" : null)"
                                 @onclick="() => OpenAsync(notification)">
-                            <span class="os-notification-bell__item-icon"><RadzenIcon Icon="flight_takeoff" /></span>
+                            <span class="os-notification-bell__item-icon"><RadzenIcon Icon="@NotificationPresentation.Icon(notification)" /></span>
                             <span class="os-notification-bell__item-copy">
                                 <strong>@NotificationPresentation.Title(notification, Locale)</strong>
                                 <span>@NotificationPresentation.Body(notification, Locale)</span>
@@ -99,34 +93,23 @@
 
 @code {
     private bool isOpen;
-    private bool isUpdating;
+    private bool disposed;
+    private readonly CancellationTokenSource lifetimeCts = new();
 
     protected override void OnInitialized() => Center.Changed += OnCenterChanged;
 
     protected override async Task OnInitializedAsync() => await UserTimeZone.InitializeAsync();
 
-    private void Toggle() => isOpen = !isOpen;
+    private async Task ToggleAsync()
+    {
+        isOpen = !isOpen;
+        if (isOpen)
+            await Center.RefreshAsync(lifetimeCts.Token);
+    }
 
     private void Close() => isOpen = false;
 
-    private async Task RefreshAsync() => await Center.RefreshAsync();
-
-    private async Task MarkAllReadAsync()
-    {
-        isUpdating = true;
-        try
-        {
-            await Center.MarkAllAsReadAsync();
-        }
-        catch (Exception)
-        {
-            Toasts.Notify(NotificationSeverity.Error, UiStrings.Notifications.Title, UiStrings.Notifications.ActionFailed);
-        }
-        finally
-        {
-            isUpdating = false;
-        }
-    }
+    private async Task RefreshAsync() => await Center.RefreshAsync(lifetimeCts.Token);
 
     private async Task OpenAsync(NotificationDto notification)
     {
@@ -134,7 +117,9 @@
         {
             try
             {
-                await Center.MarkAsReadAsync(notification.Id);
+                using var readCts = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCts.Token);
+                readCts.CancelAfter(TimeSpan.FromSeconds(5));
+                await Center.MarkAsReadAsync(notification.Id, readCts.Token);
             }
             catch (Exception)
             {
@@ -142,8 +127,10 @@
             }
         }
 
+        if (disposed)
+            return;
         isOpen = false;
-        Navigation.NavigateTo(NotificationPresentation.DeepLink(notification) ?? "/notifications");
+        Navigation.NavigateTo(NotificationPresentation.DeepLink(notification) ?? NotificationPresentation.InboxLink(notification));
     }
 
     private void ViewAll()
@@ -178,7 +165,10 @@
 
     public ValueTask DisposeAsync()
     {
+        disposed = true;
         Center.Changed -= OnCenterChanged;
+        lifetimeCts.Cancel();
+        lifetimeCts.Dispose();
         return ValueTask.CompletedTask;
     }
 }

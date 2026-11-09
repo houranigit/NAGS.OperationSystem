@@ -81,7 +81,7 @@ fun OperationsApp() {
             return@LaunchedEffect
         }
         request.notificationId?.let { id ->
-            graph.appScope.launch { runCatching { graph.notificationsRepository.markRead(id) } }
+            graph.notificationsRepository.markReadOnOpen(id)
         }
         if (navController.currentDestination?.route != Routes.Flights &&
             !navController.popBackStack(Routes.Flights, inclusive = false)) {

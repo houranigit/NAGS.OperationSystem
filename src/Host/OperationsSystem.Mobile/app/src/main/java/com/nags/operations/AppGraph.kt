@@ -66,7 +66,7 @@ class AppGraph private constructor(context: Context) {
     )
     val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline, customerLogos)
     val notificationsRepository: NotificationsRepository =
-        NotificationsRepository(notificationsApi, database, tokenStore)
+        NotificationsRepository(notificationsApi, database, tokenStore, appScope, networkMonitor.isOnline)
     val sharedCatalogsRepository = SharedCatalogsRepository(sharedCatalogsApi, catalogDatabase, tokenStore, customerLogos)
     val isSyncing = combine(sharedCatalogsRepository.isSyncing, flightsRepository.isSyncing) { catalogs, flights ->
         catalogs || flights
@@ -125,6 +125,12 @@ class AppGraph private constructor(context: Context) {
     )
 
     init {
+        appScope.launch {
+            combine(networkMonitor.isOnline, tokenStore.sessionSubjectFlow) { online, subject -> online to subject }
+                .distinctUntilChanged().collect { (online, subject) ->
+                    if (secureStorageReady && online && !subject.isNullOrBlank()) notificationsRepository.syncPendingReads()
+                }
+        }
         appScope.launch {
             tokenStore.initializeSecureStorage()
             legacyWorkCancellation.join()

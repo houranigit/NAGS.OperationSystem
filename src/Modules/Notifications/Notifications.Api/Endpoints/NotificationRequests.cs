@@ -10,3 +10,5 @@ public sealed record RegisterDeviceTokenRequest(
     string? AppVersion = null);
 
 public sealed record RevokeDeviceTokenRequest(string Token);
+
+public sealed record MarkNotificationCategoryReadRequest(string? Category, DateTimeOffset? ThroughCreatedAtUtc);

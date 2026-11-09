@@ -41,6 +41,21 @@ public sealed class NotificationPresentationTests
         NotificationPresentation.DeepLink(invalid).ShouldBeNull();
     }
 
+    [Theory]
+    [InlineData("EmployeeInvitedToFlight", NotificationCategories.Invitations, "person_add")]
+    [InlineData("FlightReminder", NotificationCategories.Reminders, "alarm")]
+    [InlineData("FlightScheduleUpdated", NotificationCategories.FlightUpdates, "event_repeat")]
+    [InlineData("StaffAssignedToFlight", NotificationCategories.FlightUpdates, "flight_takeoff")]
+    [InlineData("LegacyNotification", NotificationCategories.FlightUpdates, "flight_takeoff")]
+    public void Category_and_inbox_link_cover_known_and_unclassified_notifications(string kind, string category, string icon)
+    {
+        var notification = Notification(Guid.NewGuid()) with { Kind = kind };
+
+        NotificationPresentation.Category(notification).ShouldBe(category);
+        NotificationPresentation.Icon(notification).ShouldBe(icon);
+        NotificationPresentation.InboxLink(notification).ShouldBe($"/notifications?category={category}");
+    }
+
     private static NotificationDto Notification(Guid flightId) => new(
         Guid.NewGuid(),
         "StaffAssignedToFlight",

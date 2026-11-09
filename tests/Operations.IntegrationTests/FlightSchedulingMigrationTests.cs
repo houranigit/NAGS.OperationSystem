@@ -100,7 +100,10 @@ public sealed class FlightSchedulingMigrationTests : IAsyncLifetime
         appliedMigrations.Length.ShouldBe(previousMigrations.Length + 1);
         appliedMigrations.Take(previousMigrations.Length).ShouldBe(previousMigrations);
         appliedMigrations.Last().ShouldEndWith("_Operations_FlightSchedulingBaseline");
+        (await ScalarIntAsync(db, "SELECT COUNT(*) FROM sys.tables WHERE object_id = OBJECT_ID('operations.flight_reminder_schedules')"))
+            .ShouldBe(0);
         await db.Database.MigrateAsync();
+        (await db.FlightReminderSchedules.CountAsync()).ShouldBe(0);
 
         var flight = await db.Flights.AsNoTracking()
             .Include(item => item.PlannedServices)
@@ -137,7 +140,7 @@ public sealed class FlightSchedulingMigrationTests : IAsyncLifetime
             SELECT COUNT(*) FROM sys.tables
             WHERE schema_id = SCHEMA_ID('operations')
               AND (name LIKE 'work_order_%' OR name IN
-                ('flight_timeline_entries', 'flight_reminder_schedules', 'Operations_MobileMutations'))
+                ('flight_timeline_entries', 'Operations_MobileMutations'))
             """)).ShouldBe(0);
         (await ScalarIntAsync(db, """
             SELECT COUNT(*) FROM sys.columns

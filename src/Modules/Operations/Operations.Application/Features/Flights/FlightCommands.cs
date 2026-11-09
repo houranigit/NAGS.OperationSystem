@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Application.Auditing;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
@@ -9,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
+using Operations.Contracts;
 using Operations.Domain.Authorization;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
@@ -45,6 +47,7 @@ public sealed class ScheduleFlightCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IUserContext user,
+    IAuditContext auditContext,
     TimeProvider timeProvider,
     IMobileSyncBroadcaster mobileSync) : ICommandHandler<ScheduleFlightCommand, Guid>
 {
@@ -92,6 +95,9 @@ public sealed class ScheduleFlightCommandHandler(
 
         db.Flights.Add(flight.Value);
 
+        FlightAssignmentEvents.Enqueue(db, flight.Value,
+            employees.Value.Select(employee => employee.StaffMemberId), user, auditContext, now);
+
         await db.SaveChangesAsync(cancellationToken);
         mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return flight.Value.Id;
@@ -132,6 +138,7 @@ public sealed class ScheduleFlightsCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IUserContext user,
+    IAuditContext auditContext,
     TimeProvider timeProvider,
     IMobileSyncBroadcaster mobileSync) : ICommandHandler<ScheduleFlightsCommand, IReadOnlyList<Guid>>
 {
@@ -184,6 +191,7 @@ public sealed class ScheduleFlightsCommandHandler(
 
         var now = timeProvider.GetUtcNow();
         var ids = new List<Guid>(selectedDates.Count);
+        var flights = new List<Flight>(selectedDates.Count);
 
         foreach (var selectedDate in selectedDates)
         {
@@ -215,7 +223,27 @@ public sealed class ScheduleFlightsCommandHandler(
                 return Error.Validation($"Flight on {selectedDate:yyyy-MM-dd}: {flight.Error.Description}", "Operations.Flight.BatchItemInvalid");
 
             db.Flights.Add(flight.Value);
+            flights.Add(flight.Value);
             ids.Add(flight.Value.Id);
+        }
+
+        if (flights.Count == 1)
+        {
+            FlightAssignmentEvents.Enqueue(db, flights[0],
+                employees.Value.Select(employee => employee.StaffMemberId), user, auditContext, now);
+        }
+        else
+        {
+            foreach (var staffMemberId in employees.Value.Select(employee => employee.StaffMemberId).Distinct())
+            {
+                db.Enqueue(new FlightScheduleUpdated
+                {
+                    StaffMemberId = staffMemberId,
+                    FlightCount = flights.Count,
+                    UpdatedByUserId = user.UserId,
+                    OccurredOnUtc = now
+                });
+            }
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -335,6 +363,7 @@ public sealed class UpdateScheduledFlightCommandHandler(
     IOperationsScope scope,
     MasterDataResolver resolver,
     IUserContext user,
+    IAuditContext auditContext,
     TimeProvider timeProvider,
     IMobileSyncBroadcaster mobileSync) : ICommandHandler<UpdateScheduledFlightCommand>
 {
@@ -367,9 +396,9 @@ public sealed class UpdateScheduledFlightCommandHandler(
             return services.Error;
 
         IReadOnlyList<StaffMemberSnapshot>? employees = null;
+        var currentIds = flight.AssignedEmployees.Select(employee => employee.Employee.StaffMemberId).ToHashSet();
         if (request.AssignedStaffMemberIds is { } staffIds)
         {
-            var currentIds = flight.AssignedEmployees.Select(employee => employee.Employee.StaffMemberId).ToHashSet();
             if (!currentIds.SetEquals(staffIds))
             {
                 if (!user.HasPermission(OperationsPermissions.Flights.Assign))
@@ -390,9 +419,16 @@ public sealed class UpdateScheduledFlightCommandHandler(
             || (employees is not null && !flight.AssignedEmployees.Select(employee => employee.Employee)
                 .OrderBy(employee => employee.StaffMemberId)
                 .SequenceEqual(employees.OrderBy(employee => employee.StaffMemberId)));
-        var update = flight.UpdatePlanning(schedule.Value, aircraft.Value, services.Value, employees, timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        var update = flight.UpdatePlanning(schedule.Value, aircraft.Value, services.Value, employees, now);
         if (update.IsFailure)
             return update.Error;
+
+        if (employees is not null)
+        {
+            FlightAssignmentEvents.Enqueue(db, flight,
+                employees.Select(employee => employee.StaffMemberId).Except(currentIds), user, auditContext, now);
+        }
 
         db.SetOriginalRowVersion(flight, request.RowVersion);
         try
@@ -489,6 +525,8 @@ public sealed class AssignEmployeesCommandHandler(
     IOperationsDbContext db,
     IOperationsScope scope,
     MasterDataResolver resolver,
+    IUserContext user,
+    IAuditContext auditContext,
     TimeProvider timeProvider,
     IMobileSyncBroadcaster mobileSync) : ICommandHandler<AssignEmployeesCommand>
 {
@@ -518,12 +556,16 @@ public sealed class AssignEmployeesCommandHandler(
         var rosterChanged = !flight.AssignedEmployees.Select(employee => employee.Employee)
             .OrderBy(employee => employee.StaffMemberId)
             .SequenceEqual(employees.Value.OrderBy(employee => employee.StaffMemberId));
+        var currentIds = flight.AssignedEmployees.Select(employee => employee.Employee.StaffMemberId).ToHashSet();
         var now = timeProvider.GetUtcNow();
 
         db.SetOriginalRowVersion(flight, request.RowVersion);
         var assign = flight.ReplaceAssignedEmployees(employees.Value, now);
         if (assign.IsFailure)
             return assign.Error;
+
+        FlightAssignmentEvents.Enqueue(db, flight,
+            employees.Value.Select(employee => employee.StaffMemberId).Except(currentIds), user, auditContext, now);
 
         try
         {

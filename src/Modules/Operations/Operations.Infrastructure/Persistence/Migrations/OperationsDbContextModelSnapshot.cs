@@ -572,6 +572,56 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.ToTable("flight_planned_services", "operations");
                 });
 
+            modelBuilder.Entity("Operations.Infrastructure.BackgroundJobs.FlightReminderSchedule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("DispatchedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("DueAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FlightId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("LeadTimeMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ScheduledArrivalUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("SkipReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTimeOffset?>("SkippedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("StaffMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("State", "DispatchedAtUtc");
+
+                    b.HasIndex("State", "DueAtUtc");
+
+                    b.HasIndex("State", "SkippedAtUtc");
+
+                    b.HasIndex("FlightId", "StaffMemberId", "LeadTimeMinutes", "ScheduledArrivalUtc")
+                        .IsUnique();
+
+                    b.ToTable("flight_reminder_schedules", "operations");
+                });
+
             modelBuilder.Entity("Operations.Domain.Flights.Flight", b =>
                 {
                     b.OwnsOne("Operations.Domain.ValueObjects.AircraftTypeSnapshot", "AircraftType", b1 =>

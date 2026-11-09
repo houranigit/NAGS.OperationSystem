@@ -575,7 +575,7 @@
             if (notificationUserId is not null)
             {
                 await NotificationsRealtime.StopAsync();
-                NotificationCenter.Clear();
+                await NotificationCenter.ClearAsync();
             }
 
             notificationUserId = user.Id;
@@ -584,7 +584,7 @@
             if (Auth.Status != AuthStatus.Authenticated || Auth.User?.Id != user.Id)
             {
                 notificationUserId = null;
-                NotificationCenter.Clear();
+                await NotificationCenter.ClearAsync();
                 return;
             }
 
@@ -596,7 +596,7 @@
         {
             notificationUserId = null;
             await NotificationsRealtime.StopAsync();
-            NotificationCenter.Clear();
+            await NotificationCenter.ClearAsync();
         }
     }
 
@@ -639,7 +639,10 @@
             await InvokeAsync(async () =>
             {
                 if (Auth.Status == AuthStatus.Authenticated && notificationUserId == Auth.User?.Id)
+                {
+                    await NotificationCenter.RetryPendingReadsAsync();
                     await NotificationCenter.RefreshAsync();
+                }
             });
         }
         catch (Exception ex)
@@ -661,7 +664,8 @@
                 {
                     try
                     {
-                        await NotificationCenter.MarkAsReadAsync(notification.Id);
+                        using var readCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                        await NotificationCenter.MarkAsReadAsync(notification.Id, readCts.Token);
                     }
                     catch (Exception)
                     {
@@ -669,7 +673,7 @@
                     }
                 }
 
-                Navigation.NavigateTo(NotificationPresentation.DeepLink(notification) ?? "/notifications");
+                Navigation.NavigateTo(NotificationPresentation.DeepLink(notification) ?? NotificationPresentation.InboxLink(notification));
             });
         }
         catch (Exception ex)

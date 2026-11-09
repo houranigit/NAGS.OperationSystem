@@ -45,6 +45,7 @@ services:
       Identity__DemoData__Enabled: "false"
       Database__ApplyMigrationsOnStartup: "true"
       Messaging__OutboxDispatchEnabled: "false"
+      Operations__FlightReminders__Enabled: "false"
       Notifications__Fcm__Enabled: "false"
       Notifications__Fcm__Required: "false"
       EmailSettings__EnableEmailNotifications: "false"

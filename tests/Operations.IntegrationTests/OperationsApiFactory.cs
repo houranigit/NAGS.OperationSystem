@@ -48,6 +48,7 @@ public sealed class OperationsApiFactory : WebApplicationFactory<Program>, IAsyn
         builder.UseSetting("Database:ApplyMigrationsOnStartup", "true");
         builder.UseSetting("Identity:DemoData:Enabled", "false");
         builder.UseSetting("Messaging:OutboxDispatchEnabled", "false");
+        builder.UseSetting("Operations:FlightReminders:Enabled", "false");
         builder.UseSetting("Notifications:Fcm:Enabled", "false");
         // Tests share a client IP and authenticate frequently; relax the anonymous auth rate limit.
         builder.UseSetting("Security:RateLimit:AnonymousAuthPermitLimit", "1000000");
@@ -67,6 +68,7 @@ public sealed class OperationsApiFactory : WebApplicationFactory<Program>, IAsyn
                 ["Identity:Admin:Password"] = AdminPassword,
                 ["Identity:DemoData:Enabled"] = "false",
                 ["Messaging:OutboxDispatchEnabled"] = "false",
+                ["Operations:FlightReminders:Enabled"] = "false",
                 ["Notifications:Fcm:Enabled"] = "false",
                 ["Security:RateLimit:AnonymousAuthPermitLimit"] = "1000000"
             });

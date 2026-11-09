@@ -16,12 +16,18 @@ public sealed class NotificationCenterStateTests
     public async Task State_loads_applies_live_once_and_keeps_unread_count_consistent()
     {
         var existing = Notification(isRead: false);
-        var runtime = new ApiJsRuntime(path => path switch
+        var archived = false;
+        var runtime = new ApiJsRuntime(path =>
         {
-            "/notifications/me?page=1&pageSize=100&unreadOnly=false" => JsonSerializer.Serialize(
-                new PagedResult<NotificationDto>([existing], 1, 8, 1), JsonOptions),
-            "/notifications/me/unread-count" => JsonSerializer.Serialize(new UnreadNotificationCount(1), JsonOptions),
-            _ => string.Empty
+            if (path == "/notifications/me/archive-all")
+                archived = true;
+            return path switch
+            {
+                "/notifications/me?page=1&pageSize=100&unreadOnly=false" => JsonSerializer.Serialize(
+                    new PagedResult<NotificationDto>(archived ? [] : [existing], 1, 8, archived ? 0 : 1), JsonOptions),
+                "/notifications/me/unread-count" => JsonSerializer.Serialize(new UnreadNotificationCount(archived ? 0 : 1), JsonOptions),
+                _ => string.Empty
+            };
         });
         var state = NewState(runtime);
 
@@ -133,6 +139,112 @@ public sealed class NotificationCenterStateTests
         runtime.InboxCalls.ShouldBe(2);
     }
 
+    [Fact]
+    public async Task Reading_an_older_notification_twice_uses_authoritative_count_without_double_decrement()
+    {
+        var rows = Enumerable.Range(0, 10).Select(index => Notification(false) with
+        {
+            CreatedAtUtc = DateTimeOffset.UtcNow.AddDays(-index)
+        }).ToArray();
+        var olderId = rows.Last().Id;
+        var runtime = new ApiJsRuntime(path =>
+        {
+            if (path == $"/notifications/{olderId}/read")
+                rows = rows.Select(item => item.Id == olderId ? item with { IsRead = true } : item).ToArray();
+            return path switch
+            {
+                "/notifications/me?page=1&pageSize=100&unreadOnly=false" => JsonSerializer.Serialize(
+                    new PagedResult<NotificationDto>(rows, 1, 100, rows.Length), JsonOptions),
+                "/notifications/me/unread-count" => JsonSerializer.Serialize(new UnreadNotificationCount(rows.Count(item => !item.IsRead)), JsonOptions),
+                _ => string.Empty
+            };
+        });
+        var state = NewState(runtime);
+        await state.InitializeAsync(Guid.NewGuid());
+        state.Recent.ShouldNotContain(item => item.Id == olderId);
+
+        await state.MarkAsReadAsync(olderId);
+        state.UnreadCount.ShouldBe(9);
+        await state.MarkAsReadAsync(olderId);
+        state.UnreadCount.ShouldBe(9);
+    }
+
+    [Fact]
+    public async Task A_failed_read_preserves_the_unread_state_and_badge()
+    {
+        var unread = Notification(false);
+        var runtime = new ApiJsRuntime(path => path switch
+        {
+            "/notifications/me?page=1&pageSize=100&unreadOnly=false" => JsonSerializer.Serialize(
+                new PagedResult<NotificationDto>([unread], 1, 100, 1), JsonOptions),
+            "/notifications/me/unread-count" => JsonSerializer.Serialize(new UnreadNotificationCount(1), JsonOptions),
+            _ => throw new JSException("Connection unavailable")
+        });
+        var state = NewState(runtime);
+        await state.InitializeAsync(Guid.NewGuid());
+
+        await Should.ThrowAsync<JSException>(() => state.MarkAsReadAsync(unread.Id));
+
+        state.UnreadCount.ShouldBe(1);
+        state.Recent.ShouldHaveSingleItem().IsRead.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Unread_badge_still_loads_when_the_inbox_request_fails()
+    {
+        var runtime = new ApiJsRuntime(path => path == "/notifications/me/unread-count"
+            ? JsonSerializer.Serialize(new UnreadNotificationCount(7), JsonOptions)
+            : throw new JSException("Inbox unavailable"));
+        var state = NewState(runtime);
+
+        await state.InitializeAsync(Guid.NewGuid());
+
+        state.HasError.ShouldBeTrue();
+        state.UnreadCount.ShouldBe(7);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Bulk_actions_reconcile_new_notifications_received_after_the_request_started(bool archive)
+    {
+        var existing = Notification(false);
+        var arriving = Notification(false) with { CreatedAtUtc = existing.CreatedAtUtc.AddMinutes(1) };
+        var runtime = new BulkActionJsRuntime(existing);
+        var state = NewState(runtime);
+        await state.InitializeAsync(Guid.NewGuid());
+
+        var action = archive ? state.ArchiveAllAsync() : state.MarkAllAsReadAsync();
+        await runtime.Started.Task;
+        runtime.Add(arriving);
+        state.ApplyLive(arriving).ShouldBeTrue();
+        runtime.Complete();
+        await action;
+
+        state.UnreadCount.ShouldBe(1);
+        state.Recent.Single(item => item.Id == arriving.Id).IsRead.ShouldBeFalse();
+        if (archive)
+            state.Recent.ShouldNotContain(item => item.Id == existing.Id);
+        else
+            state.Recent.Single(item => item.Id == existing.Id).IsRead.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Typed_client_filters_categories_before_pagination_while_count_stays_global()
+    {
+        var runtime = new ApiJsRuntime(path => path.Contains("unread-count", StringComparison.Ordinal)
+            ? JsonSerializer.Serialize(new UnreadNotificationCount(14), JsonOptions)
+            : JsonSerializer.Serialize(new PagedResult<NotificationDto>([], 2, 12, 0), JsonOptions));
+        var client = NewClient(runtime);
+
+        await client.GetInboxAsync(2, 12, true, category: NotificationCategories.Reminders);
+        (await client.GetUnreadCountAsync()).Count.ShouldBe(14);
+
+        runtime.Requests.Select(item => item.Path).ShouldBe([
+            "/notifications/me?page=2&pageSize=12&unreadOnly=true&category=Reminders",
+            "/notifications/me/unread-count"]);
+    }
+
     private static NotificationCenterState NewState(IJSRuntime runtime) => new(NewClient(runtime), runtime);
 
     private static NotificationsApiClient NewClient(IJSRuntime runtime)
@@ -239,6 +351,38 @@ public sealed class NotificationCenterStateTests
             if (Interlocked.Increment(ref requestsInRound[round]) == 2)
                 roundStarted[round].TrySetResult();
             var json = await response.WaitAsync(cancellationToken);
+            return (TValue)(object)json;
+        }
+    }
+
+    private sealed class BulkActionJsRuntime(NotificationDto existing) : IJSRuntime
+    {
+        private IReadOnlyList<NotificationDto> rows = [existing];
+        private readonly TaskCompletionSource complete = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Add(NotificationDto notification) => rows = rows.Append(notification).ToArray();
+        public void Complete() => complete.TrySetResult();
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) =>
+            InvokeAsync<TValue>(identifier, CancellationToken.None, args);
+
+        public async ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            if (identifier != "operationsSystem.api.request")
+                return default!;
+            var path = (string)args![1]!;
+            if (path is "/notifications/me/mark-all-read" or "/notifications/me/archive-all")
+            {
+                var affected = rows.Select(item => item.Id).ToHashSet();
+                Started.TrySetResult();
+                await complete.Task.WaitAsync(cancellationToken);
+                rows = path.EndsWith("archive-all", StringComparison.Ordinal)
+                    ? rows.Where(item => !affected.Contains(item.Id)).ToArray()
+                    : rows.Select(item => affected.Contains(item.Id) ? item with { IsRead = true } : item).ToArray();
+                return (TValue)(object)string.Empty;
+            }
+            var json = path == "/notifications/me/unread-count"
+                ? JsonSerializer.Serialize(new UnreadNotificationCount(rows.Count(item => !item.IsRead)), JsonOptions)
+                : JsonSerializer.Serialize(new PagedResult<NotificationDto>(rows, 1, 100, rows.Count), JsonOptions);
             return (TValue)(object)json;
         }
     }

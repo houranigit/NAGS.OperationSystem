@@ -138,20 +138,8 @@ public sealed class InviteEmployeesToFlightCommandHandler(
         if (invite.IsFailure)
             return invite.Error;
 
-        foreach (var employee in employees.Value)
-        {
-            db.Enqueue(new FlightEmployeeAssigned
-            {
-                FlightId = flight.Id,
-                FlightNumber = flight.FlightNumber.Value,
-                StaffMemberId = employee.StaffMemberId,
-                AssignedByUserId = user.UserId,
-                AssignedByStaffMemberId = user.ExternalReferenceId,
-                AssignedByDisplayName = auditContext.ActorDisplayName,
-                Source = FlightAssignmentSource.Invite,
-                OccurredOnUtc = now
-            });
-        }
+        FlightAssignmentEvents.Enqueue(db, flight,
+            employees.Value.Select(employee => employee.StaffMemberId), user, auditContext, now, FlightAssignmentSource.Invite);
 
         try
         {

@@ -16,6 +16,7 @@ Provide via environment variables or a secrets store (never in source control):
 | `ConnectionStrings:Default` (or per-module `Identity`/`MasterData`/`Operations`/`Notifications`/`Audit`) | SQL Server connection string. |
 | `Database:ApplyMigrationsOnStartup` | Set `false` for production and production-like remote testing. Apply reviewed migrations separately. |
 | `Messaging:OutboxDispatchEnabled` | Set `false` for smoke tests where background outbox polling should not touch the remote database. Keep enabled in normal deployments. |
+| `Operations:FlightReminders:Enabled` | Defaults to `true`; set `false` alongside outbox dispatch for smoke tests. Normal delivery requires both. `PollIntervalSeconds` defaults to 60, `EnrollmentLookaheadHours` to 13, and `EnrollmentLatenessToleranceMinutes` to 5. |
 | `Identity:Jwt:SigningKey` | >= 32 chars of entropy. Startup fails otherwise. |
 | `Identity:Jwt:Issuer`, `Identity:Jwt:Audience` | Required. |
 | `Identity:Admin:Email`, `Identity:Admin:DisplayName` | Bootstrap administrator. **Leave `Identity:Admin:Password` unset in production** — the admin is then created as an emailed invitation (no default password). |
@@ -239,6 +240,8 @@ backup first.
 The current Operations module is scheduling-only; see [Operations Module Foundation](../modules/operations-foundation.md). This branch is based on `main`. `Operations_FlightSchedulingBaseline` preserves flights and the existing direct planned-service/staff tables in place, and removes retired work-order/workflow tables and flight columns. It changes only the Operations schema. Keep the prior main migrations for new and existing main-compatible database upgrade paths; HandOver migrations are not prerequisites.
 
 This is a destructive workflow-data reset. Back up any existing database and review the migration SQL before deployment. Its rollback cannot recover removed work-order/history data; restore the database backup with the earlier application instead. Development startup migrations are disabled in this branch so launching the API does not apply the reset automatically. Do not enable automatic migrations against a shared or remote database. Existing Android operational clients are incompatible with the reset API. Blob storage is left intact and requires a separate retention decision.
+
+`Operations_RestoreFlightNotifications` adds the current durable reminder schedule table after the scheduling baseline. Apply it before enabling reminder scanning; it preserves existing flights and rosters. See [user notifications](../modules/operations-foundation.md#user-notifications) for milestone and cancellation semantics. The isolated Compose profiles keep background processing disabled; enable both `Messaging:OutboxDispatchEnabled` and `Operations:FlightReminders:Enabled` when testing notification delivery against the migrated local copy.
 
 ### 2026-10 legacy system IDs
 

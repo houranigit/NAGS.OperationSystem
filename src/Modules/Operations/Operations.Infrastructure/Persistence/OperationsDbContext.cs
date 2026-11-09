@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Operations.Application.Abstractions;
 using Operations.Domain.Flights;
+using Operations.Infrastructure.BackgroundJobs;
 using Operations.Domain.ValueObjects;
 
 namespace Operations.Infrastructure.Persistence;
@@ -15,6 +16,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public const string Schema = "operations";
 
     public DbSet<Flight> Flights => Set<Flight>();
+    public DbSet<FlightReminderSchedule> FlightReminderSchedules => Set<FlightReminderSchedule>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
