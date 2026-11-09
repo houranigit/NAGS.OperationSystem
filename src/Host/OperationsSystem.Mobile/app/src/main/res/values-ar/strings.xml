@@ -195,9 +195,9 @@
     <string name="flight_form_date_time">التاريخ والوقت</string>
     <string name="operations_arrival">الوصول</string>
     <string name="operations_departure">المغادرة</string>
+    <string name="operations_submit">إرسال</string>
+    <string name="flight_form_close_picker">إغلاق</string>
     <string name="operations_atd">وقت المغادرة الفعلي (ATD)</string>
-    <string name="operations_atd_short">المغادرة الفعلية</string>
-    <string name="operations_choose_atd">تعديل وقت المغادرة الفعلي</string>
     <string name="operations_arrival_remarks">ملاحظات الوصول</string>
     <string name="operations_departure_remarks">ملاحظات المغادرة</string>
     <string name="operations_signature_title">توقيع العميل</string>

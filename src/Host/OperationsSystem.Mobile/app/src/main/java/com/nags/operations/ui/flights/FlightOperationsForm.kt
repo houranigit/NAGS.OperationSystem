@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -151,18 +153,21 @@ internal fun FlightOperationsForm(
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(tasks = change(workDrafts.tasks))) })
         }
         OperationsSectionTitle(stringResource(R.string.operations_departure), Modifier.padding(top = 6.dp))
-        FlightFormFieldGroup {
-            FlightFormDateTimeField(atd, stringResource(R.string.operations_atd_short), stringResource(R.string.operations_choose_atd),
-                onClick = { openPicker("atd") })
-        }
         FlightFormFieldGroup { FlightSignatureField(signature, onOpen = { openPicker("signature") }) }
         FlightFormRemarks(departureRemarks, { departureRemarks = it }, stringResource(R.string.operations_departure_remarks))
+        val formFocus = LocalFocusManager.current
+        val formKeyboard = LocalSoftwareKeyboardController.current
+        Button(onClick = { formFocus.clearFocus(); formKeyboard?.hide(); openPicker("atd") },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(14.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(stringResource(R.string.operations_submit), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+        }
     }
     if (picker == "ata" || picker == "atd") {
         val isArrival = picker == "ata"
         FlightFormDateTimeSheet(LocalDateTime.parse(if (isArrival) ata else atd), referenceYear,
             onValueChange = { if (isArrival) ata = it.toString() else atd = it.toString() }, onDismiss = { picker = null },
-            title = stringResource(if (isArrival) R.string.arrival_ata else R.string.operations_atd))
+            title = stringResource(if (isArrival) R.string.arrival_ata else R.string.operations_atd), showTitle = !isArrival)
     }
     if (picker == "aircraft") ArrivalAircraftPicker(title = stringResource(R.string.arrival_aircraft_type),
         options = aircraftChoices, selectedId = aircraftId, onDismiss = { picker = null }, onSelect = { aircraftId = it })

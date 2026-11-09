@@ -366,8 +366,16 @@ internal fun FlightFormRemarks(value: String, onValueChange: (String) -> Unit, d
 
 @Composable
 internal fun FlightFormDateTimeSheet(value: LocalDateTime, referenceYear: Int, onValueChange: (LocalDateTime) -> Unit,
-    onDismiss: () -> Unit, title: String = stringResource(R.string.flight_form_date_time)) {
-    FlightFormModalSheet(title, onDismiss) {
+    onDismiss: () -> Unit, title: String = stringResource(R.string.flight_form_date_time), showTitle: Boolean = false) {
+    FlightFormModalSheet(title, onDismiss) { close ->
+        if (showTitle) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            IconButton(onClick = close, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Outlined.Close, stringResource(R.string.flight_form_close_picker), Modifier.size(20.dp))
+            }
+        }
         Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
             ArrivalWheelPicker(value, referenceYear, onValueChange)
         }

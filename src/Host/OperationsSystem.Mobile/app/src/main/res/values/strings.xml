@@ -179,9 +179,9 @@
     <string name="flight_form_date_time">Date and time</string>
     <string name="operations_arrival">Arrival</string>
     <string name="operations_departure">Departure</string>
+    <string name="operations_submit">Submit</string>
+    <string name="flight_form_close_picker">Close</string>
     <string name="operations_atd">Actual departure (ATD)</string>
-    <string name="operations_atd_short">ATD</string>
-    <string name="operations_choose_atd">Edit actual departure</string>
     <string name="operations_arrival_remarks">Arrival remarks</string>
     <string name="operations_departure_remarks">Departure remarks</string>
     <string name="operations_signature_title">Customer signature</string>
