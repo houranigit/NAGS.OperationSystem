@@ -74,6 +74,10 @@ data class FlightDetail(
     val createdAtUtc: String,
     val updatedAtUtc: String? = null,
     val rowVersion: String,
+    val arrivalSubmissions: List<FlightArrivalSubmission> = emptyList(),
+    val currentStaffMemberId: String? = null,
+    val canSaveArrival: Boolean = false,
+    val hasCancellationSubmission: Boolean = false,
     @kotlinx.serialization.Transient val fromCache: Boolean = false,
 )
 

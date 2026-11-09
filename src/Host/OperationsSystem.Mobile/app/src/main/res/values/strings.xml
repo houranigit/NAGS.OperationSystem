@@ -279,4 +279,22 @@
     <string name="composer_camera_failed">Could not take a photo. Please try again.</string>
     <string name="composer_open_failed">Could not open this file. Choose it again or use a compatible viewer.</string>
     <string name="composer_play_failed">Could not play this recording. Please try again.</string>
+    <string name="arrival_saving">Saving arrival on this device…</string>
+    <string name="arrival_pending">Arrival saved on this device. Waiting to sync.</string>
+    <string name="arrival_sync_review">Arrival is saved on this device but was not accepted online. Reload the flight and review it, or manage it in Sync Center.</string>
+    <string name="arrival_reload_review">Reload and review arrival</string>
+    <string name="arrival_synced">Arrival saved online.</string>
+    <string name="arrival_ata_required">Choose a valid actual arrival date and time.</string>
+    <string name="arrival_aircraft_required">Select the actual aircraft type.</string>
+    <string name="arrival_tail_required">Enter the aircraft tail number.</string>
+    <string name="arrival_reload_required">Connect and reload the flight before saving arrival.</string>
+    <string name="arrival_submitted_by">Arrival submitted by %1$s</string>
+    <string name="arrival_sync_title">Arrival uploads</string>
+    <string name="arrival_sync_item">Flight %1$s</string>
+    <string name="arrival_sync_retry">Retry upload</string>
+    <string name="arrival_sync_discard">Discard saved arrival</string>
+    <string name="arrival_sync_discard_message">Discard the arrival saved on this device? This does not remove any arrival already saved online.</string>
+    <string name="arrival_sync_no_pending">No pending arrival uploads.</string>
+    <string name="arrival_aircraft_unavailable">Refresh the aircraft catalog and select an available aircraft type.</string>
+    <string name="arrival_review_before_save">Review your saved arrival, then tap Save to upload it again.</string>
 </resources>

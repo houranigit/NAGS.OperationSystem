@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,6 +28,8 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PowerOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,6 +39,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -65,6 +71,16 @@ fun SyncCenterScreen(
     viewModel: SyncCenterViewModel,
     onBack: () -> Unit,
 ) {
+    val pendingArrivals by viewModel.pendingArrivals.collectAsStateWithLifecycle()
+    val arrivalActionError by viewModel.arrivalActionError.collectAsStateWithLifecycle()
+    var discardArrivalId by rememberSaveable { mutableStateOf<String?>(null) }
+    if (discardArrivalId != null) AlertDialog(onDismissRequest = { discardArrivalId = null },
+        title = { Text(stringResource(R.string.arrival_sync_discard)) },
+        text = { Text(stringResource(R.string.arrival_sync_discard_message)) },
+        confirmButton = { TextButton(onClick = { discardArrivalId?.let(viewModel::discardArrival); discardArrivalId = null }) {
+            Text(stringResource(R.string.arrival_sync_discard))
+        } },
+        dismissButton = { TextButton(onClick = { discardArrivalId = null }) { Text(stringResource(R.string.flights_cancel)) } })
     val rows by viewModel.rows.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
@@ -100,6 +116,27 @@ fun SyncCenterScreen(
                     onClick = { viewModel.refreshNow() },
                 )
             }
+            if (pendingArrivals.isNotEmpty()) {
+                item { Text(stringResource(R.string.arrival_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                items(pendingArrivals, key = { "arrival:${it.flightId}" }) { row ->
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
+                        Text(stringResource(if (row.status == "pending") R.string.arrival_pending else R.string.arrival_sync_review),
+                            style = MaterialTheme.typography.bodyMedium)
+                        row.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { viewModel.retryArrival(row.flightId) }, enabled = isOnline) {
+                                Text(stringResource(R.string.arrival_sync_retry))
+                            }
+                            TextButton(onClick = { discardArrivalId = row.flightId }) {
+                                Text(stringResource(R.string.arrival_sync_discard))
+                            }
+                        }
+                    }
+                }
+            }
+            arrivalActionError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             item {
                 Text(
                     text = stringResource(R.string.sync_center_cached_data),

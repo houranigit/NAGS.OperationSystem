@@ -146,9 +146,11 @@ class FlightsViewModel internal constructor(
     private val waitForSearchDebounce: suspend () -> Unit = { delay(300) },
     val arrivalAircraftTypes: Flow<List<AircraftTypeCatalogItem>> = flowOf(emptyList()),
     val operationsCatalogs: Flow<FlightOperationsCatalogs> = flowOf(FlightOperationsCatalogs()),
+    val arrivals: com.nags.operations.data.repo.FlightArrivalsRepository? = null,
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
-        sharedCatalogsRepository: SharedCatalogsRepository) : this(
+        sharedCatalogsRepository: SharedCatalogsRepository, arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository) : this(
+        arrivals = arrivalRepository,
         fetchProfile = authRepository::profile,
         fetchFlights = repository::flights,
         fetchFlight = repository::flight,
@@ -170,6 +172,14 @@ class FlightsViewModel internal constructor(
             sharedCatalogsRepository.generalSupportsFlow(),
         ) { catalogs, generalSupports -> catalogs.copy(generalSupports = generalSupports) }.distinctUntilChanged(),
     )
+
+    suspend fun reviewArrival(id: String): FlightDetail {
+        check(online.value) { "Connect to reload the flight before reviewing your arrival." }
+        val detail = fetchFlight(id)
+        check(!detail.fromCache) { "Connect to reload the latest flight." }
+        _state.update { if (it.selectedFlightId == id) it.copy(detail = detail) else it }
+        return detail
+    }
 
     private val scope: CoroutineScope get() = coroutineScope ?: viewModelScope
     private val _state = MutableStateFlow(FlightsUiState(isOnline = online.value))

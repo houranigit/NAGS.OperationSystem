@@ -67,6 +67,8 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
         var flight = await db.Flights.AsNoTracking().AsSplitQuery()
             .Include(f => f.PlannedServices)
             .Include(f => f.AssignedEmployees)
+            .Include(f => f.ArrivalSubmissions)
+            .Include(f => f.CancellationSubmissions)
             .FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
@@ -84,7 +86,7 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
 
 internal static class FlightDetails
 {
-    public static FlightDetailDto Map(Flight flight) =>
+    public static FlightDetailDto Map(Flight flight, Guid? currentStaffMemberId = null, bool canSaveArrival = false) =>
         new(flight.Id, flight.FlightNumber.Value,
             flight.Customer.CustomerId, flight.Customer.IataCode, flight.Customer.Name,
             flight.Station.StationId, flight.Station.IataCode, flight.Station.Name,
@@ -95,7 +97,9 @@ internal static class FlightDetails
                 service.Service.Name, service.IsAircraftPerLanding)).ToList(),
             flight.AssignedEmployees.Select(employee => new AssignedEmployeeDto(employee.Employee.StaffMemberId,
                 employee.Employee.FullName, employee.Employee.EmployeeId)).ToList(),
-            flight.CreatedAtUtc, flight.UpdatedAtUtc, Convert.ToBase64String(flight.RowVersion));
+            flight.CreatedAtUtc, flight.UpdatedAtUtc, Convert.ToBase64String(flight.RowVersion),
+            flight.ArrivalSubmissions.OrderBy(a => a.CreatedAtUtc).ThenBy(a => a.Id).Select(FlightArrivalSubmissionDto.Map).ToList(),
+            currentStaffMemberId, canSaveArrival, flight.CancellationSubmissions.Count > 0);
 }
 
 internal sealed record FlightListFilter(

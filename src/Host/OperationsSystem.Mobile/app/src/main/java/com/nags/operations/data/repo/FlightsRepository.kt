@@ -170,6 +170,24 @@ class FlightsRepository internal constructor(
         }
     }
 
+    suspend fun recordArrival(id: String, saved: com.nags.operations.data.FlightArrivalSaved) {
+        val session = requireSession()
+        refreshMutex.withLock {
+            mutationMutex.withLock {
+                ensureCurrent(session)
+                val cached = dao.detail(session.owner, id)
+                if (cached != null) {
+                    val detail = json.decodeFromString<FlightDetail>(cached.payloadJson)
+                    val updated = detail.copy(arrivalSubmissions = detail.arrivalSubmissions.filterNot {
+                        it.id == saved.submission.id
+                    } + saved.submission, rowVersion = saved.rowVersion)
+                    dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
+                }
+            }
+        }
+        _cacheChanges.tryEmit(Unit)
+    }
+
     fun customerLogo(customerId: String): Flow<ByteArray?> = logoStore?.observe(customerId) ?: flowOf(null)
 
     private suspend fun reconcileLogos(items: List<FlightListItem>, read: LogoMetadataRead?, complete: Boolean = false) {

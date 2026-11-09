@@ -78,7 +78,7 @@ internal fun FlightWorkEntryGroup(content: @Composable () -> Unit) {
 @Composable
 internal fun FlightWorkChoiceRow(label: String, value: String, description: String,
     isPlaceholder: Boolean = false, leadingPadding: Dp = 14.dp, onClick: () -> Unit) {
-    FlightFormChoiceRow(label, value, description, isPlaceholder, leadingPadding, onClick)
+    FlightFormChoiceRow(label, value, description, isPlaceholder, leadingPadding, onClick = onClick)
 }
 
 @Composable

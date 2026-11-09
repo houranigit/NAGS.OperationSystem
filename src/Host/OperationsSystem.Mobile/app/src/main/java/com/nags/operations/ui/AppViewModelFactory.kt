@@ -14,12 +14,12 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
     override fun <T : ViewModel> create(modelClass: Class<T>): T = when (modelClass) {
         LoginViewModel::class.java -> LoginViewModel(graph.authRepository)
         FlightsViewModel::class.java -> FlightsViewModel(
-            graph.flightsRepository, graph.authRepository, graph.networkMonitor, graph.sharedCatalogsRepository,
+            graph.flightsRepository, graph.authRepository, graph.networkMonitor, graph.sharedCatalogsRepository, graph.flightArrivals,
         )
         AccountViewModel::class.java -> AccountViewModel(graph.authRepository, graph.networkMonitor)
         SyncCenterViewModel::class.java -> SyncCenterViewModel(
             graph.sharedCatalogsRepository, graph.flightsRepository, graph.networkMonitor, graph.catalogConnectionState,
-            graph.lastCatalogEventAt, graph::refreshCatalogs, graph.isSyncing,
+            graph.lastCatalogEventAt, graph::refreshCatalogs, graph.isSyncing, graph.flightArrivals,
         )
         NotificationsViewModel::class.java -> NotificationsViewModel(graph.notificationsRepository, graph.flightsRepository)
         else -> throw IllegalArgumentException("Unknown ViewModel ${modelClass.name}")

@@ -1,0 +1,256 @@
+package com.nags.operations.data.repo
+
+import com.nags.operations.data.*
+import com.nags.operations.data.db.dao.FlightArrivalDao
+import com.nags.operations.data.db.entities.FlightArrivalPendingEntity
+import java.io.IOException
+import java.time.Instant
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import org.junit.Assert.*
+import org.junit.Test
+
+class FlightArrivalsRepositoryTest {
+    private val owner = MutableStateFlow<String?>("api|account")
+    private val dao = ArrivalMemoryDao()
+    private var online = false
+    private var sends = 0
+    private var scheduled = 0
+    private var failure: Exception? = null
+    private var acceptFailure = false
+    private val staff = "11111111-1111-1111-1111-111111111111"
+    private val otherStaff = "22222222-2222-2222-2222-222222222222"
+    private val aircraft = "33333333-3333-3333-3333-333333333333"
+    private val at = Instant.parse("2026-11-09T12:00:00Z")
+    private val input = SaveFlightArrivalRequest(at.toString(), aircraft, " HZ-TEST ", " ", " note ")
+    private val employee = AssignedEmployee(staff, "Employee", "E1")
+    private val submitted = FlightArrivalSubmission("arrival", employee, at.toString(), aircraft, "A320", "HZ-TEST",
+        receivedByEmployee = employee, remarks = "note", isAccepted = true, createdAtUtc = at.toString())
+    private val flight = FlightDetail("44444444-4444-4444-4444-444444444444", "SV100", "customer", "SV", "Airline", "station", "AAA",
+        "Station", "operation", "Transit", scheduledArrivalUtc = at.toString(), scheduledDepartureUtc = at.plusSeconds(3600).toString(),
+        isPerLanding = false, createdAtUtc = at.toString(), rowVersion = "AAAAAAAAAAE=", currentStaffMemberId = staff, canSaveArrival = true)
+    private var send: suspend (String, SaveFlightArrivalRequest, String) -> FlightArrivalSaved = { _, request, version ->
+        sends++
+        assertEquals("HZ-TEST", request.aircraftTailNumber)
+        assertNull(request.customerWorkReferenceNumber)
+        assertEquals("note", request.remarks)
+        assertEquals(flight.rowVersion, version)
+        failure?.let { throw it }
+        FlightArrivalSaved(submitted, "AAAAAAAAAAI=")
+    }
+    private fun repository() = FlightArrivalsRepository(dao, owner, { owner.value }, { online },
+        send = { id, input, version -> send(id, input, version) },
+        accepted = { _, _ -> if (acceptFailure) throw IOException("disk unavailable") },
+        schedule = { scheduled++ }, json = Json, now = { at })
+
+    @Test fun offlineSaveSurvivesRepositoryRecreationAndOnlyAcknowledgedUploadsAreRemoved() = runBlocking {
+        repository().save(flight, input)
+        assertEquals(1, dao.rows(owner.value!!).size)
+        assertEquals(0, sends)
+        assertEquals(1, scheduled)
+        val restarted = repository()
+        assertEquals("pending", restarted.changes.first().single().status)
+        online = true
+        assertFalse(restarted.syncPending())
+        assertEquals(1, sends)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun lostResponseIsRetriedWithIdenticalInputAndOriginalVersion() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        val original = dao.rows(owner.value!!).single()
+        online = true
+        failure = IOException("lost response after server commit")
+        assertTrue(repo.syncPending())
+        val retained = dao.rows(owner.value!!).single()
+        assertEquals(original.changeId, retained.changeId)
+        assertEquals(original.inputJson, retained.inputJson)
+        assertEquals(original.rowVersion, retained.rowVersion)
+        failure = null
+        assertFalse(repo.syncPending())
+        assertEquals(2, sends)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun unreadableLocalInputIsKeptForReviewWithoutAnUploadLoop() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        val row = dao.rows(owner.value!!).single()
+        dao.put(row.copy(inputJson = "invalid JSON"))
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals("failed", dao.rows(owner.value!!).single().status)
+        assertEquals(0, sends)
+    }
+
+    @Test fun conflictsStayVisibleAndDoNotAutomaticallyOverwriteServerData() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        failure = ApiException(409, "stale")
+        assertFalse(repo.syncPending())
+        val conflict = dao.rows(owner.value!!).single()
+        assertEquals("conflict", conflict.status)
+        assertFalse(repo.syncPending())
+        assertEquals(1, sends)
+        assertEquals(conflict.inputJson, dao.rows(owner.value!!).single().inputJson)
+        repo.retry(flight.id)
+        assertEquals("pending", dao.rows(owner.value!!).single().status)
+        assertEquals(flight.rowVersion, dao.rows(owner.value!!).single().rowVersion)
+    }
+
+    @Test fun invalidRequiredFieldsAndReadOnlyArrivalsNeverReachTheQueue() = runBlocking {
+        val repo = repository()
+        for (invalid in listOf(input.copy(ata = ""), input.copy(aircraftTypeId = "bad"), input.copy(aircraftTailNumber = "  "))) {
+            assertTrue(runCatching { repo.save(flight, invalid) }.isFailure)
+        }
+        val foreign = submitted.copy(submittedByEmployee = employee.copy(staffMemberId = otherStaff))
+        for (blocked in listOf(flight.copy(arrivalSubmissions = listOf(foreign)), flight.copy(canSaveArrival = false),
+            flight.copy(hasCancellationSubmission = true), flight.copy(currentStaffMemberId = null), flight.copy(rowVersion = "bad"),
+            flight.copy(scheduledArrivalUtc = at.minusSeconds(86400 * 2).toString(), scheduledDepartureUtc = at.minusSeconds(86400).toString()))) {
+            assertTrue(runCatching { repo.save(blocked, input) }.isFailure)
+        }
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+        assertEquals(0, sends)
+    }
+
+    @Test fun pendingInputCannotBeReplacedBeforeItsOutcomeIsKnown() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        assertTrue(runCatching { repo.save(flight, input.copy(aircraftTailNumber = "HZ-NEW")) }.isFailure)
+        assertTrue(dao.rows(owner.value!!).single().inputJson.contains("HZ-TEST"))
+    }
+
+    @Test fun deniedOrExpiredFlightsKeepTheirInputForReview() = runBlocking {
+        val repo = repository()
+        online = true
+        for (status in listOf(400, 403, 404)) {
+            repo.save(flight, input)
+            failure = ApiException(status, "rejected")
+            assertFalse(repo.syncPending())
+            val failed = dao.rows(owner.value!!).single()
+            assertEquals("failed", failed.status)
+            assertNotNull(failed.error)
+            repo.discard(flight.id)
+        }
+    }
+
+    @Test fun cancellationAndCacheWriteFailureRetainReplayableInput() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        failure = CancellationException("stopped")
+        assertTrue(runCatching { repo.syncPending() }.exceptionOrNull() is CancellationException)
+        assertEquals("pending", dao.rows(owner.value!!).single().status)
+        failure = null
+        acceptFailure = true
+        assertTrue(repo.syncPending())
+        assertEquals("pending", dao.rows(owner.value!!).single().status)
+        acceptFailure = false
+        assertFalse(repo.syncPending())
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun accountSwitchCannotSendAnotherOwnersRowsAndClearRejectsQueuedSaves() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        owner.value = "api|different-account"
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals(0, sends)
+        assertTrue(repo.changes.first().isEmpty())
+        repo.pause()
+        repo.clear()
+        assertTrue(runCatching { repo.save(flight, input) }.isFailure)
+        assertTrue(dao.rows("api|account").isEmpty())
+    }
+
+    @Test fun sessionPauseWaitsForAnAuthenticatedUploadBeforeCredentialsCanChange() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        send = { _, _, _ -> started.complete(Unit); finish.await(); FlightArrivalSaved(submitted, "AAAAAAAAAAI=") }
+        val upload = async(start = CoroutineStart.UNDISPATCHED) { repo.syncPending() }
+        started.await()
+        val pause = async(start = CoroutineStart.UNDISPATCHED) { repo.pause() }
+        assertFalse(pause.isCompleted)
+        finish.complete(Unit)
+        upload.await(); pause.await()
+        assertTrue(runCatching { repo.save(flight, input) }.isFailure)
+    }
+
+    @Test fun aSlowUploadDoesNotBlockSavingAnotherFlightLocally() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        send = { _, _, _ -> started.complete(Unit); finish.await(); FlightArrivalSaved(submitted, "AAAAAAAAAAI=") }
+        val upload = async(start = CoroutineStart.UNDISPATCHED) { repo.syncPending() }
+        started.await()
+        val otherFlight = flight.copy(id = "55555555-5555-5555-5555-555555555555")
+        val localSave = async(start = CoroutineStart.UNDISPATCHED) { repo.save(otherFlight, input) }
+        assertTrue(localSave.isCompleted)
+        assertEquals(2, dao.rows(owner.value!!).size)
+        finish.complete(Unit)
+        assertTrue(upload.await()) // The newly queued flight still needs its own upload.
+        assertEquals(otherFlight.id, dao.rows(owner.value!!).single().flightId)
+    }
+
+    @Test fun aLateFailedUploadCannotResurrectDiscardedOrReplacedInput() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        send = { _, _, _ -> started.complete(Unit); finish.await(); throw IOException("late failure") }
+        val upload = async(start = CoroutineStart.UNDISPATCHED) { repo.syncPending() }
+        started.await()
+        repo.discard(flight.id)
+        repo.save(flight, input.copy(aircraftTailNumber = "HZ-NEW"))
+        val replacement = dao.rows(owner.value!!).single()
+        finish.complete(Unit)
+        assertTrue(upload.await())
+        assertEquals(replacement, dao.rows(owner.value!!).single())
+    }
+
+    @Test fun ownAndForeignSubmissionsSelectTheCorrectReadOnlyState() {
+        val foreign = submitted.copy(id = "foreign", submittedByEmployee = employee.copy(staffMemberId = otherStaff))
+        assertFalse(flight.copy(arrivalSubmissions = listOf(foreign)).arrivalEditable())
+        val ownAndForeign = flight.copy(arrivalSubmissions = listOf(foreign, submitted))
+        assertTrue(ownAndForeign.arrivalEditable())
+        assertEquals(submitted, ownAndForeign.visibleArrival())
+        assertEquals(setOf(ArrivalInputError.AtaRequired), input.copy(ata = "0001-01-01T00:00:00Z").validationErrors(flight.rowVersion))
+        assertTrue(input.copy(ata = "2026-01-01T15:00:00+03:00").validationErrors(flight.rowVersion).isEmpty())
+    }
+
+    @Test fun editingOtherFieldsDoesNotShiftArrivalDuringTheRepeatedDaylightSavingHour() {
+        val zone = java.time.ZoneId.of("America/Chicago")
+        assertEquals("2026-11-01T07:30:00Z", arrivalInputTime("2026-11-01T01:30", "2026-11-01T07:30:00Z", zone))
+        assertEquals("2026-11-01T08:30:00Z", arrivalInputTime("2026-11-01T02:30", "2026-11-01T07:30:00Z", zone))
+    }
+}
+
+private class ArrivalMemoryDao : FlightArrivalDao {
+    private val state = MutableStateFlow<List<FlightArrivalPendingEntity>>(emptyList())
+    override fun observe(owner: String): Flow<List<FlightArrivalPendingEntity>> = state.map { rows -> rows.filter { it.ownerSubject == owner } }
+    override suspend fun rows(owner: String) = state.value.filter { it.ownerSubject == owner }
+    override suspend fun put(row: FlightArrivalPendingEntity) {
+        state.value = state.value.filterNot { it.ownerSubject == row.ownerSubject && it.flightId == row.flightId } + row
+    }
+    override suspend fun delete(owner: String, flightId: String, changeId: String) {
+        state.value = state.value.filterNot { it.ownerSubject == owner && it.flightId == flightId && it.changeId == changeId }
+    }
+    override suspend fun clear() { state.value = emptyList() }
+}

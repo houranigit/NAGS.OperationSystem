@@ -15,6 +15,8 @@ import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.notifications.NotificationPushPayload
 import com.nags.operations.data.repo.AuthRepository
 import com.nags.operations.data.repo.FlightsRepository
+import com.nags.operations.data.repo.FlightArrivalsRepository
+import com.nags.operations.data.outbox.FlightArrivalSyncWorker
 import com.nags.operations.data.repo.NotificationsRepository
 import com.nags.operations.data.repo.SharedCatalogsRepository
 import com.nags.operations.data.realtime.CatalogRealtimeChannel
@@ -40,6 +42,7 @@ import java.io.File
 
 /** Process-scoped dependencies for flights, shared catalogs, identity, and notifications. */
 class AppGraph private constructor(context: Context) {
+    private val appContext = context.applicationContext
     val appScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val tokenStore: TokenStore = TokenStore(context.applicationContext)
 
@@ -65,6 +68,20 @@ class AppGraph private constructor(context: Context) {
         online = networkMonitor.isOnline, scope = appScope,
     )
     val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline, customerLogos)
+    val flightArrivals = FlightArrivalsRepository(
+        catalogDatabase.flightArrivalDao(), logoOwners,
+        currentOwner = {
+            if (tokenStore.getAccessToken().isNullOrBlank()) null
+            else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
+        },
+        online = { networkMonitor.isOnline.value }, send = operationsApi::saveArrival,
+        accepted = flightsRepository::recordArrival,
+        schedule = {
+            FlightArrivalSyncWorker.schedule(appContext)
+            appScope.launch { flightArrivalsSync() }
+        },
+        json = HttpClientFactory.json,
+    )
     val notificationsRepository: NotificationsRepository =
         NotificationsRepository(notificationsApi, database, tokenStore, appScope, networkMonitor.isOnline)
     val sharedCatalogsRepository = SharedCatalogsRepository(sharedCatalogsApi, catalogDatabase, tokenStore, customerLogos)
@@ -80,7 +97,10 @@ class AppGraph private constructor(context: Context) {
             flightsRepository.clearLocal()
         },
         appScope = appScope,
-        refreshFlightCache = flightsRepository::refreshCache,
+        refreshFlightCache = {
+            flightArrivals.syncPending()
+            flightsRepository.refreshCache()
+        },
     )
     private val catalogRealtimeChannel = CatalogRealtimeChannel(
         accessTokens = tokenStore.accessTokenFlow,
@@ -150,7 +170,15 @@ class AppGraph private constructor(context: Context) {
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
+            flightArrivals.clear()
         }
+    }
+
+    private suspend fun flightArrivalsSync(): Boolean = flightArrivals.syncPending()
+
+    suspend fun syncFlightArrivals(): Boolean {
+        if (!secureStorageReady) return true
+        return flightArrivals.syncPending()
     }
 
     fun refreshCatalogs() = catalogSyncScheduler.refreshNow()
@@ -186,6 +214,7 @@ class AppGraph private constructor(context: Context) {
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
+            flightArrivals.clear()
             tokenStore.clearAll()
         }
     }
@@ -193,7 +222,9 @@ class AppGraph private constructor(context: Context) {
     private suspend fun resumeSessionServices() {
         legacyWorkCancellation.join()
         sessionTransitionMutex.withLock {
+            flightArrivals.resume()
             catalogSyncScheduler.start()
+            FlightArrivalSyncWorker.schedule(appContext)
             catalogRealtimeChannel.start()
             deviceTokenManager.resume()
             if (tokenStore.getAccessToken() != null) {
@@ -206,6 +237,7 @@ class AppGraph private constructor(context: Context) {
     }
 
     private suspend fun pauseCatalogSync() {
+        flightArrivals.pause()
         catalogRealtimeChannel.stop()
         catalogSyncScheduler.stop()
     }

@@ -13,6 +13,7 @@ import com.nags.operations.data.sync.SyncTarget
 import com.nags.operations.ui.util.parseOffsetDateTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +33,7 @@ class SyncCenterViewModel internal constructor(
     coroutineScope: CoroutineScope? = null,
     private val clock: () -> Long = System::currentTimeMillis,
     flightStatuses: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
+    private val arrivals: com.nags.operations.data.repo.FlightArrivalsRepository? = null,
 ) : ViewModel() {
     constructor(
         catalogs: SharedCatalogsRepository,
@@ -41,6 +43,7 @@ class SyncCenterViewModel internal constructor(
         lastRealtimeEventAt: StateFlow<Long?>,
         refreshCatalogs: () -> Unit,
         syncing: StateFlow<Boolean>,
+        arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository,
     ) : this(
         statuses = catalogs.observeStatus(),
         isSyncing = syncing,
@@ -49,6 +52,7 @@ class SyncCenterViewModel internal constructor(
         lastRealtimeEventAt = lastRealtimeEventAt,
         requestRefresh = refreshCatalogs,
         flightStatuses = flights.syncStatus,
+        arrivals = arrivalRepository,
     )
 
     private val scope = coroutineScope ?: viewModelScope
@@ -61,6 +65,18 @@ class SyncCenterViewModel internal constructor(
 
     val rows: StateFlow<List<SyncRowState>> = combine(statuses, flightStatuses, nowTick, ::mobileSyncRows)
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), mobileSyncRows(emptyList(), FlightSyncStatus(), clock()))
+
+    val pendingArrivals = (arrivals?.changes ?: flowOf(emptyList()))
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+    val arrivalActionError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    fun retryArrival(id: String) = arrivalAction { arrivals?.retry(id) }
+    fun discardArrival(id: String) = arrivalAction { arrivals?.discard(id) }
+    private fun arrivalAction(action: suspend () -> Unit) = scope.launch {
+        try { arrivalActionError.value = null; action() }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { arrivalActionError.value = "Could not update the saved arrival. Please try again." }
+    }
 
     fun refreshNow() {
         if (isOnline.value && !isSyncing.value) requestRefresh()

@@ -218,7 +218,12 @@ fun FlightsScreen(
                 if (activeForm == "operations") {
                     val aircraftTypes by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
                     val catalogs by viewModel.operationsCatalogs.collectAsStateWithLifecycle(initialValue = FlightOperationsCatalogs())
-                    FlightOperationsForm(flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm, catalogs = catalogs)
+                    val pendingArrivals by (viewModel.arrivals?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+                        .collectAsStateWithLifecycle(initialValue = emptyList())
+                    FlightOperationsForm(state.detail ?: flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm, catalogs = catalogs,
+                        pending = pendingArrivals.firstOrNull { it.flightId == flight.id },
+                        onSaveArrival = { detail, input -> checkNotNull(viewModel.arrivals).save(detail, input) },
+                        onReviewArrival = { viewModel.reviewArrival(flight.id) })
                 } else {
                     FlightCancellationForm(flight, viewModel::customerLogo, onClose = closeForm)
                 }

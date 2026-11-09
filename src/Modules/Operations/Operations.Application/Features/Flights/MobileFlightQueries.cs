@@ -1,3 +1,4 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Domain.Results;
@@ -7,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Contracts;
+using Operations.Domain.Authorization;
 using Operations.Domain.Flights;
 
 namespace Operations.Application.Features.Flights;
@@ -84,7 +86,7 @@ public sealed class GetMobileFlightsQueryHandler(
 
 public sealed record GetMobileFlightByIdQuery(Guid Id) : IQuery<FlightDetailDto>;
 
-public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMobileFlightScope scope)
+public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMobileFlightScope scope, IUserContext? user = null)
     : IQueryHandler<GetMobileFlightByIdQuery, FlightDetailDto>
 {
     public async Task<Result<FlightDetailDto>> Handle(GetMobileFlightByIdQuery request, CancellationToken cancellationToken)
@@ -95,10 +97,11 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
 
         var flight = await MobileFlightQuery.ApplyScope(db.Flights.AsNoTracking(), resolved.Value)
             .AsSplitQuery().Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
+            .Include(f => f.ArrivalSubmissions).Include(f => f.CancellationSubmissions)
             .FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
         return flight is null
             ? Error.NotFound("Flight not found.", "Operations.Flight.NotFound")
-            : FlightDetails.Map(flight);
+            : FlightDetails.Map(flight, resolved.Value.StaffMemberId, user?.HasPermission(OperationsPermissions.Flights.Operate) == true);
     }
 }
 

@@ -7,18 +7,21 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.nags.operations.data.db.dao.FlightCacheDao
+import com.nags.operations.data.db.dao.FlightArrivalDao
+import com.nags.operations.data.db.entities.FlightArrivalPendingEntity
 import com.nags.operations.data.db.dao.SharedCatalogDao
 import com.nags.operations.data.db.entities.FlightDetailCacheEntity
 import com.nags.operations.data.db.entities.FlightSnapshotEntity
 import com.nags.operations.data.db.entities.SharedCatalogSnapshotEntity
 
-/** Read-only mobile snapshots remain separate from notifications and the untouched legacy database. */
-@Database(version = 3, exportSchema = true, entities = [
-    SharedCatalogSnapshotEntity::class, FlightSnapshotEntity::class, FlightDetailCacheEntity::class,
+/** Mobile caches and arrival intent remain separate from notifications and the untouched legacy database. */
+@Database(version = 4, exportSchema = true, entities = [
+    SharedCatalogSnapshotEntity::class, FlightSnapshotEntity::class, FlightDetailCacheEntity::class, FlightArrivalPendingEntity::class,
 ])
 abstract class CatalogDatabase : RoomDatabase() {
     abstract fun sharedCatalogDao(): SharedCatalogDao
     abstract fun flightCacheDao(): FlightCacheDao
+    abstract fun flightArrivalDao(): FlightArrivalDao
 
     companion object {
         @Volatile private var instance: CatalogDatabase? = null
@@ -37,12 +40,18 @@ abstract class CatalogDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS flight_arrival_pending (ownerSubject TEXT NOT NULL, flightId TEXT NOT NULL, flightNumber TEXT NOT NULL, changeId TEXT NOT NULL, inputJson TEXT NOT NULL, rowVersion TEXT NOT NULL, savedAtUtc TEXT NOT NULL, status TEXT NOT NULL, error TEXT, PRIMARY KEY(ownerSubject, flightId))")
+            }
+        }
+
         fun get(context: Context): CatalogDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 CatalogDatabase::class.java,
                 "shared-catalogs.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
         }
     }
 }

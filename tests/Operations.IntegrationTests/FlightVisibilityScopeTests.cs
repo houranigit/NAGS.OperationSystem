@@ -256,6 +256,113 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
     private sealed record MasterDataRefs(
         Guid CountryId, Guid StationId, Guid CustomerId, Guid OperationTypeId, Guid ServiceId, Guid ManpowerTypeId);
 
+    [Fact]
+    public async Task Arrival_save_attributes_the_actor_replays_lost_success_and_locks_other_employees()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var first = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
+        var second = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
+        using var firstClient = first.Client;
+        using var secondClient = second.Client;
+        var aircraftId = await PostForIdAsync(admin, $"{MasterDataBase}/aircraft-types",
+            new { manufacturer = "Airbus", model = $"A-{Guid.NewGuid():N}" });
+        var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "7100", [first.StaffId, second.StaffId]);
+        var path = $"{Base}/flights/{id}/arrival";
+        var detail = await firstClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}");
+        detail!.CanSaveArrival.ShouldBeTrue();
+        detail.CurrentStaffMemberId.ShouldBe(first.StaffId);
+        var input = new SaveFlightArrivalRequest(DateTimeOffset.UtcNow.AddHours(-2), aircraftId, " HZ-TEST ", " REF-1 ", " Arrival remarks ");
+        async Task<HttpResponseMessage> Save(HttpClient client, SaveFlightArrivalRequest payload, string version)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Put, path) { Content = JsonContent.Create(payload) };
+            request.Headers.TryAddWithoutValidation("If-Match", $"\"{version}\"");
+            return await client.SendAsync(request);
+        }
+        using var initial = await Save(firstClient, input, detail.RowVersion);
+        initial.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var saved = (await initial.Content.ReadFromJsonAsync<FlightArrivalSavedDto>())!;
+        saved.Submission.SubmittedByEmployee.StaffMemberId.ShouldBe(first.StaffId);
+        saved.Submission.ReceivedByEmployee.StaffMemberId.ShouldBe(first.StaffId);
+        saved.Submission.AircraftTailNumber.ShouldBe("HZ-TEST");
+        saved.Submission.CustomerWorkReferenceNumber.ShouldBe("REF-1");
+        saved.Submission.IsAccepted.ShouldBeTrue();
+        saved.RowVersion.ShouldNotBe(detail.RowVersion);
+
+        // Simulate a response lost after commit: exact original input and version are replayed.
+        using var replay = await Save(firstClient, input, detail.RowVersion);
+        replay.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var replayed = (await replay.Content.ReadFromJsonAsync<FlightArrivalSavedDto>())!;
+        replayed.Submission.Id.ShouldBe(saved.Submission.Id);
+        replayed.RowVersion.ShouldBe(saved.RowVersion);
+        using var staleCorrection = await Save(firstClient, input with { AircraftTailNumber = "HZ-NEW" }, detail.RowVersion);
+        staleCorrection.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+
+        var shared = (await secondClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        shared.ArrivalSubmissions!.ShouldHaveSingleItem().ShouldBe(saved.Submission);
+        using var otherWrite = await Save(secondClient, input, shared.RowVersion);
+        otherWrite.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var afterOther = (await firstClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        afterOther.RowVersion.ShouldBe(saved.RowVersion);
+        afterOther.AircraftTypeId.ShouldBeNull(); // Actual aircraft never replaces the plan.
+
+        using var correction = await Save(firstClient, input with { AircraftTailNumber = "HZ-NEW" }, saved.RowVersion);
+        correction.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var corrected = (await correction.Content.ReadFromJsonAsync<FlightArrivalSavedDto>())!;
+        corrected.Submission.Id.ShouldBe(saved.Submission.Id);
+        corrected.Submission.AircraftTailNumber.ShouldBe("HZ-NEW");
+        corrected.Submission.UpdatedAtUtc.ShouldNotBeNull();
+
+        var concurrentId = await ScheduleFlightAsync(admin, refs.StationId, refs, "7101", [first.StaffId, second.StaffId]);
+        var concurrent = (await firstClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{concurrentId}"))!;
+        async Task<HttpStatusCode> Race(HttpClient client)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{concurrentId}/arrival") { Content = JsonContent.Create(input) };
+            request.Headers.TryAddWithoutValidation("If-Match", concurrent.RowVersion);
+            using var response = await client.SendAsync(request);
+            return response.StatusCode;
+        }
+        var outcomes = await Task.WhenAll(Race(firstClient), Race(secondClient));
+        outcomes.Count(status => status == HttpStatusCode.OK).ShouldBe(1);
+        outcomes.ShouldAllBe(status => status == HttpStatusCode.OK || status == HttpStatusCode.Conflict || status == HttpStatusCode.Forbidden);
+        var afterRace = (await firstClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{concurrentId}"))!;
+        afterRace.ArrivalSubmissions!.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task Arrival_boundary_rejects_missing_fields_and_permissions_without_writing()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
+        var reader = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view"]);
+        using var staffClient = staff.Client;
+        using var readClient = reader.Client;
+        var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "7200", [staff.StaffId, reader.StaffId]);
+        var detail = (await staffClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        var path = $"{Base}/flights/{id}/arrival";
+        var input = new SaveFlightArrivalRequest(DateTimeOffset.UtcNow, Guid.NewGuid(), "HZ-TEST", null, null);
+        using var missingVersion = await staffClient.PutAsJsonAsync(path, input);
+        missingVersion.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await missingVersion.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString().ShouldBe("General.PreconditionRequired");
+        foreach (var invalid in new[] { input with { Ata = default }, input with { AircraftTypeId = Guid.Empty }, input with { AircraftTailNumber = "  " } })
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Put, path) { Content = JsonContent.Create(invalid) };
+            request.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
+            using var response = await staffClient.SendAsync(request);
+            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        }
+        (await readClient.PutAsJsonAsync(path, input)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var readDetail = (await readClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        readDetail.CanSaveArrival.ShouldBeFalse();
+        readDetail.ArrivalSubmissions!.ShouldBeEmpty();
+        readDetail.RowVersion.ShouldBe(detail.RowVersion);
+        var hiddenId = await ScheduleFlightAsync(admin, refs.StationId, refs, "7201");
+        using var hidden = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{hiddenId}/arrival") { Content = JsonContent.Create(input) };
+        hidden.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
+        (await staffClient.SendAsync(hidden)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
     private async Task<MasterDataRefs> SetupMasterDataAsync(HttpClient admin)
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];

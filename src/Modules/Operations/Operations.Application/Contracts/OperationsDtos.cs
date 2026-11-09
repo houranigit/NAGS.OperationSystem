@@ -37,4 +37,8 @@ public sealed record FlightDetailDto(
     IReadOnlyList<AssignedEmployeeDto> AssignedEmployees,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    IReadOnlyList<FlightArrivalSubmissionDto>? ArrivalSubmissions = null,
+    Guid? CurrentStaffMemberId = null,
+    bool CanSaveArrival = false,
+    bool HasCancellationSubmission = false);

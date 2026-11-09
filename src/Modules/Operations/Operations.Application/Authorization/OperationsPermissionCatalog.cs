@@ -19,5 +19,6 @@ public sealed class OperationsPermissionCatalog : IPermissionCatalog
         new(OperationsPermissions.Flights.Update, AdminAndStation),
         new(OperationsPermissions.Flights.Assign, AdminAndStation),
         new(OperationsPermissions.Flights.Invite, AdminAndStation),
+        new(OperationsPermissions.Flights.Operate, AdminAndStation),
     ];
 }

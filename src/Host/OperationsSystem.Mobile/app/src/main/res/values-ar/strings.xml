@@ -256,4 +256,22 @@
     <string name="composer_camera_failed">تعذر التقاط صورة. يرجى المحاولة مجدداً.</string>
     <string name="composer_open_failed">تعذر فتح هذا الملف. اختره مجدداً أو استخدم عارضاً متوافقاً.</string>
     <string name="composer_play_failed">تعذر تشغيل هذا التسجيل. يرجى المحاولة مجدداً.</string>
+    <string name="arrival_saving">جارٍ حفظ الوصول على هذا الجهاز…</string>
+    <string name="arrival_pending">تم حفظ الوصول على هذا الجهاز. بانتظار المزامنة.</string>
+    <string name="arrival_sync_review">بيانات الوصول محفوظة على هذا الجهاز ولكن لم يتم قبولها عبر الإنترنت. أعد تحميل الرحلة وراجعها، أو انتقل إلى مركز المزامنة.</string>
+    <string name="arrival_reload_review">إعادة تحميل الوصول ومراجعته</string>
+    <string name="arrival_synced">تم حفظ الوصول عبر الإنترنت.</string>
+    <string name="arrival_ata_required">اختر تاريخ ووقت الوصول الفعلي الصحيحين.</string>
+    <string name="arrival_aircraft_required">اختر نوع الطائرة الفعلي.</string>
+    <string name="arrival_tail_required">أدخل رقم تسجيل الطائرة.</string>
+    <string name="arrival_reload_required">اتصل وأعد تحميل الرحلة قبل حفظ الوصول.</string>
+    <string name="arrival_submitted_by">أرسل بيانات الوصول %1$s</string>
+    <string name="arrival_sync_title">مزامنة الوصول</string>
+    <string name="arrival_sync_item">الرحلة %1$s</string>
+    <string name="arrival_sync_retry">إعادة محاولة المزامنة</string>
+    <string name="arrival_sync_discard">تجاهل الوصول المحفوظ</string>
+    <string name="arrival_sync_discard_message">هل تريد تجاهل الوصول المحفوظ على هذا الجهاز؟ لن يتم حذف أي وصول محفوظ عبر الإنترنت.</string>
+    <string name="arrival_sync_no_pending">لا توجد بيانات وصول بانتظار المزامنة.</string>
+    <string name="arrival_aircraft_unavailable">حدّث قائمة الطائرات واختر نوع طائرة متاحًا.</string>
+    <string name="arrival_review_before_save">راجع بيانات الوصول المحفوظة ثم اضغط حفظ لإرسالها مجددًا.</string>
 </resources>

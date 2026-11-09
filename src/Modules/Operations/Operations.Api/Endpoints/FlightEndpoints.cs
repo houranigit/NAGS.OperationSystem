@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Net.Http.Headers;
+using Operations.Application.Contracts;
 using Operations.Application.Features.Flights;
 using Operations.Domain.Authorization;
 
@@ -62,6 +63,14 @@ internal static class FlightEndpoints
             var result = await sender.Send(new InviteEmployeesToFlightCommand(id, request.StaffMemberIds ?? [], rowVersion, MobileOnly: true), ct);
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.Flights.Invite);
+
+        flights.MapPut("/{id:guid}/arrival", async (Guid id, SaveFlightArrivalRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+            var result = await sender.Send(new SaveFlightArrivalCommand(id, request, rowVersion), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Operate);
 
         flights.MapPost("/notification-targets", async (FlightNotificationTargetsRequest request, ISender sender, CancellationToken ct) =>
         {

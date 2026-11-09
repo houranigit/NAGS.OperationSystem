@@ -15,6 +15,9 @@ import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.put
+import com.nags.operations.data.FlightArrivalSaved
+import com.nags.operations.data.SaveFlightArrivalRequest
 import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -75,6 +78,13 @@ class OperationsApi internal constructor(private val client: HttpClient) {
             throw ApiException(response.status.value, response.bodyAsText())
         }
     }
+
+    suspend fun saveArrival(id: String, input: SaveFlightArrivalRequest, rowVersion: String): FlightArrivalSaved =
+        client.put(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(id)}/arrival")) {
+            contentType(ContentType.Application.Json)
+            headers { append("If-Match", "\"$rowVersion\"") }
+            setBody(input)
+        }.bodyOrThrow()
 
     private companion object {
         const val MAX_LOGO_BYTES = 2 * 1024 * 1024
