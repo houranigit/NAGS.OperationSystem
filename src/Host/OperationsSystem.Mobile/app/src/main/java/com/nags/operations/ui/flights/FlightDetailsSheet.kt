@@ -85,8 +85,8 @@ import kotlinx.coroutines.flow.Flow
 
 private val DetailFill = Color(0xFFF5F7FA)
 private val DetailEdge = Color(0xFFE7EBF0)
-private val OperationsActionGreen = Color(0xFF198754)
-private val CancellationActionRed = Color(0xFFDC3545)
+private val StartActionGreen = Color(0xFF1E834A)
+private val CancelActionRed = Color(0xFFD92D3F)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -188,7 +188,7 @@ internal fun FlightDetailsSheet(
 private fun FlightRecordingActions(loading: Boolean = false, onOperations: () -> Unit = {}, onCanceled: () -> Unit = {}) {
     // Keep cancellation on the physical left and operations on the right in both directions.
     val firstIsOperations = LocalLayoutDirection.current == LayoutDirection.Rtl
-    Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         FlightRecordingAction(operations = firstIsOperations, loading = loading, modifier = Modifier.weight(1f), onOperations = onOperations, onCanceled = onCanceled)
         FlightRecordingAction(operations = !firstIsOperations, loading = loading, modifier = Modifier.weight(1f), onOperations = onOperations, onCanceled = onCanceled)
     }
@@ -196,18 +196,22 @@ private fun FlightRecordingActions(loading: Boolean = false, onOperations: () ->
 
 @Composable
 private fun FlightRecordingAction(operations: Boolean, loading: Boolean, modifier: Modifier, onOperations: () -> Unit, onCanceled: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(50)
+    val textStyle = MaterialTheme.typography.bodyLarge
+    val actionHeight = with(LocalDensity.current) { textStyle.lineHeight.toDp() }.plus(24.dp).coerceAtLeast(52.dp)
     if (loading) {
-        Box(modifier.height(48.dp).background(DetailFill, shape))
+        Box(modifier.height(actionHeight).background(DetailFill, shape))
     } else {
-        Button(onClick = { if (operations) onOperations() else onCanceled() }, modifier = modifier.heightIn(min = 48.dp), shape = shape,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+        Button(onClick = { if (operations) onOperations() else onCanceled() },
+            modifier = modifier.heightIn(min = actionHeight), shape = shape,
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (operations) OperationsActionGreen else CancellationActionRed,
+                containerColor = if (operations) StartActionGreen else CancelActionRed,
                 contentColor = Color.White,
             )) {
             Text(stringResource(if (operations) R.string.flights_operations else R.string.flights_canceled),
-                fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                style = textStyle, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
         }
     }
 }

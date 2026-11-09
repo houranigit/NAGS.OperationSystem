@@ -45,8 +45,8 @@
     <string name="flights_schedule">الجدول</string>
     <string name="flights_details">تفاصيل الرحلة</string>
     <string name="flights_share">مشاركة الرحلة</string>
-    <string name="flights_operations">العمليات</string>
-    <string name="flights_canceled">ملغاة</string>
+    <string name="flights_operations">ابدأ</string>
+    <string name="flights_canceled">إلغاء</string>
     <string name="arrival_choose_ata">تعديل وقت الوصول الفعلي</string>
     <string name="arrival_ata_short">الوصول الفعلي</string>
     <string name="arrival_aircraft_selected">الطائرة المحددة</string>
