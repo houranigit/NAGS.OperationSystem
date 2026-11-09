@@ -26,17 +26,34 @@ class NotificationsViewModelTest {
         assertFalse(inboxResponse.isCompleted)
     }
 
-    @Test fun unsyncedInvalidAndScheduleTargetsStayInformational() {
+    @Test fun targetsAbsentFromLocalMyFlightsStayInformational() {
         val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
         val missing = row("not-synced").copy(payload = mapOf("flightId" to "fe85f964-1315-4e73-b24e-31f4f0ad7f91"))
         val invalid = row("invalid").copy(payload = mapOf("flightId" to "not-a-flight-id"))
         val absent = row("absent")
-        val schedule = row("schedule", kind = NotificationKinds.FlightScheduleUpdated).copy(payload = mapOf("flightId" to id))
         val vm = model(localFlights = flowOf(setOf(id)))
-        for (notification in listOf(missing, invalid, absent, schedule)) {
+        for (notification in listOf(missing, invalid, absent)) {
             vm.open(notification, { fail("Informational notification must not open a flight") },
                 { fail("Schedule updates must not navigate") })
         }
+    }
+
+    @Test fun localMyFlightsMembershipIsTheOnlyViewCondition() {
+        val ids = listOf("legacy-flight-id", "1-1-1-1-1", "00000000-0000-0000-0000-000000000000")
+        val vm = model(localFlights = flowOf(ids.toSet()))
+        val opened = mutableListOf<NotificationOpenRequest>()
+        val kinds = listOf(NotificationKinds.StaffAssignedToFlight, NotificationKinds.EmployeeInvitedToFlight,
+            NotificationKinds.FlightScheduleUpdated, NotificationKinds.FlightReminder)
+
+        for (kind in kinds) for (id in ids) {
+            val notification = row("$kind-$id", kind = kind).copy(payload = mapOf("flightId" to id.uppercase(),
+                "scheduledArrivalUtc" to "2000-01-01T00:00:00Z", "leadTimeMinutes" to "30"))
+            vm.open(notification, { opened += it }, { fail("View always opens the matched flight") })
+        }
+
+        assertEquals(kinds.size * ids.size, opened.size)
+        assertEquals(kinds.toSet(), opened.map { it.kind }.toSet())
+        assertEquals(ids.map { it.uppercase() }.toSet(), opened.map { it.flightId }.toSet())
     }
 
     @Test fun localSyncedFlightChangesUpdateEligibilityWithoutRefreshingTheInbox() {
@@ -56,7 +73,7 @@ class NotificationsViewModelTest {
         vm.open(notification, { opened++ })
         assertEquals(1, opened)
         assertEquals(1, inboxReads)
-        assertTrue(vm.state.value.syncedFlightIds.isEmpty())
+        assertTrue(vm.state.value.syncedMyFlightIds.isEmpty())
     }
 
     @Test fun failedDeleteKeepsTheCardAndAllowsGestureToRestoreWithoutDuplicateRequests() {
@@ -204,12 +221,12 @@ class NotificationsViewModelTest {
         assertEquals(setOf("first"), vm.state.value.newIds)
     }
 
-    @Test fun openingAnExpiredReminderAcknowledgesWithoutOpeningItsFlight() {
+    @Test fun viewingAnExpiredReminderInMyFlightsAcknowledgesAndOpensItsFlight() {
         val events = mutableListOf<String>()
         val vm = model(read = { events += "read:$it" }, localFlights = flowOf(setOf("36780af4-97c1-4bb3-9af0-43c661b1ed92")))
         vm.open(row("expired", kind = NotificationKinds.FlightReminder).copy(payload = mapOf("flightId" to "36780af4-97c1-4bb3-9af0-43c661b1ed92", "scheduledArrivalUtc" to "2000-01-01T00:00:00Z")),
             onOpenFlight = { events += "flight" })
-        assertEquals(listOf("read:expired"), events)
+        assertEquals(listOf("read:expired", "flight"), events)
     }
 
     private fun model(

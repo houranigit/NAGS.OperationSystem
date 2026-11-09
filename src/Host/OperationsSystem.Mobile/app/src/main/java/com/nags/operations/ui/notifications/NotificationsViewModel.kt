@@ -7,7 +7,6 @@ import com.nags.operations.data.notifications.CategoryReadResult
 import com.nags.operations.data.notifications.NotificationDto
 import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.data.notifications.NotificationPageDto
-import com.nags.operations.data.notifications.flightId
 import com.nags.operations.data.repo.FlightsRepository
 import com.nags.operations.data.repo.NotificationsRepository
 import com.nags.operations.data.userMessage
@@ -44,7 +43,7 @@ class NotificationsViewModel internal constructor(
         archiveNotification = repository::archive,
         archiveInbox = repository::archiveAll,
         readAcknowledgements = repository.observeReadAcknowledgements(),
-        localFlightIds = flights.syncedFlightIds,
+        localFlightIds = flights.syncedMyFlightIds,
     )
 
     data class UiState(
@@ -59,7 +58,7 @@ class NotificationsViewModel internal constructor(
         val page: Int = 1,
         val error: String? = null,
         val loadMoreError: String? = null,
-        val syncedFlightIds: Set<String> = emptySet(),
+        val syncedMyFlightIds: Set<String> = emptySet(),
         val archivingIds: Set<String> = emptySet(),
         val isArchivingAll: Boolean = false,
         val actionError: String? = null,
@@ -96,7 +95,7 @@ class NotificationsViewModel internal constructor(
         }
         scope.launch {
             localFlightIds.collect { ids ->
-                _state.update { it.copy(syncedFlightIds = ids.mapTo(mutableSetOf()) { id -> id.lowercase() }) }
+                _state.update { it.copy(syncedMyFlightIds = ids) }
             }
         }
     }
@@ -213,8 +212,8 @@ class NotificationsViewModel internal constructor(
     fun open(notification: NotificationDto, onOpenFlight: (NotificationOpenRequest) -> Unit,
         onOpenSchedule: (NotificationOpenRequest) -> Unit = {}) {
         if (!notification.isRead) markReadOnOpen(notification.id)
-        if (!canOpenNotification(notification, _state.value.syncedFlightIds)) return
-        onOpenFlight(NotificationOpenRequest(notificationId = notification.id, flightId = notification.flightId(),
+        if (!canOpenNotification(notification, _state.value.syncedMyFlightIds)) return
+        onOpenFlight(NotificationOpenRequest(notificationId = notification.id, flightId = notification.payload["flightId"],
             kind = notification.kind, scheduledArrivalUtc = notification.payload["scheduledArrivalUtc"],
             leadTimeMinutes = notification.payload["leadTimeMinutes"]?.toIntOrNull()))
     }

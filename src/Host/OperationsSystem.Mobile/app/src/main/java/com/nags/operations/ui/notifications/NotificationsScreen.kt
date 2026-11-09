@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.anchoredDraggable
 import androidx.compose.foundation.gestures.animateTo
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
@@ -36,10 +38,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.FlightTakeoff
-import androidx.compose.material.icons.filled.EventRepeat
-import androidx.compose.material.icons.filled.GroupAdd
-import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -74,10 +72,12 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -88,12 +88,15 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.nags.operations.R
 import com.nags.operations.ui.flights.FlightFormGround
-import com.nags.operations.data.notifications.NotificationKinds
 import com.nags.operations.data.notifications.NotificationDto
 import com.nags.operations.data.notifications.NotificationOpenRequest
+import com.nags.operations.data.notifications.notificationAppearance
 import com.nags.operations.ui.components.EmptyState
 import com.nags.operations.ui.components.ErrorState
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -101,6 +104,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import java.time.Instant
+import java.time.ZoneId
 
 private val NotificationDeleteRed = Color(0xFFD92D3F)
 private val NotificationInk = Color(0xFF111827)
@@ -129,6 +133,7 @@ fun NotificationsScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
+                    expandedHeight = 56.dp,
                     title = { Text(stringResource(R.string.notifications_title),
                         style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
                         fontWeight = FontWeight.SemiBold) },
@@ -191,13 +196,18 @@ private fun NotificationList(
 ) {
     var revealedId by remember { mutableStateOf<String?>(null) }
     var now by remember { mutableStateOf(Instant.now()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(60_000)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             now = Instant.now()
+            while (true) {
+                delay(1_000)
+                now = Instant.now()
+            }
         }
     }
-    val rows = remember(state.items, state.newIds, now) { notificationFeedRows(state.items, state.newIds, now) }
+    val localDay = now.atZone(ZoneId.systemDefault()).toLocalDate()
+    val rows = remember(state.items, state.newIds, localDay) { notificationFeedRows(state.items, state.newIds, now) }
     val currentState by rememberUpdatedState(state)
     LaunchedEffect(viewModel, listState) {
         snapshotFlow {
@@ -232,7 +242,7 @@ private fun NotificationList(
                         message = stringResource(R.string.notifications_empty_body))
                 }
                 else -> LazyColumn(state = listState,
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(0.dp), modifier = Modifier.fillMaxSize()) {
                     state.error?.let { message ->
                         item(key = "refresh-error") {
@@ -246,12 +256,12 @@ private fun NotificationList(
                         when (row) {
                             is NotificationFeedRow.Heading -> Text(row.label,
                                 style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 18.dp, bottom = 10.dp))
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
                             is NotificationFeedRow.Item -> NotificationCard(row.notification, now,
                                 modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = tween(160),
                                     placementSpec = spring(dampingRatio = 1f, stiffness = 450f)),
                                 isNew = row.notification.id in state.newIds || !row.notification.isRead,
-                                canOpen = canOpenNotification(row.notification, state.syncedFlightIds, now),
+                                canOpen = canOpenNotification(row.notification, state.syncedMyFlightIds),
                                 archiving = row.notification.id in state.archivingIds,
                                 revealed = revealedId == row.notification.id,
                                 onReveal = { revealedId = row.notification.id },
@@ -355,36 +365,51 @@ private fun NotificationCard(notification: NotificationDto, now: Instant, isNew:
                 flingBehavior = fling)
             .semantics { customActions = listOf(CustomAccessibilityAction(deleteLabel) { requestDelete(); true }) }
             .background(if (isNew) NotificationNewFill else Color.White)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            val accent = Color(notificationAccentArgb(notification.kind))
+            val appearance = notificationAppearance(notification.kind)
+            val accent = Color(appearance.accentArgb)
             Box(Modifier.size(40.dp).background(accent.copy(alpha = 0.1f), RoundedCornerShape(20.dp)),
                 contentAlignment = Alignment.Center) {
-                Icon(when (notification.kind) {
-                    NotificationKinds.EmployeeInvitedToFlight -> Icons.Default.GroupAdd
-                    NotificationKinds.FlightReminder -> Icons.Default.NotificationsActive
-                    NotificationKinds.FlightScheduleUpdated -> Icons.Default.EventRepeat
-                    else -> Icons.Default.FlightTakeoff
-                }, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
+                Icon(painterResource(appearance.iconResource), contentDescription = null,
+                    tint = accent, modifier = Modifier.size(22.dp))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(notification.titleEn, style = MaterialTheme.typography.titleSmall, color = NotificationInk,
+                val flightNumber = notification.payload["flightNumber"]
+                val flightStyle = SpanStyle(color = Color.Black, fontWeight = FontWeight.Bold)
+                val title = remember(notification.titleEn, flightNumber) {
+                    buildAnnotatedString {
+                        append(notification.titleEn)
+                        notificationFlightNumberRanges(notification.titleEn, flightNumber).forEach { range ->
+                            addStyle(flightStyle, range.first, range.last + 1)
+                        }
+                    }
+                }
+                Text(title, style = MaterialTheme.typography.titleSmall, color = NotificationInk,
                     fontWeight = if (isNew) FontWeight.SemiBold else FontWeight.Medium,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val age = relativeNotificationAge(notification.createdAtUtc, now)
+                val body = notification.bodyEn.trimEnd()
+                val flightRanges = remember(body, flightNumber) { notificationFlightNumberRanges(body, flightNumber) }
                 Text(buildAnnotatedString {
-                    append(notification.bodyEn.trimEnd())
+                    append(body)
+                    flightRanges.forEach { range -> addStyle(flightStyle, range.first, range.last + 1) }
                     if (age.isNotEmpty()) {
                         append("  ")
                         withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(age) }
                     }
                 }, style = MaterialTheme.typography.bodySmall, color = NotificationSecondaryInk)
             }
-            if (canOpen) Button(onClick = onClick, enabled = !busy,
-                modifier = Modifier.width(64.dp).height(34.dp), shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
-                Text(stringResource(R.string.notifications_open), style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold, maxLines = 1)
+            if (canOpen) Box(Modifier.width(64.dp).height(48.dp).clip(RoundedCornerShape(8.dp))
+                .clickable(enabled = !busy, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxWidth().heightIn(min = 28.dp)
+                    .background(if (busy) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                        else MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center) {
+                    Text(stringResource(R.string.notifications_open), style = MaterialTheme.typography.bodySmall,
+                        color = if (busy) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onPrimary,
+                        fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
             }
         }
     }

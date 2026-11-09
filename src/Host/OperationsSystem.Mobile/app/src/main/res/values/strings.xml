@@ -7,7 +7,7 @@
     <string name="notification_assigned_body" translatable="false">%1$s added you to flight %2$s.</string>
     <string name="notification_fallback_teammate" translatable="false">A teammate</string>
     <string name="notification_unknown_flight" translatable="false">your flight</string>
-    <string name="notifications_open" translatable="false">Open</string>
+    <string name="notifications_open" translatable="false">View</string>
     <string name="notifications_delete" translatable="false">Delete</string>
     <string name="notifications_delete_accessibility" translatable="false">Delete notification</string>
     <string name="notifications_empty_title" translatable="false">No notifications</string>

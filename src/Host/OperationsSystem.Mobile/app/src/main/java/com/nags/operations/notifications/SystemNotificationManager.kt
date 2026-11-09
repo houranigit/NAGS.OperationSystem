@@ -6,15 +6,23 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
+import androidx.core.graphics.ColorUtils
 import com.nags.operations.MainActivity
 import com.nags.operations.R
 import com.nags.operations.data.notifications.NotificationPushPayload
+import com.nags.operations.data.notifications.NotificationAppearance
+import com.nags.operations.data.notifications.notificationAppearance
 import java.util.Locale
+import kotlin.math.roundToInt
 
 class SystemNotificationManager(private val context: Context) {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
@@ -60,9 +68,11 @@ class SystemNotificationManager(private val context: Context) {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val appearance = notificationAppearance(payload.kind)
         val notification = NotificationCompat.Builder(context, context.getString(R.string.notification_channel_id))
-            .setSmallIcon(R.drawable.ic_stat_notification)
-            .setColor(ContextCompat.getColor(context, R.color.brand_red))
+            .setSmallIcon(appearance.iconResource)
+            .setColor(appearance.accentArgb)
+            .setLargeIcon(largeKindIcon(appearance))
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -103,6 +113,23 @@ class SystemNotificationManager(private val context: Context) {
             // Commit before posting so a process death cannot leave an untracked visible alert.
             preferences.edit(commit = true) { putStringSet(key, ids) }
         }
+
+    /** Android tints the small icon; the large icon preserves the inbox's colored kind artwork. */
+    private fun largeKindIcon(appearance: NotificationAppearance): Bitmap {
+        val size = (48 * context.resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = ColorUtils.blendARGB(Color.WHITE, appearance.accentArgb, 0.11f)
+        }
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
+        val icon = requireNotNull(ContextCompat.getDrawable(context, appearance.iconResource)).mutate()
+        icon.setTint(appearance.accentArgb)
+        val inset = (size * 0.225f).roundToInt()
+        icon.setBounds(inset, inset, size - inset, size - inset)
+        icon.draw(canvas)
+        return bitmap
+    }
 
     private fun accountKey(recipientUserId: String): String =
         ACCOUNT_PREFIX + recipientUserId.lowercase(Locale.ROOT)

@@ -95,13 +95,13 @@ class FlightsRepository internal constructor(
             snapshot.permissionDenied, snapshot.lastDurationMs)
     }.distinctUntilChanged()
 
-    /** Notification links use only the account's complete synced manifest, without network reads. */
-    val syncedFlightIds: Flow<Set<String>> = ownerFlow.flatMapLatest { owner ->
+    /** Notification links use only the account's locally synced My Flights tab, without network reads. */
+    val syncedMyFlightIds: Flow<Set<String>> = ownerFlow.flatMapLatest { owner ->
         if (owner == null) flowOf(emptySet())
         else dao.observe(owner).map { snapshot ->
             snapshot?.takeIf { it.ownerSubject == owner && it.lastSuccessUtc != null && !it.permissionDenied }
                 ?.let(::decodeSnapshot)?.items
-                ?.filter { it.isInFlightWindow(Instant.parse(now())) }
+                ?.filter { it.matches(FlightCategory.MyFlights) && it.isInFlightWindow(Instant.parse(now())) }
                 ?.mapTo(mutableSetOf()) { it.id.lowercase(Locale.ROOT) }.orEmpty()
         }.onStart { emit(emptySet()) }
     }.distinctUntilChanged()

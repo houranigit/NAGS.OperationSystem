@@ -1,9 +1,6 @@
 package com.nags.operations.ui.notifications
 
 import com.nags.operations.data.notifications.NotificationDto
-import com.nags.operations.data.notifications.NotificationKinds
-import com.nags.operations.data.notifications.flightId
-import com.nags.operations.data.notifications.isExpiredReminder
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -11,7 +8,6 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import java.util.UUID
 
 internal sealed interface NotificationFeedRow {
     val key: String
@@ -52,7 +48,7 @@ internal fun relativeNotificationAge(createdAtUtc: String, now: Instant = Instan
     val created = notificationInstant(createdAtUtc) ?: return ""
     val seconds = Duration.between(created, now).seconds.coerceAtLeast(0)
     return when {
-        seconds < 60 -> "now"
+        seconds < 60 -> "${seconds}s"
         seconds < 3_600 -> "${seconds / 60}m"
         seconds < 86_400 -> "${seconds / 3_600}h"
         seconds < 604_800 -> "${seconds / 86_400}d"
@@ -76,17 +72,29 @@ internal fun notificationSwipeTarget(offset: Float, velocity: Float, width: Floa
     return NotificationSwipePosition.Closed
 }
 
-internal fun notificationAccentArgb(kind: String): Long = when (kind) {
-    com.nags.operations.data.notifications.NotificationKinds.FlightReminder -> 0xFFC76A0A
-    com.nags.operations.data.notifications.NotificationKinds.EmployeeInvitedToFlight -> 0xFF248A3D
-    com.nags.operations.data.notifications.NotificationKinds.FlightScheduleUpdated -> 0xFF1689B9
-    else -> 0xFF007AFF // Matches the Scheduled badge on flight cards.
+
+/** The referenced flight's membership in the local My Flights tab is the only View condition. */
+internal fun canOpenNotification(notification: NotificationDto, syncedMyFlightIds: Set<String>): Boolean {
+    val id = notification.payload["flightId"] ?: return false
+    return syncedMyFlightIds.any { it.equals(id, ignoreCase = true) }
 }
 
-/** A notification can open only a valid flight already present in the locally synced manifest. */
-internal fun canOpenNotification(notification: NotificationDto, syncedFlightIds: Set<String>, now: Instant = Instant.now()): Boolean {
-    if (notification.kind == NotificationKinds.FlightScheduleUpdated || notification.isExpiredReminder(now)) return false
-    val id = notification.flightId() ?: return false
-    val parsed = runCatching { UUID.fromString(id) }.getOrNull() ?: return false
-    return parsed != UUID(0, 0) && parsed.toString().equals(id, ignoreCase = true) && parsed.toString() in syncedFlightIds
+/** Match the payload's full flight number without highlighting part of another flight code. */
+internal fun notificationFlightNumberRanges(message: String, flightNumber: String?): List<IntRange> {
+    val number = flightNumber?.trim()?.takeIf(String::isNotEmpty) ?: return emptyList()
+    val matches = mutableListOf<IntRange>()
+    var position = 0
+    while (position <= message.length - number.length) {
+        val start = message.indexOf(number, startIndex = position, ignoreCase = true)
+        if (start < 0) break
+        val end = start + number.length
+        val before = message.getOrNull(start - 1)
+        val after = message.getOrNull(end)
+        if ((before == null || !before.isLetterOrDigit() && before != '/') &&
+            (after == null || !after.isLetterOrDigit() && after != '/')) {
+            matches += start until end
+        }
+        position = end
+    }
+    return matches
 }

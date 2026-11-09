@@ -79,8 +79,8 @@ class FlightsRepositoryCacheTest {
     )
 
     @Test
-    fun notificationLinksReadTheSyncedManifestWithoutNetworkOrDetailRequests() = runBlocking {
-        val id = java.util.UUID(0, 1).toString()
+    fun notificationLinksReadLocalMyFlightsWithoutNetworkOrDetailRequests() = runBlocking {
+        val id = "legacy-flight-id"
         serverItems = listOf(item(id))
         val repository = repository()
         repository.refreshCache()
@@ -88,12 +88,37 @@ class FlightsRepositoryCacheTest {
         pageLoader = { _, _, _ -> throw AssertionError("A notification lookup must not fetch flights") }
         detailLoader = { throw AssertionError("A notification lookup must not fetch details") }
 
-        assertEquals(setOf(id), repository.syncedFlightIds.first { it.isNotEmpty() })
+        assertEquals(setOf(id), repository.syncedMyFlightIds.first { it.isNotEmpty() })
         online = false
-        assertEquals(setOf(id), repository.syncedFlightIds.first { it.isNotEmpty() })
+        assertEquals(setOf(id), repository.syncedMyFlightIds.first { it.isNotEmpty() })
         assertEquals(readsBefore, pageReads)
         assertTrue(detailReads.isEmpty())
         assertTrue(dao.details(owner.value!!).isEmpty())
+    }
+
+    @Test
+    fun notificationMembershipUsesTheSameMyFlightsPredicateAsTheTab() = runBlocking {
+        serverItems = listOf(
+            item("assigned"),
+            item("landing").copy(isMyFlight = false, isPerLanding = true),
+            item("ad-hoc").copy(isMyFlight = false, isMyAdHocFlight = true),
+            item("mixed").copy(isMyFlight = false, isPerLanding = true, isMyAdHocFlight = true),
+            // The server tab flag remains authoritative even for legacy mixed flags.
+            item("my-flight-flag").copy(isPerLanding = true, isMyAdHocFlight = true),
+        )
+        val repository = repository()
+        repository.refreshCache()
+        val expected = repository.flights(FlightCategory.MyFlights).items.map { it.id }.toSet()
+        assertEquals(setOf("assigned", "my-flight-flag"), expected)
+        val readsBefore = pageReads.toList()
+        pageLoader = { _, _, _ -> throw AssertionError("Notification membership must not request another page") }
+        detailLoader = { throw AssertionError("Notification membership must not fetch details") }
+
+        assertEquals(expected, repository.syncedMyFlightIds.first { it.isNotEmpty() })
+        online = false
+        assertEquals(expected, repository.syncedMyFlightIds.first { it.isNotEmpty() })
+        assertEquals(readsBefore, pageReads)
+        assertTrue(detailReads.isEmpty())
     }
 
     @Test
@@ -110,13 +135,34 @@ class FlightsRepositoryCacheTest {
         val readsBefore = pageReads.toList()
         val observed = MutableStateFlow(emptySet<String>())
         val collector = launch(start = CoroutineStart.UNDISPATCHED) {
-            repository.syncedFlightIds.collect { observed.value = it }
+            repository.syncedMyFlightIds.collect { observed.value = it }
         }
         try {
             observed.first { it == setOf(secondId) }
             owner.value = firstOwner
             assertEquals(setOf(firstId), observed.first { it == setOf(firstId) })
             owner.value = null
+            assertTrue(observed.first { it.isEmpty() }.isEmpty())
+            assertEquals(readsBefore, pageReads)
+            assertTrue(detailReads.isEmpty())
+        } finally { collector.cancel() }
+    }
+
+    @Test
+    fun clearingLocalFlightsRemovesNotificationMembershipWithoutFetchingAgain() = runBlocking {
+        serverItems = listOf(item("my-flight"))
+        val repository = repository()
+        repository.refreshCache()
+        val readsBefore = pageReads.toList()
+        val observed = MutableStateFlow(emptySet<String>())
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            repository.syncedMyFlightIds.collect { observed.value = it }
+        }
+        try {
+            observed.first { it == setOf("my-flight") }
+
+            repository.clearLocal()
+
             assertTrue(observed.first { it.isEmpty() }.isEmpty())
             assertEquals(readsBefore, pageReads)
             assertTrue(detailReads.isEmpty())
@@ -132,7 +178,7 @@ class FlightsRepositoryCacheTest {
         repository.refreshCache()
         val observed = MutableStateFlow(emptySet<String>())
         val collector = launch(start = CoroutineStart.UNDISPATCHED) {
-            repository.syncedFlightIds.collect { observed.value = it }
+            repository.syncedMyFlightIds.collect { observed.value = it }
         }
         try {
             observed.first { it == setOf(oldId) }
@@ -155,7 +201,7 @@ class FlightsRepositoryCacheTest {
         repository.refreshCache()
         val observed = MutableStateFlow(emptySet<String>())
         val collector = launch(start = CoroutineStart.UNDISPATCHED) {
-            repository.syncedFlightIds.collect { observed.value = it }
+            repository.syncedMyFlightIds.collect { observed.value = it }
         }
         try {
             observed.first { it == setOf(id) }

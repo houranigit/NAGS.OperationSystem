@@ -8,6 +8,24 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NotificationFeedPresentationTest {
+    @Test fun flightNumberStylingFindsFullLiteralReferencesInEitherCase() {
+        val message = "Assigned to SV1020. View (sv1020) now."
+        assertEquals(listOf("SV1020", "sv1020"), notificationFlightNumberRanges(message, "SV1020").map { message.substring(it) })
+    }
+
+    @Test fun flightNumberStylingDoesNotHighlightOtherFlightsWithTheSamePrefix() {
+        val message = "SV1020A SV1020/01 XSV1020 SV10200 SV1020"
+        assertEquals(listOf(message.lastIndexOf("SV1020") until message.length), notificationFlightNumberRanges(message, "SV1020"))
+        val routeMessage = "Flight SV1020/01, then SV1020/02."
+        assertEquals(listOf("SV1020/01"), notificationFlightNumberRanges(routeMessage, "SV1020/01").map { routeMessage.substring(it) })
+    }
+
+    @Test fun flightNumberStylingLeavesMessagesWithoutTheReferenceUnchanged() {
+        assertTrue(notificationFlightNumberRanges("Flight SV1020", null).isEmpty())
+        assertTrue(notificationFlightNumberRanges("Flight SV1020", "  ").isEmpty())
+        assertTrue(notificationFlightNumberRanges("Your schedule changed", "SV1020").isEmpty())
+    }
+
     private val now = Instant.parse("2026-11-09T13:00:00Z")
     private val zone = ZoneId.of("America/Chicago")
 
@@ -34,11 +52,11 @@ class NotificationFeedPresentationTest {
     }
 
     @Test fun compactAgesDistinguishMinutesFromMonthsAtUnitBoundaries() {
-        val cases = mapOf(0L to "now", 59L to "now", 60L to "1m", 3599L to "59m",
+        val cases = mapOf(0L to "0s", 1L to "1s", 15L to "15s", 59L to "59s", 60L to "1m", 3599L to "59m",
             3600L to "1h", 86399L to "23h", 86400L to "1d", 604799L to "6d",
             604800L to "1w", 2591999L to "4w", 2592000L to "1mo", 5184000L to "2mo")
         cases.forEach { (seconds, expected) -> assertEquals(expected, relativeNotificationAge(now.minusSeconds(seconds).toString(), now)) }
-        assertEquals("now", relativeNotificationAge(now.plusSeconds(60).toString(), now))
+        assertEquals("0s", relativeNotificationAge(now.plusSeconds(60).toString(), now))
     }
 
     @Test fun englishOnlyResponsesDoNotRequireArabicFields() {
@@ -69,24 +87,28 @@ class NotificationFeedPresentationTest {
         assertEquals(NotificationSwipePosition.Closed, notificationSwipeTarget(-80f, 600f, 400f, 80f))
     }
 
-    @Test fun openRequiresALocalSyncedFlightAndAValidConcreteReference() {
+    @Test fun viewRequiresOnlyAReferenceMatchingLocalMyFlights() {
         val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
         val notification = row("one", now.toString()).copy(payload = mapOf("flightId" to id))
-        assertTrue(canOpenNotification(notification, setOf(id), now))
-        assertTrue(canOpenNotification(notification.copy(payload = mapOf("flightId" to id.uppercase())), setOf(id), now))
-        assertFalse(canOpenNotification(notification, emptySet(), now))
-        assertFalse(canOpenNotification(notification.copy(kind = "FlightScheduleUpdated"), setOf(id), now))
-        for (invalid in listOf("", "not-a-guid", "1-1-1-1-1", "00000000-0000-0000-0000-000000000000")) {
-            assertFalse(canOpenNotification(notification.copy(payload = mapOf("flightId" to invalid)), setOf(invalid), now))
+        assertTrue(canOpenNotification(notification, setOf(id)))
+        assertTrue(canOpenNotification(notification.copy(payload = mapOf("flightId" to id.uppercase())), setOf(id)))
+        assertFalse(canOpenNotification(notification, emptySet()))
+        assertTrue(canOpenNotification(notification.copy(kind = "FlightScheduleUpdated"), setOf(id)))
+        for (localId in listOf("legacy-flight-id", "1-1-1-1-1", "00000000-0000-0000-0000-000000000000")) {
+            assertTrue(canOpenNotification(notification.copy(payload = mapOf("flightId" to localId)), setOf(localId)))
+            assertFalse(canOpenNotification(notification.copy(payload = mapOf("flightId" to localId)), emptySet()))
         }
+        assertFalse(canOpenNotification(notification.copy(payload = emptyMap()), setOf(id)))
     }
 
-    @Test fun expiredReminderCannotOfferOpenEvenForASyncedFlight() {
+    @Test fun expiredReminderCanViewItsReferencedFlightWhenItIsInMyFlights() {
         val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
         val reminder = row("reminder", now.toString()).copy(kind = "FlightReminder", payload = mapOf("flightId" to id,
             "scheduledArrivalUtc" to now.plusSeconds(60).toString()))
-        assertTrue(canOpenNotification(reminder, setOf(id), now))
-        assertFalse(canOpenNotification(reminder, setOf(id), now.plusSeconds(60)))
+        assertTrue(canOpenNotification(reminder, setOf(id)))
+        val expired = reminder.copy(payload = reminder.payload + ("scheduledArrivalUtc" to now.minusSeconds(60).toString()))
+        assertTrue(canOpenNotification(expired, setOf(id)))
+        assertFalse(canOpenNotification(expired, emptySet()))
     }
 
     private fun row(id: String, stamp: String, read: Boolean = true) = NotificationDto(id = id,
