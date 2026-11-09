@@ -43,6 +43,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -65,6 +66,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
@@ -81,6 +83,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.ui.components.CustomerLogo
@@ -106,6 +109,13 @@ internal fun FlightRecordingFormScaffold(
 ) {
     Dialog(onDismissRequest = onRequestClose,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+        SideEffect {
+            // Let the window own both directions, so confirmed close keeps its native exit animation.
+            // The dedicated dialog window is disposed with this form; no activity window is modified.
+            window?.setWindowAnimations(R.style.Animation_OperationsFlightForm)
+            window?.setDimAmount(0.28f)
+        }
         val focus = LocalFocusManager.current
         val keyboard = LocalSoftwareKeyboardController.current
         val editor = remember { FlightFormFocusedEditor() }
@@ -130,7 +140,7 @@ internal fun FlightRecordingFormScaffold(
                             keyboard?.hide()
                         }
                     }
-                }, color = FlightFormGround) {
+                }, color = FlightFormGround, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
                 Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().semantics { paneTitle = title },
                     horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),

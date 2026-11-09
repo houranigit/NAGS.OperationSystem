@@ -71,9 +71,10 @@
     </plurals>
     <string name="flights_schedule">Schedule</string>
     <string name="flights_details">Flight details</string>
-    <string name="flights_share">Share flight</string>
-    <string name="flights_operations">Start</string>
-    <string name="flights_canceled">Cancel</string>
+    <string name="flights_send">Send flight</string>
+    <string name="flights_edit">Edit flight</string>
+    <string name="flights_operate">Operate</string>
+    <string name="flights_cancel_flight">Cancel Flight</string>
     <string name="arrival_choose_ata">Edit actual arrival</string>
     <string name="arrival_ata_short">ATA</string>
     <string name="arrival_aircraft_selected">Selected aircraft</string>
