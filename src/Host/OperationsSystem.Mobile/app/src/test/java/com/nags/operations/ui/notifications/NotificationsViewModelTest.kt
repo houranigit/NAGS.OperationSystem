@@ -1,373 +1,233 @@
 package com.nags.operations.ui.notifications
 
-import com.nags.operations.data.notifications.CategoryReadAcknowledgement
-import com.nags.operations.data.notifications.CategoryReadResult
-import com.nags.operations.data.notifications.NotificationCategory
-import com.nags.operations.data.notifications.NotificationDto
-import com.nags.operations.data.notifications.NotificationKinds
-import com.nags.operations.data.notifications.NotificationPageDto
+import com.nags.operations.data.notifications.*
 import java.io.IOException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
 
 class NotificationsViewModelTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    @After fun tearDown() = scope.cancel()
 
-    @After
-    fun tearDown() = scope.cancel()
-
-    @Test
-    fun categoryChangesReplaceTheInboxObserverAndKeepBothNewAndOldRows() {
-        val feeds = NotificationCategory.entries.associateWith { MutableStateFlow(listOf(row(it.name), row("old", true))) }
-        val vm = model(inbox = { feeds.getValue(it) })
-        assertEquals(1, feeds.getValue(NotificationCategory.Invitations).subscriptionCount.value)
-
-        vm.setCategory(NotificationCategory.Reminders)
-
-        assertEquals(0, feeds.getValue(NotificationCategory.Invitations).subscriptionCount.value)
-        assertEquals(1, feeds.getValue(NotificationCategory.Reminders).subscriptionCount.value)
-        assertEquals(listOf("Reminders", "old"), vm.state.value.items.map { it.id })
-        assertEquals(setOf("Reminders"), vm.state.value.newIds)
+    @Test fun onlyVerifiedFlightsCanOpenAndSchedulesStayInformational() {
+        val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
+        val missing = "fe85f964-1315-4e73-b24e-31f4f0ad7f91"
+        val available = row("available").copy(payload = mapOf("flightId" to id))
+        val unavailable = row("missing").copy(payload = mapOf("flightId" to missing))
+        val schedule = row("schedule", kind = NotificationKinds.FlightScheduleUpdated).copy(payload = mapOf("flightId" to id))
+        val rows = MutableStateFlow(listOf(available, unavailable, schedule))
+        val vm = model(rows, targets = { setOf(id) })
+        assertEquals(setOf(id), vm.state.value.openableFlightIds)
+        val opened = mutableListOf<String?>()
+        vm.open(schedule, { opened += it.flightId }, { fail("Schedule updates must not navigate") })
+        vm.open(unavailable, { opened += it.flightId })
+        vm.open(available, { opened += it.flightId })
+        assertEquals(listOf(id), opened)
     }
 
-    @Test
-    fun categoryChangesResetPagingAndNextPagesStayWithinTheSelectedCategory() {
-        val nextPage = CompletableDeferred<NotificationPageDto>()
-        val requests = mutableListOf<Pair<Int, NotificationCategory>>()
-        val vm = model(fetch = { number, category ->
-            requests += number to category
-            if (number == 2) nextPage.await() else page(number, hasMore = true)
+    @Test fun flightDisappearingAfterLoadIsRecheckedBeforeNavigation() {
+        val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
+        val notification = row("flight").copy(payload = mapOf("flightId" to id))
+        var exists = true
+        val vm = model(MutableStateFlow(listOf(notification)), targets = { if (exists) setOf(id) else emptySet() })
+        assertTrue(id in vm.state.value.openableFlightIds)
+        exists = false
+        vm.open(notification, { fail("A removed flight must not navigate") })
+        assertTrue(vm.state.value.openableFlightIds.isEmpty())
+        assertTrue(vm.state.value.openingIds.isEmpty())
+        assertNotNull(vm.state.value.actionError)
+    }
+
+    @Test fun olderBatchCannotReenableAFlightThatFailedTheOpenRecheck() {
+        val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
+        val notification = row("flight").copy(payload = mapOf("flightId" to id))
+        val stale = CompletableDeferred<Set<String>>()
+        var calls = 0
+        val vm = model(MutableStateFlow(listOf(notification)), targets = {
+            when (++calls) { 1 -> setOf(id); 2 -> stale.await(); else -> emptySet() }
         })
-        assertEquals(NotificationCategory.Invitations, vm.state.value.category)
-        vm.loadMore()
-        vm.loadMore()
-        assertEquals(listOf(1 to NotificationCategory.Invitations, 2 to NotificationCategory.Invitations), requests)
-        nextPage.complete(page(2))
-        assertEquals(2, vm.state.value.page)
-
-        vm.setCategory(NotificationCategory.FlightUpdates)
-        assertEquals(1 to NotificationCategory.FlightUpdates, requests.last())
-        assertEquals(1, vm.state.value.page)
-        assertTrue(vm.state.value.hasMore)
-        assertFalse(vm.state.value.isLoadingMore)
-        vm.loadMore()
-        assertEquals(2 to NotificationCategory.FlightUpdates, requests.last())
+        vm.open(notification, { fail("The flight disappeared") })
+        stale.complete(setOf(id))
+        assertTrue(vm.state.value.openableFlightIds.isEmpty())
     }
 
-    @Test
-    fun aLateRefreshCannotOverwriteTheSameCategoryAfterSwitchingAwayAndBack() {
-        val oldResponse = CompletableDeferred<NotificationPageDto>()
-        var invitationReads = 0
-        val vm = model(fetch = { number, category ->
-            if (category == NotificationCategory.Invitations && ++invitationReads == 1) {
-                withContext(NonCancellable) { oldResponse.await() }
-            } else page(number, hasMore = true)
+    @Test fun failedDeleteKeepsTheCardAndAllowsGestureToRestoreWithoutDuplicateRequests() {
+        val notification = row("one")
+        val rows = MutableStateFlow(listOf(notification))
+        val response = CompletableDeferred<Unit>()
+        var calls = 0
+        var restored = 0
+        val vm = model(rows, archive = { calls++; response.await() })
+        vm.archive(notification) { restored++ }
+        vm.archive(notification) { fail("Duplicate delete must not run") }
+        assertEquals(setOf("one"), vm.state.value.archivingIds)
+        response.completeExceptionally(IOException("Offline"))
+        assertEquals(1, calls)
+        assertEquals(1, restored)
+        assertEquals(listOf(notification), vm.state.value.items)
+        assertTrue(vm.state.value.archivingIds.isEmpty())
+        assertNotNull(vm.state.value.actionError)
+    }
+
+    @Test fun completedDeleteRemovesOnlyItsCardAndClearsBusyState() {
+        val notification = row("one")
+        val rows = MutableStateFlow(listOf(notification, row("two")))
+        val vm = model(rows, archive = { id -> rows.value = rows.value.filterNot { it.id == id } })
+        vm.archive(notification) { fail("Successful delete must not restore") }
+        assertEquals(listOf("two"), vm.state.value.items.map { it.id })
+        assertTrue(vm.state.value.archivingIds.isEmpty())
+        assertNull(vm.state.value.actionError)
+    }
+
+    @Test fun availabilityReturningAfterThePageClosesCannotEnableOldTargets() {
+        val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
+        val response = CompletableDeferred<Set<String>>()
+        val vm = model(MutableStateFlow(listOf(row("one").copy(payload = mapOf("flightId" to id)))),
+            targets = { withContext(NonCancellable) { response.await() } })
+        vm.endVisit()
+        response.complete(setOf(id))
+        assertTrue(vm.state.value.openableFlightIds.isEmpty())
+    }
+
+    @Test fun mixedNotificationsShareOneListAndKeepTheirTintUntilTheNextVisit() {
+        val rows = MutableStateFlow(listOf(row("invite"), row("reminder", kind = NotificationKinds.FlightReminder),
+            row("assignment", kind = NotificationKinds.StaffAssignedToFlight), row("old", read = true)))
+        var reads = 0
+        val vm = model(rows, acknowledge = {
+            reads++
+            rows.value = rows.value.map { if (it.isRead) it else it.copy(isRead = true, readAtUtc = "2026-11-09T13:00:00Z") }
+            CategoryReadResult("2026-11-09T12:00:00Z", "2026-11-09T13:00:00Z")
         })
-
-        vm.setCategory(NotificationCategory.Reminders)
-        vm.setCategory(NotificationCategory.Invitations)
-        assertTrue(vm.state.value.hasMore)
-        oldResponse.complete(page(9))
-
-        assertEquals(NotificationCategory.Invitations, vm.state.value.category)
-        assertEquals(1, vm.state.value.page)
-        assertTrue(vm.state.value.hasMore)
-        assertFalse(vm.state.value.isLoading)
-        assertNull(vm.state.value.error)
+        assertEquals(4, vm.state.value.items.size)
+        assertEquals(0, reads)
+        vm.acknowledgeLoadedInbox()
+        assertEquals(1, reads)
+        assertEquals(setOf("invite", "reminder", "assignment"), vm.state.value.newIds)
+        vm.endVisit(); vm.beginVisit()
+        assertTrue(vm.state.value.newIds.isEmpty())
     }
 
-    @Test
-    fun aLatePagingFailureDoesNotChangeTheNewTabOrItsLoadingState() {
-        val oldResponse = CompletableDeferred<NotificationPageDto>()
-        val vm = model(fetch = { number, _ ->
-            if (number == 2) withContext(NonCancellable) { oldResponse.await() }
-            else page(number, hasMore = true)
+    @Test fun olderUnloadedRowsUseTheVisitReceiptButAlreadyReadRowsStayOld() {
+        val rows = MutableStateFlow(listOf(row("first")))
+        val vm = model(rows, acknowledge = { CategoryReadResult("2026-11-09T12:00:00Z", "2026-11-09T12:59:00Z", "2026-11-09T13:00:00Z") })
+        vm.acknowledgeLoadedInbox()
+        rows.value = listOf(row("older", true).copy(readAtUtc = "2026-11-09T13:00:00Z"), row("old", true), row("first", true))
+        assertEquals(setOf("first", "older"), vm.state.value.newIds)
+    }
+
+    @Test fun reconnectReceiptPreservesTintForTheCurrentVisitOnly() {
+        val rows = MutableStateFlow(listOf(row("first")))
+        val events = MutableSharedFlow<CategoryReadAcknowledgement>(extraBufferCapacity = 2)
+        val vm = model(rows, events = events, acknowledge = { CategoryReadResult("2026-11-09T12:00:00Z", "2026-11-09T13:00:00Z") })
+        vm.acknowledgeLoadedInbox()
+        rows.value = listOf(row("first", true), row("older", true).copy(readAtUtc = "2026-11-09T14:00:00Z"))
+        assertFalse("older" in vm.state.value.newIds)
+        events.tryEmit(CategoryReadAcknowledgement(null, "2026-11-09T13:00:00Z", "2026-11-09T14:00:00Z"))
+        assertTrue("older" in vm.state.value.newIds)
+        vm.endVisit(); vm.beginVisit()
+        events.tryEmit(CategoryReadAcknowledgement(null, "2026-11-09T13:00:00Z", "2026-11-09T14:00:00Z"))
+        assertTrue(vm.state.value.newIds.isEmpty())
+    }
+
+    @Test fun notificationsArrivingDuringAcknowledgementAreAcknowledgedInTheNextPass() {
+        val rows = MutableStateFlow(listOf(row("first")))
+        val first = CompletableDeferred<CategoryReadResult?>()
+        var calls = 0
+        val vm = model(rows, acknowledge = {
+            calls++
+            if (calls == 1) first.await() else CategoryReadResult("2026-11-09T13:00:00Z", "2026-11-09T14:00:00Z")
         })
-        vm.loadMore()
-        vm.setCategory(NotificationCategory.Reminders)
-        oldResponse.completeExceptionally(IOException("Old request"))
-
-        assertEquals(NotificationCategory.Reminders, vm.state.value.category)
-        assertEquals(1, vm.state.value.page)
-        assertTrue(vm.state.value.hasMore)
-        assertFalse(vm.state.value.isLoadingMore)
-        assertFalse(vm.state.value.isLoading)
-        assertNull(vm.state.value.error)
+        vm.acknowledgeLoadedInbox()
+        rows.value = rows.value + row("new").copy(createdAtUtc = "2026-11-09T13:00:00Z")
+        vm.acknowledgeLoadedInbox()
+        assertEquals(1, calls)
+        first.complete(CategoryReadResult("2026-11-09T12:00:00Z", "2026-11-09T13:00:00Z"))
+        assertEquals(2, calls)
+        assertEquals(setOf("first", "new"), vm.state.value.newIds)
     }
 
-    @Test
-    fun refreshingInvalidatesAnInFlightNextPageWithoutChangingTheCurrentCategory() {
-        val oldPage = CompletableDeferred<NotificationPageDto>()
-        var firstPageReads = 0
-        val vm = model(fetch = { number, _ ->
-            if (number == 2) withContext(NonCancellable) { oldPage.await() }
-            else page(1, hasMore = ++firstPageReads == 1)
+    @Test fun hiddenPageDoesNotAcknowledgeAndLateReceiptsDoNotAffectTheNextVisit() {
+        val response = CompletableDeferred<CategoryReadResult?>()
+        var reads = 0
+        val vm = model(MutableStateFlow(listOf(row("first"))), start = false, acknowledge = {
+            reads++; withContext(NonCancellable) { response.await() }
         })
-        vm.loadMore()
-        vm.refresh(userInitiated = true)
-        oldPage.complete(page(2, hasMore = true))
-
-        assertEquals(1, vm.state.value.page)
-        assertFalse(vm.state.value.hasMore)
-        assertFalse(vm.state.value.isLoadingMore)
-        assertFalse(vm.state.value.isRefreshing)
+        vm.acknowledgeLoadedInbox(); assertEquals(0, reads)
+        vm.beginVisit(); vm.acknowledgeLoadedInbox(); assertEquals(1, reads)
+        vm.endVisit(); vm.beginVisit()
+        response.complete(CategoryReadResult("2026-11-09T12:00:00Z", "2026-11-09T14:00:00Z"))
+        vm.acknowledgeLoadedInbox()
+        assertEquals(2, reads)
     }
 
-    @Test
-    fun changingTabsClearsOldRowsAndErrors_AndRetriesOnlyTheSelectedCategory() {
-        val requests = mutableListOf<NotificationCategory>()
+    @Test fun failedRefreshRetainsCachedRowsAndCanRetry() {
         var fail = true
-        val vm = model(inbox = { category ->
-            flowOf(if (category == NotificationCategory.Invitations) listOf(row("invitation")) else emptyList())
-        }, fetch = { number, category ->
-            requests += category
-            if (category == NotificationCategory.Reminders && fail) throw IOException()
-            page(number)
+        val vm = model(MutableStateFlow(listOf(row("cached"))), fetch = {
+            if (fail) throw IOException("offline") else page(it)
         })
-        assertEquals(listOf("invitation"), vm.state.value.items.map { it.id })
-
-        vm.setCategory(NotificationCategory.Reminders)
-        assertTrue(vm.state.value.items.isEmpty())
+        assertEquals(listOf("cached"), vm.state.value.items.map { it.id })
         assertNotNull(vm.state.value.error)
-        assertFalse(vm.state.value.isLoading)
-        fail = false
-        vm.refresh(userInitiated = true)
-
-        assertEquals(NotificationCategory.Reminders, requests.last())
+        fail = false; vm.refresh()
         assertNull(vm.state.value.error)
-        assertFalse(vm.state.value.isRefreshing)
     }
 
-    @Test
-    fun openingAnUnreadNotificationStartsTheRepositoryReadBeforeNavigationCanCancelTheViewModel() {
+    @Test fun olderRefreshCannotOverwriteNewerPageMetadata() {
+        val old = CompletableDeferred<NotificationPageDto>()
+        var calls = 0
+        val vm = model(fetch = { if (++calls == 1) withContext(NonCancellable) { old.await() } else page(it) })
+        vm.refresh()
+        old.complete(page(1, true))
+        assertFalse(vm.state.value.hasMore)
+        assertFalse(vm.state.value.isLoading)
+    }
+
+    @Test fun pagingDoesNotDuplicateRequestsAndAdvancesThroughOverlappingCachedRows() {
+        val next = CompletableDeferred<NotificationPageDto>()
+        val requests = mutableListOf<Int>()
+        val vm = model(MutableStateFlow(List(60) { row("$it") }), fetch = {
+            requests += it; if (it == 2) next.await() else page(it, true)
+        })
+        vm.loadMore(); vm.loadMore()
+        assertEquals(listOf(1, 2), requests)
+        next.complete(page(2, true))
+        assertEquals(2, nextNotificationPageToLoad(vm.state.value, 59))
+        vm.loadMore(); assertEquals(listOf(1, 2, 3), requests)
+        assertNull(nextNotificationPageToLoad(vm.state.value.copy(isFromCache = true), 59))
+        assertNull(nextNotificationPageToLoad(vm.state.value.copy(loadMoreError = "retry"), 59))
+    }
+
+    @Test fun emptyFirstLoadReceivesAndAcknowledgesTheFirstCachedArrival() {
+        val rows = MutableStateFlow(emptyList<NotificationDto>())
+        var reads = 0
+        val vm = model(rows, acknowledge = { reads++; CategoryReadResult("2026-11-09T12:00:00Z", "2026-11-09T13:00:00Z") })
+        vm.acknowledgeLoadedInbox(); assertEquals(0, reads)
+        rows.value = listOf(row("first")); vm.acknowledgeLoadedInbox()
+        assertEquals(1, reads)
+        assertEquals(setOf("first"), vm.state.value.newIds)
+    }
+
+    @Test fun openingAnExpiredReminderAcknowledgesWithoutOpeningItsFlight() {
         val events = mutableListOf<String>()
         val vm = model(read = { events += "read:$it" })
-
-        vm.open(row("opened"), onOpenFlight = {
-            events += "open:${it.flightId}"
-            scope.cancel()
-        })
-
-        assertEquals(listOf("read:opened", "open:flight"), events)
-    }
-
-    @Test
-    fun expiredReminderOpensAreReadWithoutNavigation_AndAlreadyReadRowsDoNotWriteAgain() {
-        val read = mutableListOf<String>()
-        var navigations = 0
-        val vm = model(read = { read += it })
-        val expired = row("expired").copy(kind = NotificationKinds.FlightReminder,
-            payload = mapOf("flightId" to "flight", "scheduledArrivalUtc" to "2000-01-01T00:00:00Z"))
-
-        vm.open(expired, onOpenFlight = { navigations++ })
-        vm.open(row("read", true), onOpenFlight = { navigations++ })
-
-        assertEquals(listOf("expired"), read)
-        assertEquals(1, navigations)
-    }
-
-    @Test
-    fun successfulArchiveAllRefreshesTheCurrentCategoryFromPageOne() {
-        val completed = CompletableDeferred<Unit>()
-        val requests = mutableListOf<Pair<Int, NotificationCategory>>()
-        val vm = model(fetch = { number, category ->
-            requests += number to category
-            page(number, hasMore = number == 1)
-        }, archiveAll = { completed.await() })
-        vm.loadMore()
-        vm.archiveAll()
-        vm.setCategory(NotificationCategory.Reminders)
-        vm.loadMore()
-        assertEquals(2 to NotificationCategory.Reminders, requests.last())
-        completed.complete(Unit)
-
-        assertEquals(1 to NotificationCategory.Reminders, requests.last())
-        assertEquals(1, vm.state.value.page)
-        assertTrue(vm.state.value.hasMore)
-    }
-
-    @Test
-    fun failedArchiveAllDoesNotRefreshTheInbox() {
-        var reads = 0
-        val vm = model(fetch = { number, _ -> reads++; page(number) }, archiveAll = { throw IOException() })
-
-        vm.archiveAll()
-
-        assertEquals(1, reads)
-        assertFalse(vm.state.value.isLoading)
-        assertFalse(vm.state.value.isRefreshing)
-    }
-
-    @Test
-    fun acknowledgingLoadedRowsKeepsTheVisitTint_AndReceiptStampsIdentifyNewlyReadOlderPages() {
-        val rows = MutableStateFlow(listOf(row("new"), row("old", true).copy(readAtUtc = "2026-11-09T11:00:00Z")))
-        var acknowledgments = 0
-        val vm = model(inbox = { rows }, acknowledge = {
-            acknowledgments++
-            val stamp = "2026-11-09T13:00:0${acknowledgments}Z"
-            rows.value = rows.value.map { if (it.isRead) it else it.copy(isRead = true, readAtUtc = stamp) }
-            CategoryReadResult("2026-11-09T12:00:00Z", stamp, stamp)
-        })
-        assertEquals(setOf("new"), vm.state.value.newIds)
-
-        vm.acknowledgeLoadedCategory()
-        vm.acknowledgeLoadedCategory()
-
-        assertEquals(1, acknowledgments)
-        assertTrue(vm.state.value.items.all { it.isRead })
-        assertEquals(setOf("new"), vm.state.value.newIds)
-        rows.value += listOf(
-            row("older-new", true).copy(createdAtUtc = "2026-11-09T10:00:00Z", readAtUtc = "2026-11-09T13:00:01+00:00"),
-            row("older-old", true).copy(createdAtUtc = "2026-11-09T09:00:00Z", readAtUtc = "2026-11-09T11:00:00Z"),
-        )
-        assertEquals(setOf("new", "older-new"), vm.state.value.newIds)
-
-        vm.endVisit()
-        vm.beginVisit()
-        vm.acknowledgeLoadedCategory()
-
-        assertEquals(2, acknowledgments)
-        assertTrue(vm.state.value.newIds.isEmpty())
-    }
-
-    @Test
-    fun anEmptyCacheWaitsForLoadedRows_AndNoCategoryIsAcknowledgedWhileThePageIsClosed() {
-        val rows = MutableStateFlow<List<NotificationDto>>(emptyList())
-        val acknowledged = mutableListOf<NotificationCategory>()
-        val vm = model(inbox = { rows }, acknowledge = {
-            acknowledged += it
-            val stamp = "2026-11-09T13:00:00Z"
-            rows.value = rows.value.map { item -> item.copy(isRead = true, readAtUtc = stamp) }
-            CategoryReadResult("2026-11-09T12:00:00Z", stamp)
-        })
-        vm.acknowledgeLoadedCategory()
-        assertTrue(acknowledged.isEmpty())
-        rows.value = listOf(row("loaded"))
-        vm.acknowledgeLoadedCategory()
-        assertEquals(listOf(NotificationCategory.Invitations), acknowledged)
-
-        vm.endVisit()
-        rows.value += row("arrived-later")
-        vm.acknowledgeLoadedCategory()
-        assertEquals(1, acknowledged.size)
-        vm.beginVisit()
-        assertEquals(setOf("arrived-later"), vm.state.value.newIds)
-        vm.acknowledgeLoadedCategory()
-        assertEquals(2, acknowledged.size)
-    }
-
-    @Test
-    fun rowsArrivingDuringAnAcknowledgmentAreCapturedAndAcknowledgedAfterItCompletes() {
-        val rows = MutableStateFlow(listOf(row("first")))
-        val firstReceipt = CompletableDeferred<CategoryReadResult?>()
-        var acknowledgments = 0
-        val vm = model(inbox = { rows }, acknowledge = {
-            acknowledgments++
-            if (acknowledgments == 1) firstReceipt.await()
-            else {
-                rows.value = rows.value.map { item -> item.copy(isRead = true, readAtUtc = "2026-11-09T13:00:02Z") }
-                CategoryReadResult("2026-11-09T12:01:00Z", "2026-11-09T13:00:02Z")
-            }
-        })
-        vm.acknowledgeLoadedCategory()
-        rows.value += row("second").copy(createdAtUtc = "2026-11-09T12:01:00Z")
-        vm.acknowledgeLoadedCategory()
-        assertEquals(1, acknowledgments)
-
-        firstReceipt.complete(CategoryReadResult("2026-11-09T12:00:00Z", "2026-11-09T13:00:01Z"))
-
-        assertEquals(2, acknowledgments)
-        assertEquals(setOf("first", "second"), vm.state.value.newIds)
-        assertTrue(vm.state.value.items.all { it.isRead })
-    }
-
-    @Test
-    fun aReceiptFromThePreviousCategoryCannotTintTheCurrentVisit() {
-        val oldReceipt = CompletableDeferred<CategoryReadResult?>()
-        val vm = model(inbox = { category ->
-            flowOf(if (category == NotificationCategory.Invitations) listOf(row("new"))
-                else listOf(row("read-reminder", true).copy(readAtUtc = "2026-11-09T13:00:01Z")))
-        }, acknowledge = { withContext(NonCancellable) { oldReceipt.await() } })
-        vm.acknowledgeLoadedCategory()
-        vm.setCategory(NotificationCategory.Reminders)
-
-        oldReceipt.complete(CategoryReadResult("2026-11-09T12:00:00Z", "2026-11-09T13:00:01Z"))
-
-        assertEquals(NotificationCategory.Reminders, vm.state.value.category)
-        assertTrue(vm.state.value.newIds.isEmpty())
-    }
-
-    @Test
-    fun reconnectReceiptsTintNewlyReadOlderRowsOnlyForTheVisitThatCreatedThePendingAcknowledgment() {
-        val rows = MutableStateFlow(listOf(row("new")))
-        val receipts = MutableSharedFlow<CategoryReadAcknowledgement>(extraBufferCapacity = 1)
-        val local = "2026-11-09T13:00:01Z"
-        val server = "2026-11-09T13:00:02Z"
-        val vm = model(inbox = { rows }, readEvents = receipts, acknowledge = {
-            rows.value = rows.value.map { item -> item.copy(isRead = true, readAtUtc = local) }
-            CategoryReadResult("2026-11-09T12:00:00Z", local)
-        })
-        vm.acknowledgeLoadedCategory()
-        rows.value += row("older", true).copy(createdAtUtc = "2026-11-09T10:00:00Z", readAtUtc = server)
-        assertEquals(setOf("new"), vm.state.value.newIds)
-
-        receipts.tryEmit(CategoryReadAcknowledgement(NotificationCategory.Invitations, local, server))
-
-        assertEquals(setOf("new", "older"), vm.state.value.newIds)
-        vm.endVisit()
-        vm.beginVisit()
-        receipts.tryEmit(CategoryReadAcknowledgement(NotificationCategory.Invitations, local, server))
-        assertTrue(vm.state.value.newIds.isEmpty())
-    }
-
-    @Test
-    fun automaticPagingAdvancesThroughOverlappingCachedPages_AndStopsForErrorsOrOfflineFallback() {
-        val initial = NotificationsViewModel.UiState(items = List(60) { row("$it") },
-            isLoading = false, hasMore = true, page = 1)
-        assertEquals(1, nextNotificationPageToLoad(initial, 58))
-        assertNull(nextNotificationPageToLoad(initial.copy(isLoadingMore = true), 58))
-        assertEquals(2, nextNotificationPageToLoad(initial.copy(page = 2), 58))
-        assertEquals(3, nextNotificationPageToLoad(initial.copy(page = 3), 58))
-        assertNull(nextNotificationPageToLoad(initial.copy(loadMoreError = "Retry"), 58))
-        assertNull(nextNotificationPageToLoad(initial.copy(isFromCache = true), 58))
-        assertNull(nextNotificationPageToLoad(initial, 1))
-
-        val vm = model(fetch = { number, _ -> page(number).copy(isFromCache = true) })
-        assertTrue(vm.state.value.isFromCache)
-        assertFalse(vm.state.value.hasMore)
-        assertFalse(vm.state.value.isLoading)
+        vm.open(row("expired", kind = NotificationKinds.FlightReminder).copy(payload = mapOf("flightId" to "flight", "scheduledArrivalUtc" to "2000-01-01T00:00:00Z")),
+            onOpenFlight = { events += "flight" })
+        assertEquals(listOf("read:expired"), events)
     }
 
     private fun model(
-        inbox: (NotificationCategory) -> Flow<List<NotificationDto>> = { flowOf(emptyList()) },
-        fetch: suspend (Int, NotificationCategory) -> NotificationPageDto = { number, _ -> page(number) },
-        read: (String) -> Unit = {},
-        acknowledge: suspend (NotificationCategory) -> CategoryReadResult? = { null },
-        archiveAll: suspend () -> Unit = {},
-        readEvents: Flow<CategoryReadAcknowledgement> = emptyFlow(),
-    ) = NotificationsViewModel(inbox, fetch, acknowledge, read, {}, archiveAll, readEvents, scope).also { it.beginVisit() }
-
-    private fun page(number: Int, hasMore: Boolean = false) = NotificationPageDto(
-        page = number, pageSize = 20, totalCount = 1, hasNextPage = hasMore,
-    )
-
-    private fun row(id: String, read: Boolean = false) = NotificationDto(
-        id = id, kind = NotificationKinds.EmployeeInvitedToFlight,
-        titleEn = "Invitation", bodyEn = "Flight invitation", titleAr = "دعوة", bodyAr = "دعوة رحلة",
-        payload = mapOf("flightId" to "flight"), isRead = read, createdAtUtc = "2026-11-09T12:00:00Z",
-    )
+        rows: Flow<List<NotificationDto>> = flowOf(emptyList()),
+        fetch: suspend (Int) -> NotificationPageDto = { page(it) },
+        acknowledge: suspend () -> CategoryReadResult? = { null },
+        events: Flow<CategoryReadAcknowledgement> = emptyFlow(),
+        read: (String) -> Unit = {}, start: Boolean = true,
+        targets: suspend (List<String>) -> Set<String> = { it.toSet() },
+        archive: suspend (String) -> Unit = {},
+    ) = NotificationsViewModel({ rows }, fetch, acknowledge, read, archive, {}, events, scope,
+        fetchOpenableFlightIds = targets).also { if (start) it.beginVisit() }
+    private fun page(number: Int, more: Boolean = false) = NotificationPageDto(page = number, pageSize = 20, totalCount = 60, hasNextPage = more)
+    private fun row(id: String, read: Boolean = false, kind: String = NotificationKinds.EmployeeInvitedToFlight) = NotificationDto(
+        id, kind, "Title", "Body", "عنوان", "نص", isRead = read, createdAtUtc = "2026-11-09T12:00:00Z", readAtUtc = if (read) "2026-11-08T12:00:00Z" else null)
 }

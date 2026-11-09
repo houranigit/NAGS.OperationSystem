@@ -30,8 +30,8 @@ public sealed class NotificationCenterState(NotificationsApiClient api, IJSRunti
     public NotificationInboxCache Cache { get; } = new(jsRuntime);
     public long SessionVersion { get; private set; }
 
-    public int GetCategoryUnreadCount(string category) => categoryUnreadCounts.TryGetValue(category, out var count)
-        ? count : Cache.GetCategory(category).Count(row => !Cache.IsReadLocally(row));
+    public int GetCategoryUnreadCount(string? category) => category is null ? UnreadCount
+        : categoryUnreadCounts.TryGetValue(category, out var count) ? count : Cache.GetCategory(category).Count(row => !Cache.IsReadLocally(row));
 
     public IReadOnlyList<NotificationDto> Recent => recent;
     public int UnreadCount { get; private set; }
@@ -210,7 +210,7 @@ public sealed class NotificationCenterState(NotificationsApiClient api, IJSRunti
         }
     }
 
-    public async Task QueueCategoryReadAsync(string category, DateTimeOffset throughCreatedAtUtc)
+    public async Task QueueCategoryReadAsync(string? category, DateTimeOffset throughCreatedAtUtc)
     {
         var operationSession = SessionVersion;
         if (userId is null)
@@ -225,15 +225,23 @@ public sealed class NotificationCenterState(NotificationsApiClient api, IJSRunti
     }
 
     /// <summary>Opening a category acknowledges only records no newer than the observed server cutoff.</summary>
-    public async Task<NotificationCategoryReadDto?> MarkCategoryAsReadAsync(
-        string category, DateTimeOffset throughCreatedAtUtc, CancellationToken cancellationToken = default)
+    public Task<NotificationCategoryReadDto?> MarkCategoryAsReadAsync(
+        string category, DateTimeOffset throughCreatedAtUtc, CancellationToken cancellationToken = default) =>
+        MarkReadThroughAsync(category, throughCreatedAtUtc, cancellationToken);
+
+    public Task<NotificationCategoryReadDto?> MarkInboxAsReadAsync(
+        DateTimeOffset throughCreatedAtUtc, CancellationToken cancellationToken = default) =>
+        MarkReadThroughAsync(null, throughCreatedAtUtc, cancellationToken);
+
+    private async Task<NotificationCategoryReadDto?> MarkReadThroughAsync(
+        string? category, DateTimeOffset throughCreatedAtUtc, CancellationToken cancellationToken)
     {
         var operationSession = SessionVersion;
         var operationUserId = userId;
         if (operationUserId is null)
             return null;
         var eligibleIds = Cache.GetCategory(category).Concat(recent)
-            .Where(row => NotificationPresentation.Category(row) == category && row.CreatedAtUtc <= throughCreatedAtUtc && !row.IsRead)
+            .Where(row => (category is null || NotificationPresentation.Category(row) == category) && row.CreatedAtUtc <= throughCreatedAtUtc && !row.IsRead)
             .Select(row => row.Id).ToHashSet();
         // Persist the intent before a busy mutation gate or network timeout can interrupt it.
         await QueueCategoryReadAsync(category, throughCreatedAtUtc);
@@ -248,7 +256,9 @@ public sealed class NotificationCenterState(NotificationsApiClient api, IJSRunti
             NotificationCategoryReadDto receipt;
             try
             {
-                receipt = await api.MarkCategoryAsReadAsync(category, throughCreatedAtUtc, cancellationToken);
+                receipt = category is null
+                    ? await api.MarkInboxAsReadAsync(throughCreatedAtUtc, cancellationToken)
+                    : await api.MarkCategoryAsReadAsync(category, throughCreatedAtUtc, cancellationToken);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
                 (ex is JSException || ex is ApiException { StatusCode: >= 500 }))
@@ -281,7 +291,7 @@ public sealed class NotificationCenterState(NotificationsApiClient api, IJSRunti
         {
             if (operationSession != SessionVersion)
                 return;
-            if (await MarkCategoryAsReadAsync(category, cutoff, cancellationToken) is null)
+            if (await MarkReadThroughAsync(category == NotificationInboxCache.InboxScope ? null : category, cutoff, cancellationToken) is null)
                 break;
         }
     }

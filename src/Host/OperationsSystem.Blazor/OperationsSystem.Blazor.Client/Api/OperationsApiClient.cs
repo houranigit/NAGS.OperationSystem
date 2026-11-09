@@ -19,6 +19,9 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<FlightDetail> GetFlightAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<FlightDetail>($"/operations/flights/{id}", ct);
 
+    public Task<IReadOnlyList<Guid>> GetNotificationTargetsAsync(IReadOnlyList<Guid> flightIds, CancellationToken ct = default) =>
+        api.PostAsync<object, IReadOnlyList<Guid>>("/operations/flights/notification-targets", new { flightIds }, ct);
+
     public Task<Guid> ScheduleFlightAsync(ScheduleFlightRequestModel request, CancellationToken ct = default) =>
         api.PostAsync<ScheduleFlightRequestModel, Guid>("/operations/flights", request, ct);
 

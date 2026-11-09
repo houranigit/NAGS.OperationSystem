@@ -113,7 +113,7 @@
 }
 
 .os-notification-bell__text-action:hover {
-    background: var(--os-color-primary-soft);
+    background: #f0f6ff;
 }
 
 .os-notification-bell__text-action:disabled {
@@ -139,16 +139,10 @@
     color: var(--os-color-text);
     font-family: inherit;
     text-align: start;
-    cursor: pointer;
-    transition: background var(--os-transition);
-}
-
-.os-notification-bell__item:hover {
-    background: var(--os-color-surface-hover);
 }
 
 .os-notification-bell__item--unread {
-    background: var(--os-color-primary-soft);
+    background: #f0f6ff;
 }
 
 .os-notification-bell__item-icon,
@@ -284,7 +278,7 @@
 }
 
 .os-notification-bell__footer button:hover {
-    background: var(--os-color-primary-soft);
+    background: #f0f6ff;
 }
 
 [dir="rtl"] .os-notification-bell__footer ::deep .rz-icon {
@@ -300,3 +294,27 @@
         max-height: calc(100dvh - var(--os-topbar-height) - var(--os-space-5));
     }
 }
+
+.os-notification-bell__open {
+    align-self: center;
+    min-width: 60px;
+    height: 30px;
+    padding: 2px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--os-color-primary);
+    color: var(--os-color-primary-contrast);
+    font: inherit;
+    font-size: var(--os-text-xs);
+    font-weight: 600;
+    cursor: pointer;
+}
+.os-notification-bell__open:hover { filter: brightness(.94); }
+.os-notification-bell__open:focus-visible { outline: 2px solid var(--os-color-primary); outline-offset: 2px; }
+
+.os-notification-bell__item-icon { color: var(--notification-tone); background: var(--notification-tone-soft); border-radius: 50%; }
+.os-notification-bell__item-copy time { font-size: inherit; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.notification-tone--reminder { --notification-tone: #c76a0a; --notification-tone-soft: #fff3e2; }
+.notification-tone--assignment { --notification-tone: #007aff; --notification-tone-soft: #eaf3ff; }
+.notification-tone--info { --notification-tone: #1689b9; --notification-tone-soft: #e9f7fc; }
+.notification-tone--invitation { --notification-tone: #248a3d; --notification-tone-soft: #e9f7ef; }

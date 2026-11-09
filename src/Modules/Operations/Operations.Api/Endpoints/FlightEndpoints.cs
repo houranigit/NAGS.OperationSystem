@@ -19,6 +19,12 @@ internal static class FlightEndpoints
         var flights = group.MapGroup("/flights").WithTags("Operations.Flights");
 
         var mobile = flights.MapGroup("/mobile");
+        mobile.MapPost("/notification-targets", async (FlightNotificationTargetsRequest request, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetFlightNotificationTargetsQuery(request.FlightIds ?? [], MobileOnly: true), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
         mobile.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, string? sort = null, string? category = null) =>
         {
@@ -56,6 +62,12 @@ internal static class FlightEndpoints
             var result = await sender.Send(new InviteEmployeesToFlightCommand(id, request.StaffMemberIds ?? [], rowVersion, MobileOnly: true), ct);
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.Flights.Invite);
+
+        flights.MapPost("/notification-targets", async (FlightNotificationTargetsRequest request, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetFlightNotificationTargetsQuery(request.FlightIds ?? []), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.View);
 
         flights.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, Guid? stationId = null, Guid? customerId = null,

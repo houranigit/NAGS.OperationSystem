@@ -8,6 +8,7 @@ namespace OperationsSystem.Blazor.Client.Features.Notifications;
 public sealed class NotificationInboxCache(IJSRuntime jsRuntime)
 {
     public const int CategoryLimit = 200;
+    public const string InboxScope = "Inbox";
     private const string Prefix = "os:notifications:inbox:v1:";
     private readonly SemaphoreSlim storageGate = new(1, 1);
     private string? storageKey;
@@ -34,7 +35,7 @@ public sealed class NotificationInboxCache(IJSRuntime jsRuntime)
             if (saved is null)
                 return;
             rows = saved.Items.GroupBy(row => row.Id).Select(group => group.First()).ToDictionary(row => row.Id);
-            pending = saved.PendingReads.Where(pair => NotificationCategories.All.Contains(pair.Key))
+            pending = saved.PendingReads.Where(pair => pair.Key == InboxScope || NotificationCategories.All.Contains(pair.Key))
                 .ToDictionary(pair => pair.Key, pair => pair.Value);
             UnreadCount = saved.UnreadCount;
             categoryCounts = saved.CategoryCounts?.Where(pair => NotificationCategories.All.Contains(pair.Key))
@@ -47,15 +48,15 @@ public sealed class NotificationInboxCache(IJSRuntime jsRuntime)
         }
     }
 
-    public IReadOnlyList<NotificationDto> GetCategory(string category) => rows.Values
-        .Where(row => NotificationPresentation.Category(row) == category)
+    public IReadOnlyList<NotificationDto> GetCategory(string? category) => rows.Values
+        .Where(row => category is null || NotificationPresentation.Category(row) == category)
         .OrderByDescending(row => row.CreatedAtUtc).ThenByDescending(row => row.Id).ToArray();
 
     public bool IsReadLocally(NotificationDto row) => row.IsRead
         || rows.TryGetValue(row.Id, out var cached) && cached.IsRead || HasPendingRead(row);
 
-    public bool HasPendingRead(NotificationDto row) => pending.TryGetValue(NotificationPresentation.Category(row), out var cutoff)
-        && row.CreatedAtUtc <= cutoff;
+    public bool HasPendingRead(NotificationDto row) => pending.Any(pair =>
+        (pair.Key == InboxScope || pair.Key == NotificationPresentation.Category(row)) && row.CreatedAtUtc <= pair.Value);
 
     public async Task StoreAsync(IEnumerable<NotificationDto> fetched, int? unreadCount = null, IReadOnlyDictionary<string, int>? counts = null)
     {
@@ -71,29 +72,31 @@ public sealed class NotificationInboxCache(IJSRuntime jsRuntime)
         await SaveAsync();
     }
 
-    public async Task QueueReadAsync(string category, DateTimeOffset cutoff)
+    public async Task QueueReadAsync(string? category, DateTimeOffset cutoff)
     {
         if (storageKey is null)
             return;
-        var newlySeen = rows.Values.Count(row => NotificationPresentation.Category(row) == category
-            && row.CreatedAtUtc <= cutoff && !row.IsRead && !HasPendingRead(row));
-        if (!pending.TryGetValue(category, out var previous) || previous < cutoff)
-            pending[category] = cutoff;
+        var newlySeen = rows.Values.Where(row => (category is null || NotificationPresentation.Category(row) == category)
+            && row.CreatedAtUtc <= cutoff && !row.IsRead && !HasPendingRead(row)).ToArray();
+        var key = category ?? InboxScope;
+        if (!pending.TryGetValue(key, out var previous) || previous < cutoff)
+            pending[key] = cutoff;
         if (UnreadCount is { } count)
-            UnreadCount = Math.Max(0, count - newlySeen);
-        if (categoryCounts.TryGetValue(category, out var categoryCount))
-            categoryCounts[category] = Math.Max(0, categoryCount - newlySeen);
+            UnreadCount = Math.Max(0, count - newlySeen.Length);
+        foreach (var group in newlySeen.GroupBy(NotificationPresentation.Category))
+            if (categoryCounts.TryGetValue(group.Key, out var categoryCount))
+                categoryCounts[group.Key] = Math.Max(0, categoryCount - group.Count());
         await SaveAsync();
     }
 
-    public async Task AcknowledgeAsync(string category, DateTimeOffset cutoff, NotificationCategoryReadDto receipt,
+    public async Task AcknowledgeAsync(string? category, DateTimeOffset cutoff, NotificationCategoryReadDto receipt,
         IReadOnlySet<Guid> eligibleIds)
     {
         foreach (var id in eligibleIds)
             if (rows.TryGetValue(id, out var row) && !row.IsRead)
                 rows[id] = row with { IsRead = true, ReadAtUtc = receipt.ReadAtUtc };
-        if (pending.TryGetValue(category, out var queued) && queued <= cutoff)
-            pending.Remove(category);
+        if (pending.TryGetValue(category ?? InboxScope, out var queued) && queued <= cutoff)
+            pending.Remove(category ?? InboxScope);
         UnreadCount = receipt.UnreadCount;
         categoryCounts = NotificationCategories.All.Where(key => receipt.Counts.ForCategory(key) is not null)
             .ToDictionary(key => key, key => Math.Max(0, receipt.Counts.ForCategory(key)!.Value));

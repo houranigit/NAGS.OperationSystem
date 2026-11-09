@@ -38,6 +38,15 @@ internal static class NotificationEndpoints
             return result.ToOk();
         }).WithName("MarkNotificationCategoryRead");
 
+        group.MapPost("/me/read-inbox", async (
+            MarkNotificationInboxReadRequest request,
+            ISender sender,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await sender.Send(new MarkNotificationInboxReadCommand(request.ThroughCreatedAtUtc), cancellationToken);
+            return result.ToOk();
+        }).WithName("MarkNotificationInboxRead");
+
         group.MapPost("/{id:guid}/read", async (Guid id, ISender sender, CancellationToken cancellationToken) =>
         {
             var result = await sender.Send(new MarkNotificationReadCommand(id), cancellationToken);

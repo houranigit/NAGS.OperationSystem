@@ -56,6 +56,17 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         (await regular.Client.GetAsync($"{Base}/flights/{flightId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         var regularList = await regular.Client.GetFromJsonAsync<PagedList<FlightListItem>>($"{Base}/flights?page=1&pageSize=100");
         regularList!.Items.ShouldNotContain(f => f.Id == flightId);
+
+        // Batch notification targets mirror detail visibility and never echo nonexistent IDs.
+        var targets = new { flightIds = new[] { flightId, Guid.NewGuid(), flightId, Guid.Empty } };
+        using var dispatcherTargets = await dispatcher.Client.PostAsJsonAsync($"{Base}/flights/notification-targets", targets);
+        dispatcherTargets.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await dispatcherTargets.Content.ReadFromJsonAsync<Guid[]>()).ShouldBe([flightId]);
+        using var regularTargets = await regular.Client.PostAsJsonAsync($"{Base}/flights/notification-targets", targets);
+        regularTargets.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await regularTargets.Content.ReadFromJsonAsync<Guid[]>()).ShouldBeEmpty();
+        using var globalTargets = await admin.PostAsJsonAsync($"{Base}/flights/notification-targets", targets);
+        (await globalTargets.Content.ReadFromJsonAsync<Guid[]>()).ShouldBe([flightId]);
     }
 
     [Fact]
@@ -71,6 +82,10 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         (await dispatcher.Client.GetAsync($"{Base}/flights/{otherStationFlightId}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         var list = await dispatcher.Client.GetFromJsonAsync<PagedList<FlightListItem>>($"{Base}/flights?page=1&pageSize=100");
         list!.Items.ShouldNotContain(f => f.Id == otherStationFlightId);
+        using var targets = await dispatcher.Client.PostAsJsonAsync($"{Base}/flights/notification-targets",
+            new { flightIds = new[] { otherStationFlightId } });
+        targets.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await targets.Content.ReadFromJsonAsync<Guid[]>()).ShouldBeEmpty();
     }
 
     [Fact]
@@ -176,10 +191,11 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         var spanning = SeedFlight("6800", arrivalHours: -20, departureHours: 1);
         var outdated = SeedFlight("6900", arrivalHours: -50, departureHours: -49);
         var otherStation = SeedFlight("6999", stationId: Guid.NewGuid());
+        var future = SeedFlight("6998", arrivalHours: 13, departureHours: 14);
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
-            db.Flights.AddRange(landing, ownAdHoc, ownMixed, otherAdHoc, otherMixed, spanning, outdated, otherStation);
+            db.Flights.AddRange(landing, ownAdHoc, ownMixed, otherAdHoc, otherMixed, spanning, outdated, otherStation, future);
             await db.SaveChangesAsync();
         }
 
@@ -201,7 +217,7 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         (await client.GetAsync($"{mobile}?category=unknown")).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await admin.GetAsync(mobile)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await client.GetAsync($"{mobile}/{spanning.Id}")).StatusCode.ShouldBe(HttpStatusCode.OK);
-        foreach (var id in new[] { outdated.Id, otherStation.Id, otherAdHoc.Id, otherMixed.Id, unassignedId })
+        foreach (var id in new[] { outdated.Id, otherStation.Id, otherAdHoc.Id, otherMixed.Id, unassignedId, future.Id })
         {
             (await client.GetAsync($"{mobile}/{id}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
             (await client.GetAsync($"{mobile}/{id}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -213,6 +229,26 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
 
         (await admin.GetAsync($"{Base}/flights/{outdated.Id}")).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await client.GetAsync($"{Base}/flights/{unassignedId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var targetIds = new[] { assignedId, unassignedId, landing.Id, ownAdHoc.Id, ownMixed.Id, otherAdHoc.Id,
+            otherMixed.Id, spanning.Id, outdated.Id, otherStation.Id, future.Id, Guid.NewGuid(), Guid.Empty, landing.Id };
+        using var targets = await client.PostAsJsonAsync($"{mobile}/notification-targets", new { flightIds = targetIds });
+        targets.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await targets.Content.ReadFromJsonAsync<Guid[]>()).ShouldBe(page.Items.Select(item => item.Id), ignoreOrder: true);
+        (await admin.PostAsJsonAsync($"{mobile}/notification-targets", new { flightIds = targetIds }))
+            .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Notification_target_checks_require_flight_view_permission()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, []);
+        using var client = staff.Client;
+        foreach (var path in new[] { "flights/notification-targets", "flights/mobile/notification-targets" })
+            (await client.PostAsJsonAsync($"{Base}/{path}", new { flightIds = new[] { Guid.NewGuid() } }))
+                .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
     // --- Helpers ---------------------------------------------------------------

@@ -3,8 +3,8 @@ using OperationsSystem.Blazor.Client.Api;
 
 namespace OperationsSystem.Blazor.Client.Features.Notifications;
 
-/// <summary>One category visit: paged rows and the read receipts that preserve its initial new-row tint.</summary>
-public sealed class NotificationInboxFeed(NotificationsApiClient api, NotificationCenterState center, string category)
+/// <summary>One inbox visit: paged rows and the read receipts that preserve its initial new-row tint.</summary>
+public sealed class NotificationInboxFeed(NotificationsApiClient api, NotificationCenterState center, string? category = null)
 {
     public const int PageSize = 40;
     private readonly long sessionVersion = center.SessionVersion;
@@ -12,6 +12,7 @@ public sealed class NotificationInboxFeed(NotificationsApiClient api, Notificati
     private const int MemoryPageLimit = 6;
     private readonly Dictionary<int, PagedResult<NotificationDto>> pages = [];
     private readonly HashSet<Guid> newIds = [];
+    private readonly HashSet<Guid> acknowledgedIds = [];
     private readonly HashSet<DateTimeOffset> visitReceipts = [];
     private readonly SemaphoreSlim loadGate = new(1, 1);
     private bool acknowledged;
@@ -20,7 +21,7 @@ public sealed class NotificationInboxFeed(NotificationsApiClient api, Notificati
     private DateTimeOffset? initialCutoff;
     public int VisitNewCount => visitNewCount ?? center.GetCategoryUnreadCount(category);
     public bool IsCached { get; private set; }
-    public bool HasPendingRead => center.Cache.PendingReads.ContainsKey(category);
+    public bool HasPendingRead => center.Cache.PendingReads.ContainsKey(category ?? NotificationInboxCache.InboxScope);
     public long TotalCount { get; private set; }
 
     public bool IsNew(NotificationDto row) => newIds.Contains(row.Id)
@@ -29,7 +30,7 @@ public sealed class NotificationInboxFeed(NotificationsApiClient api, Notificati
 
     public void ObserveLive(NotificationDto notification)
     {
-        if (NotificationPresentation.Category(notification) != category || notification.IsRead || center.Cache.HasPendingRead(notification))
+        if ((category is not null && NotificationPresentation.Category(notification) != category) || notification.IsRead || center.Cache.HasPendingRead(notification))
             return;
         if (newIds.Add(notification.Id) && visitNewCount is not null && notification.CreatedAtUtc > initialCutoff)
             visitNewCount++;
@@ -127,19 +128,23 @@ public sealed class NotificationInboxFeed(NotificationsApiClient api, Notificati
             if (newIds.Add(row.Id) && row.CreatedAtUtc > initialCutoff)
                 visitNewCount++;
         }
-        if (acknowledged && unread.Length == 0)
+        if (acknowledged && !rows.Any(row => !row.IsRead && !center.Cache.HasPendingRead(row) && !acknowledgedIds.Contains(row.Id)))
             return;
         acknowledged = true;
         if (queueOnly)
         {
             await center.QueueCategoryReadAsync(category, rows.Max(row => row.CreatedAtUtc));
+            acknowledgedIds.UnionWith(rows.Select(row => row.Id));
             return;
         }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(5));
         try
         {
-            var receipt = await center.MarkCategoryAsReadAsync(category, rows.Max(row => row.CreatedAtUtc), timeout.Token);
+            var receipt = category is null
+                ? await center.MarkInboxAsReadAsync(rows.Max(row => row.CreatedAtUtc), timeout.Token)
+                : await center.MarkCategoryAsReadAsync(category, rows.Max(row => row.CreatedAtUtc), timeout.Token);
+            acknowledgedIds.UnionWith(rows.Select(row => row.Id));
             if (receipt is not null)
                 visitReceipts.Add(receipt.ReadAtUtc);
         }

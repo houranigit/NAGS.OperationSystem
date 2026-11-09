@@ -39,11 +39,10 @@ class SystemNotificationManager(private val context: Context) {
             ) != PackageManager.PERMISSION_GRANTED
         ) return
 
-        val arabic = Locale.getDefault().language.equals("ar", ignoreCase = true)
-        val title = (if (arabic) payload.titleAr else payload.titleEn).ifBlank {
+        val title = payload.titleEn.ifBlank {
             context.getString(R.string.notification_assigned_title)
         }
-        val body = (if (arabic) payload.bodyAr else payload.bodyEn).ifBlank {
+        val body = payload.bodyEn.ifBlank {
             context.getString(
                 R.string.notification_assigned_body,
                 payload.inviterName ?: context.getString(R.string.notification_fallback_teammate),

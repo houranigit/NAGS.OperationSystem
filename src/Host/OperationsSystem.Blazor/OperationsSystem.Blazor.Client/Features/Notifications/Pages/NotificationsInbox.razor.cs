@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web.Virtualization;
+using Microsoft.JSInterop;
+using System.Globalization;
 using OperationsSystem.Blazor.Client.Api;
-using OperationsSystem.Blazor.Client.Localization;
 using OperationsSystem.Blazor.Client.State;
 using Radzen;
 
@@ -11,27 +11,31 @@ public partial class NotificationsInbox : IAsyncDisposable
 {
     [Inject] private NotificationsApiClient Api { get; set; } = default!;
     [Inject] private NotificationCenterState Center { get; set; } = default!;
-    [Inject] private LocaleState Locale { get; set; } = default!;
     [Inject] private UserTimeZone UserTimeZone { get; set; } = default!;
     [Inject] private NavigationManager Navigation { get; set; } = default!;
     [Inject] private NotificationService Toasts { get; set; } = default!;
     [Inject] private DialogService Dialogs { get; set; } = default!;
+    [Inject] private NotificationTargetAvailability Targets { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
 
-    [Parameter, SupplyParameterFromQuery(Name = "category")]
-    public string? Category { get; set; }
-
-    private string selectedCategory = NotificationCategories.Invitations;
-    private string? loadedCategory;
     private readonly CancellationTokenSource lifetimeCts = new();
-    private CancellationTokenSource? visitCts;
+    private readonly SemaphoreSlim loadGate = new(1, 1);
+    private readonly List<NotificationDto> rows = [];
+    private List<NotificationGroup> groups = [];
     private NotificationInboxFeed? feed;
-    private Virtualize<NotificationDto>? virtualList;
+    private InboxScrollInterop? scroll;
+    private DotNetObjectReference<NotificationsInbox>? self;
+    private ElementReference scrollElement;
+    private ElementReference endSentinel;
     private bool disposed;
     private bool isLoading = true;
     private bool loadError;
     private bool isUpdating;
-    private long visitGeneration;
+    private bool isLoadingMore;
+    private bool pagingError;
+    private int nextIndex;
     private Guid? busyNotificationId;
+    private int rowVersion;
 
     protected override async Task OnInitializedAsync()
     {
@@ -39,112 +43,204 @@ public partial class NotificationsInbox : IAsyncDisposable
         Center.Changed += OnCenterChanged;
         Center.Reconciled += OnCenterReconciled;
         await UserTimeZone.InitializeAsync();
-    }
-
-    protected override async Task OnParametersSetAsync()
-    {
-        var requestedCategory = NotificationCategories.All.Contains(Category, StringComparer.Ordinal)
-            ? Category! : NotificationCategories.Invitations;
-        if (loadedCategory == requestedCategory)
-            return;
-        loadedCategory = requestedCategory;
-        selectedCategory = requestedCategory;
-        visitGeneration++;
-        visitCts?.Cancel();
-        visitCts?.Dispose();
-        visitCts = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCts.Token);
-        virtualList = null;
-        feed = new(Api, Center, selectedCategory);
+        feed = new(Api, Center);
         await LoadAsync();
     }
 
-    private void SelectCategory(string category) => Navigation.NavigateTo($"/notifications?category={category}");
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (disposed || isLoading || loadError || rows.Count == 0)
+            return;
+        scroll ??= new(JS);
+        self ??= DotNetObjectReference.Create(this);
+        await scroll.UpdateAsync(scrollElement, endSentinel, self,
+            !isLoadingMore && !pagingError && nextIndex < feed?.TotalCount, rows.Count);
+    }
 
     private async Task LoadAsync()
     {
-        if (disposed || feed is null || visitCts is null)
+        if (disposed || feed is null)
             return;
-        var currentFeed = feed;
-        var ct = visitCts.Token;
         isLoading = true;
         loadError = false;
+        pagingError = false;
         try
         {
-            await Center.RetryPendingReadsAsync(ct);
-            await currentFeed.LoadAsync(0, NotificationInboxFeed.PageSize, ct);
+            await Center.RetryPendingReadsAsync(lifetimeCts.Token);
+            await RefreshFirstPageAsync();
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
-        catch (Exception) { if (feed == currentFeed) loadError = true; }
-        finally { if (feed == currentFeed) isLoading = false; }
+        catch (OperationCanceledException) when (lifetimeCts.IsCancellationRequested) { }
+        catch (Exception) { loadError = true; }
+        finally { isLoading = false; }
     }
 
-    private async ValueTask<ItemsProviderResult<NotificationDto>> ProvideItems(ItemsProviderRequest request)
+    private async Task RefreshFirstPageAsync()
     {
-        var currentFeed = feed;
-        if (currentFeed is null || visitCts is null)
-            return new([], 0);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(request.CancellationToken, visitCts.Token);
+        await loadGate.WaitAsync(lifetimeCts.Token);
         try
         {
-            var slice = await currentFeed.LoadAsync(request.StartIndex, request.Count, linked.Token);
-            if (feed != currentFeed)
-                return new([], 0);
-            await InvokeAsync(StateHasChanged);
-            return new(slice.Items, slice.TotalCount);
-        }
-        catch (OperationCanceledException) when (linked.IsCancellationRequested) { return new([], 0); }
-        catch (Exception)
-        {
-            if (feed == currentFeed)
+            if (disposed || feed is null)
+                return;
+            if (!feed.HasCurrentSession)
             {
-                loadError = true;
-                await InvokeAsync(StateHasChanged);
+                feed = new(Api, Center);
+                rows.Clear();
+                groups.Clear();
+                nextIndex = 0;
+                if (!Center.IsInitialized)
+                    return;
             }
-            return new([], 0);
+            feed.Invalidate();
+            var slice = await feed.LoadAsync(0, NotificationInboxFeed.PageSize, lifetimeCts.Token);
+            if (busyNotificationId is not null)
+                return;
+            var freshIds = slice.Items.Select(row => row.Id).ToHashSet();
+            // A live first-page refresh keeps already fetched older history in the same visit.
+            var merged = slice.Items.Concat(rows.Where(row => !freshIds.Contains(row.Id)))
+                .OrderByDescending(row => row.CreatedAtUtc).ThenByDescending(row => row.Id).ToArray();
+            rows.Clear();
+            rows.AddRange(merged.Take(slice.TotalCount));
+            nextIndex = rows.Count;
+            await Targets.CheckAsync(rows, lifetimeCts.Token);
+            RebuildGroups();
         }
+        finally { loadGate.Release(); }
+    }
+
+    [JSInvokable]
+    public async Task LoadOlderAsync()
+    {
+        await InvokeAsync(async () =>
+        {
+            if (disposed || isLoading || isLoadingMore || pagingError || feed is null || nextIndex >= feed.TotalCount)
+                return;
+            isLoadingMore = true;
+            StateHasChanged();
+            await loadGate.WaitAsync(lifetimeCts.Token);
+            try
+            {
+                var slice = await feed.LoadAsync(nextIndex, NotificationInboxFeed.PageSize, lifetimeCts.Token);
+                nextIndex += slice.Items.Count;
+                var ids = rows.Select(row => row.Id).ToHashSet();
+                rows.AddRange(slice.Items.Where(row => ids.Add(row.Id)));
+                if (slice.Items.Count == 0)
+                    nextIndex = slice.TotalCount;
+                await Targets.CheckAsync(slice.Items, lifetimeCts.Token);
+                RebuildGroups();
+            }
+            catch (OperationCanceledException) when (lifetimeCts.IsCancellationRequested) { }
+            catch (Exception) { pagingError = true; }
+            finally
+            {
+                loadGate.Release();
+                isLoadingMore = false;
+                if (!disposed) StateHasChanged();
+            }
+        });
+    }
+
+    private async Task RetryOlderAsync()
+    {
+        pagingError = false;
+        await LoadOlderAsync();
+    }
+
+    private void RebuildGroups()
+    {
+        var today = DateOnly.FromDateTime(UserTimeZone.ToLocalDateTime(DateTimeOffset.UtcNow));
+        groups = rows.OrderByDescending(row => feed?.IsNew(row) == true)
+            .ThenByDescending(row => row.CreatedAtUtc).ThenByDescending(row => row.Id)
+            .GroupBy(row => feed?.IsNew(row) == true ? "new"
+                : DateOnly.FromDateTime(UserTimeZone.ToLocalDateTime(row.CreatedAtUtc)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+            .Select(group => new NotificationGroup(group.Key, group.Key == "new" ? "New"
+                : NotificationPresentation.DateHeading(DateOnly.ParseExact(group.Key, "yyyy-MM-dd", CultureInfo.InvariantCulture), today), group.ToList()))
+            .ToList();
     }
 
     private async Task OpenAsync(NotificationDto notification)
     {
+        try { await Targets.CheckAsync([notification], lifetimeCts.Token, force: true); }
+        catch (OperationCanceledException) when (lifetimeCts.IsCancellationRequested) { return; }
+        if (!Targets.IsOpenable(notification))
+        {
+            // Refresh each virtualized group's items so its cached row fragment drops Open too.
+            rowVersion++;
+            RebuildGroups();
+            StateHasChanged();
+            return;
+        }
         using var readCts = CancellationTokenSource.CreateLinkedTokenSource(lifetimeCts.Token);
         readCts.CancelAfter(TimeSpan.FromSeconds(5));
         if (!Center.Cache.IsReadLocally(notification))
         {
             try { await Center.MarkAsReadAsync(notification.Id, readCts.Token); }
-            catch (Exception) { /* Category read is already queued if connectivity is unavailable. */ }
+            catch (Exception) { /* The inbox read cutoff remains queued while offline. */ }
         }
         if (!disposed)
             Navigation.NavigateTo(NotificationPresentation.DeepLink(notification) ?? NotificationPresentation.InboxLink(notification));
     }
 
-    private async Task ArchiveAsync(NotificationDto notification)
+    private async Task BeginDeleteAsync(Guid notificationId)
     {
-        if (busyNotificationId is not null)
-            return;
-        busyNotificationId = notification.Id;
-        try
+        scroll ??= new(JS);
+        await scroll.DeleteAsync(notificationId);
+    }
+
+    [JSInvokable]
+    public async Task<bool> DeleteNotificationAsync(Guid notificationId)
+    {
+        var success = false;
+        await InvokeAsync(async () =>
         {
-            await Center.ArchiveAsync(notification.Id, lifetimeCts.Token);
-            await RefreshRowsAsync();
-        }
-        catch (Exception) { ShowActionFailure(); }
-        finally { busyNotificationId = null; }
+            if (disposed || busyNotificationId is not null || !rows.Any(row => row.Id == notificationId))
+                return;
+            var currentFeed = feed;
+            busyNotificationId = notificationId;
+            StateHasChanged();
+            try
+            {
+                await Center.ArchiveAsync(notificationId, lifetimeCts.Token);
+                success = !disposed && feed == currentFeed && currentFeed?.HasCurrentSession == true;
+            }
+            catch (OperationCanceledException) when (lifetimeCts.IsCancellationRequested) { }
+            catch (Exception) { ShowActionFailure(); }
+            finally
+            {
+                if (!success) busyNotificationId = null;
+                if (!disposed) StateHasChanged();
+            }
+        });
+        return success;
+    }
+
+    [JSInvokable]
+    public async Task CompleteNotificationDeleteAsync(Guid notificationId)
+    {
+        await InvokeAsync(async () =>
+        {
+            if (disposed || busyNotificationId != notificationId)
+                return;
+            rows.RemoveAll(row => row.Id == notificationId);
+            busyNotificationId = null;
+            RebuildGroups();
+            StateHasChanged();
+            try { await RefreshRowsAsync(); }
+            catch (OperationCanceledException) when (lifetimeCts.IsCancellationRequested) { }
+            catch (Exception) { pagingError = true; StateHasChanged(); }
+        });
     }
 
     private async Task ArchiveAllAsync()
     {
-        var confirmed = await Dialogs.Confirm(UiStrings.Notifications.ArchiveAllConfirm,
-            UiStrings.Notifications.ArchiveAllTitle, new ConfirmOptions
-            {
-                OkButtonText = UiStrings.Notifications.ArchiveAll,
-                CancelButtonText = UiStrings.Common.Cancel
-            });
+        var confirmed = await Dialogs.Confirm("Archived notifications remain in history.",
+            "Delete all notifications?", new ConfirmOptions { OkButtonText = "Delete all", CancelButtonText = "Cancel" });
         if (confirmed is not true || disposed)
             return;
         isUpdating = true;
         try
         {
             await Center.ArchiveAllAsync(lifetimeCts.Token);
+            rows.Clear();
             await RefreshRowsAsync();
         }
         catch (Exception) { ShowActionFailure(); }
@@ -155,45 +251,18 @@ public partial class NotificationsInbox : IAsyncDisposable
     {
         if (disposed || feed is null)
             return;
-        if (!feed.HasCurrentSession)
-        {
-            feed = new(Api, Center, selectedCategory);
-            virtualList = null;
-        }
-        feed.Invalidate();
-        if (virtualList is not null)
-            await virtualList.RefreshDataAsync();
-        else
-            await LoadAsync();
-        StateHasChanged();
-    }
-
-    private string CategoryClass(string category) => selectedCategory == category
-        ? "os-notifications-category os-notifications-category--active" : "os-notifications-category";
-
-    private static string RelativeTime(DateTimeOffset createdAtUtc)
-    {
-        var elapsed = DateTimeOffset.UtcNow - createdAtUtc;
-        if (elapsed < TimeSpan.FromMinutes(1)) return UiStrings.Common.JustNow;
-        if (elapsed < TimeSpan.FromHours(1)) return string.Format(UiStrings.Common.MinutesAgo, Math.Max(1, (int)elapsed.TotalMinutes));
-        if (elapsed < TimeSpan.FromDays(1)) return string.Format(UiStrings.Common.HoursAgo, Math.Max(1, (int)elapsed.TotalHours));
-        return string.Format(UiStrings.Common.DaysAgo, Math.Max(1, (int)elapsed.TotalDays));
+        await RefreshFirstPageAsync();
+        if (!disposed) StateHasChanged();
     }
 
     private void ShowActionFailure() => Toasts.Notify(NotificationSeverity.Error,
-        UiStrings.Notifications.Title, UiStrings.Notifications.ActionFailed);
+        "Notifications", "The notification could not be updated. Please try again.");
 
     private void OnLiveReceived(NotificationDto notification)
     {
-        if (NotificationPresentation.Category(notification) == selectedCategory)
-        {
-            feed?.ObserveLive(notification);
-            OnCenterReconciled();
-        }
+        feed?.ObserveLive(notification);
+        OnCenterReconciled();
     }
-
-    private int CategoryNewCount(string category) => category == selectedCategory && feed is not null
-        ? feed.VisitNewCount : Center.GetCategoryUnreadCount(category);
 
     private async void OnCenterChanged()
     {
@@ -203,21 +272,64 @@ public partial class NotificationsInbox : IAsyncDisposable
 
     private async void OnCenterReconciled()
     {
+        // Keep the keyed row in place until its successful removal animation completes.
+        if (busyNotificationId is not null)
+            return;
         try { await InvokeAsync(RefreshRowsAsync); }
-        catch (OperationCanceledException) when (disposed || visitCts?.IsCancellationRequested == true) { }
-        catch (Exception ex) { await DispatchExceptionAsync(ex); }
+        catch (OperationCanceledException) when (disposed || lifetimeCts.IsCancellationRequested) { }
+        catch (Exception)
+        {
+            if (!disposed)
+                await InvokeAsync(() => { pagingError = true; StateHasChanged(); });
+        }
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         disposed = true;
-        lifetimeCts.Cancel();
-        visitCts?.Cancel();
-        visitCts?.Dispose();
-        lifetimeCts.Dispose();
         Center.LiveReceived -= OnLiveReceived;
         Center.Changed -= OnCenterChanged;
         Center.Reconciled -= OnCenterReconciled;
-        return ValueTask.CompletedTask;
+        lifetimeCts.Cancel();
+        if (scroll is not null) await scroll.DisposeAsync();
+        self?.Dispose();
+        lifetimeCts.Dispose();
+    }
+
+    private sealed record NotificationGroup(string Key, string Heading, List<NotificationDto> Items);
+
+    private sealed class InboxScrollInterop(IJSRuntime js) : IAsyncDisposable
+    {
+        private const string ModulePath = "./Features/Notifications/Pages/NotificationsInbox.razor.js";
+        private const string UpdateMethod = "update";
+        private const string DisposeMethod = "dispose";
+        private const string DeleteMethod = "deleteNotification";
+        private IJSObjectReference? module;
+
+        public async ValueTask UpdateAsync(ElementReference root, ElementReference sentinel,
+            DotNetObjectReference<NotificationsInbox> receiver, bool enabled, int rowCount)
+        {
+            module ??= await js.InvokeAsync<IJSObjectReference>("import", ModulePath);
+            await module.InvokeVoidAsync(UpdateMethod, root, sentinel, receiver, enabled, rowCount);
+        }
+
+        public async ValueTask DeleteAsync(Guid notificationId)
+        {
+            module ??= await js.InvokeAsync<IJSObjectReference>("import", ModulePath);
+            await module.InvokeVoidAsync(DeleteMethod, notificationId);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                if (module is not null)
+                {
+                    await module.InvokeVoidAsync(DisposeMethod);
+                    await module.DisposeAsync();
+                }
+            }
+            catch (JSDisconnectedException) { }
+        }
     }
 }

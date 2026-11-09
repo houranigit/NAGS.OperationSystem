@@ -1,6 +1,7 @@
 using OperationsSystem.Blazor.Client.Api;
 using OperationsSystem.Blazor.Client.Localization;
 using OperationsSystem.Blazor.Client.State;
+using System.Globalization;
 
 namespace OperationsSystem.Blazor.Client.Features.Notifications;
 
@@ -35,15 +36,32 @@ public static class NotificationPresentation
         _ => "flight_takeoff"
     };
 
-    public static string Title(NotificationDto notification, LocaleState locale) =>
-        locale.IsRightToLeft && !string.IsNullOrWhiteSpace(notification.TitleAr)
-            ? notification.TitleAr
-            : notification.TitleEn;
+    public static string ToneClass(NotificationDto notification) => notification.Kind switch
+    {
+        "FlightReminder" => "notification-tone--reminder",
+        "EmployeeInvitedToFlight" => "notification-tone--invitation",
+        "FlightScheduleUpdated" => "notification-tone--info",
+        _ => "notification-tone--assignment"
+    };
 
-    public static string Body(NotificationDto notification, LocaleState locale) =>
-        locale.IsRightToLeft && !string.IsNullOrWhiteSpace(notification.BodyAr)
-            ? notification.BodyAr
-            : notification.BodyEn;
+    public static string Title(NotificationDto notification, LocaleState locale) => notification.TitleEn;
+
+    public static string Body(NotificationDto notification, LocaleState locale) => notification.BodyEn;
+
+    public static string RelativeAge(DateTimeOffset createdAtUtc, DateTimeOffset now)
+    {
+        var elapsed = now - createdAtUtc;
+        if (elapsed < TimeSpan.FromMinutes(1)) return "now";
+        if (elapsed < TimeSpan.FromHours(1)) return $"{(int)elapsed.TotalMinutes}m";
+        if (elapsed < TimeSpan.FromDays(1)) return $"{(int)elapsed.TotalHours}h";
+        if (elapsed < TimeSpan.FromDays(7)) return $"{(int)elapsed.TotalDays}d";
+        if (elapsed < TimeSpan.FromDays(30)) return $"{(int)(elapsed.TotalDays / 7)}w";
+        return $"{(int)(elapsed.TotalDays / 30)}mo";
+    }
+
+    public static string DateHeading(DateOnly date, DateOnly today) => date == today ? "Today"
+        : date == today.AddDays(-1) ? "Yesterday"
+        : date.ToString(date.Year == today.Year ? "MMMM d" : "MMMM d, yyyy", CultureInfo.InvariantCulture);
 
     public static bool TryGetFlightId(NotificationDto notification, out Guid flightId)
     {
@@ -62,10 +80,10 @@ public static class NotificationPresentation
     }
 
     public static string? DeepLink(NotificationDto notification) =>
-        TryGetFlightId(notification, out var flightId)
+        notification.Kind != "FlightScheduleUpdated" && TryGetFlightId(notification, out var flightId)
             ? $"/operations/flights?search={flightId}"
             : null;
 
     public static string InboxLink(NotificationDto notification) =>
-        $"/notifications?category={Category(notification)}";
+        "/notifications";
 }

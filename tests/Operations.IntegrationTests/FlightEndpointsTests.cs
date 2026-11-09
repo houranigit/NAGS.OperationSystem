@@ -21,6 +21,26 @@ public sealed class FlightEndpointsTests(OperationsApiFactory factory) : IClassF
             .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await client.PostAsJsonAsync($"{OperationsApiFactory.Base}/flights/bulk", new { }))
             .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        foreach (var path in new[] { "flights/notification-targets", "flights/mobile/notification-targets" })
+            (await client.PostAsJsonAsync($"{OperationsApiFactory.Base}/{path}", new { flightIds = new[] { Guid.NewGuid() } }))
+                .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Notification_target_checks_limit_request_size_and_allow_an_empty_batch()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        foreach (var path in new[] { "flights/notification-targets", "flights/mobile/notification-targets" })
+        {
+            var tooMany = await admin.PostAsJsonAsync($"{OperationsApiFactory.Base}/{path}",
+                new { flightIds = Enumerable.Range(0, 101).Select(_ => Guid.NewGuid()).ToArray() });
+            tooMany.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            (await tooMany.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("code").GetString()
+                .ShouldBe("Operations.Flight.NotificationTargetsLimit");
+        }
+        var empty = await admin.PostAsJsonAsync($"{OperationsApiFactory.Base}/flights/notification-targets", new { flightIds = Array.Empty<Guid>() });
+        empty.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await empty.Content.ReadFromJsonAsync<Guid[]>()).ShouldBeEmpty();
     }
 
     [Fact]

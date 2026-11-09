@@ -32,6 +32,7 @@ public static class PortalClientServices
         services.AddScoped<NotificationsApiClient>();
         services.AddScoped<AuthSession>();
         services.AddScoped<NotificationCenterState>();
+        services.AddScoped<NotificationTargetAvailability>();
         services.AddScoped<NotificationsRealtimeClient>();
 
         services.AddAuthorizationCore();

@@ -71,7 +71,29 @@ public sealed class MarkNotificationCategoryReadCommandHandler(INotificationsDbC
             return Error.Unauthorized("Authentication is required.", "Notifications.Unauthenticated");
         if (!NotificationCategoryFilter.IsSupported(request.Category))
             return Error.Validation("Category must be Invitations, Reminders, or FlightUpdates.", "Notifications.Category.Invalid");
-        if (request.ThroughCreatedAtUtc is not { } cutoff || cutoff == default)
+        return await NotificationReadThrough.ApplyAsync(db, userId, timeProvider, request.ThroughCreatedAtUtc, request.Category, cancellationToken);
+    }
+}
+
+public sealed record MarkNotificationInboxReadCommand(DateTimeOffset? ThroughCreatedAtUtc) : ICommand<NotificationCategoryReadDto>;
+
+public sealed class MarkNotificationInboxReadCommandHandler(INotificationsDbContext db, IUserContext user, TimeProvider timeProvider)
+    : ICommandHandler<MarkNotificationInboxReadCommand, NotificationCategoryReadDto>
+{
+    public async Task<Result<NotificationCategoryReadDto>> Handle(MarkNotificationInboxReadCommand request, CancellationToken cancellationToken)
+    {
+        if (user.UserId is not { } userId)
+            return Error.Unauthorized("Authentication is required.", "Notifications.Unauthenticated");
+        return await NotificationReadThrough.ApplyAsync(db, userId, timeProvider, request.ThroughCreatedAtUtc, null, cancellationToken);
+    }
+}
+
+internal static class NotificationReadThrough
+{
+    public static async Task<Result<NotificationCategoryReadDto>> ApplyAsync(INotificationsDbContext db, Guid userId,
+        TimeProvider timeProvider, DateTimeOffset? throughCreatedAtUtc, string? category, CancellationToken cancellationToken)
+    {
+        if (throughCreatedAtUtc is not { } cutoff || cutoff == default)
             return Error.Validation("A notification creation-time cutoff is required.", "Notifications.CategoryRead.CutoffRequired");
 
         var now = timeProvider.GetUtcNow().ToUniversalTime();
@@ -80,7 +102,7 @@ public sealed class MarkNotificationCategoryReadCommandHandler(INotificationsDbC
             return Error.Validation("The notification creation-time cutoff cannot be in the future.", "Notifications.CategoryRead.CutoffInFuture");
 
         var query = db.Notifications.Where(n => n.RecipientUserId == userId && n.ReadAtUtc == null && n.ArchivedAtUtc == null);
-        await NotificationCategoryFilter.Apply(query, request.Category)
+        await NotificationCategoryFilter.Apply(query, category)
             .Where(n => n.CreatedAtUtc <= cutoff)
             .ExecuteUpdateAsync(setters => setters.SetProperty(n => n.ReadAtUtc, now), cancellationToken);
         var unread = await NotificationUnreadCounts.ReadAsync(db, userId, cancellationToken);

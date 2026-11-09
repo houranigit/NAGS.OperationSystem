@@ -21,7 +21,7 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
             graph.sharedCatalogsRepository, graph.flightsRepository, graph.networkMonitor, graph.catalogConnectionState,
             graph.lastCatalogEventAt, graph::refreshCatalogs, graph.isSyncing,
         )
-        NotificationsViewModel::class.java -> NotificationsViewModel(graph.notificationsRepository)
+        NotificationsViewModel::class.java -> NotificationsViewModel(graph.notificationsRepository, graph.flightsRepository)
         else -> throw IllegalArgumentException("Unknown ViewModel ${modelClass.name}")
     } as T
 }

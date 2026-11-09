@@ -12,3 +12,5 @@ public sealed record RegisterDeviceTokenRequest(
 public sealed record RevokeDeviceTokenRequest(string Token);
 
 public sealed record MarkNotificationCategoryReadRequest(string? Category, DateTimeOffset? ThroughCreatedAtUtc);
+
+public sealed record MarkNotificationInboxReadRequest(DateTimeOffset? ThroughCreatedAtUtc);

@@ -1,5 +1,7 @@
 namespace Operations.Api.Endpoints;
 
+public sealed record FlightNotificationTargetsRequest(IReadOnlyList<Guid>? FlightIds);
+
 public sealed record ScheduleFlightRequest(
     Guid CustomerId,
     Guid StationId,

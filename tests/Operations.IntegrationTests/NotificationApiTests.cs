@@ -19,6 +19,10 @@ public sealed class NotificationApiTests(OperationsApiFactory factory) : IClassF
 
         (await client.GetAsync("/api/v1/notifications/me")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await client.GetAsync("/api/v1/notifications/me/unread-count")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await client.PostAsJsonAsync("/api/v1/notifications/me/read-inbox", new
+        {
+            throughCreatedAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1)
+        })).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await client.PostAsJsonAsync("/api/v1/notifications/me/read-category", new
         {
             category = NotificationCategories.Invitations,
@@ -190,7 +194,7 @@ public sealed class NotificationApiTests(OperationsApiFactory factory) : IClassF
             var page = (await client.GetFromJsonAsync<CategoryPageDto>(
                 "/api/v1/notifications/me?category=Invitations&page=1&pageSize=20"))!;
             page.Items.Count.ShouldBe(20);
-            page.TotalCount.ShouldBe(65);
+            page.TotalCount.ShouldBe(66); // The unfiltered tab also includes its previously read row.
             var counts = (await client.GetFromJsonAsync<UnreadNotificationCountDto>("/api/v1/notifications/me/unread-count"))!;
             counts.ShouldBe(new UnreadNotificationCountDto(71, 65, 3, 3));
 
@@ -316,6 +320,101 @@ public sealed class NotificationApiTests(OperationsApiFactory factory) : IClassF
             await using var cleanup = factory.Services.CreateAsyncScope();
             var db = cleanup.ServiceProvider.GetRequiredService<NotificationsDbContext>();
             await db.Notifications.Where(item => ids.Contains(item.Id)).ExecuteDeleteAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Inbox_read_covers_all_kinds_through_cutoff_preserves_ownership_and_is_idempotent()
+    {
+        using var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var me = (await client.GetFromJsonAsync<MeDto>($"{OperationsApiFactory.IdentityBase}/me"))!;
+        var cutoff = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var kinds = new[]
+        {
+            NotificationKind.EmployeeInvitedToFlight, NotificationKind.FlightReminder,
+            NotificationKind.StaffAssignedToFlight, NotificationKind.FlightScheduleUpdated, "LegacyFlightMessage"
+        };
+        var eligible = kinds.Select((kind, index) => CategoryItem(me.Id, kind, cutoff.AddMinutes(-index))).ToList();
+        var newer = CategoryItem(me.Id, NotificationKind.FlightReminder, cutoff.AddMinutes(1));
+        var previouslyRead = CategoryItem(me.Id, NotificationKind.EmployeeInvitedToFlight, cutoff.AddMinutes(-2), read: true);
+        var previousReadAt = previouslyRead.ReadAtUtc;
+        var archived = CategoryItem(me.Id, NotificationKind.StaffAssignedToFlight, cutoff.AddMinutes(-3), archived: true);
+        var foreign = CategoryItem(Guid.NewGuid(), NotificationKind.FlightScheduleUpdated, cutoff.AddMinutes(-4));
+        var rows = eligible.Concat([newer, previouslyRead, archived, foreign]).ToList();
+        var ids = rows.Select(item => item.Id).ToList();
+        var eligibleIds = eligible.Select(item => item.Id).ToArray();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NotificationsDbContext>();
+            db.Notifications.AddRange(rows);
+            await db.SaveChangesAsync();
+        }
+        try
+        {
+            var response = await client.PostAsJsonAsync("/api/v1/notifications/me/read-inbox", new
+            {
+                throughCreatedAtUtc = cutoff.ToOffset(TimeSpan.FromHours(3))
+            });
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+            var receipt = (await response.Content.ReadFromJsonAsync<NotificationCategoryReadDto>())!;
+            receipt.ReadAtUtc.Offset.ShouldBe(TimeSpan.Zero);
+            receipt.ReadAtUtc.ShouldBeGreaterThan(cutoff);
+            new UnreadNotificationCountDto(receipt.UnreadCount, receipt.Invitations, receipt.Reminders, receipt.FlightUpdates)
+                .ShouldBe(new UnreadNotificationCountDto(1, 0, 1, 0));
+
+            await using (var verify = factory.Services.CreateAsyncScope())
+            {
+                var db = verify.ServiceProvider.GetRequiredService<NotificationsDbContext>();
+                var persisted = await db.Notifications.AsNoTracking().Where(item => ids.Contains(item.Id)).ToListAsync();
+                persisted.Where(item => eligibleIds.Contains(item.Id)).ShouldAllBe(item => item.ReadAtUtc == receipt.ReadAtUtc);
+                persisted.Single(item => item.Id == previouslyRead.Id).ReadAtUtc.ShouldBe(previousReadAt);
+                persisted.Where(item => item.Id == newer.Id || item.Id == archived.Id || item.Id == foreign.Id)
+                    .ShouldAllBe(item => item.ReadAtUtc == null);
+            }
+
+            var late = CategoryItem(me.Id, NotificationKind.StaffAssignedToFlight, cutoff.AddMinutes(2));
+            ids.Add(late.Id);
+            await using (var add = factory.Services.CreateAsyncScope())
+            {
+                var db = add.ServiceProvider.GetRequiredService<NotificationsDbContext>();
+                db.Notifications.Add(late);
+                await db.SaveChangesAsync();
+            }
+            var retry = await client.PostAsJsonAsync("/api/v1/notifications/me/read-inbox", new { throughCreatedAtUtc = cutoff });
+            retry.StatusCode.ShouldBe(HttpStatusCode.OK);
+            var retriedReceipt = (await retry.Content.ReadFromJsonAsync<NotificationCategoryReadDto>())!;
+            new UnreadNotificationCountDto(retriedReceipt.UnreadCount, retriedReceipt.Invitations,
+                retriedReceipt.Reminders, retriedReceipt.FlightUpdates).ShouldBe(new UnreadNotificationCountDto(2, 0, 1, 1));
+            await using var afterRetry = factory.Services.CreateAsyncScope();
+            var current = afterRetry.ServiceProvider.GetRequiredService<NotificationsDbContext>();
+            (await current.Notifications.AsNoTracking().Where(item => eligibleIds.Contains(item.Id)).ToListAsync())
+                .ShouldAllBe(item => item.ReadAtUtc == receipt.ReadAtUtc);
+            (await current.Notifications.AsNoTracking().SingleAsync(item => item.Id == late.Id)).ReadAtUtc.ShouldBeNull();
+        }
+        finally
+        {
+            await using var cleanup = factory.Services.CreateAsyncScope();
+            var db = cleanup.ServiceProvider.GetRequiredService<NotificationsDbContext>();
+            await db.Notifications.Where(item => ids.Contains(item.Id)).ExecuteDeleteAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Inbox_read_rejects_missing_default_and_future_cutoffs()
+    {
+        using var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var cases = new[]
+        {
+            (Cutoff: (DateTimeOffset?)null, Code: "Notifications.CategoryRead.CutoffRequired"),
+            (Cutoff: (DateTimeOffset?)default(DateTimeOffset), Code: "Notifications.CategoryRead.CutoffRequired"),
+            (Cutoff: (DateTimeOffset?)DateTimeOffset.UtcNow.AddDays(1), Code: "Notifications.CategoryRead.CutoffInFuture")
+        };
+        foreach (var input in cases)
+        {
+            var response = await client.PostAsJsonAsync("/api/v1/notifications/me/read-inbox",
+                new { throughCreatedAtUtc = input.Cutoff });
+            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString().ShouldBe(input.Code);
         }
     }
 

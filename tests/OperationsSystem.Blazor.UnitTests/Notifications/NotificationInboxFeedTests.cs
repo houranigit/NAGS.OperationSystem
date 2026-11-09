@@ -11,6 +11,78 @@ namespace OperationsSystem.Blazor.UnitTests.Notifications;
 public sealed class NotificationInboxFeedTests
 {
     [Fact]
+    public async Task Whole_inbox_visit_reads_mixed_kinds_through_cutoff_and_preserves_older_new_tint()
+    {
+        var runtime = MixedInbox(85);
+        var previouslyRead = runtime.Rows[70] with { IsRead = true, ReadAtUtc = DateTimeOffset.UtcNow.AddDays(-1) };
+        runtime.Rows[70] = previouslyRead;
+        var (api, center) = NewClient(runtime);
+        await center.InitializeAsync(Guid.NewGuid());
+        runtime.PauseRead = true;
+        var feed = new NotificationInboxFeed(api, center);
+        var loading = feed.LoadAsync(0, 40, default);
+        await runtime.ReadStarted.Task;
+        var cutoff = runtime.Rows[0].CreatedAtUtc;
+        var newer = Row(-1) with { Kind = "FlightScheduleUpdated", CreatedAtUtc = cutoff.AddMinutes(1) };
+        runtime.Rows.Insert(0, newer);
+        center.ApplyLive(newer);
+        runtime.ContinueRead.SetResult();
+
+        var first = await loading;
+        first.Items.Select(row => row.Kind).Distinct().Count().ShouldBe(4);
+        first.Items.ShouldAllBe(row => feed.IsNew(row));
+        center.UnreadCount.ShouldBe(1);
+        runtime.Rows.Where(row => row.CreatedAtUtc <= cutoff).ShouldAllBe(row => row.IsRead);
+        runtime.Rows.Single(row => row.Id == newer.Id).IsRead.ShouldBeFalse();
+        runtime.Rows.Single(row => row.Id == previouslyRead.Id).ReadAtUtc.ShouldBe(previouslyRead.ReadAtUtc);
+
+        var older = await feed.LoadAsync(40, 40, default);
+        older.Items.Where(row => row.Id != previouslyRead.Id).ShouldAllBe(row => feed.IsNew(row));
+        feed.IsNew(older.Items.Single(row => row.Id == previouslyRead.Id)).ShouldBeFalse();
+        runtime.ReadCalls.ShouldBe(1);
+        var nextVisit = new NotificationInboxFeed(api, center);
+        (await nextVisit.LoadAsync(40, 40, default)).Items.ShouldAllBe(row => !nextVisit.IsNew(row));
+    }
+
+    [Fact]
+    public async Task Whole_inbox_offline_read_replays_after_reload_without_reading_a_newer_notification()
+    {
+        var userId = Guid.NewGuid();
+        var runtime = MixedInbox(70);
+        var (_, initial) = NewClient(runtime);
+        await initial.InitializeAsync(userId);
+        var cutoff = runtime.Rows[0].CreatedAtUtc;
+        runtime.Offline = true;
+        var (api, center) = NewClient(runtime);
+        await center.InitializeAsync(userId);
+        var feed = new NotificationInboxFeed(api, center);
+
+        var saved = await feed.LoadAsync(0, 40, default);
+        saved.Items.Select(row => row.Kind).Distinct().Count().ShouldBe(4);
+        saved.Items.ShouldAllBe(row => feed.IsNew(row));
+        center.Cache.PendingReads.ShouldContainKey(NotificationInboxCache.InboxScope);
+        center.UnreadCount.ShouldBe(0);
+        runtime.AttemptedReadCalls.ShouldBe(0);
+
+        var (restoredApi, restored) = NewClient(runtime);
+        await restored.InitializeAsync(userId);
+        var nextVisit = new NotificationInboxFeed(restoredApi, restored);
+        (await nextVisit.LoadAsync(0, 40, default)).Items.ShouldAllBe(row => !nextVisit.IsNew(row));
+        restored.Cache.PendingReads.Count.ShouldBe(1);
+        var newer = Row(-1) with { Kind = "FlightScheduleUpdated", CreatedAtUtc = cutoff.AddMinutes(1) };
+        runtime.Rows.Insert(0, newer);
+        runtime.Offline = false;
+        await restored.RetryPendingReadsAsync();
+        await restored.RefreshAsync();
+
+        restored.Cache.PendingReads.ShouldBeEmpty();
+        restored.UnreadCount.ShouldBe(1);
+        runtime.ReadCalls.ShouldBe(1);
+        runtime.Rows.Where(row => row.CreatedAtUtc <= cutoff).ShouldAllBe(row => row.IsRead);
+        runtime.Rows.Single(row => row.Id == newer.Id).IsRead.ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task Category_visit_reads_older_unloaded_pages_and_retains_new_tint_until_next_visit()
     {
         var runtime = new InboxRuntime(85);
@@ -244,6 +316,15 @@ public sealed class NotificationInboxFeedTests
         restored.GetCategoryUnreadCount(NotificationCategories.FlightUpdates).ShouldBe(1);
     }
 
+    private static InboxRuntime MixedInbox(int count)
+    {
+        var runtime = new InboxRuntime(count);
+        string[] kinds = ["EmployeeInvitedToFlight", "FlightReminder", "StaffAssignedToFlight", "FlightScheduleUpdated"];
+        for (var index = 0; index < runtime.Rows.Count; index++)
+            runtime.Rows[index] = runtime.Rows[index] with { Kind = kinds[index % kinds.Length] };
+        return runtime;
+    }
+
     private static NotificationDto Row(int index) => new(Guid.NewGuid(), "EmployeeInvitedToFlight", "Flight invitation", "Invitation details",
         "دعوة رحلة", "تفاصيل الدعوة", new Dictionary<string, string>(), false, DateTimeOffset.UtcNow.AddMinutes(-10-index), null);
 
@@ -286,16 +367,17 @@ public sealed class NotificationInboxFeedTests
             if (identifier != "operationsSystem.api.request")
                 return default!;
             var path = (string)args![1]!;
-            if (path == "/notifications/me/read-category")
+            if (path is "/notifications/me/read-category" or "/notifications/me/read-inbox")
                 AttemptedReadCalls++;
             if (Offline)
                 throw new JSException("Failed to fetch");
             object response;
-            if (path == "/notifications/me/read-category")
+            if (path is "/notifications/me/read-category" or "/notifications/me/read-inbox")
             {
                 ReadCalls++;
-                var request = (MarkNotificationCategoryReadRequest)args[2]!;
-                var affected = Rows.Where(row => NotificationPresentation.Category(row) == request.Category && row.CreatedAtUtc <= request.ThroughCreatedAtUtc && !row.IsRead).Select(row => row.Id).ToHashSet();
+                var request = path == "/notifications/me/read-category" ? (MarkNotificationCategoryReadRequest)args[2]! : null;
+                var cutoff = request?.ThroughCreatedAtUtc ?? JsonSerializer.SerializeToElement(args[2], Options).GetProperty("throughCreatedAtUtc").GetDateTimeOffset();
+                var affected = Rows.Where(row => (request is null || NotificationPresentation.Category(row) == request.Category) && row.CreatedAtUtc <= cutoff && !row.IsRead).Select(row => row.Id).ToHashSet();
                 if (PauseRead)
                 {
                     ReadStarted.TrySetResult();

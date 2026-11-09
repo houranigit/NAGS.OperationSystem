@@ -12,11 +12,18 @@ import com.nags.operations.data.db.entities.NotificationCategoryReadEntity
 import com.nags.operations.data.db.entities.NotificationUnreadStateEntity
 
 /** Notification cache for the flight baseline. The former operations.db remains untouched. */
-@Database(version = 2, exportSchema = true, entities = [NotificationEntity::class, NotificationCategoryReadEntity::class, NotificationUnreadStateEntity::class])
+@Database(version = 3, exportSchema = true, entities = [NotificationEntity::class, NotificationCategoryReadEntity::class, NotificationUnreadStateEntity::class])
 abstract class NotificationsDatabase : RoomDatabase() {
     abstract fun notificationDao(): NotificationDao
 
     companion object {
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE notification_unread_state ADD COLUMN invitations INTEGER")
+                db.execSQL("ALTER TABLE notification_unread_state ADD COLUMN reminders INTEGER")
+                db.execSQL("ALTER TABLE notification_unread_state ADD COLUMN flightUpdates INTEGER")
+            }
+        }
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("""
@@ -41,7 +48,7 @@ abstract class NotificationsDatabase : RoomDatabase() {
                 context.applicationContext,
                 NotificationsDatabase::class.java,
                 "operations-baseline.db",
-            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
         }
     }
 }

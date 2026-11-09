@@ -1,40 +1,27 @@
 @page "/notifications"
 
-<PageTitle>@UiStrings.Notifications.Title</PageTitle>
+<PageTitle>Notifications</PageTitle>
 
 <RequireAuth>
-    <main class="os-list-page os-notifications-page">
-        <PageHeader Title="@UiStrings.Notifications.Title" Description="@UiStrings.Notifications.Description">
+    <main class="os-list-page os-notifications-page" lang="en" dir="ltr">
+        <PageHeader Title="Notifications">
             <Actions>
                 @if (feed?.TotalCount > 0)
                 {
-                    <RadzenButton Text="@UiStrings.Notifications.ArchiveAll" Icon="inventory_2" ButtonStyle="ButtonStyle.Light"
-                                  Disabled="@isUpdating" Click="@ArchiveAllAsync" />
+                    <RowActionMenu Label="Notification actions" Busy="@isUpdating">
+                        <RowAction Text="Delete all" Icon="delete_outline" Danger="true" OnClick="ArchiveAllAsync" />
+                    </RowActionMenu>
                 }
             </Actions>
         </PageHeader>
 
-        <nav class="os-notifications-categories" aria-label="@UiStrings.Notifications.Categories">
-            @foreach (var category in NotificationCategories.All)
-            {
-                <button @key="category" type="button" class="@CategoryClass(category)"
-                        aria-pressed="@(selectedCategory == category)" @onclick="() => SelectCategory(category)">
-                    <span>@NotificationPresentation.CategoryLabel(category)</span>
-                    @if (CategoryNewCount(category) > 0)
-                    {
-                        <span class="os-notifications-category__count" aria-label="@string.Format(UiStrings.Notifications.NewCount, CategoryNewCount(category))">@CategoryNewCount(category)</span>
-                    }
-                </button>
-            }
-        </nav>
-
         @if (isLoading)
         {
-            <LoadingCard Message="@UiStrings.Common.Loading" />
+            <LoadingCard Message="Loading notifications…" />
         }
         else if (loadError)
         {
-            <ErrorState Message="@UiStrings.Notifications.LoadFailed" OnRetry="@LoadAsync" />
+            <ErrorState Message="We couldn't load your notifications." OnRetry="LoadAsync" />
         }
         else
         {
@@ -42,47 +29,59 @@
             {
                 <div class="os-notifications-offline" role="status">
                     <RadzenIcon Icon="cloud_off" />
-                    <span>@UiStrings.Notifications.CachedDescription</span>
-                    <button type="button" @onclick="LoadAsync">@UiStrings.Common.Refresh</button>
+                    <span>Showing saved notifications. Read status will sync when connected.</span>
+                    <button type="button" @onclick="LoadAsync">Refresh</button>
                 </div>
             }
-            @if (feed?.TotalCount == 0)
+            @if (rows.Count == 0)
             {
-                <EmptyState Icon="notifications_none" Title="@UiStrings.Notifications.EmptyTitle"
-                            Description="@UiStrings.Notifications.EmptyDescription" />
+                <EmptyState Icon="notifications_none" Title="You're all caught up"
+                            Description="Your notifications will appear here." />
             }
             else
             {
-                <section class="os-notifications-scroll" tabindex="0" aria-label="@NotificationPresentation.CategoryLabel(selectedCategory)">
-                    <Virtualize @key="visitGeneration" @ref="virtualList" Context="notification" ItemsProvider="ProvideItems"
-                                ItemSize="128" OverscanCount="3">
-                        <ItemContent>
-                            <article @key="notification.Id" class="os-notification-row @(feed?.IsNew(notification) == true ? "os-notification-row--new" : null)">
-                                <button type="button" class="os-notification-row__main" @onclick="() => OpenAsync(notification)">
-                                    <span class="os-notification-row__icon"><RadzenIcon Icon="@NotificationPresentation.Icon(notification)" /></span>
-                                    <span class="os-notification-row__copy">
-                                        <span class="os-notification-row__meta">
-                                            <span>@NotificationPresentation.KindLabel(notification)</span>
-                                            <time datetime="@notification.CreatedAtUtc.ToString("O")" title="@($"{UserTimeZone.Format(notification.CreatedAtUtc, "F")} ({UserTimeZone.Id})")">
-                                                @RelativeTime(notification.CreatedAtUtc)
-                                            </time>
-                                        </span>
-                                        <strong>@NotificationPresentation.Title(notification, Locale)</strong>
-                                        <span class="os-notification-row__body">@NotificationPresentation.Body(notification, Locale)</span>
-                                    </span>
-                                    <RadzenIcon class="os-notification-row__arrow" Icon="@(Locale.IsRightToLeft ? "chevron_left" : "chevron_right")" />
-                                </button>
-                                <button type="button" class="os-notification-row__archive" title="@UiStrings.Notifications.Archive"
-                                        aria-label="@($"{UiStrings.Notifications.Archive}: {NotificationPresentation.Title(notification, Locale)}")"
-                                        disabled="@(busyNotificationId == notification.Id)" @onclick="() => ArchiveAsync(notification)">
-                                    <RadzenIcon Icon="inventory_2" />
-                                </button>
-                            </article>
-                        </ItemContent>
-                        <Placeholder>
-                            <div class="os-notification-placeholder" aria-hidden="true"><span></span><span></span></div>
-                        </Placeholder>
-                    </Virtualize>
+                <section @ref="scrollElement" class="os-notifications-scroll" tabindex="0" aria-label="Notifications">
+                    @foreach (var group in groups)
+                    {
+                        <section @key="group.Key" class="os-notification-group" aria-label="@group.Heading">
+                            <h2>@group.Heading</h2>
+                            <Virtualize @key="(group.Key, rowVersion)" Context="notification" Items="@group.Items" ItemSize="96" OverscanCount="3">
+                                <ItemContent>
+                                    <div @key="notification.Id" data-swipe-row data-notification-id="@notification.Id"
+                                         class="os-notification-swipe" tabindex="0" aria-label="@($"{notification.TitleEn}. Swipe left to show Delete, or swipe fully left to delete.")">
+                                        <button type="button" class="os-notification-delete" aria-label="@($"Delete {notification.TitleEn}")"
+                                                disabled="@(busyNotificationId == notification.Id)" @onclick="() => BeginDeleteAsync(notification.Id)">Delete</button>
+                                        <article class="os-notification-row @NotificationPresentation.ToneClass(notification) @(feed?.IsNew(notification) == true ? "os-notification-row--new" : null)">
+                                            <span class="os-notification-row__icon"><RadzenIcon Icon="@NotificationPresentation.Icon(notification)" /></span>
+                                            <span class="os-notification-row__copy">
+                                                <strong>@notification.TitleEn</strong>
+                                                <span class="os-notification-row__body">@notification.BodyEn<span class="os-notification-age-space">&nbsp;&nbsp;</span><time datetime="@notification.CreatedAtUtc.ToString("O")">@NotificationPresentation.RelativeAge(notification.CreatedAtUtc, DateTimeOffset.UtcNow)</time></span>
+                                            </span>
+                                            @if (Targets.IsOpenable(notification))
+                                            {
+                                                <button type="button" class="os-notification-open" @onclick="() => OpenAsync(notification)">Open</button>
+                                            }
+                                        </article>
+                                    </div>
+                                </ItemContent>
+                                <Placeholder>
+                                    <div class="os-notification-placeholder" aria-hidden="true"><span></span><span></span></div>
+                                </Placeholder>
+                            </Virtualize>
+                        </section>
+                    }
+                    <div @ref="endSentinel" class="os-notifications-end" aria-hidden="true"></div>
+                    @if (isLoadingMore)
+                    {
+                        <div class="os-notifications-paging" role="status">Loading…</div>
+                    }
+                    @if (pagingError)
+                    {
+                        <div class="os-notifications-paging" role="status">
+                            <span>We couldn't load older notifications.</span>
+                            <button type="button" @onclick="RetryOlderAsync">Retry</button>
+                        </div>
+                    }
                 </section>
             }
         }

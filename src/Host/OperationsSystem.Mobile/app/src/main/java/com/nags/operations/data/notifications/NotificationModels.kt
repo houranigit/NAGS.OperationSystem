@@ -11,8 +11,8 @@ data class NotificationDto(
     val kind: String,
     val titleEn: String,
     val bodyEn: String,
-    val titleAr: String,
-    val bodyAr: String,
+    val titleAr: String = "",
+    val bodyAr: String = "",
     val payload: Map<String, String> = emptyMap(),
     val isRead: Boolean,
     val createdAtUtc: String,
@@ -35,22 +35,32 @@ data class NotificationPageDto(
 data class ReadNotificationCategoryRequest(val category: NotificationCategory, val throughCreatedAtUtc: String)
 
 @Serializable
-data class CategoryReadReceiptDto(val readAtUtc: String, val unreadCount: Int)
+data class ReadNotificationInboxRequest(val throughCreatedAtUtc: String)
+
+@Serializable
+data class CategoryReadReceiptDto(
+    val readAtUtc: String, val unreadCount: Int,
+    val invitations: Int? = null, val reminders: Int? = null, val flightUpdates: Int? = null,
+)
 
 data class CategoryReadResult(
     val throughCreatedAtUtc: String,
     val localReadAtUtc: String,
     val serverReadAtUtc: String? = null,
+    val preAckUnreadCount: Int? = null,
 )
 
 data class CategoryReadAcknowledgement(
-    val category: NotificationCategory,
+    val category: NotificationCategory?,
     val localReadAtUtc: String,
     val serverReadAtUtc: String,
 )
 
 @Serializable
-data class UnreadNotificationCountDto(val count: Int)
+data class UnreadNotificationCountDto(
+    val count: Int,
+    val invitations: Int? = null, val reminders: Int? = null, val flightUpdates: Int? = null,
+)
 
 @Serializable
 data class RegisterDeviceTokenRequest(

@@ -9,7 +9,7 @@ namespace OperationsSystem.Blazor.UnitTests.Notifications;
 public sealed class NotificationPresentationTests
 {
     [Fact]
-    public async Task Presentation_uses_active_locale_and_builds_flight_deep_link()
+    public async Task Presentation_stays_English_and_builds_flight_deep_link_regardless_of_app_locale()
     {
         var locale = new LocaleState(new NoOpJsRuntime());
         var flightId = Guid.NewGuid();
@@ -21,14 +21,40 @@ public sealed class NotificationPresentationTests
         await locale.SetLanguageAsync(LocaleState.Arabic);
         try
         {
-            NotificationPresentation.Title(notification, locale).ShouldBe("تم تعيينك");
-            NotificationPresentation.Body(notification, locale).ShouldBe("أضافك أحد الزملاء.");
+            NotificationPresentation.Title(notification, locale).ShouldBe("Assigned");
+            NotificationPresentation.Body(notification, locale).ShouldBe("A teammate added you.");
             NotificationPresentation.DeepLink(notification).ShouldBe($"/operations/flights?search={flightId}");
         }
         finally
         {
             await locale.SetLanguageAsync(LocaleState.English);
         }
+    }
+
+    [Theory]
+    [InlineData(-1, "now")]
+    [InlineData(0, "now")]
+    [InlineData(5, "5m")]
+    [InlineData(120, "2h")]
+    [InlineData(4320, "3d")]
+    [InlineData(10080, "1w")]
+    [InlineData(40320, "4w")]
+    [InlineData(43200, "1mo")]
+    [InlineData(86400, "2mo")]
+    public void Relative_age_uses_compact_units_and_distinguishes_months_from_minutes(int minutes, string expected)
+    {
+        var now = DateTimeOffset.Parse("2026-11-09T12:00:00Z");
+        NotificationPresentation.RelativeAge(now.AddMinutes(-minutes), now).ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("2026-11-09", "Today")]
+    [InlineData("2026-11-08", "Yesterday")]
+    [InlineData("2026-11-07", "November 7")]
+    [InlineData("2025-11-07", "November 7, 2025")]
+    public void Date_heading_names_recent_days_and_keeps_older_dates_in_English(string date, string expected)
+    {
+        NotificationPresentation.DateHeading(DateOnly.Parse(date), new(2026, 11, 9)).ShouldBe(expected);
     }
 
     [Fact]
@@ -39,6 +65,24 @@ public sealed class NotificationPresentationTests
 
         NotificationPresentation.DeepLink(missing).ShouldBeNull();
         NotificationPresentation.DeepLink(invalid).ShouldBeNull();
+    }
+
+    [Fact]
+    public void Schedule_updates_do_not_target_a_single_flight_even_if_legacy_payload_contains_an_id()
+    {
+        var scheduleUpdate = Notification(Guid.NewGuid()) with { Kind = "FlightScheduleUpdated" };
+
+        NotificationPresentation.DeepLink(scheduleUpdate).ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("FlightReminder", "notification-tone--reminder")]
+    [InlineData("StaffAssignedToFlight", "notification-tone--assignment")]
+    [InlineData("FlightScheduleUpdated", "notification-tone--info")]
+    [InlineData("EmployeeInvitedToFlight", "notification-tone--invitation")]
+    public void Notification_kinds_use_their_requested_semantic_tones(string kind, string tone)
+    {
+        NotificationPresentation.ToneClass(Notification(Guid.NewGuid()) with { Kind = kind }).ShouldBe(tone);
     }
 
     [Theory]
@@ -53,7 +97,7 @@ public sealed class NotificationPresentationTests
 
         NotificationPresentation.Category(notification).ShouldBe(category);
         NotificationPresentation.Icon(notification).ShouldBe(icon);
-        NotificationPresentation.InboxLink(notification).ShouldBe($"/notifications?category={category}");
+        NotificationPresentation.InboxLink(notification).ShouldBe("/notifications");
     }
 
     private static NotificationDto Notification(Guid flightId) => new(

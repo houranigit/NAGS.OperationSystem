@@ -4,15 +4,16 @@
 @inject UserTimeZone UserTimeZone
 @inject NavigationManager Navigation
 @inject NotificationService Toasts
+@inject NotificationTargetAvailability Targets
 
 <div class="os-notification-bell @(isOpen ? "os-notification-bell--open" : null)">
-    <button type="button" class="os-notification-bell__trigger" title="@UiStrings.Notifications.Title"
-            aria-label="@UiStrings.Notifications.BellLabel" aria-haspopup="true" aria-expanded="@isOpen"
+    <button type="button" class="os-notification-bell__trigger" title="Notifications"
+            aria-label="Open notifications" aria-haspopup="true" aria-expanded="@isOpen"
             @onclick="ToggleAsync">
         <RadzenIcon Icon="notifications_none" />
         @if (Center.UnreadCount > 0)
         {
-            <span class="os-notification-bell__badge" aria-label="@string.Format(UiStrings.Notifications.UnreadCount, Center.UnreadCount)">
+            <span class="os-notification-bell__badge" aria-label="@($"{Center.UnreadCount} unread")">
                 @(Center.UnreadCount > 99 ? "99+" : Center.UnreadCount.ToString())
             </span>
         }
@@ -21,13 +22,13 @@
     @if (isOpen)
     {
         <button type="button" class="os-notification-bell__backdrop" aria-label="@UiStrings.Common.Close" @onclick="Close"></button>
-        <section class="os-notification-bell__panel" aria-label="@UiStrings.Notifications.Recent">
+        <section class="os-notification-bell__panel" aria-label="Recent notifications" lang="en" dir="ltr">
             <header class="os-notification-bell__header">
                 <div>
-                    <strong>@UiStrings.Notifications.Title</strong>
+                    <strong>Notifications</strong>
                     @if (Center.UnreadCount > 0)
                     {
-                        <small>@string.Format(UiStrings.Notifications.UnreadCount, Center.UnreadCount)</small>
+                        <small>@($"{Center.UnreadCount} unread")</small>
                     }
                 </div>
             </header>
@@ -46,44 +47,42 @@
                 {
                     <div class="os-notification-bell__state">
                         <span class="os-notification-bell__state-icon"><RadzenIcon Icon="cloud_off" /></span>
-                        <strong>@UiStrings.Notifications.LoadFailed</strong>
-                        <small>@UiStrings.Notifications.LiveUnavailable</small>
-                        <button type="button" @onclick="RefreshAsync">@UiStrings.Common.Refresh</button>
+                        <strong>We couldn't load your notifications.</strong>
+                        <small>Refresh to check for recent notifications.</small>
+                        <button type="button" @onclick="RefreshAsync">Refresh</button>
                     </div>
                 }
                 else if (Center.Recent.Count == 0)
                 {
                     <div class="os-notification-bell__state">
                         <span class="os-notification-bell__state-icon os-notification-bell__state-icon--success"><RadzenIcon Icon="done_all" /></span>
-                        <strong>@UiStrings.Notifications.EmptyTitle</strong>
-                        <small>@UiStrings.Notifications.EmptyDescription</small>
+                        <strong>You're all caught up</strong>
+                        <small>Your notifications will appear here.</small>
                     </div>
                 }
                 else
                 {
                     @foreach (var notification in Center.Recent)
                     {
-                        <button @key="notification.Id" type="button"
-                                class="os-notification-bell__item @(!notification.IsRead ? "os-notification-bell__item--unread" : null)"
-                                @onclick="() => OpenAsync(notification)">
+                        <article @key="notification.Id"
+                                 class="os-notification-bell__item @NotificationPresentation.ToneClass(notification) @(!notification.IsRead ? "os-notification-bell__item--unread" : null)">
                             <span class="os-notification-bell__item-icon"><RadzenIcon Icon="@NotificationPresentation.Icon(notification)" /></span>
                             <span class="os-notification-bell__item-copy">
                                 <strong>@NotificationPresentation.Title(notification, Locale)</strong>
-                                <span>@NotificationPresentation.Body(notification, Locale)</span>
-                                <small title="@($"{UserTimeZone.Format(notification.CreatedAtUtc, "F")} ({UserTimeZone.Id})")">@RelativeTime(notification.CreatedAtUtc)</small>
+                                <span>@NotificationPresentation.Body(notification, Locale)&nbsp;&nbsp;<time datetime="@notification.CreatedAtUtc.ToString("O")">@NotificationPresentation.RelativeAge(notification.CreatedAtUtc, DateTimeOffset.UtcNow)</time></span>
                             </span>
-                            @if (!notification.IsRead)
+                            @if (Targets.IsOpenable(notification))
                             {
-                                <span class="os-notification-bell__unread-dot"></span>
+                                <button type="button" class="os-notification-bell__open" @onclick="() => OpenAsync(notification)">Open</button>
                             }
-                        </button>
+                        </article>
                     }
                 }
             </div>
 
             <footer class="os-notification-bell__footer">
                 <button type="button" @onclick="ViewAll">
-                    <span>@UiStrings.Notifications.ViewAll</span>
+                    <span>View all notifications</span>
                     <RadzenIcon Icon="arrow_forward" />
                 </button>
             </footer>
@@ -104,15 +103,26 @@
     {
         isOpen = !isOpen;
         if (isOpen)
+        {
             await Center.RefreshAsync(lifetimeCts.Token);
+            await Targets.CheckAsync(Center.Recent, lifetimeCts.Token);
+        }
     }
 
     private void Close() => isOpen = false;
 
-    private async Task RefreshAsync() => await Center.RefreshAsync(lifetimeCts.Token);
+    private async Task RefreshAsync()
+    {
+        await Center.RefreshAsync(lifetimeCts.Token);
+        await Targets.CheckAsync(Center.Recent, lifetimeCts.Token);
+    }
 
     private async Task OpenAsync(NotificationDto notification)
     {
+        try { await Targets.CheckAsync([notification], lifetimeCts.Token, force: true); }
+        catch (OperationCanceledException) when (lifetimeCts.IsCancellationRequested) { return; }
+        if (!Targets.IsOpenable(notification))
+            return;
         if (!notification.IsRead)
         {
             try
@@ -123,7 +133,7 @@
             }
             catch (Exception)
             {
-                Toasts.Notify(NotificationSeverity.Error, UiStrings.Notifications.Title, UiStrings.Notifications.ActionFailed);
+                Toasts.Notify(NotificationSeverity.Error, "Notifications", "The notification could not be updated. Please try again.");
             }
         }
 
@@ -139,24 +149,18 @@
         Navigation.NavigateTo("/notifications");
     }
 
-    private static string RelativeTime(DateTimeOffset createdAtUtc)
-    {
-        var elapsed = DateTimeOffset.UtcNow - createdAtUtc;
-        if (elapsed < TimeSpan.FromMinutes(1))
-            return UiStrings.Common.JustNow;
-        if (elapsed < TimeSpan.FromHours(1))
-            return string.Format(UiStrings.Common.MinutesAgo, Math.Max(1, (int)elapsed.TotalMinutes));
-        if (elapsed < TimeSpan.FromDays(1))
-            return string.Format(UiStrings.Common.HoursAgo, Math.Max(1, (int)elapsed.TotalHours));
-        return string.Format(UiStrings.Common.DaysAgo, Math.Max(1, (int)elapsed.TotalDays));
-    }
-
     private async void OnCenterChanged()
     {
         try
         {
-            await InvokeAsync(StateHasChanged);
+            await InvokeAsync(async () =>
+            {
+                if (disposed) return;
+                if (isOpen) await Targets.CheckAsync(Center.Recent, lifetimeCts.Token);
+                StateHasChanged();
+            });
         }
+        catch (OperationCanceledException) when (lifetimeCts.IsCancellationRequested) { }
         catch (Exception ex)
         {
             await DispatchExceptionAsync(ex);

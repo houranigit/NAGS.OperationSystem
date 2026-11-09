@@ -15,6 +15,7 @@ import com.nags.operations.data.notifications.NotificationPageDto
 import com.nags.operations.data.notifications.CategoryReadReceiptDto
 import com.nags.operations.data.notifications.CategoryReadResult
 import com.nags.operations.data.notifications.CategoryReadAcknowledgement
+import com.nags.operations.data.notifications.UnreadNotificationCountDto
 import com.nags.operations.data.ApiException
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import java.io.IOException
@@ -44,7 +45,7 @@ import java.util.concurrent.atomic.AtomicLong
 @OptIn(ExperimentalCoroutinesApi::class)
 class NotificationsRepository internal constructor(
     private val fetchInbox: suspend (Int, Int, NotificationCategory?) -> NotificationPageDto,
-    private val fetchUnreadCount: suspend () -> Int,
+    private val fetchUnreadCount: suspend () -> UnreadNotificationCountDto,
     private val sendMarkRead: suspend (String) -> Unit,
     private val sendMarkAllRead: suspend () -> Unit,
     private val sendArchive: suspend (String) -> Unit,
@@ -55,10 +56,11 @@ class NotificationsRepository internal constructor(
     private val appScope: CoroutineScope,
     private val sendCategoryRead: suspend (NotificationCategory, String) -> CategoryReadReceiptDto = { _, _ -> error("Category reads are not configured.") },
     private val isOnline: () -> Boolean = { true },
+    private val sendInboxRead: suspend (String) -> CategoryReadReceiptDto = { error("Inbox reads are not configured.") },
 ) {
     constructor(api: NotificationsApi, db: NotificationsDatabase, tokenStore: TokenStore, appScope: CoroutineScope, online: StateFlow<Boolean>) : this(
         fetchInbox = { page, size, category -> api.inbox(page, size, unreadOnly = false, category = category) },
-        fetchUnreadCount = api::unreadCount,
+        fetchUnreadCount = api::unreadState,
         sendMarkRead = api::markRead,
         sendMarkAllRead = api::markAllRead,
         sendArchive = api::archive,
@@ -69,6 +71,7 @@ class NotificationsRepository internal constructor(
         appScope = appScope,
         sendCategoryRead = api::readCategory,
         isOnline = { online.value },
+        sendInboxRead = api::readInbox,
     )
 
     private data class RemoteUnreadCount(val recipientUserId: String, val count: Int, val revision: Long)
@@ -114,6 +117,15 @@ class NotificationsRepository internal constructor(
             }
         }.distinctUntilChanged()
 
+    fun observeCategoryUnreadCounts(): Flow<Map<NotificationCategory, Int>> = subjectFlow.flatMapLatest { subject ->
+        if (subject.isNullOrBlank()) flowOf(emptyMap())
+        else combine(dao.observeAll(subject), dao.observeUnreadTotal(subject)) { rows, saved ->
+            NotificationCategory.entries.associateWith { category ->
+                saved?.forCategory(category) ?: rows.count { !it.isRead && category.includes(it.kind) }
+            }
+        }
+    }.distinctUntilChanged()
+
     suspend fun refresh(page: Int = 1, pageSize: Int = PAGE_SIZE, category: NotificationCategory? = null): NotificationPageDto {
         if (category == null) inboxRequestVersions.values.forEach { it.next() }
         val versions = inboxRequestVersions.getValue(category)
@@ -136,6 +148,7 @@ class NotificationsRepository internal constructor(
             return NotificationPageDto(cached.map { it.toDto() }, page, pageSize, cached.size.toLong(),
                 totalPages = page, isFromCache = true)
         }
+        if (isCurrentSubject(subject)) refreshUnreadCountSafely()
         writeMutex.withLock {
             if (!isCurrentSubject(subject)) return@withLock
             if (!versions.isLatest(requestVersion) || (category == null && !cacheRequestVersions.isLatest(cacheVersion))) return@withLock
@@ -153,7 +166,6 @@ class NotificationsRepository internal constructor(
                 dao.upsertAll(rows.filterNot { it.id in archived })
             }
         }
-        if (isCurrentSubject(subject)) refreshUnreadCountSafely()
         return result
     }
 
@@ -165,43 +177,56 @@ class NotificationsRepository internal constructor(
         syncPendingReads()
         if (dao.pendingCategoryReads(subject).isNotEmpty() || !isOnline()) return
         val requestVersion = unreadRequestVersions.next()
-        val count = fetchUnreadCount().coerceAtLeast(0)
+        val counts = fetchUnreadCount()
         writeMutex.withLock {
             if (unreadRequestVersions.isLatest(requestVersion) && isCurrentSubject(subject)) {
-                setUnreadCount(subject, count, requestVersion)
+                setUnreadCount(subject, counts.count.coerceAtLeast(0), requestVersion, counts)
             }
         }
     }
 
     /** Persist locally first; the application-owned job continues when the inbox is closed. */
-    suspend fun acknowledgeCategory(category: NotificationCategory): CategoryReadResult? {
+    suspend fun acknowledgeCategory(category: NotificationCategory): CategoryReadResult? = acknowledgeScope(category)
+
+    suspend fun acknowledgeInbox(): CategoryReadResult? = acknowledgeScope(null)
+
+    private suspend fun acknowledgeScope(category: NotificationCategory?): CategoryReadResult? {
         // Bind the intent to the caller's account before the detached job can be delayed.
         val generation = sessionGeneration.get()
         val subject = currentSubject()?.takeIf(String::isNotBlank) ?: return null
+        var preAckUnreadCount: Int? = null
         return appScope.async {
             val queued = writeMutex.withLock {
                 if (!isCurrentSubject(subject) || sessionGeneration.get() != generation) return@withLock null
-                val rows = dao.observeAll(subject).first().filter { category.includes(it.kind) }
+                val rows = dao.observeAll(subject).first().filter { category == null || category.includes(it.kind) }
                 val latest = rows.maxByOrNull { instant(it.createdAtUtc) } ?: return@withLock null
-                val previous = dao.categoryRead(subject, category.name)
+                val scope = category?.name ?: INBOX_SCOPE
+                val previous = dao.categoryRead(subject, scope)
                 val cutoff = previous?.throughCreatedAtUtc?.takeIf { instant(it).isAfter(instant(latest.createdAtUtc)) }
                     ?: latest.createdAtUtc
                 val unreadIds = rows.filterNot { it.isRead }.map { it.id }
                 val readAt = OffsetDateTime.now(ZoneOffset.UTC).toString()
-                val pending = NotificationCategoryReadEntity(subject, category.name, cutoff, readAt,
+                val pending = NotificationCategoryReadEntity(subject, scope, cutoff, readAt,
                     pending = true, unreadDelta = (previous?.takeIf { it.pending }?.unreadDelta ?: 0) + unreadIds.size)
                 val observed = remoteUnreadCount.value?.takeIf { it.recipientUserId.equals(subject, ignoreCase = true) }
-                val count = observed?.count ?: dao.unreadTotal(subject)?.count ?: dao.observeUnreadCount(subject).first()
-                val total = NotificationUnreadStateEntity(subject, (count - unreadIds.size).coerceAtLeast(0))
+                val saved = dao.unreadTotal(subject)
+                preAckUnreadCount = if (category == null) saved?.count else saved?.forCategory(category)
+                val count = observed?.count ?: saved?.count ?: dao.observeUnreadCount(subject).first()
+                var total = (saved ?: NotificationUnreadStateEntity(subject, count))
+                    .copy(count = (count - unreadIds.size).coerceAtLeast(0))
+                for (kind in NotificationCategory.entries) {
+                    total = total.adjustCategory(kind, -rows.count { !it.isRead && kind.includes(it.kind) })
+                }
                 dao.queueCategoryRead(pending, unreadIds, total)
                 unreadRequestVersions.next()
                 remoteUnreadCount.value = RemoteUnreadCount(subject, total.count, observed?.revision ?: 0)
                 pending
             } ?: return@async null
             syncPendingReads()
-            val acknowledged = dao.categoryRead(subject, category.name)
+            val acknowledged = dao.categoryRead(subject, category?.name ?: INBOX_SCOPE)
             CategoryReadResult(queued.throughCreatedAtUtc, queued.localReadAtUtc,
-                acknowledged?.takeIf { !it.pending && it.throughCreatedAtUtc == queued.throughCreatedAtUtc }?.serverReadAtUtc)
+                acknowledged?.takeIf { !it.pending && it.throughCreatedAtUtc == queued.throughCreatedAtUtc }?.serverReadAtUtc,
+                preAckUnreadCount)
         }.await()
     }
 
@@ -213,7 +238,8 @@ class NotificationsRepository internal constructor(
                 val generation = sessionGeneration.get()
                 while (isCurrentSubject(subject) && sessionGeneration.get() == generation) {
                     val sent = dao.pendingCategoryReads(subject).firstOrNull() ?: break
-                    val receipt = sendCategoryRead(NotificationCategory.valueOf(sent.category), sent.throughCreatedAtUtc)
+                    val receipt = if (sent.category == INBOX_SCOPE) sendInboxRead(sent.throughCreatedAtUtc)
+                        else sendCategoryRead(NotificationCategory.valueOf(sent.category), sent.throughCreatedAtUtc)
                     writeMutex.withLock {
                         if (!isCurrentSubject(subject) || sessionGeneration.get() != generation) return@withLock
                         val current = dao.categoryRead(subject, sent.category) ?: return@withLock
@@ -223,12 +249,13 @@ class NotificationsRepository internal constructor(
                             serverReadAtUtc = receipt.readAtUtc)
                         // Other devices may already have read other pending categories. The server
                         // count must not have their local deltas subtracted a second time.
-                        val total = NotificationUnreadStateEntity(subject, receipt.unreadCount.coerceAtLeast(0))
+                        val total = NotificationUnreadStateEntity(subject, receipt.unreadCount.coerceAtLeast(0),
+                            receipt.invitations, receipt.reminders, receipt.flightUpdates)
                         dao.completeCategoryRead(completed, total)
                         val revision = unreadRequestVersions.next()
                         remoteUnreadCount.value = RemoteUnreadCount(subject, total.count, revision)
                         readAcknowledgements.tryEmit(ReadAcknowledgement(subject, CategoryReadAcknowledgement(
-                            NotificationCategory.valueOf(sent.category), sent.localReadAtUtc, receipt.readAtUtc)))
+                            if (sent.category == INBOX_SCOPE) null else NotificationCategory.valueOf(sent.category), sent.localReadAtUtc, receipt.readAtUtc)))
                     }
                 }
             }
@@ -277,9 +304,11 @@ class NotificationsRepository internal constructor(
         sendMarkRead(id)
         writeMutex.withLock {
             if (!isCurrentSubject(subject)) return@withLock
-            val wasUnread = dao.getById(id, subject)?.let { !it.isRead && !it.isArchived } == true
+            val existing = dao.getById(id, subject)
+            val wasUnread = existing?.let { !it.isRead && !it.isArchived } == true
             dao.markRead(id, subject, OffsetDateTime.now(ZoneOffset.UTC).toString())
-            adjustUnreadCount(subject, if (wasUnread) -1 else 0, observedCount)
+            adjustUnreadCount(subject, if (wasUnread) -1 else 0, observedCount,
+                existing?.let { row -> NotificationCategory.entries.first { it.includes(row.kind) } })
         }
         if (isCurrentSubject(subject)) refreshUnreadCountSafely()
     }
@@ -303,9 +332,11 @@ class NotificationsRepository internal constructor(
         sendArchive(id)
         writeMutex.withLock {
             if (!isCurrentSubject(subject)) return@withLock
-            val wasUnread = dao.getById(id, subject)?.let { !it.isRead && !it.isArchived } == true
+            val existing = dao.getById(id, subject)
+            val wasUnread = existing?.let { !it.isRead && !it.isArchived } == true
             dao.archive(id, subject)
-            adjustUnreadCount(subject, if (wasUnread) -1 else 0, observedCount)
+            adjustUnreadCount(subject, if (wasUnread) -1 else 0, observedCount,
+                existing?.let { row -> NotificationCategory.entries.first { it.includes(row.kind) } })
         }
         if (isCurrentSubject(subject)) refreshUnreadCountSafely()
     }
@@ -349,19 +380,24 @@ class NotificationsRepository internal constructor(
         }
     }
 
-    private suspend fun adjustUnreadCount(subject: String, delta: Int, observedCount: RemoteUnreadCount?) {
+    private suspend fun adjustUnreadCount(subject: String, delta: Int, observedCount: RemoteUnreadCount?, category: NotificationCategory? = null) {
         unreadRequestVersions.next()
         val current = remoteUnreadCount.value?.takeIf { it.recipientUserId.equals(subject, ignoreCase = true) }
             ?: dao.unreadTotal(subject)?.let { RemoteUnreadCount(subject, it.count, 0) }
         current?.let {
             // A count reconciled during the write may already include it; never subtract twice.
             val adjustment = if (it.revision == observedCount?.revision || (observedCount == null && it.revision == 0L)) delta else 0
-            setUnreadCount(subject, (it.count + adjustment).coerceAtLeast(0), it.revision)
+            val total = (dao.unreadTotal(subject) ?: NotificationUnreadStateEntity(subject, it.count))
+                .copy(count = (it.count + adjustment).coerceAtLeast(0)).adjustCategory(category, adjustment)
+            dao.upsertUnreadTotal(total)
+            remoteUnreadCount.value = RemoteUnreadCount(subject, total.count, it.revision)
         }
     }
 
-    private suspend fun setUnreadCount(subject: String, count: Int, revision: Long) {
-        dao.upsertUnreadTotal(NotificationUnreadStateEntity(subject, count))
+    private suspend fun setUnreadCount(subject: String, count: Int, revision: Long, counts: UnreadNotificationCountDto? = null) {
+        val saved = if (counts == null) dao.unreadTotal(subject)?.copy(count = count)
+            else NotificationUnreadStateEntity(subject, count, counts.invitations, counts.reminders, counts.flightUpdates)
+        dao.upsertUnreadTotal(saved ?: NotificationUnreadStateEntity(subject, count))
         remoteUnreadCount.value = RemoteUnreadCount(subject, count, revision)
     }
 
@@ -369,7 +405,11 @@ class NotificationsRepository internal constructor(
         if (existing?.isRead == true && !incoming.isRead)
             return incoming.copy(isRead = true, readAtUtc = existing.readAtUtc)
         val category = NotificationCategory.entries.first { it.includes(incoming.kind) }
-        val read = incoming.recipientUserId?.let { dao.categoryRead(it, category.name) }
+        val read = incoming.recipientUserId?.let { owner ->
+            listOfNotNull(dao.categoryRead(owner, INBOX_SCOPE), dao.categoryRead(owner, category.name))
+                .filter { !instant(incoming.createdAtUtc).isAfter(instant(it.throughCreatedAtUtc)) }
+                .maxByOrNull { instant(it.throughCreatedAtUtc) }
+        }
         if (!incoming.isRead && read != null && !instant(incoming.createdAtUtc).isAfter(instant(read.throughCreatedAtUtc))) {
             // An old FCM delivery can arrive after the category was acknowledged. Reapply its
             // cutoff idempotently so late persistence on the server is reconciled as well.
@@ -386,6 +426,7 @@ class NotificationsRepository internal constructor(
 
     companion object {
         const val PAGE_SIZE = 20
+        private const val INBOX_SCOPE = "Inbox"
     }
 }
 

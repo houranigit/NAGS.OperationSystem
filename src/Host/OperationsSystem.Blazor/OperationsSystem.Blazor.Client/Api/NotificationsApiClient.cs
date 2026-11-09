@@ -33,6 +33,9 @@ public sealed class NotificationsApiClient(BrowserApiClient api)
     public Task MarkAsReadAsync(Guid id, CancellationToken ct = default) =>
         api.PostAsync($"/notifications/{id}/read", ct);
 
+    public Task<NotificationCategoryReadDto> MarkInboxAsReadAsync(DateTimeOffset throughCreatedAtUtc, CancellationToken ct = default) =>
+        api.PostAsync<object, NotificationCategoryReadDto>("/notifications/me/read-inbox", new { throughCreatedAtUtc }, ct);
+
     public Task MarkAllAsReadAsync(CancellationToken ct = default) =>
         api.PostAsync("/notifications/me/mark-all-read", ct);
 

@@ -3,6 +3,7 @@ package com.nags.operations.data.repo
 import com.nags.operations.data.db.dao.NotificationDao
 import com.nags.operations.data.db.entities.NotificationCategoryReadEntity
 import com.nags.operations.data.db.entities.NotificationUnreadStateEntity
+import com.nags.operations.data.notifications.UnreadNotificationCountDto
 import com.nags.operations.data.notifications.CategoryReadReceiptDto
 import com.nags.operations.data.db.entities.NotificationEntity
 import com.nags.operations.data.db.entities.toEntity
@@ -33,8 +34,12 @@ class NotificationsRepositoryTest {
     private val dao = MemoryNotificationDao()
     private val subject = MutableStateFlow<String?>("employee")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    private var categoryCounts: UnreadNotificationCountDto? = null
     private var online = true
     private var categoryRead: suspend (NotificationCategory, String) -> CategoryReadReceiptDto = { _, _ ->
+        CategoryReadReceiptDto("2026-11-09T12:00:00Z", 0)
+    }
+    private var inboxRead: suspend (String) -> CategoryReadReceiptDto = {
         CategoryReadReceiptDto("2026-11-09T12:00:00Z", 0)
     }
     private var count: suspend () -> Int = { 48 }
@@ -46,10 +51,11 @@ class NotificationsRepositoryTest {
     }
     private fun createRepository(processScope: CoroutineScope = scope) = NotificationsRepository(
         fetchInbox = { page, size, category -> inbox(page, size, category) },
-        fetchUnreadCount = { count() },
+        fetchUnreadCount = { categoryCounts ?: UnreadNotificationCountDto(count()) },
         sendMarkRead = { acknowledge(it) }, sendMarkAllRead = { bulkRead() }, sendArchive = {}, sendArchiveAll = { bulkArchive() },
         dao = dao, subjectFlow = subject, currentSubject = { subject.value }, appScope = processScope,
         sendCategoryRead = { category, cutoff -> categoryRead(category, cutoff) }, isOnline = { online },
+        sendInboxRead = { cutoff -> inboxRead(cutoff) },
     )
 
     private val repository = createRepository()
@@ -312,6 +318,89 @@ class NotificationsRepositoryTest {
     }
 
     @Test
+    fun openingTheWholeInboxOfflinePersistsOneMixedKindCutoffAndReplaysItAfterRestart() = runBlocking {
+        val rows = listOf(
+            item("invitation", NotificationKinds.EmployeeInvitedToFlight),
+            item("reminder", NotificationKinds.FlightReminder).copy(createdAtUtc = "2026-11-09T09:00:00Z"),
+            item("assignment", NotificationKinds.StaffAssignedToFlight).copy(createdAtUtc = "2026-11-09T08:00:00Z"),
+            item("schedule", NotificationKinds.FlightScheduleUpdated).copy(createdAtUtc = "2026-11-09T11:00:00Z"),
+        )
+        dao.upsertAll(rows.map { it.toEntity("employee") })
+        dao.upsert(item("other-account").toEntity("other"))
+        categoryCounts = UnreadNotificationCountDto(12, 4, 3, 5)
+        repository.refreshUnreadCount()
+        online = false
+
+        val opened = repository.acknowledgeInbox()!!
+        assertEquals(12, opened.preAckUnreadCount)
+        assertNull(opened.serverReadAtUtc)
+        assertEquals("2026-11-09T11:00:00Z", opened.throughCreatedAtUtc)
+        assertTrue(repository.observeInbox(false).first().all { it.isRead })
+        assertFalse(dao.getById("other-account", "other")!!.isRead)
+        assertEquals(8, repository.observeUnreadCount().first())
+        repository.acknowledgeInbox()
+        val pending = dao.pendingCategoryReads("employee").single()
+        assertEquals("Inbox", pending.category)
+        assertEquals(4, pending.unreadDelta)
+
+        val restarted = createRepository()
+        assertEquals(8, restarted.observeUnreadCount().first())
+        assertTrue(restarted.observeInbox(false).first().all { it.isRead })
+        restarted.ingest(item("newer", NotificationKinds.FlightReminder).copy(createdAtUtc = "2026-11-09T12:00:00Z"), "employee")
+        restarted.ingest(item("older-delivery", NotificationKinds.EmployeeInvitedToFlight).copy(createdAtUtc = "2026-11-09T09:30:00Z"), "employee")
+        assertTrue(dao.getById("older-delivery", "employee")!!.isRead)
+        assertFalse(dao.getById("newer", "employee")!!.isRead)
+        val cutoffs = mutableListOf<String>()
+        categoryRead = { _, _ -> error("Whole-inbox acknowledgement must not replay category requests.") }
+        inboxRead = { cutoff ->
+            cutoffs += cutoff
+            CategoryReadReceiptDto("2026-11-09T13:00:00Z", 1, 0, 1, 0)
+        }
+        online = true
+        restarted.syncPendingReads()
+
+        assertEquals(listOf("2026-11-09T11:00:00Z"), cutoffs)
+        assertTrue(dao.pendingCategoryReads("employee").isEmpty())
+        assertEquals(1, restarted.observeUnreadCount().first())
+        assertEquals(1, createRepository().observeUnreadCount().first())
+        assertFalse(dao.getById("newer", "employee")!!.isRead)
+    }
+
+    @Test
+    fun aCompletedInboxCutoffKeepsDelayedPushesReadAcrossKindsAndRequeuesItsReceipt() = runBlocking {
+        dao.upsert(item("first", NotificationKinds.EmployeeInvitedToFlight).toEntity("employee"))
+        val readAt = "2026-11-09T12:00:00Z"
+        inboxRead = { CategoryReadReceiptDto(readAt, 0) }
+        repository.acknowledgeInbox()
+        assertTrue(dao.pendingCategoryReads("employee").isEmpty())
+        online = false
+
+        for (kind in listOf(NotificationKinds.FlightReminder, NotificationKinds.FlightScheduleUpdated, "LegacyKind")) {
+            repository.ingest(item(kind, kind).copy(createdAtUtc = "2026-11-09T09:00:00Z"), "employee")
+            val delayed = dao.getById(kind, "employee")!!
+            assertTrue(delayed.isRead)
+            assertEquals(readAt, delayed.readAtUtc)
+        }
+        repository.ingest(item("newer").copy(createdAtUtc = "2026-11-09T11:00:00Z"), "employee")
+        assertFalse(dao.getById("newer", "employee")!!.isRead)
+        val pending = dao.pendingCategoryReads("employee").single()
+        assertEquals("Inbox", pending.category)
+        assertEquals(0, pending.unreadDelta)
+        assertEquals("2026-11-09T10:00:00Z", pending.throughCreatedAtUtc)
+        var calls = 0
+        inboxRead = { cutoff ->
+            calls++
+            assertEquals("2026-11-09T10:00:00Z", cutoff)
+            CategoryReadReceiptDto("2026-11-09T13:00:00Z", 1)
+        }
+        online = true
+        repository.syncPendingReads()
+        assertEquals(1, calls)
+        assertTrue(dao.pendingCategoryReads("employee").isEmpty())
+        assertFalse(dao.getById("newer", "employee")!!.isRead)
+    }
+
+    @Test
     fun leavingTheScreenDoesNotCancelThePersistedCategoryAcknowledgement() = runBlocking {
         dao.upsert(item("first").toEntity("employee"))
         val response = CompletableDeferred<CategoryReadReceiptDto>()
@@ -453,6 +542,37 @@ class NotificationsRepositoryTest {
         } finally {
             delayedScope.cancel()
         }
+    }
+
+    @Test
+    fun categoryTotalsIncludeUnloadedRowsAndPersistAcrossRestart() = runBlocking {
+        dao.upsert(item("cached-invitation", NotificationKinds.EmployeeInvitedToFlight).toEntity("employee"))
+        categoryCounts = UnreadNotificationCountDto(366, 240, 125, 1)
+        repository.refreshUnreadCount()
+        assertEquals(mapOf(NotificationCategory.Invitations to 240, NotificationCategory.Reminders to 125,
+            NotificationCategory.FlightUpdates to 1), repository.observeCategoryUnreadCounts().first())
+        online = false
+        assertEquals(240, createRepository().observeCategoryUnreadCounts().first()[NotificationCategory.Invitations])
+        val receipt = repository.acknowledgeCategory(NotificationCategory.Invitations)!!
+        assertEquals(240, receipt.preAckUnreadCount)
+        assertEquals(239, repository.observeCategoryUnreadCounts().first()[NotificationCategory.Invitations])
+        assertEquals(125, repository.observeCategoryUnreadCounts().first()[NotificationCategory.Reminders])
+        categoryRead = { _, _ -> CategoryReadReceiptDto("2026-11-09T13:00:00Z", 126, 0, 125, 1) }
+        online = true
+        repository.syncPendingReads()
+        assertEquals(0, repository.observeCategoryUnreadCounts().first()[NotificationCategory.Invitations])
+        assertEquals(125, createRepository().observeCategoryUnreadCounts().first()[NotificationCategory.Reminders])
+    }
+
+    @Test
+    fun anOlderServerWithoutCategoryFieldsUsesKnownCachedUnreadRows() = runBlocking {
+        dao.upsert(item("invitation", NotificationKinds.EmployeeInvitedToFlight).toEntity("employee"))
+        dao.upsert(item("reminder", NotificationKinds.FlightReminder).toEntity("employee"))
+        dao.upsert(item("already-read").copy(isRead = true).toEntity("employee"))
+        repository.refreshUnreadCount()
+        assertEquals(mapOf(NotificationCategory.Invitations to 1, NotificationCategory.Reminders to 1,
+            NotificationCategory.FlightUpdates to 0), repository.observeCategoryUnreadCounts().first())
+        assertEquals(48, repository.observeUnreadCount().first())
     }
 
     @Test

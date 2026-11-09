@@ -58,6 +58,7 @@ class FlightsRepository internal constructor(
     private val json: Json = HttpClientFactory.json,
     private val monotonicNanos: () -> Long = System::nanoTime,
     private val logoStore: CustomerLogoStore? = null,
+    private val fetchNotificationTargets: suspend (List<String>) -> Set<String> = { emptySet() },
 ) {
     constructor(api: OperationsApi, db: CatalogDatabase, tokenStore: TokenStore, online: StateFlow<Boolean>, logoStore: CustomerLogoStore? = null) : this(
         fetchFlights = api::flights,
@@ -74,6 +75,7 @@ class FlightsRepository internal constructor(
             else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
         },
         isOnline = { online.value },
+        fetchNotificationTargets = api::notificationTargets,
     )
 
     private val refreshMutex = Mutex()
@@ -155,6 +157,40 @@ class FlightsRepository internal constructor(
                 if (!error.isTransient()) throw error
                 cachedDetailOrNull(session, id) ?: throw error
             }
+        }
+    }
+
+    /** Online targets use the same scope as flight details; offline targets also require saved details. */
+    suspend fun openableNotificationFlightIds(ids: List<String>): Set<String> {
+        val requested = ids.mapNotNull { id -> runCatching { java.util.UUID.fromString(id).toString() }.getOrNull() }.toSet()
+        if (requested.isEmpty()) return emptySet()
+        val session = requireSession()
+        val revision = listRevision
+        if (isOnline()) {
+            try {
+                val available = requested.toList().chunked(100).flatMap { fetchNotificationTargets(it) }.toSet()
+                return mutationMutex.withLock {
+                    ensureCurrent(session)
+                    check(listRevision == revision) { "Flight access changed. Refresh the flight list." }
+                    available.intersect(requested)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                handleAccessError(session, error)
+                if (!error.isTransient()) throw error
+            }
+        }
+        return mutationMutex.withLock {
+            ensureCurrent(session)
+            val (_, payload) = scopedSnapshotLocked(session) ?: return@withLock emptySet()
+            val visible = payload.items.mapTo(mutableSetOf()) { it.id }.intersect(requested)
+            dao.details(session.owner).mapNotNull { entity ->
+                if (entity.flightId !in visible) return@mapNotNull null
+                runCatching { json.decodeFromString<FlightDetail>(entity.payloadJson) }.getOrNull()
+                    ?.takeIf { it.stationId == payload.scope?.stationId && it.isInFlightWindow(Instant.parse(now())) }
+                    ?.id
+            }.toSet()
         }
     }
 
