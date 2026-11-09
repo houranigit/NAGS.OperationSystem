@@ -29,9 +29,11 @@ public sealed class FlightDepartureSubmissionConfiguration : IEntityTypeConfigur
 
             details.OwnsOne(d => d.CustomerSignature, signature =>
             {
-                signature.Property(s => s.StorageKey).HasColumnName("CustomerSignatureStorageKey").IsRequired();
-                signature.Property(s => s.ContentType).HasColumnName("CustomerSignatureContentType").IsRequired();
+                signature.Property(s => s.FileName).HasColumnName("CustomerSignatureFileName").HasMaxLength(255).IsRequired();
+                signature.Property(s => s.StorageKey).HasColumnName("CustomerSignatureStorageKey").HasMaxLength(500).IsRequired();
+                signature.Property(s => s.ContentType).HasColumnName("CustomerSignatureContentType").HasMaxLength(100).IsRequired();
                 signature.Property(s => s.SizeBytes).HasColumnName("CustomerSignatureSizeBytes").IsRequired();
+                signature.Property(s => s.SignedAtUtc).HasColumnName("CustomerSignedAtUtc").IsRequired();
             });
             details.Navigation(d => d.CustomerSignature).IsRequired();
 

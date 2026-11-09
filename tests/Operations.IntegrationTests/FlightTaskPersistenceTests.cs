@@ -29,7 +29,7 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
             ArrivalDetails.Create("ARRIVAL-REF", Now, flight.AircraftType!, "HZ-100", employee, "Arrival remarks").Value,
             actor, Now.AddMinutes(1)).Value;
         var departure = flight.SubmitDeparture(employee,
-            DepartureDetails.Create(Now.AddHours(2), CustomerSignature.Create("signatures/task-migration.png", "image/png", 1024).Value,
+            DepartureDetails.Create(Now.AddHours(2), CustomerSignature.Create("task-migration.png", "signatures/task-migration.png", "image/png", 1024, Now.AddHours(2)).Value,
                 employee, "Departure remarks").Value,
             actor, Now.AddHours(2)).Value;
         var service = flight.AddService(new ServiceSnapshot(Guid.NewGuid(), "Actual service"), "SERVICE-REF",

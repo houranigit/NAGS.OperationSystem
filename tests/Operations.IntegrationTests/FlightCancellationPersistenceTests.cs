@@ -457,7 +457,7 @@ public sealed class FlightCancellationPersistenceTests(FlightCancellationPersist
         }
 
         var departure = DepartureDetails.Create(Now.AddHours(2),
-            CustomerSignature.Create("signatures/departure.png", "image/png", 1024).Value,
+            CustomerSignature.Create("departure.png", "signatures/departure.png", "image/png", 1024, Now.AddHours(2)).Value,
             employee, "Departure recorded by engineer").Value;
         return flight.SubmitDeparture(employee, departure, Guid.NewGuid(), now);
     }

@@ -27,7 +27,7 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
             "HZ-100", employee, "Arrival remarks").Value;
         var arrival = operationalFlight.SubmitArrival(employee, arrivalDetails, Guid.NewGuid(), Now.AddMinutes(1)).Value;
         var departureDetails = DepartureDetails.Create(Now.AddHours(2),
-            CustomerSignature.Create("signatures/migration.png", "image/png", 1024).Value,
+            CustomerSignature.Create("migration.png", "signatures/migration.png", "image/png", 1024, Now.AddHours(2)).Value,
             employee, "Departure remarks").Value;
         var departure = operationalFlight.SubmitDeparture(employee, departureDetails, Guid.NewGuid(), Now.AddHours(2)).Value;
         var canceledFlight = ScheduleFlight();

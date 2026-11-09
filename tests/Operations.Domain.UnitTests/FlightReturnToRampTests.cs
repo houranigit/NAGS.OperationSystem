@@ -90,38 +90,6 @@ public sealed class FlightReturnToRampTests
     }
 
     [Fact]
-    public void CustomerSignature_NormalizesFileMetadataAndSignedTime_AndRetainsHistoricalValues()
-    {
-        var signature = RtrCustomerSignature.Create($" folder/{new string('s', 300)}.png ", " signatures/customer.png ",
-            " Image/PNG ", 200, TestData.Now.ToOffset(TimeSpan.FromHours(3))).Value;
-
-        signature.FileName.ShouldBe(new string('s', 255));
-        signature.StorageKey.ShouldBe("signatures/customer.png");
-        signature.ContentType.ShouldBe("Image/PNG");
-        signature.SizeBytes.ShouldBe(200);
-        signature.SignedAtUtc.ShouldBe(TestData.Now);
-        signature.SignedAtUtc.Offset.ShouldBe(TimeSpan.Zero);
-    }
-
-    [Theory]
-    [InlineData("filename")]
-    [InlineData("key")]
-    [InlineData("mime")]
-    [InlineData("size")]
-    [InlineData("signed-time")]
-    [InlineData("key-length")]
-    [InlineData("mime-length")]
-    public void CustomerSignature_RejectsMissingOrInvalidStorageMetadata(string invalidInput)
-    {
-        var result = RtrCustomerSignature.Create(invalidInput == "filename" ? " " : "signature.png",
-            invalidInput == "key" ? " " : invalidInput == "key-length" ? new string('k', 501) : "signatures/key",
-            invalidInput == "mime" ? " " : invalidInput == "mime-length" ? new string('m', 101) : "image/png",
-            invalidInput == "size" ? 0 : 100, invalidInput == "signed-time" ? default : TestData.Now);
-
-        result.IsFailure.ShouldBeTrue();
-    }
-
-    [Fact]
     public void StartReturnToRamp_RequiresADepartureSubmission_AndDoesNotAllocateAnOccurrenceOnFailure()
     {
         var flight = ScheduleFlight();
@@ -579,29 +547,60 @@ public sealed class FlightReturnToRampTests
             AddCompletedService(flight, rtr).Performers.ShouldHaveSingleItem();
     }
 
-    [Fact]
-    public void RtrSignatures_AreOptionalAndIndependent_AndClosedDepartureCorrectionsPreserveOtherOccurrencesAndFlightSignature()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void SharedSignatures_AreClonedAcrossNormalAndRtrDepartures_AndMetadataCorrectionsRemainIndependent(bool changeFileName)
     {
-        var flight = DepartedFlight();
+        var flight = ScheduleFlight();
+        var sharedSignature = Signature("shared.png");
+        var normalDetails = DepartureDetails.Create(TestData.Now.AddHours(1), sharedSignature, TestData.Staff(), null).Value;
+        flight.SubmitDeparture(TestData.Staff(), normalDetails, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
         var flightSignature = flight.DepartureSubmissions.Single().Details.CustomerSignature;
         var first = Start(flight);
         AddCompletedService(flight, first);
-        var firstSignature = Signature("first.png");
-        flight.CloseReturnToRamp(first.Id, Departure(signature: firstSignature), Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
+        var firstDeparture = Departure(signature: sharedSignature);
+        flight.CloseReturnToRamp(first.Id, firstDeparture, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
+        var firstStoredSignature = first.DepartureDetails!.CustomerSignature;
+
+        flightSignature.ShouldBe(sharedSignature);
+        flightSignature.ShouldNotBeSameAs(sharedSignature);
+        firstStoredSignature.ShouldBe(sharedSignature);
+        firstStoredSignature.ShouldNotBeSameAs(sharedSignature);
+        firstStoredSignature.ShouldNotBeSameAs(flightSignature);
+        flightSignature.FileName.ShouldBe("shared.png");
+        flightSignature.SignedAtUtc.ShouldBe(TestData.Now);
+
         var second = Start(flight);
         AddCompletedTask(flight, second);
         Close(flight, second);
-        var replacement = Signature("replacement.png");
+        var replacement = CustomerSignature.Create(changeFileName ? "replacement.png" : sharedSignature.FileName,
+            sharedSignature.StorageKey, sharedSignature.ContentType, sharedSignature.SizeBytes,
+            changeFileName ? sharedSignature.SignedAtUtc : sharedSignature.SignedAtUtc.AddMinutes(1)).Value;
+        var correctedDeparture = RtrDepartureDetails.Create(firstDeparture.DepartedAtUtc, replacement,
+            firstDeparture.HandledByEmployee, firstDeparture.Remarks).Value;
 
-        flight.CloseReturnToRamp(first.Id, Departure(TestData.Now.AddMinutes(45), replacement), Guid.NewGuid(), TestData.Now.AddMinutes(1))
+        flight.CloseReturnToRamp(first.Id, correctedDeparture, Guid.NewGuid(), TestData.Now.AddMinutes(1))
             .Value.ShouldBeSameAs(first);
 
         first.DepartureDetails!.CustomerSignature.ShouldBe(replacement);
         first.DepartureDetails.CustomerSignature.ShouldNotBeSameAs(replacement);
+        first.DepartureDetails.CustomerSignature.ShouldNotBe(sharedSignature);
+        first.UpdatedAtUtc.ShouldBe(TestData.Now.AddMinutes(1));
         second.DepartureDetails!.CustomerSignature.ShouldBeNull();
         flight.DepartureSubmissions.Single().Details.CustomerSignature.ShouldBeSameAs(flightSignature);
+        flightSignature.ShouldBe(sharedSignature);
 
-        flight.CloseReturnToRamp(first.Id, Departure(TestData.Now.AddMinutes(45)), Guid.NewGuid(), TestData.Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
+        var equivalentSignature = CustomerSignature.Create($"folder/{replacement.FileName}", replacement.StorageKey,
+            replacement.ContentType, replacement.SizeBytes, replacement.SignedAtUtc.ToOffset(TimeSpan.FromHours(3))).Value;
+        flight.CloseReturnToRamp(first.Id, RtrDepartureDetails.Create(firstDeparture.DepartedAtUtc, equivalentSignature,
+            firstDeparture.HandledByEmployee, firstDeparture.Remarks).Value, Guid.NewGuid(), TestData.Now.AddMinutes(2))
+            .IsSuccess.ShouldBeTrue();
+        first.UpdatedAtUtc.ShouldBe(TestData.Now.AddMinutes(1));
+
+        flight.CloseReturnToRamp(first.Id, RtrDepartureDetails.Create(firstDeparture.DepartedAtUtc, null,
+            firstDeparture.HandledByEmployee, firstDeparture.Remarks).Value, Guid.NewGuid(), TestData.Now.AddMinutes(3))
+            .IsSuccess.ShouldBeTrue();
 
         first.DepartureDetails!.CustomerSignature.ShouldBeNull();
         second.DepartureDetails!.CustomerSignature.ShouldBeNull();
@@ -669,7 +668,7 @@ public sealed class FlightReturnToRampTests
     {
         var flight = ScheduleFlight();
         var details = DepartureDetails.Create(TestData.Now.AddHours(1),
-            CustomerSignature.Create("signatures/flight.png", "image/png", 100).Value, TestData.Staff(), null).Value;
+            CustomerSignature.Create("flight.png", "signatures/flight.png", "image/png", 100, TestData.Now).Value, TestData.Staff(), null).Value;
         flight.SubmitDeparture(TestData.Staff(), details, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
         if (pending)
             flight.SubmitDeparture(TestData.Staff(), details, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
@@ -679,11 +678,11 @@ public sealed class FlightReturnToRampTests
     private static RtrArrivalDetails Arrival(DateTimeOffset? at = null, string? remarks = null) =>
         RtrArrivalDetails.Create(at ?? TestData.Now, TestData.Staff(), remarks).Value;
 
-    private static RtrDepartureDetails Departure(DateTimeOffset? at = null, RtrCustomerSignature? signature = null) =>
+    private static RtrDepartureDetails Departure(DateTimeOffset? at = null, CustomerSignature? signature = null) =>
         RtrDepartureDetails.Create(at ?? TestData.Now.AddMinutes(30), signature, TestData.Staff(), null).Value;
 
-    private static RtrCustomerSignature Signature(string fileName = "signature.png") =>
-        RtrCustomerSignature.Create(fileName, $"signatures/{fileName}", "image/png", 100, TestData.Now).Value;
+    private static CustomerSignature Signature(string fileName = "signature.png") =>
+        CustomerSignature.Create(fileName, $"signatures/{fileName}", "image/png", 100, TestData.Now).Value;
 
     private static FlightReturnToRamp Start(Flight flight) =>
         flight.StartReturnToRamp(Arrival(), Guid.NewGuid(), TestData.Now).Value;

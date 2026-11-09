@@ -82,7 +82,7 @@ public sealed class FlightDeparturePersistenceTests(FlightDeparturePersistenceTe
         flight.SubmitArrival(submitter, Arrival(flight.AircraftType!, submitter), Guid.NewGuid(), Now.AddMinutes(1))
             .IsSuccess.ShouldBeTrue();
         var createdBy = Guid.NewGuid();
-        var signature = CustomerSignature.Create("signatures/departure-original.png", "image/png", 1024).Value;
+        var signature = CustomerSignature.Create("customer/departure-original.png", "signatures/departure-original.png", "image/png", 1024, Now.AddHours(2).ToOffset(TimeSpan.FromHours(3))).Value;
         var initialDetails = DepartureDetails.Create(Now.AddHours(2).ToOffset(TimeSpan.FromHours(3)),
             signature, handler, null).Value;
         var first = flight.SubmitDeparture(submitter, initialDetails, createdBy, Now.AddHours(2)).Value;
@@ -98,9 +98,12 @@ public sealed class FlightDeparturePersistenceTests(FlightDeparturePersistenceTe
         persisted.SubmittedByEmployee.ShouldBe(submitter);
         persisted.Details.ShouldBe(initialDetails);
         persisted.Details.Atd.Offset.ShouldBe(TimeSpan.Zero);
+        persisted.Details.CustomerSignature.FileName.ShouldBe("departure-original.png");
         persisted.Details.CustomerSignature.StorageKey.ShouldBe(signature.StorageKey);
         persisted.Details.CustomerSignature.ContentType.ShouldBe(signature.ContentType);
         persisted.Details.CustomerSignature.SizeBytes.ShouldBe(signature.SizeBytes);
+        persisted.Details.CustomerSignature.SignedAtUtc.ShouldBe(signature.SignedAtUtc);
+        persisted.Details.CustomerSignature.SignedAtUtc.Offset.ShouldBe(TimeSpan.Zero);
         persisted.Details.HandledByEmployee.ShouldBe(handler);
         persisted.Details.Remarks.ShouldBeNull();
         persisted.IsAccepted.ShouldBeTrue();
@@ -155,11 +158,14 @@ public sealed class FlightDeparturePersistenceTests(FlightDeparturePersistenceTe
         var handlerAndSubmitter = Employee("Assigned departure handling employee", "E150");
         var secondSubmitter = Employee("Second submitting employee", "E151");
         var flight = ScheduleFlight(handlerAndSubmitter);
-        var sharedSignature = CustomerSignature.Create("signatures/shared.png", "image/png", 2048).Value;
+        var sharedSignature = CustomerSignature.Create("shared.png", "signatures/shared.png", "image/png", 2048, Now.AddHours(2)).Value;
         var sharedDetails = DepartureDetails.Create(Now.AddHours(2), sharedSignature, handlerAndSubmitter,
             "Both employees recorded these departure details").Value;
         var first = flight.SubmitDeparture(handlerAndSubmitter, sharedDetails, Guid.NewGuid(), Now.AddHours(2)).Value;
         var second = flight.SubmitDeparture(secondSubmitter, sharedDetails, Guid.NewGuid(), Now.AddHours(2).AddMinutes(1)).Value;
+        first.Details.CustomerSignature.ShouldNotBeSameAs(sharedSignature);
+        second.Details.CustomerSignature.ShouldNotBeSameAs(sharedSignature);
+        first.Details.CustomerSignature.ShouldNotBeSameAs(second.Details.CustomerSignature);
         db.Flights.Add(flight);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
@@ -179,6 +185,7 @@ public sealed class FlightDeparturePersistenceTests(FlightDeparturePersistenceTe
         secondPersisted.Details.ShouldBe(sharedDetails);
         firstPersisted.Details.CustomerSignature.ShouldBe(sharedSignature);
         secondPersisted.Details.CustomerSignature.ShouldBe(sharedSignature);
+        firstPersisted.Details.CustomerSignature.ShouldNotBeSameAs(secondPersisted.Details.CustomerSignature);
         firstPersisted.Details.HandledByEmployee.ShouldBe(handlerAndSubmitter);
         secondPersisted.Details.HandledByEmployee.ShouldBe(handlerAndSubmitter);
     }
@@ -286,7 +293,7 @@ public sealed class FlightDeparturePersistenceTests(FlightDeparturePersistenceTe
     private static DepartureDetails Departure(string? remarks = null, StaffMemberSnapshot? handler = null,
         string storageKey = "signatures/departure.png") =>
         DepartureDetails.Create(Now.AddHours(2).ToOffset(TimeSpan.FromHours(3)),
-            CustomerSignature.Create(storageKey, "image/png", 1024).Value,
+            CustomerSignature.Create(Path.GetFileName(storageKey), storageKey, "image/png", 1024, Now.AddHours(2)).Value,
             handler ?? Employee("Departure handling employee", "E400"), remarks).Value;
 
     public sealed class DatabaseFixture : IAsyncLifetime

@@ -1052,8 +1052,19 @@ namespace Operations.Infrastructure.Persistence.Migrations
 
                                     b2.Property<string>("ContentType")
                                         .IsRequired()
-                                        .HasColumnType("nvarchar(max)")
+                                        .HasMaxLength(100)
+                                        .HasColumnType("nvarchar(100)")
                                         .HasColumnName("CustomerSignatureContentType");
+
+                                    b2.Property<string>("FileName")
+                                        .IsRequired()
+                                        .HasMaxLength(255)
+                                        .HasColumnType("nvarchar(255)")
+                                        .HasColumnName("CustomerSignatureFileName");
+
+                                    b2.Property<DateTimeOffset>("SignedAtUtc")
+                                        .HasColumnType("datetimeoffset")
+                                        .HasColumnName("CustomerSignedAtUtc");
 
                                     b2.Property<long>("SizeBytes")
                                         .HasColumnType("bigint")
@@ -1061,7 +1072,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
 
                                     b2.Property<string>("StorageKey")
                                         .IsRequired()
-                                        .HasColumnType("nvarchar(max)")
+                                        .HasMaxLength(500)
+                                        .HasColumnType("nvarchar(500)")
                                         .HasColumnName("CustomerSignatureStorageKey");
 
                                     b2.HasKey("DepartureDetailsFlightDepartureSubmissionId");
@@ -1204,7 +1216,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                             b1.WithOwner()
                                 .HasForeignKey("FlightReturnToRampId");
 
-                            b1.OwnsOne("Operations.Domain.ValueObjects.RtrCustomerSignature", "CustomerSignature", b2 =>
+                            b1.OwnsOne("Operations.Domain.ValueObjects.CustomerSignature", "CustomerSignature", b2 =>
                                 {
                                     b2.Property<Guid>("RtrDepartureDetailsFlightReturnToRampId")
                                         .HasColumnType("uniqueidentifier");

@@ -13,6 +13,7 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
     : IClassFixture<FlightReturnToRampPersistenceTests.DatabaseFixture>
 {
     private const string TaskBaseline = "20261108204611_Operations_FlightTasks";
+    private const string ReturnMigration = "20261109002742_Operations_FlightReturnToRamps";
     private static readonly DateTimeOffset Now = new(2026, 11, 8, 15, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -31,12 +32,13 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         var canceledVersion = canceled.RowVersion.ToArray();
         db.ChangeTracker.Clear();
 
-        await db.Database.MigrateAsync();
+        await db.Database.MigrateAsync(ReturnMigration);
 
         var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
         applied.Length.ShouldBe(previous.Length + 1);
         applied.Take(previous.Length).ShouldBe(previous);
         applied.Last().ShouldContain("ReturnToRamp");
+        await db.Database.MigrateAsync();
         var reloaded = await LoadAsync(db, flight.Id);
         reloaded.RowVersion.ShouldBe(version);
         reloaded.CreatedAtUtc.ShouldBe(flight.CreatedAtUtc);
@@ -169,6 +171,261 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         (await db.SaveChangesAsync()).ShouldBe(0);
         reloaded.RowVersion.ShouldBe(version);
         saved.UpdatedAtUtc.ShouldBe(Now.AddMinutes(42));
+    }
+
+    [Fact]
+    public async Task Unified_signature_migration_backfills_legacy_normal_values_and_preserves_all_existing_rtr_metadata()
+    {
+        await using var db = fixture.CreateContext();
+        await db.Database.MigrateAsync(ReturnMigration);
+        var previous = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
+        var flight = ScheduleFlight();
+        var creator = Guid.NewGuid();
+        var editor = Guid.NewGuid();
+        var firstSubmitter = Employee();
+        var secondSubmitter = Employee();
+        var handler = Employee();
+        const string legacyKey = @"legacy\capture/recorded.png";
+        var firstLegacySignature = CustomerSignature.Create("display-not-stored.png", legacyKey, "image/png", 512,
+            Now.AddMinutes(-20)).Value;
+        var firstDetails = DepartureDetails.Create(Now.AddMinutes(-12), firstLegacySignature, handler, "Original remarks").Value;
+        var first = flight.SubmitDeparture(firstSubmitter, firstDetails, creator, Now.AddMinutes(-10)).Value;
+        var correctedDetails = DepartureDetails.Create(firstDetails.Atd, firstLegacySignature, handler, "Corrected remarks").Value;
+        flight.SubmitDeparture(firstSubmitter, correctedDetails, editor, Now.AddMinutes(-8)).IsSuccess.ShouldBeTrue();
+        var secondLegacySignature = CustomerSignature.Create("second-display-not-stored.jpg", "legacy/", "image/jpeg", 2048,
+            Now.AddMinutes(-19)).Value;
+        var second = flight.SubmitDeparture(secondSubmitter,
+            DepartureDetails.Create(Now.AddMinutes(-11), secondLegacySignature, handler, null).Value,
+            creator, Now.AddMinutes(-5)).Value;
+        var signed = flight.StartReturnToRamp(Arrival(), creator, Now).Value;
+        var signedWork = AddWork(flight, signed.Id, creator, Now, Now);
+        var storedReturnSignature = CustomerSignature.Create("preserved-customer-display.png", "returns/opaque-key.png", "image/png", 4096,
+            Now.AddMinutes(29).ToOffset(TimeSpan.FromHours(3))).Value;
+        flight.CloseReturnToRamp(signed.Id, ReturnDeparture(storedReturnSignature), editor, Now.AddMinutes(31)).IsSuccess.ShouldBeTrue();
+        var unsigned = flight.StartReturnToRamp(Arrival(Now.AddMinutes(40)), creator, Now.AddMinutes(41)).Value;
+        AddWork(flight, unsigned.Id, creator, Now.AddMinutes(42), Now.AddMinutes(40));
+        flight.CloseReturnToRamp(unsigned.Id,
+            RtrDepartureDetails.Create(Now.AddMinutes(70), null, handler, "No signature provided").Value,
+            editor, Now.AddMinutes(71)).IsSuccess.ShouldBeTrue();
+        db.Flights.Add(flight);
+        // The historical normal-departure schema has only key, MIME, and size. RTR already stores all five fields.
+        foreach (var submission in flight.DepartureSubmissions)
+            PreRtrMigrationSeed.MarkDepartureUnchanged(db, submission);
+        await db.SaveChangesAsync();
+        foreach (var submission in flight.DepartureSubmissions)
+            await PreRtrMigrationSeed.InsertDepartureAsync(db, submission);
+        var version = flight.RowVersion.ToArray();
+        var rootUpdatedAt = flight.UpdatedAtUtc;
+        db.ChangeTracker.Clear();
+
+        await db.Database.MigrateAsync();
+
+        var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
+        applied.Length.ShouldBe(previous.Length + 1);
+        applied.Take(previous.Length).ShouldBe(previous);
+        applied.Last().ShouldContain("Signature");
+        var reloaded = await LoadAsync(db, flight.Id);
+        reloaded.RowVersion.ShouldBe(version);
+        reloaded.UpdatedAtUtc.ShouldBe(rootUpdatedAt);
+        reloaded.LastReturnToRampSequence.ShouldBe(2);
+        reloaded.DepartureSubmissions.Count.ShouldBe(2);
+        reloaded.DepartureSubmissions.ShouldAllBe(item => !item.IsAccepted);
+        var savedFirst = reloaded.DepartureSubmissions.Single(item => item.Id == first.Id);
+        savedFirst.SubmittedByEmployee.ShouldBe(firstSubmitter);
+        savedFirst.Details.Atd.ShouldBe(correctedDetails.Atd);
+        savedFirst.Details.HandledByEmployee.ShouldBe(handler);
+        savedFirst.Details.Remarks.ShouldBe("Corrected remarks");
+        savedFirst.CreatedByUserId.ShouldBe(creator);
+        savedFirst.CreatedAtUtc.ShouldBe(Now.AddMinutes(-10));
+        savedFirst.UpdatedByUserId.ShouldBe(editor);
+        savedFirst.UpdatedAtUtc.ShouldBe(Now.AddMinutes(-8));
+        savedFirst.Details.CustomerSignature.ShouldBe(CustomerSignature.Create("recorded.png", legacyKey, "image/png", 512,
+            savedFirst.CreatedAtUtc).Value);
+        savedFirst.Details.CustomerSignature.SignedAtUtc.ShouldNotBe(firstLegacySignature.SignedAtUtc);
+        savedFirst.Details.CustomerSignature.SignedAtUtc.ShouldNotBe(savedFirst.UpdatedAtUtc!.Value);
+        var savedSecond = reloaded.DepartureSubmissions.Single(item => item.Id == second.Id);
+        savedSecond.SubmittedByEmployee.ShouldBe(secondSubmitter);
+        savedSecond.CreatedByUserId.ShouldBe(creator);
+        savedSecond.CreatedAtUtc.ShouldBe(Now.AddMinutes(-5));
+        savedSecond.UpdatedByUserId.ShouldBeNull();
+        savedSecond.UpdatedAtUtc.ShouldBeNull();
+        savedSecond.Details.CustomerSignature.ShouldBe(CustomerSignature.Create("customer-signature", "legacy/", "image/jpeg", 2048,
+            savedSecond.CreatedAtUtc).Value);
+        var preservedSigned = reloaded.ReturnToRamps.Single(item => item.Id == signed.Id);
+        preservedSigned.ArrivalDetails.ShouldBe(signed.ArrivalDetails);
+        preservedSigned.DepartureDetails.ShouldBe(signed.DepartureDetails);
+        preservedSigned.DepartureDetails.ShouldNotBeNull().CustomerSignature.ShouldBe(storedReturnSignature);
+        preservedSigned.CreatedByUserId.ShouldBe(creator);
+        preservedSigned.CreatedAtUtc.ShouldBe(signed.CreatedAtUtc);
+        preservedSigned.EndedByUserId.ShouldBe(editor);
+        preservedSigned.UpdatedByUserId.ShouldBe(editor);
+        preservedSigned.UpdatedAtUtc.ShouldBe(Now.AddMinutes(31));
+        preservedSigned.Services.ShouldHaveSingleItem().Id.ShouldBe(signedWork.Service.Id);
+        preservedSigned.Tasks.ShouldHaveSingleItem().Id.ShouldBe(signedWork.Task.Id);
+        var preservedUnsigned = reloaded.ReturnToRamps.Single(item => item.Id == unsigned.Id);
+        preservedUnsigned.ArrivalDetails.ShouldBe(unsigned.ArrivalDetails);
+        preservedUnsigned.DepartureDetails.ShouldBe(unsigned.DepartureDetails);
+        preservedUnsigned.DepartureDetails.ShouldNotBeNull().CustomerSignature.ShouldBeNull();
+        preservedUnsigned.CreatedByUserId.ShouldBe(creator);
+        preservedUnsigned.EndedByUserId.ShouldBe(editor);
+        preservedUnsigned.UpdatedAtUtc.ShouldBe(Now.AddMinutes(71));
+    }
+
+    [Theory]
+    [InlineData("oversized-key")]
+    [InlineData("oversized-mime")]
+    [InlineData("default-created-at")]
+    public async Task Signature_migration_preflight_preserves_legacy_data_when_metadata_needs_resolution(string invalidData)
+    {
+        await using var db = fixture.CreateContext();
+        await db.Database.MigrateAsync(ReturnMigration);
+        var previous = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
+        var actor = Guid.NewGuid();
+        var submitter = Employee();
+        var flight = ScheduleFlight();
+        var details = Departure();
+        var submission = flight.SubmitDeparture(submitter, details, actor, Now).Value;
+        db.Flights.Add(flight);
+        PreRtrMigrationSeed.MarkDepartureUnchanged(db, submission);
+        await db.SaveChangesAsync();
+        await PreRtrMigrationSeed.InsertDepartureAsync(db, submission);
+        var version = flight.RowVersion.ToArray();
+        var legacyKey = invalidData == "oversized-key" ? new string('K', 501) : details.CustomerSignature.StorageKey;
+        var legacyMime = invalidData == "oversized-mime" ? new string('M', 101) : details.CustomerSignature.ContentType;
+        var legacyCreatedAt = invalidData == "default-created-at" ? default : Now;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE [operations].[flight_departure_submissions]
+            SET [CustomerSignatureStorageKey] = {legacyKey}, [CustomerSignatureContentType] = {legacyMime}, [CreatedAtUtc] = {legacyCreatedAt}
+            WHERE [Id] = {submission.Id}
+            """);
+        db.ChangeTracker.Clear();
+
+        var rejected = await Should.ThrowAsync<SqlException>(() => db.Database.MigrateAsync());
+
+        rejected.Number.ShouldBe(51000);
+        rejected.Message.ShouldContain("CustomerSignature unification:");
+        (await db.Database.GetAppliedMigrationsAsync()).ShouldBe(previous);
+        var persisted = await db.Set<FlightDepartureSubmission>().Where(item => item.Id == submission.Id)
+            .Select(item => new
+            {
+                item.FlightId,
+                StaffMemberId = item.SubmittedByEmployee.StaffMemberId,
+                item.IsAccepted,
+                item.CreatedByUserId,
+                item.CreatedAtUtc,
+                item.UpdatedByUserId,
+                item.UpdatedAtUtc,
+                item.Details.Atd,
+                item.Details.CustomerSignature.StorageKey,
+                item.Details.CustomerSignature.ContentType,
+                item.Details.CustomerSignature.SizeBytes
+            }).SingleAsync();
+        persisted.FlightId.ShouldBe(flight.Id);
+        persisted.StaffMemberId.ShouldBe(submitter.StaffMemberId);
+        persisted.IsAccepted.ShouldBeTrue();
+        persisted.CreatedByUserId.ShouldBe(actor);
+        persisted.CreatedAtUtc.ShouldBe(legacyCreatedAt);
+        persisted.UpdatedByUserId.ShouldBeNull();
+        persisted.UpdatedAtUtc.ShouldBeNull();
+        persisted.Atd.ShouldBe(details.Atd);
+        persisted.StorageKey.ShouldBe(legacyKey);
+        persisted.ContentType.ShouldBe(legacyMime);
+        persisted.SizeBytes.ShouldBe(details.CustomerSignature.SizeBytes);
+        (await db.Flights.Where(item => item.Id == flight.Id).Select(item => item.RowVersion).SingleAsync()).ShouldBe(version);
+        await db.Database.OpenConnectionAsync();
+        await using var schemaCheck = db.Database.GetDbConnection().CreateCommand();
+        schemaCheck.CommandText = """
+            SELECT COUNT(*) FROM sys.columns
+            WHERE [object_id] = OBJECT_ID(N'[operations].[flight_departure_submissions]')
+                AND [name] IN (N'CustomerSignatureFileName', N'CustomerSignedAtUtc')
+            """;
+        Convert.ToInt32(await schemaCheck.ExecuteScalarAsync()).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Shared_signature_values_are_independent_for_normal_and_rtr_departures_and_track_all_metadata_changes()
+    {
+        await using var db = fixture.CreateContext();
+        await db.Database.MigrateAsync();
+        var actor = Guid.NewGuid();
+        var editor = Guid.NewGuid();
+        var flight = ScheduleFlight();
+        var submitter = Employee();
+        var handler = Employee();
+        var shared = Signature();
+        var normalDetails = DepartureDetails.Create(Now.AddMinutes(-10), shared, handler, "Normal departure").Value;
+        var normal = flight.SubmitDeparture(submitter, normalDetails, actor, Now).Value;
+        var occurrence = flight.StartReturnToRamp(Arrival(), actor, Now).Value;
+        AddWork(flight, occurrence.Id, actor, Now, Now);
+        var returnDetails = RtrDepartureDetails.Create(Now.AddMinutes(30), shared, handler, "RTR departure").Value;
+        flight.CloseReturnToRamp(occurrence.Id, returnDetails, actor, Now.AddMinutes(31)).IsSuccess.ShouldBeTrue();
+        normal.Details.CustomerSignature.ShouldNotBeSameAs(shared);
+        occurrence.DepartureDetails.ShouldNotBeNull().CustomerSignature.ShouldNotBeSameAs(shared);
+        normal.Details.CustomerSignature.ShouldNotBeSameAs(occurrence.DepartureDetails.CustomerSignature);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var reloaded = await LoadAsync(db, flight.Id);
+        var savedNormal = reloaded.DepartureSubmissions.ShouldHaveSingleItem();
+        var savedReturn = reloaded.ReturnToRamps.ShouldHaveSingleItem();
+        savedNormal.Details.CustomerSignature.ShouldBe(shared);
+        savedReturn.DepartureDetails.ShouldNotBeNull().CustomerSignature.ShouldBe(shared);
+        savedNormal.Details.CustomerSignature.ShouldNotBeSameAs(savedReturn.DepartureDetails.CustomerSignature);
+        var originalVersion = reloaded.RowVersion.ToArray();
+        var changedSigningTime = CustomerSignature.Create(shared.FileName, shared.StorageKey, shared.ContentType,
+            shared.SizeBytes, shared.SignedAtUtc.AddSeconds(1)).Value;
+        reloaded.SubmitDeparture(submitter, DepartureDetails.Create(savedNormal.Details.Atd, changedSigningTime,
+            savedNormal.Details.HandledByEmployee, savedNormal.Details.Remarks).Value, editor, Now.AddMinutes(32)).IsSuccess.ShouldBeTrue();
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        reloaded = await LoadAsync(db, flight.Id);
+        savedNormal = reloaded.DepartureSubmissions.ShouldHaveSingleItem();
+        savedReturn = reloaded.ReturnToRamps.ShouldHaveSingleItem();
+        savedNormal.Details.CustomerSignature.ShouldBe(changedSigningTime);
+        savedNormal.UpdatedByUserId.ShouldBe(editor);
+        savedNormal.UpdatedAtUtc.ShouldBe(Now.AddMinutes(32));
+        savedReturn.DepartureDetails.ShouldNotBeNull().CustomerSignature.ShouldBe(shared);
+        savedReturn.UpdatedAtUtc.ShouldBe(Now.AddMinutes(31));
+        reloaded.RowVersion.SequenceEqual(originalVersion).ShouldBeFalse();
+        var changedFileName = CustomerSignature.Create("corrected-name.png", shared.StorageKey, shared.ContentType,
+            shared.SizeBytes, shared.SignedAtUtc).Value;
+        var previousVersion = reloaded.RowVersion.ToArray();
+        reloaded.CloseReturnToRamp(savedReturn.Id,
+            RtrDepartureDetails.Create(savedReturn.DepartureDetails.DepartedAtUtc, changedFileName,
+                savedReturn.DepartureDetails.HandledByEmployee, savedReturn.DepartureDetails.Remarks).Value,
+            editor, Now.AddMinutes(33)).IsSuccess.ShouldBeTrue();
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        reloaded = await LoadAsync(db, flight.Id);
+        savedNormal = reloaded.DepartureSubmissions.ShouldHaveSingleItem();
+        savedReturn = reloaded.ReturnToRamps.ShouldHaveSingleItem();
+        savedNormal.Details.CustomerSignature.ShouldBe(changedSigningTime);
+        savedNormal.UpdatedAtUtc.ShouldBe(Now.AddMinutes(32));
+        savedReturn.DepartureDetails.ShouldNotBeNull().CustomerSignature.ShouldBe(changedFileName);
+        savedReturn.UpdatedAtUtc.ShouldBe(Now.AddMinutes(33));
+        savedReturn.EndedByUserId.ShouldBe(actor);
+        reloaded.RowVersion.SequenceEqual(previousVersion).ShouldBeFalse();
+        var versionBeforeNoOp = reloaded.RowVersion.ToArray();
+        var equalNormal = CustomerSignature.Create(changedSigningTime.FileName, changedSigningTime.StorageKey,
+            changedSigningTime.ContentType, changedSigningTime.SizeBytes,
+            changedSigningTime.SignedAtUtc.ToOffset(TimeSpan.FromHours(3))).Value;
+        var equalReturn = CustomerSignature.Create(changedFileName.FileName, changedFileName.StorageKey,
+            changedFileName.ContentType, changedFileName.SizeBytes, changedFileName.SignedAtUtc).Value;
+        reloaded.SubmitDeparture(submitter, DepartureDetails.Create(savedNormal.Details.Atd, equalNormal,
+            savedNormal.Details.HandledByEmployee, savedNormal.Details.Remarks).Value,
+            Guid.NewGuid(), Now.AddMinutes(34)).IsSuccess.ShouldBeTrue();
+        reloaded.CloseReturnToRamp(savedReturn.Id,
+            RtrDepartureDetails.Create(savedReturn.DepartureDetails.DepartedAtUtc, equalReturn,
+                savedReturn.DepartureDetails.HandledByEmployee, savedReturn.DepartureDetails.Remarks).Value,
+            Guid.NewGuid(), Now.AddMinutes(34)).IsSuccess.ShouldBeTrue();
+
+        (await db.SaveChangesAsync()).ShouldBe(0);
+        reloaded.RowVersion.ShouldBe(versionBeforeNoOp);
+        savedNormal.UpdatedAtUtc.ShouldBe(Now.AddMinutes(32));
+        savedReturn.UpdatedAtUtc.ShouldBe(Now.AddMinutes(33));
     }
 
     [Fact]
@@ -569,7 +826,7 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
     }
 
     private static DepartureDetails Departure() => DepartureDetails.Create(Now.AddMinutes(-10),
-        CustomerSignature.Create("signatures/flight.png", "image/png", 1024).Value, Employee(), null).Value;
+        CustomerSignature.Create("flight.png", "signatures/flight.png", "image/png", 1024, Now).Value, Employee(), null).Value;
 
     private static Flight ScheduleFlight() => Flight.ScheduleNew(
         new CustomerSnapshot(Guid.NewGuid(), "SV", "Saudia"), new StationSnapshot(Guid.NewGuid(), "RUH", "Riyadh"),
@@ -579,9 +836,9 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
 
     private static StaffMemberSnapshot Employee() => new(Guid.NewGuid(), "Ground engineer", "E100");
     private static RtrArrivalDetails Arrival(DateTimeOffset? at = null) => RtrArrivalDetails.Create(at ?? Now, Employee(), null).Value;
-    private static RtrDepartureDetails ReturnDeparture(RtrCustomerSignature? signature = null) =>
+    private static RtrDepartureDetails ReturnDeparture(CustomerSignature? signature = null) =>
         RtrDepartureDetails.Create(Now.AddMinutes(30), signature, Employee(), null).Value;
-    private static RtrCustomerSignature Signature() => RtrCustomerSignature.Create("customer/signature.png",
+    private static CustomerSignature Signature() => CustomerSignature.Create("customer/signature.png",
         "signatures/return.png", "image/png", 1024, Now.AddMinutes(30).ToOffset(TimeSpan.FromHours(3))).Value;
     private static ResourceUsage Quantity(decimal value) => ResourceUsage.Create(ResourceCalculationType.Quantity, value, null, null).Value;
     private static AttachmentDetails Attachment(string key) => AttachmentDetails.Create("report.jpg", key, "image/jpeg", 4096, AttachmentKind.Image).Value;

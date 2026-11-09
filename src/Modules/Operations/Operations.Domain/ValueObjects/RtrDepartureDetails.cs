@@ -9,12 +9,12 @@ public sealed class RtrDepartureDetails : ValueObject
     private RtrDepartureDetails() { }
 
     public DateTimeOffset DepartedAtUtc { get; private set; }
-    public RtrCustomerSignature? CustomerSignature { get; private set; }
+    public CustomerSignature? CustomerSignature { get; private set; }
     public StaffMemberSnapshot HandledByEmployee { get; private set; } = null!;
     public string? Remarks { get; private set; }
 
     public static Result<RtrDepartureDetails> Create(DateTimeOffset departedAtUtc,
-        RtrCustomerSignature? customerSignature, StaffMemberSnapshot? handledByEmployee, string? remarks)
+        CustomerSignature? customerSignature, StaffMemberSnapshot? handledByEmployee, string? remarks)
     {
         if (departedAtUtc == default)
             return Error.Validation("Return-to-ramp departure time is required.", "Operations.RtrDepartureDetails.DepartedAtRequired");

@@ -290,6 +290,6 @@ public sealed class FlightCancellationTests
         ArrivalDetails.Create(null, TestData.Now, TestData.AircraftType(), "HZ-ABC", TestData.Staff(), remarks).Value;
 
     private static DepartureDetails Departure(string? remarks = null) =>
-        DepartureDetails.Create(TestData.Now.AddHours(1), CustomerSignature.Create("signatures/customer.png", "image/png", 200).Value,
+        DepartureDetails.Create(TestData.Now.AddHours(1), CustomerSignature.Create("customer.png", "signatures/customer.png", "image/png", 200, TestData.Now).Value,
             TestData.Staff(), remarks).Value;
 }

@@ -30,6 +30,9 @@ internal static class PreRtrMigrationSeed
             db.Entry(flight).Property(item => item.RowVersion).CurrentValue = version;
             db.Entry(flight).Property(item => item.RowVersion).OriginalValue = version;
 
+            foreach (var departure in flight.DepartureSubmissions)
+                await InsertDepartureAsync(db, departure);
+
             foreach (var service in flight.Services)
             {
                 await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -61,6 +64,36 @@ internal static class PreRtrMigrationSeed
         }
 
         await db.SaveChangesAsync();
+    }
+
+    internal static async Task InsertDepartureAsync(OperationsDbContext db, FlightDepartureSubmission departure)
+    {
+        var details = departure.Details;
+        var submitter = departure.SubmittedByEmployee;
+        var signature = details.CustomerSignature;
+        var handler = details.HandledByEmployee;
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO [operations].[flight_departure_submissions]
+                ([Id], [FlightId], [SubmittedByStaffMemberId], [SubmittedByStaffFullName], [SubmittedByStaffEmployeeId],
+                 [ActualDepartureUtc], [CustomerSignatureStorageKey], [CustomerSignatureContentType], [CustomerSignatureSizeBytes],
+                 [HandledByStaffMemberId], [HandledByStaffFullName], [HandledByStaffEmployeeId], [Remarks],
+                 [IsAccepted], [CreatedByUserId], [CreatedAtUtc], [UpdatedByUserId], [UpdatedAtUtc])
+            VALUES ({departure.Id}, {departure.FlightId}, {submitter.StaffMemberId}, {submitter.FullName}, {submitter.EmployeeId},
+                {details.Atd}, {signature.StorageKey}, {signature.ContentType}, {signature.SizeBytes},
+                {handler.StaffMemberId}, {handler.FullName}, {handler.EmployeeId}, {details.Remarks},
+                {departure.IsAccepted}, {departure.CreatedByUserId}, {departure.CreatedAtUtc},
+                {departure.UpdatedByUserId}, {departure.UpdatedAtUtc})
+            """);
+        MarkDepartureUnchanged(db, departure);
+    }
+
+    internal static void MarkDepartureUnchanged(OperationsDbContext db, FlightDepartureSubmission departure)
+    {
+        // Keep the EF-only index alias aligned with its canonical employee snapshot.
+        var submitter = db.Entry(departure).Property<Guid>("SubmittedByStaffMemberId");
+        submitter.CurrentValue = departure.SubmittedByEmployee.StaffMemberId;
+        submitter.OriginalValue = departure.SubmittedByEmployee.StaffMemberId;
+        MarkOwnerAndReferencesUnchanged(db.Entry(departure));
     }
 
     private static void MarkOwnerAndReferencesUnchanged(EntityEntry entry)
