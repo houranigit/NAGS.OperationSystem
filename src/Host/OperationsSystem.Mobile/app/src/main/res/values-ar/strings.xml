@@ -105,7 +105,7 @@
     <string name="arrival_select_aircraft">اختر نوع الطائرة</string>
     <string name="arrival_tail_number">رقم التسجيل</string>
     <string name="arrival_tail_hint">أدخل رقم تسجيل الطائرة</string>
-    <string name="arrival_reference">رقم مرجع العمل</string>
+    <string name="arrival_reference">رقم حزمة العمل</string>
     <string name="flight_form_remarks">الملاحظات</string>
     <string name="flight_form_remarks_hint">ملاحظات اختيارية</string>
     <string name="operations_save">حفظ عمليات الرحلة</string>
@@ -239,7 +239,7 @@
     <string name="work_add_end">إضافة وقت النهاية</string>
     <string name="work_clear_end">إزالة وقت النهاية</string>
     <string name="work_end_before_start">لا يمكن أن تكون النهاية قبل البداية.</string>
-    <string name="work_customer_reference">مرجع العميل</string>
+    <string name="work_customer_reference">رقم مرجع العميل</string>
     <string name="work_delete">حذف</string>
     <string name="work_remove_item">إزالة %1$s</string>
     <string name="work_employees">نُفّذت بواسطة (%1$d)</string>

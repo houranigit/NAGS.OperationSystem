@@ -93,7 +93,7 @@
     <string name="arrival_select_aircraft">Select aircraft type</string>
     <string name="arrival_tail_number">Tail number</string>
     <string name="arrival_tail_hint">Enter tail number</string>
-    <string name="arrival_reference">Work ref. no.</string>
+    <string name="arrival_reference">Work PKG #</string>
     <string name="flight_form_remarks">Remarks</string>
     <string name="flight_form_remarks_hint">Optional notes</string>
     <string name="operations_save">Save flight operations</string>
@@ -223,7 +223,7 @@
     <string name="work_add_end">Add end time</string>
     <string name="work_clear_end">Clear end time</string>
     <string name="work_end_before_start">End cannot be before start.</string>
-    <string name="work_customer_reference">Customer ref.</string>
+    <string name="work_customer_reference">Cust Ref #</string>
     <string name="work_delete">Delete</string>
     <string name="work_remove_item">Remove %1$s</string>
     <string name="work_employees">Performed By (%1$d)</string>
