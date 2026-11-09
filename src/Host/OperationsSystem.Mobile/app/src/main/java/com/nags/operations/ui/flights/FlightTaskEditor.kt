@@ -54,20 +54,21 @@ internal fun FlightTaskSection(
         pickerKind = null
     }
 
-    Column(Modifier.animateContentSize(animationSpec = tween(200)), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(R.string.work_tasks), Modifier.padding(horizontal = 14.dp).semantics { heading() },
+    Column(Modifier.animateContentSize(animationSpec = tween(200)), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(stringResource(R.string.work_tasks_count, items.size), Modifier.padding(horizontal = 14.dp, vertical = 2.dp).semantics { heading() },
             style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary)
-        FlightFormFieldGroup {
-            items.forEachIndexed { index, task ->
-                key(task.id) {
+        items.forEachIndexed { index, task ->
+            key(task.id) {
+                FlightWorkEntryGroup {
                     FlightWorkRemovableEntry(
                         id = task.id,
                         removeDescription = stringResource(R.string.work_remove_item, "$taskLabel ${index + 1}"),
                         onRemove = { onChange { current -> current.filterNot { it.id == task.id } } },
+                        compactDelete = true,
                     ) {
                         FlightWorkChoiceRow(
-                            label = stringResource(R.string.work_task_type),
+                            label = stringResource(R.string.work_task_number, index + 1),
                             value = when (task.taskType) {
                                 "Major" -> major
                                 "Minor" -> minor
@@ -75,34 +76,35 @@ internal fun FlightTaskSection(
                             },
                             description = stringResource(R.string.work_task_type),
                             isPlaceholder = task.taskType.isBlank(),
+                            leadingPadding = 0.dp,
                             onClick = { openPicker(task.id, "type") },
                         )
-                        FlightFormDivider()
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                FlightWorkChoiceRow(
-                                    label = stringResource(R.string.work_ata_chapter),
-                                    value = if (task.ataChapterId.isBlank()) stringResource(R.string.work_select_ata)
-                                        else "${task.ataChapterCode} · ${task.ataChapterTitle}",
-                                    description = stringResource(R.string.work_ata_chapter),
-                                    isPlaceholder = task.ataChapterId.isBlank(),
-                                    onClick = { openPicker(task.id, "ata") },
-                                )
-                            }
-                            if (task.ataChapterId.isNotBlank()) IconButton(
-                                onClick = { updateTask(task.id) { it.copy(ataChapterId = "", ataChapterCode = "", ataChapterTitle = "") } },
-                                modifier = Modifier.size(48.dp),
-                            ) {
-                                Icon(Icons.Outlined.Close, stringResource(R.string.work_clear_ata), Modifier.size(18.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        FlightFormDivider()
-                        FlightWorkPeriodFields(task.period, referenceYear) { period -> updateTask(task.id) { it.copy(period = period) } }
-                        FlightFormDivider()
-                        FlightWorkReferenceRow(task.reference,
-                            onChange = { value -> updateTask(task.id) { it.copy(reference = value) } })
                     }
+                    FlightFormDivider()
+                    FlightWorkReferenceRow(task.reference,
+                        onChange = { value -> updateTask(task.id) { it.copy(reference = value) } })
+                    FlightFormDivider()
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            FlightWorkChoiceRow(
+                                label = stringResource(R.string.work_ata_chapter),
+                                value = if (task.ataChapterId.isBlank()) stringResource(R.string.work_select_ata)
+                                    else "${task.ataChapterCode} · ${task.ataChapterTitle}",
+                                description = stringResource(R.string.work_ata_chapter),
+                                isPlaceholder = task.ataChapterId.isBlank(),
+                                onClick = { openPicker(task.id, "ata") },
+                            )
+                        }
+                        if (task.ataChapterId.isNotBlank()) IconButton(
+                            onClick = { updateTask(task.id) { it.copy(ataChapterId = "", ataChapterCode = "", ataChapterTitle = "") } },
+                            modifier = Modifier.size(48.dp),
+                        ) {
+                            Icon(Icons.Outlined.Close, stringResource(R.string.work_clear_ata), Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    FlightFormDivider()
+                    FlightWorkPeriodFields(task.period, referenceYear) { period -> updateTask(task.id) { it.copy(period = period) } }
                     FlightFormDivider()
                     FlightWorkEmployeeList(task.employees, catalogs.stationStaff, showRemarks = true, referenceYear = referenceYear,
                         onChange = { employees -> updateTask(task.id) { it.copy(employees = employees) } })
@@ -121,10 +123,11 @@ internal fun FlightTaskSection(
                         attachments = task.attachments,
                         onAttachmentsChange = { attachments -> updateTask(task.id) { it.copy(attachments = attachments) } },
                         description = stringResource(R.string.work_task_remarks))
-                    FlightFormDivider()
                 }
             }
-            FlightWorkAddRow(stringResource(R.string.work_add_task)) {
+        }
+        FlightFormFieldGroup {
+            FlightWorkAddRow(stringResource(R.string.work_add_task, items.size + 1)) {
                 val added = FlightTaskDraft()
                 onChange { current -> current + added }
             }

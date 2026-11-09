@@ -37,6 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -55,6 +58,21 @@ import java.time.LocalDateTime
 
 private val WorkAddGreen = Color(0xFF248A3D)
 private val WorkRemoveRed = Color(0xFFD92D3F)
+
+/** The same quiet physical-left rule binds each service or task's full-width fields. */
+@Composable
+internal fun FlightWorkEntryGroup(content: @Composable () -> Unit) {
+    val border = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
+    Box(Modifier.fillMaxWidth().drawWithContent {
+        drawContent()
+        val stroke = 0.75.dp.toPx()
+        val inset = 14.dp.toPx()
+        drawLine(border, Offset(stroke / 2, inset), Offset(stroke / 2, size.height - inset),
+            strokeWidth = stroke, cap = StrokeCap.Round)
+    }) {
+        FlightFormFieldGroup(content)
+    }
+}
 
 /** Intrinsic labels leave the remaining row width to the selected value. */
 @Composable

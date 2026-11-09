@@ -126,24 +126,24 @@ internal fun FlightWorkResourceList(
         pickerOpen = true
     }
 
-    FlightWorkDetailsHeading(stringResource(kind.sectionLabel))
-    items.forEach { item ->
+    FlightWorkDetailsHeading(stringResource(kind.sectionLabel, items.size))
+    items.forEachIndexed { index, item ->
         key(item.id) {
             FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, item.resourceName),
-                onRemove = { onChange(items.filterNot { it.id == item.id }) }) {
-                FlightWorkChoiceRow(stringResource(kind.itemLabel), item.resourceName,
-                    stringResource(kind.selectLabel), onClick = { openPicker(item.id) })
-                FlightFormDivider()
-                FlightWorkPeriodFields(item.period, referenceYear,
-                    onChange = { period -> onChange(items.map { if (it.id == item.id) it.copy(period = period) else it }) })
-                FlightWorkNotes("", {}, item.remarks,
-                    onRemarksChange = { remarks -> onChange(items.map { if (it.id == item.id) it.copy(remarks = remarks) else it }) },
-                    description = stringResource(R.string.work_resource_remarks), showReference = false)
+                onRemove = { onChange(items.filterNot { it.id == item.id }) }, compactDelete = true) {
+                FlightWorkChoiceRow(stringResource(kind.itemLabel, index + 1), item.resourceName,
+                    stringResource(kind.selectLabel), leadingPadding = 0.dp, onClick = { openPicker(item.id) })
             }
+            FlightFormDivider()
+            FlightWorkPeriodFields(item.period, referenceYear,
+                onChange = { period -> onChange(items.map { if (it.id == item.id) it.copy(period = period) else it }) })
+            FlightWorkNotes("", {}, item.remarks,
+                onRemarksChange = { remarks -> onChange(items.map { if (it.id == item.id) it.copy(remarks = remarks) else it }) },
+                description = stringResource(R.string.work_resource_remarks), showReference = false)
             FlightFormDivider()
         }
     }
-    FlightWorkAddRow(stringResource(kind.addLabel), onClick = { openPicker(null) })
+    FlightWorkAddRow(stringResource(kind.addLabel, items.size + 1), onClick = { openPicker(null) })
     if (pickerOpen) FlightWorkPicker(
         title = stringResource(kind.selectLabel),
         searchLabel = stringResource(kind.searchLabel),

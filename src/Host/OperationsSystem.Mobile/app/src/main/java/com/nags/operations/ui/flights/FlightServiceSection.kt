@@ -3,9 +3,7 @@ package com.nags.operations.ui.flights
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -16,9 +14,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -40,40 +35,30 @@ internal fun FlightServiceSection(
         Text(stringResource(R.string.work_services_count, items.size), Modifier.padding(horizontal = 14.dp, vertical = 2.dp).semantics { heading() },
             style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary)
-        val serviceBorder = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
         items.forEachIndexed { index, item -> key(item.id) {
-            Box(Modifier.fillMaxWidth().drawWithContent {
-                drawContent()
-                // Physical left in both locales; the quiet rule binds the tall service group.
-                val stroke = 0.75.dp.toPx()
-                val inset = 14.dp.toPx()
-                drawLine(serviceBorder, Offset(stroke / 2, inset), Offset(stroke / 2, size.height - inset),
-                    strokeWidth = stroke, cap = StrokeCap.Round)
-            }) {
-                FlightFormFieldGroup {
-                    val description = item.serviceName.ifBlank { title }
-                    fun update(change: (FlightServiceDraft) -> FlightServiceDraft) =
-                        onChange { current -> current.map { if (it.id == item.id) change(it) else it } }
-                    FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, description),
-                        onRemove = { onChange { current -> current.filterNot { it.id == item.id } } }, compactDelete = true) {
-                        FlightWorkChoiceRow(stringResource(R.string.work_service, index + 1),
-                            item.serviceName.ifBlank { stringResource(R.string.work_select_service) },
-                            stringResource(R.string.work_select_service), isPlaceholder = item.serviceId.isBlank(), leadingPadding = 0.dp,
-                            onClick = { selectingService = item.id })
-                    }
-                    FlightFormDivider()
-                    FlightWorkReferenceRow(item.reference, onChange = { reference -> update { it.copy(reference = reference) } })
-                    FlightFormDivider()
-                    FlightWorkPeriodFields(item.period, referenceYear, onChange = { period -> update { it.copy(period = period) } })
-                    FlightFormDivider()
-                    FlightWorkEmployeeList(item.employees, catalogs.stationStaff, showRemarks = false, referenceYear = referenceYear,
-                        onChange = { employees -> update { it.copy(employees = employees) } })
-                    FlightFormDivider()
-                    FlightRemarksComposer(item.remarks, onRemarksChange = { remarks -> update { it.copy(remarks = remarks) } },
-                        attachments = item.attachments,
-                        onAttachmentsChange = { attachments -> update { it.copy(attachments = attachments) } },
-                        description = stringResource(R.string.work_service_remarks))
+            FlightWorkEntryGroup {
+                val description = item.serviceName.ifBlank { title }
+                fun update(change: (FlightServiceDraft) -> FlightServiceDraft) =
+                    onChange { current -> current.map { if (it.id == item.id) change(it) else it } }
+                FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, description),
+                    onRemove = { onChange { current -> current.filterNot { it.id == item.id } } }, compactDelete = true) {
+                    FlightWorkChoiceRow(stringResource(R.string.work_service, index + 1),
+                        item.serviceName.ifBlank { stringResource(R.string.work_select_service) },
+                        stringResource(R.string.work_select_service), isPlaceholder = item.serviceId.isBlank(), leadingPadding = 0.dp,
+                        onClick = { selectingService = item.id })
                 }
+                FlightFormDivider()
+                FlightWorkReferenceRow(item.reference, onChange = { reference -> update { it.copy(reference = reference) } })
+                FlightFormDivider()
+                FlightWorkPeriodFields(item.period, referenceYear, onChange = { period -> update { it.copy(period = period) } })
+                FlightFormDivider()
+                FlightWorkEmployeeList(item.employees, catalogs.stationStaff, showRemarks = false, referenceYear = referenceYear,
+                    onChange = { employees -> update { it.copy(employees = employees) } })
+                FlightFormDivider()
+                FlightRemarksComposer(item.remarks, onRemarksChange = { remarks -> update { it.copy(remarks = remarks) } },
+                    attachments = item.attachments,
+                    onAttachmentsChange = { attachments -> update { it.copy(attachments = attachments) } },
+                    description = stringResource(R.string.work_service_remarks))
             }
         } }
         FlightFormFieldGroup {
