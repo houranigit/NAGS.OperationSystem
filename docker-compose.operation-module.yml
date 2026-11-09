@@ -44,10 +44,11 @@ services:
       Identity__EmailChangeConfirmUrlBase: http://127.0.0.1:5081/confirm-email-change
       Identity__DemoData__Enabled: "false"
       Database__ApplyMigrationsOnStartup: "true"
-      Messaging__OutboxDispatchEnabled: "false"
-      Operations__FlightReminders__Enabled: "false"
-      Notifications__Fcm__Enabled: "false"
-      Notifications__Fcm__Required: "false"
+      Messaging__OutboxDispatchEnabled: "true"
+      Operations__FlightReminders__Enabled: "true"
+      Notifications__Fcm__Enabled: "true"
+      Notifications__Fcm__Required: "true"
+      Notifications__Fcm__ServiceAccountJsonPath: /run/secrets/firebase_admin
       EmailSettings__EnableEmailNotifications: "false"
       OpenTelemetry__Enabled: "false"
       FileStorage__RootPath: /data/storage
@@ -57,6 +58,8 @@ services:
     volumes:
       - storage:/data/storage
       - api-keys:/data/keys
+    secrets:
+      - firebase_admin
     depends_on:
       sqlserver:
         condition: service_healthy

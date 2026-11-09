@@ -62,12 +62,6 @@ class OperationsApi internal constructor(private val client: HttpClient) {
     suspend fun flight(id: String): FlightDetail =
         client.get(HttpClientFactory.url("api/v1/operations/flights/mobile/$id")).bodyOrThrow()
 
-    suspend fun notificationTargets(flightIds: List<String>): Set<String> =
-        client.post(HttpClientFactory.url("api/v1/operations/flights/mobile/notification-targets")) {
-            contentType(ContentType.Application.Json)
-            setBody(NotificationTargetsRequest(flightIds))
-        }.bodyOrThrow<List<String>>().toSet()
-
     suspend fun invitationOptions(id: String): List<AssignedEmployee> =
         client.get(HttpClientFactory.url("api/v1/operations/flights/mobile/$id/invitation-options")).bodyOrThrow()
 
@@ -86,6 +80,3 @@ class OperationsApi internal constructor(private val client: HttpClient) {
         const val MAX_LOGO_BYTES = 2 * 1024 * 1024
     }
 }
-
-@kotlinx.serialization.Serializable
-private data class NotificationTargetsRequest(val flightIds: List<String>)

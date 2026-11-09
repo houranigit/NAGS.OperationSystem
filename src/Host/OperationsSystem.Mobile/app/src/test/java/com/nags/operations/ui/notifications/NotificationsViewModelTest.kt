@@ -12,46 +12,51 @@ class NotificationsViewModelTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     @After fun tearDown() = scope.cancel()
 
-    @Test fun onlyVerifiedFlightsCanOpenAndSchedulesStayInformational() {
+    @Test fun cachedFlightOpensImmediatelyWithoutWaitingForTheInboxRequest() {
         val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
-        val missing = "fe85f964-1315-4e73-b24e-31f4f0ad7f91"
-        val available = row("available").copy(payload = mapOf("flightId" to id))
-        val unavailable = row("missing").copy(payload = mapOf("flightId" to missing))
+        val notification = row("available").copy(payload = mapOf("flightId" to id))
+        val inboxResponse = CompletableDeferred<NotificationPageDto>()
+        val events = mutableListOf<String>()
+        val vm = model(MutableStateFlow(listOf(notification)), fetch = { inboxResponse.await() },
+            localFlights = flowOf(setOf(id)), read = { events += "read:$it" })
+
+        vm.open(notification, { events += "flight:${it.flightId}" })
+
+        assertEquals(listOf("read:available", "flight:$id"), events)
+        assertFalse(inboxResponse.isCompleted)
+    }
+
+    @Test fun unsyncedInvalidAndScheduleTargetsStayInformational() {
+        val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
+        val missing = row("not-synced").copy(payload = mapOf("flightId" to "fe85f964-1315-4e73-b24e-31f4f0ad7f91"))
+        val invalid = row("invalid").copy(payload = mapOf("flightId" to "not-a-flight-id"))
+        val absent = row("absent")
         val schedule = row("schedule", kind = NotificationKinds.FlightScheduleUpdated).copy(payload = mapOf("flightId" to id))
-        val rows = MutableStateFlow(listOf(available, unavailable, schedule))
-        val vm = model(rows, targets = { setOf(id) })
-        assertEquals(setOf(id), vm.state.value.openableFlightIds)
-        val opened = mutableListOf<String?>()
-        vm.open(schedule, { opened += it.flightId }, { fail("Schedule updates must not navigate") })
-        vm.open(unavailable, { opened += it.flightId })
-        vm.open(available, { opened += it.flightId })
-        assertEquals(listOf(id), opened)
+        val vm = model(localFlights = flowOf(setOf(id)))
+        for (notification in listOf(missing, invalid, absent, schedule)) {
+            vm.open(notification, { fail("Informational notification must not open a flight") },
+                { fail("Schedule updates must not navigate") })
+        }
     }
 
-    @Test fun flightDisappearingAfterLoadIsRecheckedBeforeNavigation() {
+    @Test fun localSyncedFlightChangesUpdateEligibilityWithoutRefreshingTheInbox() {
         val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
-        val notification = row("flight").copy(payload = mapOf("flightId" to id))
-        var exists = true
-        val vm = model(MutableStateFlow(listOf(notification)), targets = { if (exists) setOf(id) else emptySet() })
-        assertTrue(id in vm.state.value.openableFlightIds)
-        exists = false
-        vm.open(notification, { fail("A removed flight must not navigate") })
-        assertTrue(vm.state.value.openableFlightIds.isEmpty())
-        assertTrue(vm.state.value.openingIds.isEmpty())
-        assertNotNull(vm.state.value.actionError)
-    }
+        val localFlights = MutableStateFlow(emptySet<String>())
+        val notification = row("flight").copy(payload = mapOf("flightId" to id.uppercase()))
+        var inboxReads = 0
+        var opened = 0
+        val vm = model(localFlights = localFlights, fetch = { inboxReads++; page(it) })
+        vm.open(notification, { opened++ })
+        assertEquals(0, opened)
 
-    @Test fun olderBatchCannotReenableAFlightThatFailedTheOpenRecheck() {
-        val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
-        val notification = row("flight").copy(payload = mapOf("flightId" to id))
-        val stale = CompletableDeferred<Set<String>>()
-        var calls = 0
-        val vm = model(MutableStateFlow(listOf(notification)), targets = {
-            when (++calls) { 1 -> setOf(id); 2 -> stale.await(); else -> emptySet() }
-        })
-        vm.open(notification, { fail("The flight disappeared") })
-        stale.complete(setOf(id))
-        assertTrue(vm.state.value.openableFlightIds.isEmpty())
+        localFlights.value = setOf(id)
+        vm.open(notification, { opened++ })
+        assertEquals(1, opened)
+        localFlights.value = emptySet()
+        vm.open(notification, { opened++ })
+        assertEquals(1, opened)
+        assertEquals(1, inboxReads)
+        assertTrue(vm.state.value.syncedFlightIds.isEmpty())
     }
 
     @Test fun failedDeleteKeepsTheCardAndAllowsGestureToRestoreWithoutDuplicateRequests() {
@@ -80,16 +85,6 @@ class NotificationsViewModelTest {
         assertEquals(listOf("two"), vm.state.value.items.map { it.id })
         assertTrue(vm.state.value.archivingIds.isEmpty())
         assertNull(vm.state.value.actionError)
-    }
-
-    @Test fun availabilityReturningAfterThePageClosesCannotEnableOldTargets() {
-        val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
-        val response = CompletableDeferred<Set<String>>()
-        val vm = model(MutableStateFlow(listOf(row("one").copy(payload = mapOf("flightId" to id)))),
-            targets = { withContext(NonCancellable) { response.await() } })
-        vm.endVisit()
-        response.complete(setOf(id))
-        assertTrue(vm.state.value.openableFlightIds.isEmpty())
     }
 
     @Test fun mixedNotificationsShareOneListAndKeepTheirTintUntilTheNextVisit() {
@@ -211,8 +206,8 @@ class NotificationsViewModelTest {
 
     @Test fun openingAnExpiredReminderAcknowledgesWithoutOpeningItsFlight() {
         val events = mutableListOf<String>()
-        val vm = model(read = { events += "read:$it" })
-        vm.open(row("expired", kind = NotificationKinds.FlightReminder).copy(payload = mapOf("flightId" to "flight", "scheduledArrivalUtc" to "2000-01-01T00:00:00Z")),
+        val vm = model(read = { events += "read:$it" }, localFlights = flowOf(setOf("36780af4-97c1-4bb3-9af0-43c661b1ed92")))
+        vm.open(row("expired", kind = NotificationKinds.FlightReminder).copy(payload = mapOf("flightId" to "36780af4-97c1-4bb3-9af0-43c661b1ed92", "scheduledArrivalUtc" to "2000-01-01T00:00:00Z")),
             onOpenFlight = { events += "flight" })
         assertEquals(listOf("read:expired"), events)
     }
@@ -223,10 +218,10 @@ class NotificationsViewModelTest {
         acknowledge: suspend () -> CategoryReadResult? = { null },
         events: Flow<CategoryReadAcknowledgement> = emptyFlow(),
         read: (String) -> Unit = {}, start: Boolean = true,
-        targets: suspend (List<String>) -> Set<String> = { it.toSet() },
+        localFlights: Flow<Set<String>> = flowOf(emptySet()),
         archive: suspend (String) -> Unit = {},
     ) = NotificationsViewModel({ rows }, fetch, acknowledge, read, archive, {}, events, scope,
-        fetchOpenableFlightIds = targets).also { if (start) it.beginVisit() }
+        localFlightIds = localFlights).also { if (start) it.beginVisit() }
     private fun page(number: Int, more: Boolean = false) = NotificationPageDto(page = number, pageSize = 20, totalCount = 60, hasNextPage = more)
     private fun row(id: String, read: Boolean = false, kind: String = NotificationKinds.EmployeeInvitedToFlight) = NotificationDto(
         id, kind, "Title", "Body", "عنوان", "نص", isRead = read, createdAtUtc = "2026-11-09T12:00:00Z", readAtUtc = if (read) "2026-11-08T12:00:00Z" else null)

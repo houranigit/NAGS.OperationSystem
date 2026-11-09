@@ -1,6 +1,9 @@
 package com.nags.operations.ui.notifications
 
 import com.nags.operations.data.notifications.NotificationDto
+import com.nags.operations.data.notifications.NotificationKinds
+import com.nags.operations.data.notifications.flightId
+import com.nags.operations.data.notifications.isExpiredReminder
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -8,6 +11,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.UUID
 
 internal sealed interface NotificationFeedRow {
     val key: String
@@ -77,4 +81,12 @@ internal fun notificationAccentArgb(kind: String): Long = when (kind) {
     com.nags.operations.data.notifications.NotificationKinds.EmployeeInvitedToFlight -> 0xFF248A3D
     com.nags.operations.data.notifications.NotificationKinds.FlightScheduleUpdated -> 0xFF1689B9
     else -> 0xFF007AFF // Matches the Scheduled badge on flight cards.
+}
+
+/** A notification can open only a valid flight already present in the locally synced manifest. */
+internal fun canOpenNotification(notification: NotificationDto, syncedFlightIds: Set<String>, now: Instant = Instant.now()): Boolean {
+    if (notification.kind == NotificationKinds.FlightScheduleUpdated || notification.isExpiredReminder(now)) return false
+    val id = notification.flightId() ?: return false
+    val parsed = runCatching { UUID.fromString(id) }.getOrNull() ?: return false
+    return parsed != UUID(0, 0) && parsed.toString().equals(id, ignoreCase = true) && parsed.toString() in syncedFlightIds
 }

@@ -22,6 +22,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -37,8 +38,6 @@ class FlightsRepositoryCacheTest {
     private var listFailure: Exception? = null
     private var detailFailure: Exception? = null
     private val detailReads = mutableListOf<String>()
-    private val notificationTargetReads = mutableListOf<List<String>>()
-    private var notificationTargetLoader: suspend (List<String>) -> Set<String> = { it.toSet() }
     private val pageReads = mutableListOf<Pair<Int, Int>>()
     private var detailNumber = "123"
     private var invitationReads = 0
@@ -75,136 +74,105 @@ class FlightsRepositoryCacheTest {
         fetchFlight = { detailLoader(it) },
         fetchInvitationOptions = { invitationReads++; emptyList() },
         sendInvitation = { _, _, _ -> invitationWrites++ },
-        fetchNotificationTargets = { ids -> notificationTargetReads += ids; notificationTargetLoader(ids) },
         logoStore = logoStore,
         dao = dao, ownerFlow = owner, currentOwner = { owner.value }, isOnline = { online }, now = { clock },
     )
 
     @Test
-    fun notificationTargetsUseBoundedBatchChecksWithoutFetchingFlightDetails() = runBlocking {
-        val requested = (1..205).map { java.util.UUID(0, it.toLong()).toString() }
-        val permitted = requested.filterIndexed { index, _ -> index % 2 == 0 }.toSet()
-        val unexpected = java.util.UUID(1, 1).toString()
-        notificationTargetLoader = { ids -> ids.filter { it in permitted }.toSet() + unexpected }
+    fun notificationLinksReadTheSyncedManifestWithoutNetworkOrDetailRequests() = runBlocking {
+        val id = java.util.UUID(0, 1).toString()
+        serverItems = listOf(item(id))
+        val repository = repository()
+        repository.refreshCache()
+        val readsBefore = pageReads.toList()
+        pageLoader = { _, _, _ -> throw AssertionError("A notification lookup must not fetch flights") }
+        detailLoader = { throw AssertionError("A notification lookup must not fetch details") }
 
-        val available = repository().openableNotificationFlightIds(requested + requested.first() + "invalid")
-
-        assertEquals(permitted, available)
-        assertEquals(listOf(100, 100, 5), notificationTargetReads.map { it.size })
-        assertEquals(requested.toSet(), notificationTargetReads.flatten().toSet())
+        assertEquals(setOf(id), repository.syncedFlightIds.first { it.isNotEmpty() })
+        online = false
+        assertEquals(setOf(id), repository.syncedFlightIds.first { it.isNotEmpty() })
+        assertEquals(readsBefore, pageReads)
         assertTrue(detailReads.isEmpty())
-        assertTrue(pageReads.isEmpty())
+        assertTrue(dao.details(owner.value!!).isEmpty())
     }
 
     @Test
-    fun offlineNotificationTargetsRequireOpenedDetailsInTheCurrentScopedManifest() = runBlocking {
-        val opened = java.util.UUID(0, 1).toString()
-        val listOnly = java.util.UUID(0, 2).toString()
-        val missing = java.util.UUID(0, 3).toString()
-        serverItems = listOf(item(opened), item(listOnly))
+    fun notificationMembershipChangesWithTheAccountWithoutFetchingFlights() = runBlocking {
+        val firstId = java.util.UUID(0, 1).toString()
+        val secondId = java.util.UUID(0, 2).toString()
+        val firstOwner = owner.value!!
         val repository = repository()
+        serverItems = listOf(item(firstId))
         repository.refreshCache()
-        repository.flight(opened)
-        val readsBefore = detailReads.toList()
-        notificationTargetLoader = { throw IOException("Disconnected") }
-
-        // A transient live check uses the same restricted offline fallback.
-        assertEquals(setOf(opened), repository.openableNotificationFlightIds(listOf(opened, listOnly, missing)))
-        online = false
-        assertEquals(setOf(opened), repository.openableNotificationFlightIds(listOf(opened, listOnly, missing)))
-        assertEquals(readsBefore, detailReads)
-        assertEquals(1, notificationTargetReads.size)
+        owner.value = "http://other-api/|another-account"
+        serverItems = listOf(item(secondId))
+        repository.refreshCache()
+        val readsBefore = pageReads.toList()
+        val observed = MutableStateFlow(emptySet<String>())
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            repository.syncedFlightIds.collect { observed.value = it }
+        }
+        try {
+            observed.first { it == setOf(secondId) }
+            owner.value = firstOwner
+            assertEquals(setOf(firstId), observed.first { it == setOf(firstId) })
+            owner.value = null
+            assertTrue(observed.first { it.isEmpty() }.isEmpty())
+            assertEquals(readsBefore, pageReads)
+            assertTrue(detailReads.isEmpty())
+        } finally { collector.cancel() }
     }
 
     @Test
-    fun offlineNotificationTargetsExpireAfterTheInclusiveFlightWindowBoundary() = runBlocking {
-        val id = java.util.UUID(0, 1).toString()
-        serverItems = listOf(item(id))
-        val repository = repository()
-        repository.refreshCache()
-        repository.flight(id)
-        online = false
-        clock = "2026-11-04T23:00:00Z"
-        assertEquals(setOf(id), repository.openableNotificationFlightIds(listOf(id)))
-
-        clock = "2026-11-04T23:00:00.001Z"
-
-        assertTrue(repository.openableNotificationFlightIds(listOf(id)).isEmpty())
-        assertNull(dao.detail(owner.value!!, id))
-    }
-
-    @Test
-    fun aChangedStationRevokesPreviouslyOpenableOfflineNotificationTargets() = runBlocking {
+    fun confirmedStationChangesRemoveNotificationTargetsUntilTheNewManifestIsSynced() = runBlocking {
         val oldId = java.util.UUID(0, 1).toString()
         val newId = java.util.UUID(0, 2).toString()
         serverItems = listOf(item(oldId))
         val repository = repository()
         repository.refreshCache()
-        repository.flight(oldId)
-        serverStation = "new-station"
-        serverItems = listOf(item(newId).copy(stationId = serverStation))
-        repository.flights()
-        online = false
-
-        assertTrue(repository.openableNotificationFlightIds(listOf(oldId, newId)).isEmpty())
-        assertTrue(dao.details(owner.value!!).isEmpty())
+        val observed = MutableStateFlow(emptySet<String>())
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            repository.syncedFlightIds.collect { observed.value = it }
+        }
+        try {
+            observed.first { it == setOf(oldId) }
+            serverStation = "new-station"
+            serverItems = listOf(item(newId).copy(stationId = serverStation))
+            repository.flights() // Existing flight reads confirm new station metadata; lookup itself does not fetch.
+            assertTrue(observed.first { it.isEmpty() }.isEmpty())
+            assertNull(dao.snapshot(owner.value!!)?.lastSuccessUtc)
+            repository.refreshCache()
+            assertEquals(setOf(newId), observed.first { it == setOf(newId) })
+            assertTrue(detailReads.isEmpty())
+        } finally { collector.cancel() }
     }
 
     @Test
-    fun deniedLiveNotificationTargetChecksDoNotOfferPreviouslyCachedFlights() = runBlocking {
+    fun expiredOrRevokedSyncedFlightsAreRemovedFromLocalNotificationMembership() = runBlocking {
         val id = java.util.UUID(0, 1).toString()
         serverItems = listOf(item(id))
         val repository = repository()
         repository.refreshCache()
-        repository.flight(id)
-        notificationTargetLoader = { throw ApiException(403, "Access revoked") }
-
-        assertTrue(runCatching { repository.openableNotificationFlightIds(listOf(id)) }.exceptionOrNull() is ApiException)
-        online = false
-        assertTrue(repository.openableNotificationFlightIds(listOf(id)).isEmpty())
-        assertTrue(dao.details(owner.value!!).isEmpty())
-    }
-
-    @Test
-    fun aLateNotificationTargetReplyCannotAuthorizeAnotherAccount() = runBlocking {
-        val id = java.util.UUID(0, 1).toString()
-        val reply = CompletableDeferred<Set<String>>()
-        notificationTargetLoader = { reply.await() }
-        val repository = repository()
-        val pending = async(start = CoroutineStart.UNDISPATCHED) {
-            runCatching { repository.openableNotificationFlightIds(listOf(id)) }
+        val observed = MutableStateFlow(emptySet<String>())
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            repository.syncedFlightIds.collect { observed.value = it }
         }
-        owner.value = "http://branch/|another-account"
+        try {
+            observed.first { it == setOf(id) }
+            val readsBeforePrune = pageReads.toList()
+            clock = "2026-11-04T23:00:00.001Z"
+            repository.pruneExpired()
+            assertTrue(observed.first { it.isEmpty() }.isEmpty())
+            assertEquals(readsBeforePrune, pageReads)
 
-        reply.complete(setOf(id))
-
-        assertTrue(pending.await().isFailure)
-        online = false
-        assertTrue(repository.openableNotificationFlightIds(listOf(id)).isEmpty())
-    }
-
-    @Test
-    fun aLateNotificationTargetReplyCannotRestoreAConfirmedPreviousStation() = runBlocking {
-        val oldId = java.util.UUID(0, 1).toString()
-        val newId = java.util.UUID(0, 2).toString()
-        serverItems = listOf(item(oldId))
-        val repository = repository()
-        repository.refreshCache()
-        val reply = CompletableDeferred<Set<String>>()
-        notificationTargetLoader = { reply.await() }
-        val pending = async(start = CoroutineStart.UNDISPATCHED) {
-            runCatching { repository.openableNotificationFlightIds(listOf(oldId)) }
-        }
-
-        // This confirms a new station without changing the authenticated account.
-        serverStation = "new-station"
-        serverItems = listOf(item(newId).copy(stationId = serverStation))
-        assertEquals(listOf(newId), repository.flights().items.map { it.id })
-        reply.complete(setOf(oldId))
-
-        assertTrue(pending.await().isFailure)
-        notificationTargetLoader = { setOf(newId) }
-        assertEquals(setOf(newId), repository.openableNotificationFlightIds(listOf(oldId, newId)))
+            clock = "2026-11-04T10:00:00Z"
+            repository.refreshCache()
+            observed.first { it == setOf(id) }
+            listFailure = ApiException(403, "Flight access revoked")
+            assertTrue(runCatching { repository.flights() }.isFailure)
+            assertTrue(observed.first { it.isEmpty() }.isEmpty())
+            assertTrue(dao.snapshot(owner.value!!)!!.permissionDenied)
+        } finally { collector.cancel() }
     }
 
     @Test

@@ -158,8 +158,10 @@ This branch is based on `main`. Its database target is a **new**
 4. Start the branch API and portal after the restore and volume copies. Startup migrations
    apply only to the new branch database; see the [flight scheduling reset](#flight-scheduling-baseline).
 
-The branch stack's outbox dispatch, email, and Android push are disabled. Bootstrap administrator
-settings do not reset an existing copied account. Main/release and HandOver run in separate
+The branch stack's outbox dispatch, flight reminders, and Android push are enabled for notification testing.
+The API reads its Firebase credential from the read-only `firebase_admin` runtime secret; the
+credential stays out of the image. Email remains disabled. Bootstrap administrator settings do
+not reset an existing copied account. Main/release and HandOver run in separate
 projects; rebuilding this branch does not rebuild their images or overwrite their databases.
 
 From the repository root, use:
@@ -241,7 +243,7 @@ The current Operations module is scheduling-only; see [Operations Module Foundat
 
 This is a destructive workflow-data reset. Back up any existing database and review the migration SQL before deployment. Its rollback cannot recover removed work-order/history data; restore the database backup with the earlier application instead. Development startup migrations are disabled in this branch so launching the API does not apply the reset automatically. Do not enable automatic migrations against a shared or remote database. Existing Android operational clients are incompatible with the reset API. Blob storage is left intact and requires a separate retention decision.
 
-`Operations_RestoreFlightNotifications` adds the current durable reminder schedule table after the scheduling baseline. Apply it before enabling reminder scanning; it preserves existing flights and rosters. See [user notifications](../modules/operations-foundation.md#user-notifications) for milestone and cancellation semantics. The isolated Compose profiles keep background processing disabled; enable both `Messaging:OutboxDispatchEnabled` and `Operations:FlightReminders:Enabled` when testing notification delivery against the migrated local copy.
+`Operations_RestoreFlightNotifications` adds the current durable reminder schedule table after the scheduling baseline. Apply it before enabling reminder scanning; it preserves existing flights and rosters. See [user notifications](../modules/operations-foundation.md#user-notifications) for milestone and cancellation semantics. The Operation module Compose stack enables both `Messaging:OutboxDispatchEnabled` and `Operations:FlightReminders:Enabled` for testing against its migrated local copy; the main/release stack keeps background processing disabled.
 
 ### 2026-10 legacy system IDs
 

@@ -69,6 +69,26 @@ class NotificationFeedPresentationTest {
         assertEquals(NotificationSwipePosition.Closed, notificationSwipeTarget(-80f, 600f, 400f, 80f))
     }
 
+    @Test fun openRequiresALocalSyncedFlightAndAValidConcreteReference() {
+        val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
+        val notification = row("one", now.toString()).copy(payload = mapOf("flightId" to id))
+        assertTrue(canOpenNotification(notification, setOf(id), now))
+        assertTrue(canOpenNotification(notification.copy(payload = mapOf("flightId" to id.uppercase())), setOf(id), now))
+        assertFalse(canOpenNotification(notification, emptySet(), now))
+        assertFalse(canOpenNotification(notification.copy(kind = "FlightScheduleUpdated"), setOf(id), now))
+        for (invalid in listOf("", "not-a-guid", "1-1-1-1-1", "00000000-0000-0000-0000-000000000000")) {
+            assertFalse(canOpenNotification(notification.copy(payload = mapOf("flightId" to invalid)), setOf(invalid), now))
+        }
+    }
+
+    @Test fun expiredReminderCannotOfferOpenEvenForASyncedFlight() {
+        val id = "36780af4-97c1-4bb3-9af0-43c661b1ed92"
+        val reminder = row("reminder", now.toString()).copy(kind = "FlightReminder", payload = mapOf("flightId" to id,
+            "scheduledArrivalUtc" to now.plusSeconds(60).toString()))
+        assertTrue(canOpenNotification(reminder, setOf(id), now))
+        assertFalse(canOpenNotification(reminder, setOf(id), now.plusSeconds(60)))
+    }
+
     private fun row(id: String, stamp: String, read: Boolean = true) = NotificationDto(id = id,
         kind = "StaffAssignedToFlight", titleEn = "Flight", bodyEn = "Flight updated", isRead = read, createdAtUtc = stamp)
 }

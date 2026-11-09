@@ -5,13 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.nags.operations.data.notifications.CategoryReadAcknowledgement
 import com.nags.operations.data.notifications.CategoryReadResult
 import com.nags.operations.data.notifications.NotificationDto
-import com.nags.operations.data.notifications.NotificationKinds
 import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.data.notifications.NotificationPageDto
 import com.nags.operations.data.notifications.flightId
-import com.nags.operations.data.notifications.isExpiredReminder
-import com.nags.operations.data.repo.NotificationsRepository
 import com.nags.operations.data.repo.FlightsRepository
+import com.nags.operations.data.repo.NotificationsRepository
 import com.nags.operations.data.userMessage
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -22,6 +20,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -35,8 +34,7 @@ class NotificationsViewModel internal constructor(
     private val archiveInbox: suspend () -> Unit,
     readAcknowledgements: Flow<CategoryReadAcknowledgement> = emptyFlow(),
     private val coroutineScope: CoroutineScope? = null,
-    private val fetchOpenableFlightIds: suspend (List<String>) -> Set<String> = { emptySet() },
-    targetChanges: Flow<Unit> = emptyFlow(),
+    localFlightIds: Flow<Set<String>> = flowOf(emptySet()),
 ) : ViewModel() {
     constructor(repository: NotificationsRepository, flights: FlightsRepository) : this(
         inbox = { repository.observeInbox(unreadOnly = false) },
@@ -46,8 +44,7 @@ class NotificationsViewModel internal constructor(
         archiveNotification = repository::archive,
         archiveInbox = repository::archiveAll,
         readAcknowledgements = repository.observeReadAcknowledgements(),
-        fetchOpenableFlightIds = flights::openableNotificationFlightIds,
-        targetChanges = flights.cacheChanges,
+        localFlightIds = flights.syncedFlightIds,
     )
 
     data class UiState(
@@ -62,8 +59,7 @@ class NotificationsViewModel internal constructor(
         val page: Int = 1,
         val error: String? = null,
         val loadMoreError: String? = null,
-        val openableFlightIds: Set<String> = emptySet(),
-        val openingIds: Set<String> = emptySet(),
+        val syncedFlightIds: Set<String> = emptySet(),
         val archivingIds: Set<String> = emptySet(),
         val isArchivingAll: Boolean = false,
         val actionError: String? = null,
@@ -79,10 +75,6 @@ class NotificationsViewModel internal constructor(
     private var requestVersion = 0L
     private var observerVersion = 0L
     private var visible = false
-    private var targetJob: Job? = null
-    private var targetVersion = 0L
-    private var lastTargetIds: Set<String>? = null
-    private val revokedTargets = mutableSetOf<String>()
     private var hasAcknowledgedVisit = false
     private var acknowledgedThrough: Instant? = null
     private val acknowledgedIds = mutableSetOf<String>()
@@ -102,14 +94,17 @@ class NotificationsViewModel internal constructor(
                 }
             }
         }
-        scope.launch { targetChanges.collect { if (visible) refreshTargetAvailability(force = true) } }
+        scope.launch {
+            localFlightIds.collect { ids ->
+                _state.update { it.copy(syncedFlightIds = ids.mapTo(mutableSetOf()) { id -> id.lowercase() }) }
+            }
+        }
     }
 
     fun beginVisit() {
         if (visible) return
         visible = true
         resetVisit()
-        refreshTargetAvailability(force = true)
         refresh()
     }
 
@@ -117,8 +112,6 @@ class NotificationsViewModel internal constructor(
         visible = false
         acknowledgeJob?.cancel()
         acknowledgeJob = null
-        targetVersion++
-        targetJob?.cancel()
     }
 
     private fun resetVisit() {
@@ -129,8 +122,7 @@ class NotificationsViewModel internal constructor(
         acknowledgedIds.clear()
         visitReadStamps.clear()
         visitLocalReadStamps.clear()
-        revokedTargets.clear()
-        _state.update { it.copy(visitId = it.visitId + 1, openableFlightIds = emptySet(), actionError = null,
+        _state.update { it.copy(visitId = it.visitId + 1, actionError = null,
             newIds = it.items.filterNot(NotificationDto::isRead).mapTo(mutableSetOf()) { row -> row.id }) }
     }
 
@@ -189,7 +181,6 @@ class NotificationsViewModel internal constructor(
                     it.copy(isLoading = false, isRefreshing = false, page = page.page,
                         hasMore = page.hasNextPage, isFromCache = page.isFromCache)
                 }
-                refreshTargetAvailability(force = true)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -222,35 +213,10 @@ class NotificationsViewModel internal constructor(
     fun open(notification: NotificationDto, onOpenFlight: (NotificationOpenRequest) -> Unit,
         onOpenSchedule: (NotificationOpenRequest) -> Unit = {}) {
         if (!notification.isRead) markReadOnOpen(notification.id)
-        if (notification.kind == NotificationKinds.FlightScheduleUpdated || notification.isExpiredReminder()) return
-        val flightId = notification.flightId() ?: return
-        if (flightId !in _state.value.openableFlightIds || notification.id in _state.value.openingIds) return
-        val visit = _state.value.visitId
-        _state.update { it.copy(openingIds = it.openingIds + notification.id, actionError = null) }
-        scope.launch {
-            try {
-                val available = fetchOpenableFlightIds(listOf(flightId))
-                if (!isCurrentVisit(visit)) return@launch
-                if (available.none { it.equals(flightId, ignoreCase = true) }) {
-                    revokedTargets.add(flightId)
-                    _state.update { it.copy(openableFlightIds = it.openableFlightIds - flightId,
-                        actionError = "This flight is no longer available.") }
-                    return@launch
-                }
-                onOpenFlight(NotificationOpenRequest(notificationId = notification.id, flightId = flightId,
-                    kind = notification.kind, scheduledArrivalUtc = notification.payload["scheduledArrivalUtc"],
-                    leadTimeMinutes = notification.payload["leadTimeMinutes"]?.toIntOrNull()))
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                if (isCurrentVisit(visit)) {
-                    revokedTargets.add(flightId)
-                    _state.update { it.copy(openableFlightIds = it.openableFlightIds - flightId, actionError = error.userMessage()) }
-                }
-            } finally {
-                _state.update { it.copy(openingIds = it.openingIds - notification.id) }
-            }
-        }
+        if (!canOpenNotification(notification, _state.value.syncedFlightIds)) return
+        onOpenFlight(NotificationOpenRequest(notificationId = notification.id, flightId = notification.flightId(),
+            kind = notification.kind, scheduledArrivalUtc = notification.payload["scheduledArrivalUtc"],
+            leadTimeMinutes = notification.payload["leadTimeMinutes"]?.toIntOrNull()))
     }
 
     fun archive(notification: NotificationDto, onFailure: () -> Unit = {}) {
@@ -277,27 +243,6 @@ class NotificationsViewModel internal constructor(
         }
     }
 
-    private fun refreshTargetAvailability(force: Boolean = false) {
-        if (!visible) return
-        val ids = _state.value.items.filter { it.kind != NotificationKinds.FlightScheduleUpdated && !it.isExpiredReminder() }
-            .mapNotNull(NotificationDto::flightId).toSet()
-        if (!force && ids == lastTargetIds) return
-        lastTargetIds = ids
-        revokedTargets.clear()
-        val version = ++targetVersion
-        targetJob?.cancel()
-        val visit = _state.value.visitId
-        _state.update { it.copy(openableFlightIds = it.openableFlightIds.intersect(ids)) }
-        targetJob = scope.launch {
-            val available = try { fetchOpenableFlightIds(ids.toList()) }
-            catch (error: CancellationException) { throw error }
-            catch (_: Exception) { emptySet() }
-            if (targetVersion == version && isCurrentVisit(visit)) _state.update { state ->
-                state.copy(openableFlightIds = ids.filterTo(mutableSetOf()) { id -> id !in revokedTargets && available.any { it.equals(id, ignoreCase = true) } })
-            }
-        }
-    }
-
     private fun isCurrentRequest(version: Long): Boolean = requestVersion == version
 
     private fun isCurrentVisit(visit: Long): Boolean = visible && _state.value.visitId == visit
@@ -313,7 +258,6 @@ class NotificationsViewModel internal constructor(
             inbox().collect { items ->
                 if (observerVersion == version) {
                     _state.update { it.copy(items = items, newIds = it.newIds + if (visible) newlyReadIds(items) else emptySet()) }
-                    refreshTargetAvailability()
                 }
             }
         }

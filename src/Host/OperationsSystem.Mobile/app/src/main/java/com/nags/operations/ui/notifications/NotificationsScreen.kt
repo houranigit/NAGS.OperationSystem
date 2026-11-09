@@ -91,8 +91,6 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nags.operations.R
 import com.nags.operations.ui.flights.FlightFormGround
-import com.nags.operations.data.notifications.flightId
-import com.nags.operations.data.notifications.isExpiredReminder
 import com.nags.operations.data.notifications.NotificationKinds
 import com.nags.operations.data.notifications.NotificationDto
 import com.nags.operations.data.notifications.NotificationOpenRequest
@@ -253,10 +251,7 @@ private fun NotificationList(
                                 modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = tween(160),
                                     placementSpec = spring(dampingRatio = 1f, stiffness = 450f)),
                                 isNew = row.notification.id in state.newIds || !row.notification.isRead,
-                                canOpen = row.notification.kind != NotificationKinds.FlightScheduleUpdated &&
-                                    !row.notification.isExpiredReminder(now) &&
-                                    row.notification.flightId() in state.openableFlightIds,
-                                opening = row.notification.id in state.openingIds,
+                                canOpen = canOpenNotification(row.notification, state.syncedFlightIds, now),
                                 archiving = row.notification.id in state.archivingIds,
                                 revealed = revealedId == row.notification.id,
                                 onReveal = { revealedId = row.notification.id },
@@ -288,7 +283,7 @@ private fun NotificationList(
 
 @Composable
 private fun NotificationCard(notification: NotificationDto, now: Instant, isNew: Boolean,
-    modifier: Modifier = Modifier, canOpen: Boolean, opening: Boolean, archiving: Boolean,
+    modifier: Modifier = Modifier, canOpen: Boolean, archiving: Boolean,
     revealed: Boolean, onReveal: () -> Unit, onClose: () -> Unit,
     onClick: () -> Unit, onArchive: (() -> Unit) -> Unit) {
     val scope = rememberCoroutineScope()
@@ -385,11 +380,10 @@ private fun NotificationCard(notification: NotificationDto, now: Instant, isNew:
                     }
                 }, style = MaterialTheme.typography.bodySmall, color = NotificationSecondaryInk)
             }
-            if (canOpen) Button(onClick = onClick, enabled = !busy && !opening,
+            if (canOpen) Button(onClick = onClick, enabled = !busy,
                 modifier = Modifier.width(64.dp).height(34.dp), shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
-                if (opening) CircularProgressIndicator(Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-                else Text(stringResource(R.string.notifications_open), style = MaterialTheme.typography.bodySmall,
+                Text(stringResource(R.string.notifications_open), style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.SemiBold, maxLines = 1)
             }
         }
