@@ -65,6 +65,20 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         var changedTaskFlightIds = taskEntries.Where(entry => changedTaskIds.Contains(entry.Entity.Id))
             .Select(entry => entry.Entity.FlightId).ToHashSet();
 
+        var returnEntries = ChangeTracker.Entries<FlightReturnToRamp>().ToList();
+        var changedReturnIds = returnEntries.Where(HasChangedOwnedGraph).Select(entry => entry.Entity.Id).ToHashSet();
+        // Removed optional signature/details are no longer reachable from the current reference graph.
+        // All owned records in this table inherit the occurrence's single Guid key.
+        foreach (var owned in ChangeTracker.Entries().Where(entry => entry.Metadata.IsOwned()
+            && entry.Metadata.GetTableName() == "flight_return_to_ramps" && HasChangedOwnedGraph(entry)).ToList())
+        {
+            var ownership = owned.Metadata.FindOwnership()!;
+            if (owned.Property(ownership.Properties.Single().Name).CurrentValue is Guid occurrenceId)
+                changedReturnIds.Add(occurrenceId);
+        }
+        var changedReturnFlightIds = returnEntries.Where(entry => changedReturnIds.Contains(entry.Entity.Id))
+            .Select(entry => entry.Entity.FlightId).ToHashSet();
+
         foreach (var flight in ChangeTracker.Entries<Flight>()
             .Where(entry => entry.State is EntityState.Unchanged or EntityState.Modified).ToList())
         {
@@ -72,7 +86,8 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
                 || flight.Entity.DepartureSubmissions.Any(submission => HasChangedOwnedGraph(Entry(submission)))
                 || flight.Entity.CancellationSubmissions.Any(submission => HasChangedOwnedGraph(Entry(submission)))
                 || changedServiceFlightIds.Contains(flight.Entity.Id)
-                || changedTaskFlightIds.Contains(flight.Entity.Id))
+                || changedTaskFlightIds.Contains(flight.Entity.Id)
+                || changedReturnFlightIds.Contains(flight.Entity.Id))
             {
                 // Force the flight rowversion check even when the supplied timestamp is unchanged.
                 flight.Property(item => item.UpdatedAtUtc).IsModified = true;

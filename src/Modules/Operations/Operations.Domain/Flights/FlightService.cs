@@ -16,6 +16,7 @@ public sealed class FlightService : Entity<Guid>
     private FlightService() { }
 
     public Guid FlightId { get; private set; }
+    public Guid? ReturnToRampId { get; private set; }
     public ServiceSnapshot Service { get; private set; } = null!;
     public string? CustomerReferenceNumber { get; private set; }
     public TimeWindow Window { get; private set; } = null!;
@@ -30,7 +31,7 @@ public sealed class FlightService : Entity<Guid>
     public IReadOnlyList<FlightServiceAttachment> Attachments => _attachments.AsReadOnly();
 
     internal static Result<FlightService> Create(Guid flightId, ServiceSnapshot? service, string? customerReferenceNumber,
-        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now)
+        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
         var check = ValidateDetails(service, customerReferenceNumber, window, notes);
         if (check.IsFailure)
@@ -40,6 +41,7 @@ public sealed class FlightService : Entity<Guid>
         {
             Id = Guid.NewGuid(),
             FlightId = flightId,
+            ReturnToRampId = returnToRampId,
             Service = new ServiceSnapshot(service!.ServiceId, service.Name),
             CustomerReferenceNumber = NormalizeOptional(customerReferenceNumber),
             Window = window!.Copy(),

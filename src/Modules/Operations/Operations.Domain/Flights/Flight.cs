@@ -15,6 +15,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     private readonly List<FlightCancellationSubmission> _cancellationSubmissions = [];
     private readonly List<FlightService> _services = [];
     private readonly List<FlightTask> _tasks = [];
+    private readonly List<FlightReturnToRamp> _returnToRamps = [];
 
     private Flight() { }
 
@@ -37,8 +38,12 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     public IReadOnlyList<FlightArrivalSubmission> ArrivalSubmissions => _arrivalSubmissions.AsReadOnly();
     public IReadOnlyList<FlightDepartureSubmission> DepartureSubmissions => _departureSubmissions.AsReadOnly();
     public IReadOnlyList<FlightCancellationSubmission> CancellationSubmissions => _cancellationSubmissions.AsReadOnly();
-    public IReadOnlyList<FlightService> Services => _services.AsReadOnly();
-    public IReadOnlyList<FlightTask> Tasks => _tasks.AsReadOnly();
+    public IReadOnlyList<FlightService> Services => _services.Where(item => item.ReturnToRampId is null).ToList().AsReadOnly();
+    public IReadOnlyList<FlightTask> Tasks => _tasks.Where(item => item.ReturnToRampId is null).ToList().AsReadOnly();
+    public IReadOnlyList<FlightService> ServiceRecords => _services.AsReadOnly();
+    public IReadOnlyList<FlightTask> TaskRecords => _tasks.AsReadOnly();
+    public IReadOnlyList<FlightReturnToRamp> ReturnToRamps => _returnToRamps.AsReadOnly();
+    public int LastReturnToRampSequence { get; private set; }
     public bool IsPerLanding => _plannedServices.Any(service => service.IsAircraftPerLanding);
 
     public static Result<Flight> ScheduleNew(
@@ -142,7 +147,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
-    /// <summary>Records or updates one employee's cancellation. Existing tasks, services, and submission collections must be loaded.</summary>
+    /// <summary>Records or updates one employee's cancellation. Existing RTRs, tasks, services, and submission collections must be loaded.</summary>
     public Result<FlightCancellationSubmission> SubmitCancellation(
         StaffMemberSnapshot? submittedByEmployee,
         CancellationDetails? details,
@@ -155,7 +160,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
             return Error.Validation("Submitting user is required.", "Operations.CancellationSubmission.SubmittedByUserRequired");
         if (details is null)
             return Error.Validation("Cancellation details are required.", "Operations.CancellationSubmission.DetailsRequired");
-        if (_arrivalSubmissions.Count > 0 || _departureSubmissions.Count > 0 || _services.Count > 0 || _tasks.Count > 0)
+        if (_arrivalSubmissions.Count > 0 || _departureSubmissions.Count > 0 || _services.Count > 0 || _tasks.Count > 0 || _returnToRamps.Count > 0)
             return Error.Conflict("A flight with operational records cannot have cancellation submissions.", "Operations.CancellationSubmission.OperationsAlreadyRecorded");
 
         var submission = _cancellationSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId);
@@ -261,26 +266,46 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
 
     /// <summary>Records a performed service. Existing services and cancellation submissions must be loaded.</summary>
     public Result<FlightService> AddService(ServiceSnapshot? service, string? customerReferenceNumber,
-        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now)
+        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null,
+        IReadOnlyList<FlightServicePerformerInput>? initialPerformers = null)
     {
-        var check = ValidateServiceWrite(userId);
+        var check = ValidateServiceWrite(userId, returnToRampId);
         if (check.IsFailure)
             return check.Error;
-        var created = FlightService.Create(Id, service, customerReferenceNumber, window, notes, userId, now.ToUniversalTime());
+        var created = FlightService.Create(Id, service, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), returnToRampId);
         if (created.IsFailure)
             return created.Error;
 
-        _services.Add(created.Value);
+        var record = created.Value;
+        foreach (var employee in initialPerformers ?? [])
+        {
+            var added = record.AddPerformer(employee.Employee, employee.Window);
+            if (added.IsFailure)
+                return added.Error;
+        }
+        var occurrenceCheck = ValidateReturnToRampService(returnToRampId, record.Window, record.Performers.Select(item => item.Window));
+        if (occurrenceCheck.IsFailure)
+            return occurrenceCheck.Error;
+        _services.Add(record);
+        if (returnToRampId is { } occurrenceId)
+        {
+            var occurrence = _returnToRamps.Single(item => item.Id == occurrenceId);
+            occurrence.AddService(record);
+            occurrence.MarkUpdated(userId, now.ToUniversalTime());
+        }
         UpdatedAtUtc = now.ToUniversalTime();
         return created.Value;
     }
 
     public Result<FlightService> UpdateService(Guid serviceId, ServiceSnapshot? service, string? customerReferenceNumber,
-        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now)
+        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindServiceForWrite(serviceId, userId);
+        var found = FindServiceForWrite(serviceId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
+        var occurrenceCheck = ValidateReturnToRampService(returnToRampId, window, found.Value.Performers.Select(item => item.Window));
+        if (occurrenceCheck.IsFailure)
+            return occurrenceCheck.Error;
         var changed = found.Value.UpdateDetails(service, customerReferenceNumber, window, notes, userId);
         if (changed.IsFailure)
             return changed.Error;
@@ -290,11 +315,14 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightServicePerformer> AddServicePerformer(Guid serviceId, StaffMemberSnapshot? employee,
-        TimeWindow? window, Guid userId, DateTimeOffset now)
+        TimeWindow? window, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindServiceForWrite(serviceId, userId);
+        var found = FindServiceForWrite(serviceId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
+        var periodCheck = ValidateReturnToRampEmployee(returnToRampId, window);
+        if (periodCheck.IsFailure)
+            return periodCheck.Error;
         var added = found.Value.AddPerformer(employee, window);
         if (added.IsFailure)
             return added.Error;
@@ -304,11 +332,14 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightServicePerformer> UpdateServicePerformer(Guid serviceId, Guid performerId,
-        StaffMemberSnapshot? employee, TimeWindow? window, Guid userId, DateTimeOffset now)
+        StaffMemberSnapshot? employee, TimeWindow? window, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindServiceForWrite(serviceId, userId);
+        var found = FindServiceForWrite(serviceId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
+        var periodCheck = ValidateReturnToRampEmployee(returnToRampId, window);
+        if (periodCheck.IsFailure)
+            return periodCheck.Error;
         var changed = found.Value.UpdatePerformer(performerId, employee, window);
         if (changed.IsFailure)
             return changed.Error;
@@ -317,11 +348,17 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return found.Value.Performers.Single(performer => performer.Id == performerId);
     }
 
-    public Result RemoveServicePerformer(Guid serviceId, Guid performerId, Guid userId, DateTimeOffset now)
+    public Result RemoveServicePerformer(Guid serviceId, Guid performerId, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindServiceForWrite(serviceId, userId);
+        var found = FindServiceForWrite(serviceId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
+        if (found.Value.Performers.Any(item => item.Id == performerId))
+        {
+            var periodCheck = ValidateReturnToRampPerformerRemoval(returnToRampId, found.Value.Performers.Count, "Service");
+            if (periodCheck.IsFailure)
+                return periodCheck;
+        }
         var removed = found.Value.RemovePerformer(performerId);
         if (removed.IsFailure)
             return removed;
@@ -331,9 +368,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightServiceAttachment> AddServiceAttachment(Guid serviceId, AttachmentDetails? details,
-        Guid userId, DateTimeOffset now)
+        Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindServiceForWrite(serviceId, userId);
+        var found = FindServiceForWrite(serviceId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var added = found.Value.AddAttachment(details, userId, now.ToUniversalTime());
@@ -345,9 +382,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightServiceAttachment> RemoveServiceAttachment(Guid serviceId, Guid attachmentId,
-        Guid userId, DateTimeOffset now)
+        Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindServiceForWrite(serviceId, userId);
+        var found = FindServiceForWrite(serviceId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var removed = found.Value.RemoveAttachment(attachmentId);
@@ -358,21 +395,21 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return removed.Value;
     }
 
-    private Result ValidateServiceWrite(Guid userId)
+    private Result ValidateServiceWrite(Guid userId, Guid? returnToRampId)
     {
         if (userId == Guid.Empty)
             return Error.Validation("Recording user is required.", "Operations.FlightService.UserRequired");
         if (_cancellationSubmissions.Count > 0)
             return Error.Conflict("A flight with cancellation submissions cannot have performed services.", "Operations.Flight.CancellationSubmitted");
-        return Result.Success();
+        return ValidateReturnToRampScope(returnToRampId);
     }
 
-    private Result<FlightService> FindServiceForWrite(Guid serviceId, Guid userId)
+    private Result<FlightService> FindServiceForWrite(Guid serviceId, Guid userId, Guid? returnToRampId)
     {
-        var check = ValidateServiceWrite(userId);
+        var check = ValidateServiceWrite(userId, returnToRampId);
         if (check.IsFailure)
             return check.Error;
-        var service = _services.SingleOrDefault(item => item.Id == serviceId);
+        var service = _services.SingleOrDefault(item => item.Id == serviceId && item.ReturnToRampId == returnToRampId);
         return service is null
             ? Error.NotFound("Performed service was not found on this flight.", "Operations.FlightService.NotFound")
             : service;
@@ -381,31 +418,52 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     private void MarkServiceUpdated(FlightService service, Guid userId, DateTimeOffset now)
     {
         service.MarkUpdated(userId, now.ToUniversalTime());
+        MarkReturnToRampUpdated(service.ReturnToRampId, userId, now);
         UpdatedAtUtc = now.ToUniversalTime();
     }
 
     /// <summary>Records a task. Existing tasks and cancellation submissions must be loaded.</summary>
     public Result<FlightTask> AddTask(FlightTaskType taskType, AtaChapterSnapshot? ataChapter,
-        string? customerReferenceNumber, TimeWindow? window, string? notes, Guid userId, DateTimeOffset now)
+        string? customerReferenceNumber, TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null,
+        IReadOnlyList<FlightTaskPerformerInput>? initialPerformers = null)
     {
-        var check = ValidateTaskWrite(userId);
+        var check = ValidateTaskWrite(userId, returnToRampId);
         if (check.IsFailure)
             return check.Error;
-        var created = FlightTask.Create(Id, taskType, ataChapter, customerReferenceNumber, window, notes, userId, now.ToUniversalTime());
+        var created = FlightTask.Create(Id, taskType, ataChapter, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), returnToRampId);
         if (created.IsFailure)
             return created.Error;
 
-        _tasks.Add(created.Value);
+        var record = created.Value;
+        foreach (var employee in initialPerformers ?? [])
+        {
+            var added = record.AddPerformer(employee.Employee, employee.Window, employee.Notes);
+            if (added.IsFailure)
+                return added.Error;
+        }
+        var occurrenceCheck = ValidateReturnToRampTask(returnToRampId, record.Window, record.Performers.Select(item => item.Window));
+        if (occurrenceCheck.IsFailure)
+            return occurrenceCheck.Error;
+        _tasks.Add(record);
+        if (returnToRampId is { } occurrenceId)
+        {
+            var occurrence = _returnToRamps.Single(item => item.Id == occurrenceId);
+            occurrence.AddTask(record);
+            occurrence.MarkUpdated(userId, now.ToUniversalTime());
+        }
         UpdatedAtUtc = now.ToUniversalTime();
         return created.Value;
     }
 
     public Result<FlightTask> UpdateTask(Guid taskId, FlightTaskType taskType, AtaChapterSnapshot? ataChapter,
-        string? customerReferenceNumber, TimeWindow? window, string? notes, Guid userId, DateTimeOffset now)
+        string? customerReferenceNumber, TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
+        var occurrenceCheck = ValidateReturnToRampTask(returnToRampId, window, found.Value.Performers.Select(item => item.Window));
+        if (occurrenceCheck.IsFailure)
+            return occurrenceCheck.Error;
         var changed = found.Value.UpdateDetails(taskType, ataChapter, customerReferenceNumber, window, notes, userId);
         if (changed.IsFailure)
             return changed.Error;
@@ -415,9 +473,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTaskTool> AddTaskTool(Guid taskId, ToolSnapshot? item,
-        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now)
+        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var added = found.Value.AddTool(item, usage, notes);
@@ -429,9 +487,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTaskTool> UpdateTaskTool(Guid taskId, Guid recordId, ToolSnapshot? item,
-        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now)
+        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var changed = found.Value.UpdateTool(recordId, item, usage, notes);
@@ -442,9 +500,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return found.Value.Tools.Single(record => record.Id == recordId);
     }
 
-    public Result RemoveTaskTool(Guid taskId, Guid recordId, Guid userId, DateTimeOffset now)
+    public Result RemoveTaskTool(Guid taskId, Guid recordId, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var removed = found.Value.RemoveTool(recordId);
@@ -456,9 +514,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTaskMaterial> AddTaskMaterial(Guid taskId, MaterialSnapshot? item,
-        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now)
+        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var added = found.Value.AddMaterial(item, usage, notes);
@@ -470,9 +528,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTaskMaterial> UpdateTaskMaterial(Guid taskId, Guid recordId, MaterialSnapshot? item,
-        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now)
+        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var changed = found.Value.UpdateMaterial(recordId, item, usage, notes);
@@ -483,9 +541,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return found.Value.Materials.Single(record => record.Id == recordId);
     }
 
-    public Result RemoveTaskMaterial(Guid taskId, Guid recordId, Guid userId, DateTimeOffset now)
+    public Result RemoveTaskMaterial(Guid taskId, Guid recordId, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var removed = found.Value.RemoveMaterial(recordId);
@@ -497,9 +555,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTaskGeneralSupport> AddTaskGeneralSupport(Guid taskId, GeneralSupportSnapshot? item,
-        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now)
+        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var added = found.Value.AddGeneralSupport(item, usage, notes);
@@ -511,9 +569,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTaskGeneralSupport> UpdateTaskGeneralSupport(Guid taskId, Guid recordId, GeneralSupportSnapshot? item,
-        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now)
+        ResourceUsage? usage, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var changed = found.Value.UpdateGeneralSupport(recordId, item, usage, notes);
@@ -524,9 +582,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return found.Value.GeneralSupports.Single(record => record.Id == recordId);
     }
 
-    public Result RemoveTaskGeneralSupport(Guid taskId, Guid recordId, Guid userId, DateTimeOffset now)
+    public Result RemoveTaskGeneralSupport(Guid taskId, Guid recordId, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var removed = found.Value.RemoveGeneralSupport(recordId);
@@ -538,11 +596,14 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTaskPerformer> AddTaskPerformer(Guid taskId, StaffMemberSnapshot? item,
-        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now)
+        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
+        var periodCheck = ValidateReturnToRampEmployee(returnToRampId, window);
+        if (periodCheck.IsFailure)
+            return periodCheck.Error;
         var added = found.Value.AddPerformer(item, window, notes);
         if (added.IsFailure)
             return added.Error;
@@ -552,11 +613,14 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTaskPerformer> UpdateTaskPerformer(Guid taskId, Guid recordId, StaffMemberSnapshot? item,
-        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now)
+        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
+        var periodCheck = ValidateReturnToRampEmployee(returnToRampId, window);
+        if (periodCheck.IsFailure)
+            return periodCheck.Error;
         var changed = found.Value.UpdatePerformer(recordId, item, window, notes);
         if (changed.IsFailure)
             return changed.Error;
@@ -565,11 +629,17 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return found.Value.Performers.Single(record => record.Id == recordId);
     }
 
-    public Result RemoveTaskPerformer(Guid taskId, Guid recordId, Guid userId, DateTimeOffset now)
+    public Result RemoveTaskPerformer(Guid taskId, Guid recordId, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
+        if (found.Value.Performers.Any(item => item.Id == recordId))
+        {
+            var periodCheck = ValidateReturnToRampPerformerRemoval(returnToRampId, found.Value.Performers.Count, "Task");
+            if (periodCheck.IsFailure)
+                return periodCheck;
+        }
         var removed = found.Value.RemovePerformer(recordId);
         if (removed.IsFailure)
             return removed;
@@ -579,9 +649,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTaskAttachment> AddTaskAttachment(Guid taskId, AttachmentDetails? details,
-        Guid userId, DateTimeOffset now)
+        Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var added = found.Value.AddAttachment(details, userId, now.ToUniversalTime());
@@ -593,9 +663,9 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTaskAttachment> RemoveTaskAttachment(Guid taskId, Guid attachmentId,
-        Guid userId, DateTimeOffset now)
+        Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
-        var found = FindTaskForWrite(taskId, userId);
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var removed = found.Value.RemoveAttachment(attachmentId);
@@ -606,21 +676,21 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return removed.Value;
     }
 
-    private Result ValidateTaskWrite(Guid userId)
+    private Result ValidateTaskWrite(Guid userId, Guid? returnToRampId)
     {
         if (userId == Guid.Empty)
             return Error.Validation("Recording user is required.", "Operations.FlightTask.UserRequired");
         if (_cancellationSubmissions.Count > 0)
             return Error.Conflict("A flight with cancellation submissions cannot have tasks.", "Operations.Flight.CancellationSubmitted");
-        return Result.Success();
+        return ValidateReturnToRampScope(returnToRampId);
     }
 
-    private Result<FlightTask> FindTaskForWrite(Guid taskId, Guid userId)
+    private Result<FlightTask> FindTaskForWrite(Guid taskId, Guid userId, Guid? returnToRampId)
     {
-        var check = ValidateTaskWrite(userId);
+        var check = ValidateTaskWrite(userId, returnToRampId);
         if (check.IsFailure)
             return check.Error;
-        var task = _tasks.SingleOrDefault(item => item.Id == taskId);
+        var task = _tasks.SingleOrDefault(item => item.Id == taskId && item.ReturnToRampId == returnToRampId);
         return task is null
             ? Error.NotFound("Task was not found on this flight.", "Operations.FlightTask.NotFound")
             : task;
@@ -629,7 +699,171 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     private void MarkTaskUpdated(FlightTask task, Guid userId, DateTimeOffset now)
     {
         task.MarkUpdated(userId, now.ToUniversalTime());
+        MarkReturnToRampUpdated(task.ReturnToRampId, userId, now);
         UpdatedAtUtc = now.ToUniversalTime();
+    }
+
+    /// <summary>Starts an RTR after a recorded flight departure. Load all occurrences and operational records before mutation.</summary>
+    public Result<FlightReturnToRamp> StartReturnToRamp(RtrArrivalDetails? arrivalDetails, Guid userId, DateTimeOffset now)
+    {
+        var check = ValidateReturnToRampWrite(userId);
+        if (check.IsFailure)
+            return check.Error;
+        if (arrivalDetails is null)
+            return Error.Validation("RTR arrival details are required.", "Operations.ReturnToRamp.ArrivalDetailsRequired");
+        if (_departureSubmissions.Count == 0)
+            return Error.Conflict("A flight departure must be recorded before adding RTR.", "Operations.ReturnToRamp.DepartureRequired");
+        if (_returnToRamps.Any(item => item.IsOpen))
+            return Error.Conflict("Close the open RTR before adding another occurrence.", "Operations.ReturnToRamp.OpenExists");
+        if (LastReturnToRampSequence == int.MaxValue)
+            return Error.Conflict("The RTR sequence limit has been reached.", "Operations.ReturnToRamp.SequenceExhausted");
+
+        var record = new FlightReturnToRamp(Guid.NewGuid(), Id, LastReturnToRampSequence + 1, arrivalDetails, userId,
+            now.ToUniversalTime());
+        _returnToRamps.Add(record);
+        LastReturnToRampSequence = record.Sequence;
+        UpdatedAtUtc = now.ToUniversalTime();
+        return record;
+    }
+
+    public Result<FlightReturnToRamp> UpdateReturnToRampArrival(Guid returnToRampId, RtrArrivalDetails? arrivalDetails,
+        Guid userId, DateTimeOffset now)
+    {
+        var found = FindReturnToRampForWrite(returnToRampId, userId);
+        if (found.IsFailure)
+            return found.Error;
+        if (arrivalDetails is null)
+            return Error.Validation("RTR arrival details are required.", "Operations.ReturnToRamp.ArrivalDetailsRequired");
+        var changed = found.Value.UpdateArrival(arrivalDetails);
+        if (changed.IsFailure)
+            return changed.Error;
+        if (changed.Value)
+        {
+            found.Value.MarkUpdated(userId, now.ToUniversalTime());
+            UpdatedAtUtc = now.ToUniversalTime();
+        }
+        return found.Value;
+    }
+
+    /// <summary>Records or corrects RTR departure, validating the complete retained work before changing any details.</summary>
+    public Result<FlightReturnToRamp> CloseReturnToRamp(Guid returnToRampId, RtrDepartureDetails? departureDetails,
+        Guid userId, DateTimeOffset now)
+    {
+        var found = FindReturnToRampForWrite(returnToRampId, userId);
+        if (found.IsFailure)
+            return found.Error;
+        if (departureDetails is null)
+            return Error.Validation("RTR departure details are required.", "Operations.ReturnToRamp.DepartureDetailsRequired");
+        var changed = found.Value.SetDeparture(departureDetails, userId);
+        if (changed.IsFailure)
+            return changed.Error;
+        if (changed.Value)
+        {
+            found.Value.MarkUpdated(userId, now.ToUniversalTime());
+            UpdatedAtUtc = now.ToUniversalTime();
+        }
+        return found.Value;
+    }
+
+    public Result<FlightReturnToRamp> RemoveReturnToRamp(Guid returnToRampId, Guid userId, DateTimeOffset now)
+    {
+        var found = FindReturnToRampForWrite(returnToRampId, userId);
+        if (found.IsFailure)
+            return found.Error;
+        _services.RemoveAll(item => item.ReturnToRampId == returnToRampId);
+        _tasks.RemoveAll(item => item.ReturnToRampId == returnToRampId);
+        _returnToRamps.Remove(found.Value);
+        UpdatedAtUtc = now.ToUniversalTime();
+        return found.Value;
+    }
+
+    public Result<FlightService> RemoveService(Guid serviceId, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
+    {
+        var found = FindServiceForWrite(serviceId, userId, returnToRampId);
+        if (found.IsFailure)
+            return found.Error;
+        if (returnToRampId is { } occurrenceId)
+        {
+            var occurrence = _returnToRamps.Single(item => item.Id == occurrenceId);
+            var check = occurrence.ValidateActivityRemoval();
+            if (check.IsFailure)
+                return check.Error;
+            occurrence.RemoveService(found.Value);
+            occurrence.MarkUpdated(userId, now.ToUniversalTime());
+        }
+        _services.Remove(found.Value);
+        UpdatedAtUtc = now.ToUniversalTime();
+        return found.Value;
+    }
+
+    public Result<FlightTask> RemoveTask(Guid taskId, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
+    {
+        var found = FindTaskForWrite(taskId, userId, returnToRampId);
+        if (found.IsFailure)
+            return found.Error;
+        if (returnToRampId is { } occurrenceId)
+        {
+            var occurrence = _returnToRamps.Single(item => item.Id == occurrenceId);
+            var check = occurrence.ValidateActivityRemoval();
+            if (check.IsFailure)
+                return check.Error;
+            occurrence.RemoveTask(found.Value);
+            occurrence.MarkUpdated(userId, now.ToUniversalTime());
+        }
+        _tasks.Remove(found.Value);
+        UpdatedAtUtc = now.ToUniversalTime();
+        return found.Value;
+    }
+
+    private Result ValidateReturnToRampWrite(Guid userId)
+    {
+        if (userId == Guid.Empty)
+            return Error.Validation("Recording user is required.", "Operations.ReturnToRamp.UserRequired");
+        if (_cancellationSubmissions.Count > 0)
+            return Error.Conflict("A flight with cancellation submissions cannot have RTR records.", "Operations.Flight.CancellationSubmitted");
+        return Result.Success();
+    }
+
+    private Result<FlightReturnToRamp> FindReturnToRampForWrite(Guid returnToRampId, Guid userId)
+    {
+        var check = ValidateReturnToRampWrite(userId);
+        if (check.IsFailure)
+            return check.Error;
+        var record = _returnToRamps.SingleOrDefault(item => item.Id == returnToRampId);
+        return record is null
+            ? Error.NotFound("RTR record was not found on this flight.", "Operations.ReturnToRamp.NotFound")
+            : record;
+    }
+
+    private Result ValidateReturnToRampScope(Guid? returnToRampId) =>
+        returnToRampId.HasValue && _returnToRamps.All(item => item.Id != returnToRampId.Value)
+            ? Error.NotFound("RTR record was not found on this flight.", "Operations.ReturnToRamp.NotFound")
+            : Result.Success();
+
+    private Result ValidateReturnToRampService(Guid? returnToRampId, TimeWindow? window, IEnumerable<TimeWindow?> employees) =>
+        returnToRampId is { } id
+            ? _returnToRamps.Single(item => item.Id == id).ValidateService(window, employees)
+            : Result.Success();
+
+    private Result ValidateReturnToRampTask(Guid? returnToRampId, TimeWindow? window, IEnumerable<TimeWindow?> employees) =>
+        returnToRampId is { } id
+            ? _returnToRamps.Single(item => item.Id == id).ValidateTask(window, employees)
+            : Result.Success();
+
+    private Result ValidateReturnToRampEmployee(Guid? returnToRampId, TimeWindow? window) =>
+        returnToRampId is { } id
+            ? _returnToRamps.Single(item => item.Id == id).ValidateEmployeeWindow(window)
+            : Result.Success();
+
+    private Result ValidateReturnToRampPerformerRemoval(Guid? returnToRampId, int count, string kind) =>
+        returnToRampId is { } id
+            ? _returnToRamps.Single(item => item.Id == id).ValidatePerformerRemoval(count, kind)
+            : Result.Success();
+
+    private void MarkReturnToRampUpdated(Guid? returnToRampId, Guid userId, DateTimeOffset now)
+    {
+        if (returnToRampId is { } id)
+            _returnToRamps.Single(item => item.Id == id).MarkUpdated(userId, now.ToUniversalTime());
     }
 
     private void SetPlannedServices(IReadOnlyList<ServiceSnapshot> services)

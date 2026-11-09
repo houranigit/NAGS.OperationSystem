@@ -56,8 +56,14 @@ public sealed class FlightConfiguration : IEntityTypeConfiguration<Flight>
         builder.HasMany(f => f.ArrivalSubmissions).WithOne().HasForeignKey(a => a.FlightId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(f => f.DepartureSubmissions).WithOne().HasForeignKey(d => d.FlightId).OnDelete(DeleteBehavior.Cascade);
         builder.HasMany(f => f.CancellationSubmissions).WithOne().HasForeignKey(c => c.FlightId).OnDelete(DeleteBehavior.Cascade);
-        builder.HasMany(f => f.Services).WithOne().HasForeignKey(s => s.FlightId).OnDelete(DeleteBehavior.Cascade);
-        builder.HasMany(f => f.Tasks).WithOne().HasForeignKey(t => t.FlightId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(f => f.ServiceRecords).WithOne().HasForeignKey(s => s.FlightId).OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(f => f.ServiceRecords).HasField("_services");
+        builder.HasMany(f => f.TaskRecords).WithOne().HasForeignKey(t => t.FlightId).OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(f => f.TaskRecords).HasField("_tasks");
+        builder.HasMany(f => f.ReturnToRamps).WithOne().HasForeignKey(r => r.FlightId).OnDelete(DeleteBehavior.Cascade);
+        builder.Property(f => f.LastReturnToRampSequence).IsRequired();
+        builder.Ignore(f => f.Services);
+        builder.Ignore(f => f.Tasks);
 
         builder.Ignore(f => f.IsPerLanding);
         builder.Ignore(f => f.DomainEvents);

@@ -12,6 +12,8 @@ public sealed class FlightServiceConfiguration : IEntityTypeConfiguration<Flight
         builder.HasKey(s => s.Id);
         builder.Property(s => s.Id).ValueGeneratedNever();
         builder.HasIndex(s => s.FlightId);
+        builder.Property(s => s.ReturnToRampId);
+        builder.HasIndex(s => new { s.ReturnToRampId, s.FlightId });
         builder.Property(s => s.EndedByUserId);
         builder.Property(s => s.CustomerReferenceNumber).HasMaxLength(200);
         builder.Property(s => s.Notes).HasMaxLength(2000);

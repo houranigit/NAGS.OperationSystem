@@ -86,6 +86,9 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CreatedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("LastReturnToRampSequence")
+                        .HasColumnType("int");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -235,6 +238,54 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.ToTable("flight_departure_submissions", "operations");
                 });
 
+            modelBuilder.Entity("Operations.Domain.Flights.FlightReturnToRamp", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DepartureAtUtc")
+                        .ValueGeneratedOnUpdateSometimes()
+                        .HasColumnType("datetimeoffset")
+                        .HasColumnName("RtrDepartureUtc");
+
+                    b.Property<Guid?>("EndedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("UpdatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightId", "DepartureAtUtc")
+                        .IsUnique()
+                        .HasFilter("[RtrDepartureUtc] IS NULL");
+
+                    b.HasIndex("FlightId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("flight_return_to_ramps", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_flight_return_to_ramps_Sequence", "[Sequence] > 0");
+
+                            t.HasCheckConstraint("CK_flight_return_to_ramps_Window", "[RtrDepartureUtc] IS NULL OR [RtrDepartureUtc] >= [RtrArrivalUtc]");
+                        });
+                });
+
             modelBuilder.Entity("Operations.Domain.Flights.FlightService", b =>
                 {
                     b.Property<Guid>("Id")
@@ -260,6 +311,9 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<Guid?>("ReturnToRampId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset?>("UpdatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -269,6 +323,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("FlightId");
+
+                    b.HasIndex("ReturnToRampId", "FlightId");
 
                     b.ToTable("flight_services", "operations");
                 });
@@ -342,6 +398,9 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<Guid?>("ReturnToRampId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("TaskType")
                         .HasColumnType("int");
 
@@ -354,6 +413,8 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("FlightId");
+
+                    b.HasIndex("ReturnToRampId", "FlightId");
 
                     b.ToTable("flight_tasks", "operations");
                 });
@@ -1054,13 +1115,189 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Operations.Domain.Flights.FlightService", b =>
+            modelBuilder.Entity("Operations.Domain.Flights.FlightReturnToRamp", b =>
                 {
                     b.HasOne("Operations.Domain.Flights.Flight", null)
-                        .WithMany("Services")
+                        .WithMany("ReturnToRamps")
                         .HasForeignKey("FlightId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.RtrArrivalDetails", "ArrivalDetails", b1 =>
+                        {
+                            b1.Property<Guid>("FlightReturnToRampId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTimeOffset>("ArrivedAtUtc")
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("RtrArrivalUtc");
+
+                            b1.Property<string>("Remarks")
+                                .HasMaxLength(2000)
+                                .HasColumnType("nvarchar(2000)")
+                                .HasColumnName("ArrivalRemarks");
+
+                            b1.HasKey("FlightReturnToRampId");
+
+                            b1.ToTable("flight_return_to_ramps", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightReturnToRampId");
+
+                            b1.OwnsOne("Operations.Domain.ValueObjects.StaffMemberSnapshot", "ReceivedByEmployee", b2 =>
+                                {
+                                    b2.Property<Guid>("RtrArrivalDetailsFlightReturnToRampId")
+                                        .HasColumnType("uniqueidentifier");
+
+                                    b2.Property<string>("EmployeeId")
+                                        .IsRequired()
+                                        .HasMaxLength(50)
+                                        .HasColumnType("nvarchar(50)")
+                                        .HasColumnName("ArrivalReceivedByStaffEmployeeId");
+
+                                    b2.Property<string>("FullName")
+                                        .IsRequired()
+                                        .HasMaxLength(200)
+                                        .HasColumnType("nvarchar(200)")
+                                        .HasColumnName("ArrivalReceivedByStaffFullName");
+
+                                    b2.Property<Guid>("StaffMemberId")
+                                        .HasColumnType("uniqueidentifier")
+                                        .HasColumnName("ArrivalReceivedByStaffMemberId");
+
+                                    b2.HasKey("RtrArrivalDetailsFlightReturnToRampId");
+
+                                    b2.ToTable("flight_return_to_ramps", "operations");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("RtrArrivalDetailsFlightReturnToRampId");
+                                });
+
+                            b1.Navigation("ReceivedByEmployee")
+                                .IsRequired();
+                        });
+
+                    b.OwnsOne("Operations.Domain.ValueObjects.RtrDepartureDetails", "DepartureDetails", b1 =>
+                        {
+                            b1.Property<Guid>("FlightReturnToRampId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<DateTimeOffset>("DepartedAtUtc")
+                                .ValueGeneratedOnUpdateSometimes()
+                                .HasColumnType("datetimeoffset")
+                                .HasColumnName("RtrDepartureUtc");
+
+                            b1.Property<Guid>("HandledByStaffMemberId")
+                                .ValueGeneratedOnUpdateSometimes()
+                                .HasColumnType("uniqueidentifier")
+                                .HasColumnName("DepartureHandledByStaffMemberId");
+
+                            b1.Property<string>("Remarks")
+                                .HasMaxLength(2000)
+                                .HasColumnType("nvarchar(2000)")
+                                .HasColumnName("DepartureRemarks");
+
+                            b1.HasKey("FlightReturnToRampId");
+
+                            b1.ToTable("flight_return_to_ramps", "operations");
+
+                            b1.WithOwner()
+                                .HasForeignKey("FlightReturnToRampId");
+
+                            b1.OwnsOne("Operations.Domain.ValueObjects.RtrCustomerSignature", "CustomerSignature", b2 =>
+                                {
+                                    b2.Property<Guid>("RtrDepartureDetailsFlightReturnToRampId")
+                                        .HasColumnType("uniqueidentifier");
+
+                                    b2.Property<string>("ContentType")
+                                        .IsRequired()
+                                        .HasMaxLength(100)
+                                        .HasColumnType("nvarchar(100)")
+                                        .HasColumnName("CustomerSignatureContentType");
+
+                                    b2.Property<string>("FileName")
+                                        .IsRequired()
+                                        .HasMaxLength(255)
+                                        .HasColumnType("nvarchar(255)")
+                                        .HasColumnName("CustomerSignatureFileName");
+
+                                    b2.Property<DateTimeOffset>("SignedAtUtc")
+                                        .HasColumnType("datetimeoffset")
+                                        .HasColumnName("CustomerSignedAtUtc");
+
+                                    b2.Property<long>("SizeBytes")
+                                        .HasColumnType("bigint")
+                                        .HasColumnName("CustomerSignatureSizeBytes");
+
+                                    b2.Property<string>("StorageKey")
+                                        .IsRequired()
+                                        .HasMaxLength(500)
+                                        .HasColumnType("nvarchar(500)")
+                                        .HasColumnName("CustomerSignatureStorageKey");
+
+                                    b2.HasKey("RtrDepartureDetailsFlightReturnToRampId");
+
+                                    b2.ToTable("flight_return_to_ramps", "operations");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("RtrDepartureDetailsFlightReturnToRampId");
+                                });
+
+                            b1.OwnsOne("Operations.Domain.ValueObjects.StaffMemberSnapshot", "HandledByEmployee", b2 =>
+                                {
+                                    b2.Property<Guid>("RtrDepartureDetailsFlightReturnToRampId")
+                                        .HasColumnType("uniqueidentifier");
+
+                                    b2.Property<string>("EmployeeId")
+                                        .IsRequired()
+                                        .HasMaxLength(50)
+                                        .HasColumnType("nvarchar(50)")
+                                        .HasColumnName("DepartureHandledByStaffEmployeeId");
+
+                                    b2.Property<string>("FullName")
+                                        .IsRequired()
+                                        .HasMaxLength(200)
+                                        .HasColumnType("nvarchar(200)")
+                                        .HasColumnName("DepartureHandledByStaffFullName");
+
+                                    b2.Property<Guid>("StaffMemberId")
+                                        .ValueGeneratedOnUpdateSometimes()
+                                        .HasColumnType("uniqueidentifier")
+                                        .HasColumnName("DepartureHandledByStaffMemberId");
+
+                                    b2.HasKey("RtrDepartureDetailsFlightReturnToRampId");
+
+                                    b2.ToTable("flight_return_to_ramps", "operations");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("RtrDepartureDetailsFlightReturnToRampId");
+                                });
+
+                            b1.Navigation("CustomerSignature");
+
+                            b1.Navigation("HandledByEmployee")
+                                .IsRequired();
+                        });
+
+                    b.Navigation("ArrivalDetails")
+                        .IsRequired();
+
+                    b.Navigation("DepartureDetails");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightService", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.Flight", null)
+                        .WithMany("ServiceRecords")
+                        .HasForeignKey("FlightId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Operations.Domain.Flights.FlightReturnToRamp", null)
+                        .WithMany("Services")
+                        .HasForeignKey("ReturnToRampId", "FlightId")
+                        .HasPrincipalKey("Id", "FlightId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.OwnsOne("Operations.Domain.ValueObjects.ServiceSnapshot", "Service", b1 =>
                         {
@@ -1233,10 +1470,16 @@ namespace Operations.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Operations.Domain.Flights.FlightTask", b =>
                 {
                     b.HasOne("Operations.Domain.Flights.Flight", null)
-                        .WithMany("Tasks")
+                        .WithMany("TaskRecords")
                         .HasForeignKey("FlightId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Operations.Domain.Flights.FlightReturnToRamp", null)
+                        .WithMany("Tasks")
+                        .HasForeignKey("ReturnToRampId", "FlightId")
+                        .HasPrincipalKey("Id", "FlightId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.OwnsOne("Operations.Domain.ValueObjects.TimeWindow", "Window", b1 =>
                         {
@@ -1668,6 +1911,15 @@ namespace Operations.Infrastructure.Persistence.Migrations
 
                     b.Navigation("PlannedServices");
 
+                    b.Navigation("ReturnToRamps");
+
+                    b.Navigation("ServiceRecords");
+
+                    b.Navigation("TaskRecords");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightReturnToRamp", b =>
+                {
                     b.Navigation("Services");
 
                     b.Navigation("Tasks");

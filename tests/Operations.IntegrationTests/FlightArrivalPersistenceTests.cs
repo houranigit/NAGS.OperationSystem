@@ -23,8 +23,7 @@ public sealed class FlightArrivalPersistenceTests(FlightArrivalPersistenceTests.
         var plannedAircraft = new AircraftTypeSnapshot(Guid.NewGuid(), "Airbus", "A320");
         var assignedEmployee = Employee("Assigned employee", "E100");
         var flight = ScheduleFlight(plannedAircraft, assignedEmployee);
-        db.Flights.Add(flight);
-        await db.SaveChangesAsync();
+        await PreRtrMigrationSeed.SaveAsync(db, flight);
         var rowVersion = flight.RowVersion.ToArray();
         var plannedServiceId = flight.PlannedServices.Single().Id;
         var assignmentId = flight.AssignedEmployees.Single().Id;
@@ -35,6 +34,8 @@ public sealed class FlightArrivalPersistenceTests(FlightArrivalPersistenceTests.
         var appliedMigrations = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
         appliedMigrations.Length.ShouldBe(existingMigrations.Length + 1);
         appliedMigrations.Take(existingMigrations.Length).ShouldBe(existingMigrations);
+        // Load with the current model after verifying the historical migration boundary.
+        await db.Database.MigrateAsync();
         var reloaded = await db.Flights.AsNoTracking()
             .Include(item => item.PlannedServices)
             .Include(item => item.AssignedEmployees)

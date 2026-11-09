@@ -100,6 +100,7 @@ public sealed class FlightSchedulingMigrationTests : IAsyncLifetime
         appliedMigrations.Length.ShouldBe(previousMigrations.Length + 1);
         appliedMigrations.Take(previousMigrations.Length).ShouldBe(previousMigrations);
         appliedMigrations.Last().ShouldEndWith("_Operations_FlightSchedulingBaseline");
+        await db.Database.MigrateAsync();
 
         var flight = await db.Flights.AsNoTracking()
             .Include(item => item.PlannedServices)

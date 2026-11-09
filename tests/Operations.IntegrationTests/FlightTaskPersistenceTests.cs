@@ -13,6 +13,7 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
     : IClassFixture<FlightTaskPersistenceTests.DatabaseFixture>
 {
     private const string ServiceBaseline = "20261108201817_Operations_FlightServices";
+    private const string TaskMigration = "20261108204611_Operations_FlightTasks";
     private static readonly DateTimeOffset Now = new(2026, 11, 8, 15, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -43,8 +44,7 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
         var canceled = ScheduleFlight();
         var cancellation = canceled.SubmitCancellation(employee, CancellationDetails.Create(Now, "Canceled").Value,
             actor, Now.AddMinutes(1)).Value;
-        db.Flights.AddRange(flight, canceled);
-        await db.SaveChangesAsync();
+        await PreRtrMigrationSeed.SaveAsync(db, flight, canceled);
         // The published service schema predates Kind. Seed its original columns explicitly.
         foreach (var attachment in serviceAttachments)
             await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -57,12 +57,13 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
         var canceledVersion = canceled.RowVersion.ToArray();
         db.ChangeTracker.Clear();
 
-        await db.Database.MigrateAsync();
+        await db.Database.MigrateAsync(TaskMigration);
 
         var appliedMigrations = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
         appliedMigrations.Length.ShouldBe(previousMigrations.Length + 1);
         appliedMigrations.Take(previousMigrations.Length).ShouldBe(previousMigrations);
         appliedMigrations.Last().ShouldEndWith("_Operations_FlightTasks");
+        await db.Database.MigrateAsync();
         var reloaded = await LoadFlightAsync(db, flight.Id);
         reloaded.RowVersion.ShouldBe(flightVersion);
         reloaded.UpdatedAtUtc.ShouldBe(flight.UpdatedAtUtc);
@@ -126,8 +127,7 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
         var service = flight.AddService(new ServiceSnapshot(Guid.NewGuid(), "Legacy service"), "LEGACY-REF", Window(),
             "Legacy notes", actor, Now.AddMinutes(1)).Value;
         var performer = flight.AddServicePerformer(service.Id, Employee(), Window(), actor, Now.AddMinutes(1)).Value;
-        db.Flights.Add(flight);
-        await db.SaveChangesAsync();
+        await PreRtrMigrationSeed.SaveAsync(db, flight);
         var version = flight.RowVersion.ToArray();
         var attachmentId = Guid.NewGuid();
         var legacyFileName = "legacy/path/" + new string('x', 260) + ".jpg";
@@ -849,13 +849,13 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
             .Include(item => item.ArrivalSubmissions)
             .Include(item => item.DepartureSubmissions)
             .Include(item => item.CancellationSubmissions)
-            .Include(item => item.Services).ThenInclude(item => item.Performers)
-            .Include(item => item.Services).ThenInclude(item => item.Attachments)
-            .Include(item => item.Tasks).ThenInclude(item => item.Tools)
-            .Include(item => item.Tasks).ThenInclude(item => item.Materials)
-            .Include(item => item.Tasks).ThenInclude(item => item.GeneralSupports)
-            .Include(item => item.Tasks).ThenInclude(item => item.Performers)
-            .Include(item => item.Tasks).ThenInclude(item => item.Attachments)
+            .Include(item => item.ServiceRecords).ThenInclude(item => item.Performers)
+            .Include(item => item.ServiceRecords).ThenInclude(item => item.Attachments)
+            .Include(item => item.TaskRecords).ThenInclude(item => item.Tools)
+            .Include(item => item.TaskRecords).ThenInclude(item => item.Materials)
+            .Include(item => item.TaskRecords).ThenInclude(item => item.GeneralSupports)
+            .Include(item => item.TaskRecords).ThenInclude(item => item.Performers)
+            .Include(item => item.TaskRecords).ThenInclude(item => item.Attachments)
             .AsSplitQuery()
             .SingleAsync(item => item.Id == flightId);
 

@@ -26,8 +26,7 @@ public sealed class FlightCancellationPersistenceTests(FlightCancellationPersist
         var flight = ScheduleFlight(employee);
         SubmitOperation(flight, true, employee, Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
         SubmitOperation(flight, false, employee, Now.AddHours(2)).IsSuccess.ShouldBeTrue();
-        db.Flights.Add(flight);
-        await db.SaveChangesAsync();
+        await PreRtrMigrationSeed.SaveAsync(db, flight);
         var rowVersion = flight.RowVersion.ToArray();
         db.ChangeTracker.Clear();
 
@@ -37,6 +36,8 @@ public sealed class FlightCancellationPersistenceTests(FlightCancellationPersist
         appliedMigrations.Length.ShouldBe(previousMigrations.Length + 1);
         appliedMigrations.Take(previousMigrations.Length).ShouldBe(previousMigrations);
         appliedMigrations.Last().ShouldBe(CancellationMigration);
+        // Load with the current model after verifying the historical migration boundary.
+        await db.Database.MigrateAsync();
         var reloaded = await db.Flights.AsNoTracking()
             .Include(item => item.PlannedServices)
             .Include(item => item.AssignedEmployees)

@@ -35,8 +35,7 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
             CancellationDetails.Create(Now, "First cancellation input").Value, Guid.NewGuid(), Now.AddMinutes(1)).Value;
         var secondCancellation = canceledFlight.SubmitCancellation(Employee("Second engineer", "E101"),
             CancellationDetails.Create(Now.AddMinutes(1), null).Value, Guid.NewGuid(), Now.AddMinutes(2)).Value;
-        db.Flights.AddRange(operationalFlight, canceledFlight);
-        await db.SaveChangesAsync();
+        await PreRtrMigrationSeed.SaveAsync(db, operationalFlight, canceledFlight);
         var operationalVersion = operationalFlight.RowVersion.ToArray();
         var canceledVersion = canceledFlight.RowVersion.ToArray();
         db.ChangeTracker.Clear();
@@ -581,8 +580,8 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
             .Include(item => item.ArrivalSubmissions)
             .Include(item => item.DepartureSubmissions)
             .Include(item => item.CancellationSubmissions)
-            .Include(item => item.Services).ThenInclude(item => item.Performers)
-            .Include(item => item.Services).ThenInclude(item => item.Attachments)
+            .Include(item => item.ServiceRecords).ThenInclude(item => item.Performers)
+            .Include(item => item.ServiceRecords).ThenInclude(item => item.Attachments)
             .AsSplitQuery()
             .SingleAsync(item => item.Id == flightId);
 

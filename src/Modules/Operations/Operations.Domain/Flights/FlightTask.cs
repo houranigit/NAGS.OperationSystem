@@ -19,6 +19,7 @@ public sealed class FlightTask : Entity<Guid>
     private FlightTask() { }
 
     public Guid FlightId { get; private set; }
+    public Guid? ReturnToRampId { get; private set; }
     public FlightTaskType TaskType { get; private set; }
     public AtaChapterSnapshot? AtaChapter { get; private set; }
     public string? CustomerReferenceNumber { get; private set; }
@@ -37,7 +38,7 @@ public sealed class FlightTask : Entity<Guid>
     public IReadOnlyList<FlightTaskAttachment> Attachments => _attachments.AsReadOnly();
 
     internal static Result<FlightTask> Create(Guid flightId, FlightTaskType taskType, AtaChapterSnapshot? ataChapter,
-        string? customerReferenceNumber, TimeWindow? window, string? notes, Guid userId, DateTimeOffset now)
+        string? customerReferenceNumber, TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
     {
         var check = ValidateDetails(taskType, ataChapter, customerReferenceNumber, window, notes);
         if (check.IsFailure)
@@ -47,6 +48,7 @@ public sealed class FlightTask : Entity<Guid>
         {
             Id = Guid.NewGuid(),
             FlightId = flightId,
+            ReturnToRampId = returnToRampId,
             TaskType = taskType,
             AtaChapter = CopyAtaChapter(ataChapter),
             CustomerReferenceNumber = NormalizeOptional(customerReferenceNumber),

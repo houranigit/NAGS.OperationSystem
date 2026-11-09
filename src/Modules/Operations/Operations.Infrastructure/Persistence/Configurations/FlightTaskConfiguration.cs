@@ -13,6 +13,8 @@ public sealed class FlightTaskConfiguration : IEntityTypeConfiguration<FlightTas
         builder.HasKey(t => t.Id);
         builder.Property(t => t.Id).ValueGeneratedNever();
         builder.HasIndex(t => t.FlightId);
+        builder.Property(t => t.ReturnToRampId);
+        builder.HasIndex(t => new { t.ReturnToRampId, t.FlightId });
         builder.Property(t => t.TaskType).IsRequired();
         builder.Property(t => t.EndedByUserId);
         builder.Property(t => t.CustomerReferenceNumber).HasMaxLength(200);
