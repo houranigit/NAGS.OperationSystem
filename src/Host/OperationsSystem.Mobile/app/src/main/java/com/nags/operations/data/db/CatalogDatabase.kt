@@ -7,6 +7,8 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.nags.operations.data.db.dao.FlightCacheDao
+import com.nags.operations.data.db.dao.FlightDepartureDao
+import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
 import com.nags.operations.data.db.dao.FlightArrivalDao
 import com.nags.operations.data.db.entities.FlightArrivalPendingEntity
 import com.nags.operations.data.db.dao.SharedCatalogDao
@@ -14,14 +16,15 @@ import com.nags.operations.data.db.entities.FlightDetailCacheEntity
 import com.nags.operations.data.db.entities.FlightSnapshotEntity
 import com.nags.operations.data.db.entities.SharedCatalogSnapshotEntity
 
-/** Mobile caches and arrival intent remain separate from notifications and the untouched legacy database. */
-@Database(version = 5, exportSchema = true, entities = [
-    SharedCatalogSnapshotEntity::class, FlightSnapshotEntity::class, FlightDetailCacheEntity::class, FlightArrivalPendingEntity::class,
+/** Mobile caches and operational intent remain separate from notifications and the untouched legacy database. */
+@Database(version = 6, exportSchema = true, entities = [
+    SharedCatalogSnapshotEntity::class, FlightSnapshotEntity::class, FlightDetailCacheEntity::class, FlightArrivalPendingEntity::class, FlightDeparturePendingEntity::class,
 ])
 abstract class CatalogDatabase : RoomDatabase() {
     abstract fun sharedCatalogDao(): SharedCatalogDao
     abstract fun flightCacheDao(): FlightCacheDao
     abstract fun flightArrivalDao(): FlightArrivalDao
+    abstract fun flightDepartureDao(): FlightDepartureDao
 
     companion object {
         @Volatile private var instance: CatalogDatabase? = null
@@ -54,12 +57,19 @@ abstract class CatalogDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Arrival intent and replaceable caches are retained unchanged.
+                db.execSQL("CREATE TABLE IF NOT EXISTS flight_departure_pending (ownerSubject TEXT NOT NULL, flightId TEXT NOT NULL, flightNumber TEXT NOT NULL, staffMemberId TEXT NOT NULL, changeId TEXT NOT NULL, inputJson TEXT NOT NULL, rowVersion TEXT NOT NULL, reviewedDepartureJson TEXT NOT NULL, savedAtUtc TEXT NOT NULL, signatureFile TEXT, needsDepartureComparison INTEGER NOT NULL, status TEXT NOT NULL, error TEXT, attemptInputJson TEXT, attemptRowVersion TEXT, attemptSignatureFile TEXT, PRIMARY KEY(ownerSubject, flightId))")
+            }
+        }
+
         fun get(context: Context): CatalogDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 CatalogDatabase::class.java,
                 "shared-catalogs.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).build().also { instance = it }
         }
     }
 }

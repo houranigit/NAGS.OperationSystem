@@ -94,7 +94,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
-import com.nags.operations.data.visibleArrival
 import com.nags.operations.ui.components.CustomerLogo
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.InlineErrorBanner
@@ -113,6 +112,7 @@ private val DetailEdge = Color(0xFFE7EBF0)
 @Composable
 internal fun FlightDetailsSheet(
     state: FlightsUiState,
+    actuals: FlightActualDetails?,
     onClose: () -> Unit,
     onRetry: () -> Unit,
     onInvite: () -> Unit,
@@ -187,10 +187,8 @@ internal fun FlightDetailsSheet(
                             FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName)
                             DetailDivider(Modifier.padding(vertical = 10.dp))
                             FlightSchedule(flight)
-                            flight.visibleArrival()?.let { arrival ->
-                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                    FlightArrivalSummary(arrival, stationTimeZone(flight.stationTimeZoneId), showRemarks = false)
-                                }
+                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                FlightActualSummary(actuals, stationTimeZone(flight.stationTimeZoneId))
                             }
                             Spacer(Modifier.height(10.dp))
                             DetailDivider()

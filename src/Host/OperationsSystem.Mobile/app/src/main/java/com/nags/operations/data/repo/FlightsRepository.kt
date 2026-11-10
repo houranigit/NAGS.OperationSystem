@@ -4,6 +4,8 @@ import com.nags.operations.data.ApiException
 import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.FlightCategory
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.data.FlightDepartureSaved
+import com.nags.operations.data.departureEditable
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.FlightPage
 import com.nags.operations.data.FlightScope
@@ -182,6 +184,26 @@ class FlightsRepository internal constructor(
                         it.id == saved.submission.id
                     } + saved.submission, rowVersion = saved.rowVersion)
                     dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
+                }
+            }
+        }
+        _cacheChanges.tryEmit(Unit)
+    }
+
+    /** Acknowledged departure updates the replaceable cache; pending intent lives in its own repository. */
+    suspend fun recordDeparture(id: String, saved: FlightDepartureSaved) {
+        val session = requireSession()
+        refreshMutex.withLock {
+            mutationMutex.withLock {
+                ensureCurrent(session)
+                dao.detail(session.owner, id)?.let { cached ->
+                    val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
+                    if (detail != null) {
+                        val updated = detail.copy(departureSubmissions = detail.departureSubmissions.filterNot {
+                            it.id == saved.submission.id
+                        } + saved.submission, rowVersion = saved.rowVersion)
+                        dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
+                    }
                 }
             }
         }

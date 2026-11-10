@@ -43,6 +43,45 @@ public sealed class MobileFlightTests
         detail.Error.Code.ShouldBe("Operations.Flight.StationDataUnavailable");
     }
 
+    [Fact]
+    public async Task Detail_LoadsOrderedDepartureSubmissionsWithIndependentHandlingEmployeeSnapshots()
+    {
+        await using var db = NewDb();
+        var flight = FlightFor("100", assigned: true);
+        var submitter = new StaffMemberSnapshot(Guid.NewGuid(), "Submitting employee", "S1");
+        var handler = new StaffMemberSnapshot(Guid.NewGuid(), "Handling employee", "H1");
+        var signature = CustomerSignature.Create("signature.png", "signatures/read-test.png", "image/png", 100, Now).Value;
+        var first = flight.SubmitDeparture(submitter,
+            DepartureDetails.Create(Now.AddMinutes(10), signature, handler, "First departure").Value,
+            UserId, Now.AddMinutes(1)).Value;
+        var second = flight.SubmitDeparture(new StaffMemberSnapshot(Guid.NewGuid(), "Other submitter", "S2"),
+            DepartureDetails.Create(Now.AddMinutes(20), signature, handler, null).Value,
+            UserId, Now.AddMinutes(2)).Value;
+        flight.SubmitDeparture(submitter,
+            DepartureDetails.Create(Now.AddMinutes(15), signature, handler, "Corrected departure").Value,
+            UserId, Now.AddMinutes(3)).IsSuccess.ShouldBeTrue();
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var result = await new GetMobileFlightByIdQueryHandler(db, Scope(), new SchedulingMasterDataReader(), new Actor())
+            .Handle(new GetMobileFlightByIdQuery(flight.Id), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.CanSaveDeparture.ShouldBeTrue();
+        var departures = result.Value.DepartureSubmissions!;
+        departures.Select(item => item.Id).ShouldBe([first.Id, second.Id]);
+        departures[0].Atd.ShouldBe(Now.AddMinutes(15));
+        departures[0].SubmittedByEmployee.StaffMemberId.ShouldBe(submitter.StaffMemberId);
+        departures[0].HandledByEmployee.StaffMemberId.ShouldBe(handler.StaffMemberId);
+        departures[0].HandledByEmployee.FullName.ShouldBe(handler.FullName);
+        departures[0].Remarks.ShouldBe("Corrected departure");
+        departures[0].CreatedAtUtc.ShouldBe(Now.AddMinutes(1));
+        departures[0].UpdatedAtUtc.ShouldBe(Now.AddMinutes(3));
+        departures.ShouldAllBe(item => !item.IsAccepted);
+        db.ChangeTracker.Entries<Flight>().ShouldBeEmpty();
+    }
+
     [Theory]
     [InlineData(UserType.SystemAdministrator)]
     [InlineData(UserType.ViewerOnly)]

@@ -34,6 +34,7 @@ class SyncCenterViewModel internal constructor(
     private val clock: () -> Long = System::currentTimeMillis,
     flightStatuses: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
     private val arrivals: com.nags.operations.data.repo.FlightArrivalsRepository? = null,
+    private val departures: com.nags.operations.data.repo.FlightDeparturesRepository? = null,
 ) : ViewModel() {
     constructor(
         catalogs: SharedCatalogsRepository,
@@ -44,6 +45,7 @@ class SyncCenterViewModel internal constructor(
         refreshCatalogs: () -> Unit,
         syncing: StateFlow<Boolean>,
         arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository,
+        departureRepository: com.nags.operations.data.repo.FlightDeparturesRepository,
     ) : this(
         statuses = catalogs.observeStatus(),
         isSyncing = syncing,
@@ -53,6 +55,7 @@ class SyncCenterViewModel internal constructor(
         requestRefresh = refreshCatalogs,
         flightStatuses = flights.syncStatus,
         arrivals = arrivalRepository,
+        departures = departureRepository,
     )
 
     private val scope = coroutineScope ?: viewModelScope
@@ -69,6 +72,17 @@ class SyncCenterViewModel internal constructor(
     val pendingArrivals = (arrivals?.changes ?: flowOf(emptyList()))
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), emptyList())
     val arrivalActionError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val pendingDepartures = (departures?.changes ?: flowOf(emptyList()))
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+    val departureActionFailed = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    fun retryDeparture(id: String) = departureAction { departures?.retry(id) }
+    fun discardDeparture(id: String) = departureAction { departures?.discard(id) }
+    private fun departureAction(action: suspend () -> Unit) = scope.launch {
+        try { departureActionFailed.value = false; action() }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { departureActionFailed.value = true }
+    }
 
     fun retryArrival(id: String) = arrivalAction { arrivals?.retry(id) }
     fun discardArrival(id: String) = arrivalAction { arrivals?.discard(id) }

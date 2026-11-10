@@ -1,4 +1,6 @@
 using System.Net;
+using BuildingBlocks.Application.Abstractions;
+using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
 using System.Text.Json;
 using MasterData.Contracts.Seeding;
@@ -361,6 +363,137 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         using var hidden = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{hiddenId}/arrival") { Content = JsonContent.Create(input) };
         hidden.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
         (await staffClient.SendAsync(hidden)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Departure_save_persists_real_signature_bytes_shares_attribution_and_replays_lost_success()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var first = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
+        var second = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
+        using var firstClient = first.Client;
+        using var secondClient = second.Client;
+        var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "7300", [first.StaffId, second.StaffId]);
+        var path = $"{Base}/flights/{id}/departure";
+        var detail = (await firstClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        detail.CanSaveDeparture.ShouldBeTrue();
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=");
+        var input = new SaveFlightDepartureRequest(DateTimeOffset.UtcNow.AddHours(2), png,
+            DateTimeOffset.UtcNow.AddMinutes(-1), " Departure remarks ");
+        async Task<HttpResponseMessage> Save(HttpClient client, SaveFlightDepartureRequest payload, string version)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Put, path) { Content = JsonContent.Create(payload) };
+            request.Headers.TryAddWithoutValidation("If-Match", $"\"{version}\"");
+            return await client.SendAsync(request);
+        }
+        using var initial = await Save(firstClient, input, detail.RowVersion);
+        initial.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var saved = (await initial.Content.ReadFromJsonAsync<FlightDepartureSavedDto>())!;
+        saved.Submission.SubmittedByEmployee.StaffMemberId.ShouldBe(first.StaffId);
+        saved.Submission.HandledByEmployee.StaffMemberId.ShouldBe(first.StaffId);
+        saved.Submission.Remarks.ShouldBe("Departure remarks");
+        saved.Submission.IsAccepted.ShouldBeTrue();
+        saved.RowVersion.ShouldNotBe(detail.RowVersion);
+        string originalKey;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            var stored = (await db.Flights.Include(f => f.DepartureSubmissions).SingleAsync(f => f.Id == id))
+                .DepartureSubmissions.Single().Details.CustomerSignature;
+            originalKey = stored.StorageKey;
+            stored.SizeBytes.ShouldBe(png.Length);
+            stored.ContentType.ShouldBe("image/png");
+            stored.SignedAtUtc.ShouldBe(input.SignatureSignedAtUtc!.Value);
+            await using var content = await scope.ServiceProvider.GetRequiredService<IFileStorage>().OpenAsync(stored.StorageKey);
+            content.ShouldNotBeNull();
+            using var buffer = new MemoryStream();
+            await content.CopyToAsync(buffer);
+            buffer.ToArray().ShouldBe(png);
+        }
+        using var replay = await Save(firstClient, input, detail.RowVersion);
+        replay.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var replayed = (await replay.Content.ReadFromJsonAsync<FlightDepartureSavedDto>())!;
+        replayed.Submission.Id.ShouldBe(saved.Submission.Id);
+        replayed.RowVersion.ShouldBe(saved.RowVersion);
+        using var staleCorrection = await Save(firstClient, input with { Atd = input.Atd.AddMinutes(10) }, detail.RowVersion);
+        staleCorrection.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        var shared = (await secondClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        shared.DepartureSubmissions!.ShouldHaveSingleItem().ShouldBe(saved.Submission);
+        using var otherWrite = await Save(secondClient, input, shared.RowVersion);
+        otherWrite.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        // The owner's ATD/remarks correction reuses the saved signature instead of requiring a redraw.
+        using var correction = await Save(firstClient, input with {
+            Atd = input.Atd.AddMinutes(10), SignatureContent = null, SignatureSignedAtUtc = null, Remarks = "Corrected"
+        }, saved.RowVersion);
+        correction.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var corrected = (await correction.Content.ReadFromJsonAsync<FlightDepartureSavedDto>())!;
+        corrected.Submission.Id.ShouldBe(saved.Submission.Id);
+        corrected.Submission.Remarks.ShouldBe("Corrected");
+        corrected.Submission.UpdatedAtUtc.ShouldNotBeNull();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            var stored = (await db.Flights.Include(f => f.DepartureSubmissions).SingleAsync(f => f.Id == id))
+                .DepartureSubmissions.Single().Details.CustomerSignature;
+            stored.StorageKey.ShouldBe(originalKey);
+        }
+        // Re-signing stores a new file and releases only an unreferenced previous file.
+        using var resign = await Save(firstClient, input with { SignatureSignedAtUtc = input.SignatureSignedAtUtc!.Value.AddSeconds(1) }, corrected.RowVersion);
+        resign.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            var stored = (await db.Flights.Include(f => f.DepartureSubmissions).SingleAsync(f => f.Id == id))
+                .DepartureSubmissions.Single().Details.CustomerSignature;
+            stored.StorageKey.ShouldNotBe(originalKey);
+            await using var oldContent = await scope.ServiceProvider.GetRequiredService<IFileStorage>().OpenAsync(originalKey);
+            oldContent.ShouldBeNull();
+        }
+    }
+
+    [Fact]
+    public async Task Departure_boundary_requires_permission_precondition_atd_and_a_real_signed_png()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var actor = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
+        var reader = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view"]);
+        using var actorClient = actor.Client;
+        using var readerClient = reader.Client;
+        var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "7400", [actor.StaffId, reader.StaffId]);
+        var path = $"{Base}/flights/{id}/departure";
+        var detail = (await actorClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=");
+        var input = new SaveFlightDepartureRequest(DateTimeOffset.UtcNow, png, DateTimeOffset.UtcNow, null);
+        (await actorClient.PutAsJsonAsync(path, input)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await readerClient.PutAsJsonAsync(path, input)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var anonymous = factory.CreateClient();
+        (await anonymous.PutAsJsonAsync(path, input)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        foreach (var invalid in new[] {
+            input with { Atd = default },
+            input with { SignatureContent = null, SignatureSignedAtUtc = null },
+            input with { SignatureContent = [] },
+            input with { SignatureContent = [137, 80, 78, 71] },
+            input with { SignatureContent = png[..^1] },
+            input with { SignatureContent = new byte[2 * 1024 * 1024 + 1] },
+            input with { SignatureSignedAtUtc = null },
+            input with { SignatureSignedAtUtc = default(DateTimeOffset) }
+        })
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Put, path) { Content = JsonContent.Create(invalid) };
+            request.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
+            (await actorClient.SendAsync(request)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        }
+        var unchanged = (await actorClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        unchanged.DepartureSubmissions!.ShouldBeEmpty();
+        unchanged.RowVersion.ShouldBe(detail.RowVersion);
+        var readDetail = (await readerClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        readDetail.CanSaveDeparture.ShouldBeFalse();
+        var hiddenId = await ScheduleFlightAsync(admin, refs.StationId, refs, "7401");
+        using var hidden = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{hiddenId}/departure") { Content = JsonContent.Create(input) };
+        hidden.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
+        (await actorClient.SendAsync(hidden)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     private async Task<MasterDataRefs> SetupMasterDataAsync(HttpClient admin)

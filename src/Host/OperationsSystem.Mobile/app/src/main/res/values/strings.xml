@@ -69,7 +69,7 @@
         <item quantity="one">Showing %1$d of %2$d flight</item>
         <item quantity="other">Showing %1$d of %2$d flights</item>
     </plurals>
-    <string name="flights_schedule">Schedule</string>
+    <string name="flights_schedule">Schedule Details</string>
     <string name="flights_details">Flight details</string>
     <string name="flights_send">Send Flight</string>
     <string name="flights_edit">Edit flight</string>
@@ -175,9 +175,8 @@
     <string name="flights_invite_online_required">Connect to load current flight details and invite employees.</string>
     <string name="flights_sync_failed">Could not refresh flights. Saved data is kept; try again when connected.</string>
     <string name="flight_form_date_time">Date and time</string>
-    <string name="operations_arrival">Arrival</string>
-    <string name="operations_departure">Departure</string>
-    <string name="operations_submit">Submit</string>
+    <string name="operations_arrival">Arrival details</string>
+    <string name="operations_departure">Departure details</string>
     <string name="flight_form_close_picker">Close</string>
     <string name="operations_atd">Actual departure (ATD)</string>
     <string name="operations_arrival_remarks">Arrival remarks</string>
@@ -297,4 +296,23 @@
     <string name="arrival_review_before_save">Review your saved arrival, then tap Save to upload it again.</string>
     <string name="arrival_quoted_remarks">“%1$s”</string>
     <string name="arrival_actual_details">Actual arrival details</string>
+    <string name="flight_actual_details">Actual Details</string>
+    <string name="operations_atd_short">ATD</string>
+    <string name="operations_choose_atd">Edit actual departure</string>
+    <string name="operations_clear_atd">Clear actual departure</string>
+    <string name="departure_actual_details">Actual departure details</string>
+    <string name="departure_atd_required">Choose a valid actual departure date and time.</string>
+    <string name="departure_signature_required">Add the customer signature before saving departure.</string>
+    <string name="departure_review_before_save">Review the saved departure, then tap Save to send it again.</string>
+    <string name="departure_reload_review">Reload and review departure</string>
+    <string name="departure_pending">Departure saved on this device. Waiting to sync.</string>
+    <string name="departure_sync_review">Departure is saved here but was not accepted online. Reload and review it, or use Sync Center.</string>
+    <string name="departure_sync_title">Departure sync</string>
+    <string name="departure_sync_item">Flight %1$s</string>
+    <string name="departure_sync_retry">Retry upload</string>
+    <string name="departure_sync_discard">Discard saved departure</string>
+    <string name="departure_sync_discard_message">Discard the departure saved on this device? This will not remove a departure already saved online.</string>
+    <string name="departure_sync_action_failed">Could not update the saved departure. Please try again.</string>
+    <string name="flight_actuals_saved_locally">Saved on this device</string>
+    <string name="flight_actuals_you">You</string>
 </resources>

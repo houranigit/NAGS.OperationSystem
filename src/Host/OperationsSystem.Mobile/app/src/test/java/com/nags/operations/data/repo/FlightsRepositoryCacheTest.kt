@@ -766,6 +766,23 @@ class FlightsRepositoryCacheTest {
         observer.cancel()
     }
 
+    @Test fun acknowledgedDepartureIsAvailableOfflineWithoutReplacingPlanningDetails() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        val original = repository.flight("one")
+        val employee = com.nags.operations.data.AssignedEmployee("employee", "Employee", "E1")
+        val submission = com.nags.operations.data.FlightDepartureSubmission("departure", employee,
+            "2026-11-04T11:15:00Z", employee, remarks = "Departed", isAccepted = true, createdAtUtc = clock)
+        repository.recordDeparture("one", com.nags.operations.data.FlightDepartureSaved(submission, "saved-version"))
+        online = false
+        val cached = repository.flight("one")
+        assertEquals(listOf(submission), cached.departureSubmissions)
+        assertEquals("saved-version", cached.rowVersion)
+        assertEquals(original.scheduledArrivalUtc, cached.scheduledArrivalUtc)
+        assertEquals(original.scheduledDepartureUtc, cached.scheduledDepartureUtc)
+        assertEquals(original.arrivalSubmissions, cached.arrivalSubmissions)
+    }
+
     private fun scoped(page: FlightPage): FlightPage {
         if (page.stationId != null) return page
         val at = Instant.parse(clock)

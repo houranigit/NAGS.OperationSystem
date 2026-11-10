@@ -72,6 +72,14 @@ internal static class FlightEndpoints
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.Operate);
 
+        flights.MapPut("/{id:guid}/departure", async (Guid id, SaveFlightDepartureRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+            var result = await sender.Send(new SaveFlightDepartureCommand(id, request, rowVersion), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Operate);
+
         flights.MapPost("/notification-targets", async (FlightNotificationTargetsRequest request, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new GetFlightNotificationTargetsQuery(request.FlightIds ?? []), ct);

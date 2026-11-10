@@ -1,5 +1,6 @@
 package com.nags.operations.ui.flights
 
+import androidx.core.graphics.createBitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -65,16 +66,16 @@ import androidx.compose.ui.unit.dp
 import com.nags.operations.R
 import kotlin.math.roundToInt
 
-/** Temporary normalized ink only; this field never creates a file or submits a signature. */
+/** Normalized ink stays in form state until the departure save encodes a PNG. */
 @Composable
-internal fun FlightSignatureField(value: String, onOpen: () -> Unit) {
+internal fun FlightSignatureField(value: String, hasSavedSignature: Boolean = false, enabled: Boolean = true, onOpen: () -> Unit) {
     val ink = remember(value) { readSignature(value) }
-    val hasSignature = ink.strokes.isNotEmpty()
+    val hasSignature = ink.strokes.isNotEmpty() || hasSavedSignature
     val title = stringResource(R.string.operations_signature_title)
     val description = stringResource(if (hasSignature) R.string.operations_signature_edit else R.string.operations_signature_title)
     val state = stringResource(if (hasSignature) R.string.operations_signature_captured else R.string.operations_signature_add)
     val inkColor = MaterialTheme.colorScheme.onSurface
-    Surface(onClick = onOpen, color = MaterialTheme.colorScheme.surface,
+    Surface(onClick = onOpen, enabled = enabled, color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
             contentDescription = description
             stateDescription = state
@@ -86,13 +87,13 @@ internal fun FlightSignatureField(value: String, onOpen: () -> Unit) {
                 Text(title, Modifier.widthIn(max = labelMaxWidth), style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    if (hasSignature) {
+                    if (ink.strokes.isNotEmpty()) {
                         Canvas(Modifier.weight(1f, fill = false).width(88.dp).height(32.dp).clearAndSetSemantics {}) {
                             drawSignature(ink.strokes, ink.aspectRatio, inkColor, 1.dp.toPx())
                         }
                     } else {
-                        FlightFormValueText(stringResource(R.string.operations_signature_add),
-                            Modifier.weight(1f), isPlaceholder = true)
+                        FlightFormValueText(stringResource(if (hasSavedSignature) R.string.operations_signature_captured else R.string.operations_signature_add),
+                            Modifier.weight(1f), isPlaceholder = !hasSavedSignature)
                     }
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.padding(start = 4.dp).size(18.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -263,4 +264,48 @@ private fun DrawScope.drawSignature(strokes: List<List<Offset>>, aspectRatio: Fl
             drawPath(path, color, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
     }
+}
+
+/** Encode the same normalized strokes as the preview; metadata and file ownership stay server-side. */
+internal fun signaturePngContent(value: String): String? {
+    val ink = readSignature(value)
+    if (ink.strokes.isEmpty()) return null
+    val width = 1024
+    val height = (width / ink.aspectRatio).roundToInt().coerceIn(256, 1024)
+    val bitmap = createBitmap(width, height)
+    try {
+        val canvas = android.graphics.Canvas(bitmap)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.BLACK
+            strokeWidth = 4f
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            strokeJoin = android.graphics.Paint.Join.ROUND
+            style = android.graphics.Paint.Style.STROKE
+        }
+        val bounds = signatureBounds(Size(width.toFloat(), height.toFloat()), ink.aspectRatio)
+        fun project(point: Offset) = Offset(bounds.left + point.x * bounds.width, bounds.top + point.y * bounds.height)
+        for (stroke in ink.strokes) {
+            if (stroke.size == 1) {
+                val point = project(stroke.first())
+                canvas.drawPoint(point.x, point.y, paint)
+            } else {
+                val path = android.graphics.Path()
+                val first = project(stroke.first())
+                path.moveTo(first.x, first.y)
+                for (index in 1 until stroke.size) {
+                    val previous = project(stroke[index - 1])
+                    val current = project(stroke[index])
+                    path.quadTo(previous.x, previous.y, (previous.x + current.x) / 2f, (previous.y + current.y) / 2f)
+                }
+                val last = project(stroke.last())
+                path.lineTo(last.x, last.y)
+                canvas.drawPath(path, paint)
+            }
+        }
+        return java.io.ByteArrayOutputStream().use { output ->
+            check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)) { "Could not prepare the customer signature." }
+            android.util.Base64.encodeToString(output.toByteArray(), android.util.Base64.NO_WRAP)
+        }
+    } finally { bitmap.recycle() }
 }

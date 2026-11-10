@@ -4,24 +4,15 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import androidx.core.content.getSystemService
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.CoroutineScope
 
-/**
- * Observes the OS connectivity callbacks and emits a coarse "are we online?"
- * boolean. Screens and notification registration use it to react when the
- * device transitions between offline and online.
- *
- * We deliberately stay coarse — no metering / VPN / captive-portal distinctions
- * here; if anything claims to be a working network we trust it and let the
- * HTTP layer surface real failures.
- */
+/** Observes validation of the app's default network; HTTP still reports individual request failures. */
 class NetworkMonitor(
     context: Context,
     scope: CoroutineScope,
@@ -34,33 +25,54 @@ class NetworkMonitor(
             awaitClose { /* no callback registered */ }
             return@callbackFlow
         }
+        val state = DefaultNetworkState<Network>()
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                trySend(hasValidatedActiveNetwork())
+                state.onAvailable(network)?.let { trySend(it) }
             }
 
             override fun onLost(network: Network) {
-                trySend(hasValidatedActiveNetwork())
+                // The synchronous activeNetwork snapshot may still contain this lost network.
+                state.onLost(network)?.let { trySend(it) }
             }
 
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
-                // A captive portal advertises INTERNET but is not VALIDATED. Always inspect the
-                // active network so a callback from a secondary network cannot pause a healthy one.
-                trySend(hasValidatedActiveNetwork())
+                val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                state.onCapabilitiesChanged(network, validated)?.let { trySend(it) }
             }
         }
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
-        cm.registerNetworkCallback(request, callback)
-        trySend(hasValidatedActiveNetwork())
+        // API 26+ delivers capabilities immediately after availability. Waiting for those
+        // callbacks avoids both synchronous-query races and a stale registration-time snapshot.
+        cm.registerDefaultNetworkCallback(callback)
         awaitClose { cm.unregisterNetworkCallback(callback) }
-    }.stateIn(scope, SharingStarted.Eagerly, initialValue = hasValidatedActiveNetwork())
+    }.stateIn(scope, SharingStarted.Eagerly, initialValue = false)
+}
 
-    private fun hasValidatedActiveNetwork(): Boolean {
-        val active = cm?.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(active) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+/** Keeps callbacks from a superseded default network from changing the latest network's state. */
+internal class DefaultNetworkState<N> {
+    private var currentNetwork: N? = null
+    var isOnline: Boolean = false
+        private set
+
+    fun onAvailable(network: N): Boolean? {
+        if (network == currentNetwork) return null
+        currentNetwork = network
+        return update(false)
+    }
+
+    fun onCapabilitiesChanged(network: N, validated: Boolean): Boolean? =
+        if (network == currentNetwork) update(validated) else null
+
+    fun onLost(network: N): Boolean? {
+        if (network != currentNetwork) return null
+        currentNetwork = null
+        return update(false)
+    }
+
+    private fun update(online: Boolean): Boolean? {
+        if (online == isOnline) return null
+        isOnline = online
+        return online
     }
 }

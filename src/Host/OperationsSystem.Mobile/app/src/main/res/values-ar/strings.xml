@@ -42,7 +42,7 @@
         <item quantity="many">عرض %1$d من أصل %2$d رحلة</item>
         <item quantity="other">عرض %1$d من أصل %2$d رحلة</item>
     </plurals>
-    <string name="flights_schedule">الجدول</string>
+    <string name="flights_schedule">تفاصيل الجدول</string>
     <string name="flights_details">تفاصيل الرحلة</string>
     <string name="flights_send">إرسال الرحلة</string>
     <string name="flights_edit">تعديل الرحلة</string>
@@ -152,9 +152,8 @@
     <string name="flights_invite_online_required">اتصل لتحميل تفاصيل الرحلة الحالية ودعوة الموظفين.</string>
     <string name="flights_sync_failed">تعذر تحديث الرحلات. تم الاحتفاظ بالبيانات المحفوظة؛ حاول عند الاتصال.</string>
     <string name="flight_form_date_time">التاريخ والوقت</string>
-    <string name="operations_arrival">الوصول</string>
-    <string name="operations_departure">المغادرة</string>
-    <string name="operations_submit">إرسال</string>
+    <string name="operations_arrival">تفاصيل الوصول</string>
+    <string name="operations_departure">تفاصيل المغادرة</string>
     <string name="flight_form_close_picker">إغلاق</string>
     <string name="operations_atd">وقت المغادرة الفعلي (ATD)</string>
     <string name="operations_arrival_remarks">ملاحظات الوصول</string>
@@ -274,4 +273,23 @@
     <string name="arrival_review_before_save">راجع بيانات الوصول المحفوظة ثم اضغط حفظ لإرسالها مجددًا.</string>
     <string name="arrival_quoted_remarks">“%1$s”</string>
     <string name="arrival_actual_details">تفاصيل الوصول الفعلي</string>
+    <string name="flight_actual_details">التفاصيل الفعلية</string>
+    <string name="operations_atd_short">المغادرة الفعلية</string>
+    <string name="operations_choose_atd">تعديل وقت المغادرة الفعلي</string>
+    <string name="operations_clear_atd">إزالة وقت المغادرة الفعلي</string>
+    <string name="departure_actual_details">تفاصيل المغادرة الفعلية</string>
+    <string name="departure_atd_required">اختر تاريخ ووقت المغادرة الفعلي الصحيحين.</string>
+    <string name="departure_signature_required">أضف توقيع العميل قبل حفظ المغادرة.</string>
+    <string name="departure_review_before_save">راجع بيانات المغادرة المحفوظة ثم اضغط حفظ لإرسالها مجددًا.</string>
+    <string name="departure_reload_review">إعادة التحميل ومراجعة المغادرة</string>
+    <string name="departure_pending">تم حفظ المغادرة على هذا الجهاز. بانتظار المزامنة.</string>
+    <string name="departure_sync_review">بيانات المغادرة محفوظة على هذا الجهاز ولكن لم يتم قبولها عبر الإنترنت. أعد تحميل الرحلة وراجعها، أو انتقل إلى مركز المزامنة.</string>
+    <string name="departure_sync_title">مزامنة المغادرة</string>
+    <string name="departure_sync_item">الرحلة %1$s</string>
+    <string name="departure_sync_retry">إعادة محاولة المزامنة</string>
+    <string name="departure_sync_discard">تجاهل المغادرة المحفوظة</string>
+    <string name="departure_sync_discard_message">هل تريد تجاهل المغادرة المحفوظة على هذا الجهاز؟ لن يتم حذف أي مغادرة محفوظة عبر الإنترنت.</string>
+    <string name="departure_sync_action_failed">تعذر تحديث المغادرة المحفوظة. يرجى المحاولة مجددًا.</string>
+    <string name="flight_actuals_saved_locally">محفوظ على هذا الجهاز</string>
+    <string name="flight_actuals_you">أنت</string>
 </resources>

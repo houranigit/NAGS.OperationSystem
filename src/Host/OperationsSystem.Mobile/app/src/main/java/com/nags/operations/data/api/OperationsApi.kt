@@ -17,6 +17,8 @@ import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.put
 import com.nags.operations.data.FlightArrivalSaved
+import com.nags.operations.data.FlightDepartureSaved
+import com.nags.operations.data.SaveFlightDepartureRequest
 import com.nags.operations.data.SaveFlightArrivalRequest
 import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
@@ -81,6 +83,13 @@ class OperationsApi internal constructor(private val client: HttpClient) {
 
     suspend fun saveArrival(id: String, input: SaveFlightArrivalRequest, rowVersion: String): FlightArrivalSaved =
         client.put(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(id)}/arrival")) {
+            contentType(ContentType.Application.Json)
+            headers { append("If-Match", "\"$rowVersion\"") }
+            setBody(input)
+        }.bodyOrThrow()
+
+    suspend fun saveDeparture(id: String, input: SaveFlightDepartureRequest, rowVersion: String): FlightDepartureSaved =
+        client.put(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(id)}/departure")) {
             contentType(ContentType.Application.Json)
             headers { append("If-Match", "\"$rowVersion\"") }
             setBody(input)

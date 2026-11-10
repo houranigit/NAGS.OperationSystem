@@ -34,7 +34,7 @@ import com.nags.operations.ui.util.formatIsoDateForDisplay
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
 import java.time.ZoneId
 
-/** Saved actual arrival details, shared by the recording card and flight details sheet. */
+/** Detailed saved arrival shown inside the recording form identity card. */
 @Composable
 internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId, showRemarks: Boolean = true) {
     HorizontalDivider(Modifier.padding(vertical = 10.dp), thickness = 0.5.dp,

@@ -147,10 +147,18 @@ class FlightsViewModel internal constructor(
     val arrivalAircraftTypes: Flow<List<AircraftTypeCatalogItem>> = flowOf(emptyList()),
     val operationsCatalogs: Flow<FlightOperationsCatalogs> = flowOf(FlightOperationsCatalogs()),
     val arrivals: com.nags.operations.data.repo.FlightArrivalsRepository? = null,
+    val departures: com.nags.operations.data.repo.FlightDeparturesRepository? = null,
+    val actualsStaff: Flow<List<com.nags.operations.data.StaffCatalogItem>> = flowOf(emptyList()),
+    val currentUserDisplayName: Flow<String?> = flowOf(null),
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
-        sharedCatalogsRepository: SharedCatalogsRepository, arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository) : this(
+        sharedCatalogsRepository: SharedCatalogsRepository, arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository,
+        departureRepository: com.nags.operations.data.repo.FlightDeparturesRepository,
+        currentUserDisplayName: Flow<String?> = flowOf(null)) : this(
         arrivals = arrivalRepository,
+        departures = departureRepository,
+        actualsStaff = sharedCatalogsRepository.stationStaffFlow(),
+        currentUserDisplayName = currentUserDisplayName,
         fetchProfile = authRepository::profile,
         fetchFlights = repository::flights,
         fetchFlight = repository::flight,
@@ -174,11 +182,15 @@ class FlightsViewModel internal constructor(
     )
 
     suspend fun reviewArrival(id: String): FlightDetail {
-        check(online.value) { "Connect to reload the flight before reviewing your arrival." }
+        check(online.value) { "Connect to reload the flight before reviewing saved input." }
         val detail = fetchFlight(id)
         check(!detail.fromCache) { "Connect to reload the latest flight." }
         _state.update { if (it.selectedFlightId == id) it.copy(detail = detail) else it }
         return detail
+    }
+
+    suspend fun saveDeparture(flight: FlightDetail, input: com.nags.operations.data.SaveFlightDepartureRequest) {
+        checkNotNull(departures) { "Departure saving is unavailable." }.save(flight, input)
     }
 
     private val scope: CoroutineScope get() = coroutineScope ?: viewModelScope

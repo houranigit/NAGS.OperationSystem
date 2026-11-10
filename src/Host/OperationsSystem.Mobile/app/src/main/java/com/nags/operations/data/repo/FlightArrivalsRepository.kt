@@ -37,6 +37,7 @@ class FlightArrivalsRepository(
     private val schedule: () -> Unit,
     private val json: Json,
     private val now: () -> Instant = Instant::now,
+    private val onAcknowledgedBeforeDelete: suspend (String, String, String) -> Unit = { _, _, _ -> },
 ) {
     // Network sends and session transitions share this gate. A new bearer cannot be
     // published while an old account's request is still using the HTTP client.
@@ -44,6 +45,10 @@ class FlightArrivalsRepository(
     private val localWrites = Mutex()
     @Volatile private var accepting = true
     @Volatile private var generation = 0L
+    // Only our own acknowledged arrival writes may advance an open departure form's reviewed version.
+    // This covers a background worker acknowledging a queued arrival before the form starts its save.
+    private var acknowledgedOwner: String? = null
+    private val acknowledgedVersions = linkedMapOf<String, LinkedHashMap<String, String>>()
     val changes: Flow<List<FlightArrivalPendingEntity>> = ownerFlow.flatMapLatest { owner ->
         if (owner == null) flowOf(emptyList()) else dao.observe(owner)
     }
@@ -69,7 +74,7 @@ class FlightArrivalsRepository(
     }
 
     /** True means transient work remains; terminal rows stay available for review. */
-    suspend fun syncPending(): Boolean = gate.withLock {
+    suspend fun syncPending(onAcknowledged: (String, String) -> Unit = { _, _ -> }): Boolean = gate.withLock {
         if (!accepting) return@withLock false
         val owner = currentOwner() ?: return@withLock false
         if (!online()) return@withLock dao.rows(owner).any { it.status == "pending" }
@@ -89,6 +94,12 @@ class FlightArrivalsRepository(
                 val result = send(row.flightId, input, row.rowVersion)
                 if (owner != currentOwner()) return@withLock false
                 accepted(row.flightId, result)
+                // Publish our exact ACK before the dependent-queue callback. Departure saves
+                // recheck this lineage after persistence, closing the concurrent-save gap.
+                localWrites.withLock { rememberAcknowledgment(owner, row.flightId, row.rowVersion, result.rowVersion) }
+                // Persist dependent departure intent before deleting arrival intent. Replaying this
+                // exact arrival after a crash can safely repeat the dependency acknowledgement.
+                onAcknowledgedBeforeDelete(row.flightId, row.rowVersion, result.rowVersion)
                 localWrites.withLock {
                     pendingRow(row)?.let { latest ->
                         if (latest.inputJson == row.attemptInputJson) dao.delete(owner, row.flightId, row.changeId)
@@ -99,6 +110,7 @@ class FlightArrivalsRepository(
                         }
                     }
                 }
+                onAcknowledged(row.flightId, result.rowVersion)
             } catch (cancelled: CancellationException) {
                 throw cancelled // A cancelled send remains pending and replays safely.
             } catch (error: Exception) {
@@ -119,6 +131,48 @@ class FlightArrivalsRepository(
             }
         }
         retry || localWrites.withLock { dao.rows(owner).any { it.status == "pending" } }
+    }
+
+    /** Follow only exact versions returned by this session's own arrival HTTP acknowledgments. */
+    suspend fun acknowledgedVersion(flightId: String, reviewedVersion: String): String = localWrites.withLock {
+        resetAcknowledgmentsForOwner(currentOwner())
+        val chain = acknowledgedVersions[flightId] ?: return@withLock reviewedVersion
+        var version = reviewedVersion
+        val visited = mutableSetOf<String>()
+        while (visited.add(version)) {
+            val next = chain[version] ?: break
+            if (next == version) break
+            version = next
+        }
+        version
+    }
+
+    private fun resetAcknowledgmentsForOwner(owner: String?) {
+        if (acknowledgedOwner != owner) {
+            acknowledgedVersions.clear()
+            acknowledgedOwner = owner
+        }
+    }
+
+    /** Caller holds localWrites; retain a bounded session-only lineage, never a server refresh version. */
+    private fun rememberAcknowledgment(owner: String, flightId: String, requestVersion: String, responseVersion: String) {
+        resetAcknowledgmentsForOwner(owner)
+        val chain = acknowledgedVersions.remove(flightId) ?: linkedMapOf()
+        chain[requestVersion] = responseVersion
+        while (chain.size > 64) chain.remove(chain.keys.first())
+        acknowledgedVersions[flightId] = chain
+        while (acknowledgedVersions.size > 64) acknowledgedVersions.remove(acknowledgedVersions.keys.first())
+    }
+
+    /** Online departure writes share the existing account-transition gate with arrival uploads. */
+    suspend fun <T> withCurrentSession(block: suspend () -> T): T = gate.withLock {
+        check(accepting && currentOwner() != null) { "Your session changed. Reopen the flight." }
+        block()
+    }
+
+    suspend fun hasSavedInput(flightId: String): Boolean = localWrites.withLock {
+        val owner = currentOwner() ?: return@withLock false
+        dao.rows(owner).any { it.flightId == flightId }
     }
 
     /** Retry retains the exact request and original version; it never silently rebases a conflict. */
@@ -154,8 +208,10 @@ class FlightArrivalsRepository(
 
     suspend fun pause() {
         localWrites.withLock { accepting = false; generation++ }
-        gate.withLock { /* Wait for the current authenticated upload before changing bearer. */ }
+        gate.withLock {
+            localWrites.withLock { acknowledgedVersions.clear(); acknowledgedOwner = null }
+        }
     }
     suspend fun resume() = localWrites.withLock { accepting = true }
-    suspend fun clear() = gate.withLock { localWrites.withLock { generation++; dao.clear() } }
+    suspend fun clear() = gate.withLock { localWrites.withLock { generation++; acknowledgedVersions.clear(); acknowledgedOwner = null; dao.clear() } }
 }

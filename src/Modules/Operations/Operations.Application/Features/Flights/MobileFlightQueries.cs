@@ -102,7 +102,7 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
 
         var flight = await MobileFlightQuery.ApplyScope(db.Flights.AsNoTracking(), resolved.Value)
             .AsSplitQuery().Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
-            .Include(f => f.ArrivalSubmissions).Include(f => f.CancellationSubmissions)
+            .Include(f => f.ArrivalSubmissions).Include(f => f.DepartureSubmissions).Include(f => f.CancellationSubmissions)
             .FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
@@ -110,6 +110,7 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
         if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
             return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
         return FlightDetails.Map(flight, station.TimeZoneId, resolved.Value.StaffMemberId,
+            user?.HasPermission(OperationsPermissions.Flights.Operate) == true,
             user?.HasPermission(OperationsPermissions.Flights.Operate) == true);
     }
 }

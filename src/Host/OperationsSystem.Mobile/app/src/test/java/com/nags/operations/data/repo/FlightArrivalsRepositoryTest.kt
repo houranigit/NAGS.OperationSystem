@@ -26,6 +26,7 @@ class FlightArrivalsRepositoryTest {
     private var scheduled = 0
     private var failure: Exception? = null
     private var acceptFailure = false
+    private var durableAcknowledgment: suspend (String, String, String) -> Unit = { _, _, _ -> }
     private val staff = "11111111-1111-1111-1111-111111111111"
     private val otherStaff = "22222222-2222-2222-2222-222222222222"
     private val aircraft = "33333333-3333-3333-3333-333333333333"
@@ -49,7 +50,7 @@ class FlightArrivalsRepositoryTest {
     private fun repository() = FlightArrivalsRepository(dao, owner, { owner.value }, { online },
         send = { id, input, version -> send(id, input, version) },
         accepted = { _, _ -> if (acceptFailure) throw IOException("disk unavailable") },
-        schedule = { scheduled++ }, json = Json, now = { at })
+        schedule = { scheduled++ }, json = Json, now = { at }, onAcknowledgedBeforeDelete = { id, before, after -> durableAcknowledgment(id, before, after) })
 
     @Test fun offlineSaveSurvivesRepositoryRecreationAndOnlyAcknowledgedUploadsAreRemoved() = runBlocking {
         repository().save(flight, input)
@@ -64,19 +65,44 @@ class FlightArrivalsRepositoryTest {
         assertTrue(dao.rows(owner.value!!).isEmpty())
     }
 
+    @Test fun dependentAcknowledgmentIsDurableBeforeArrivalDeletionAndReplaysAfterInterruption() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        var callbacks = 0
+        durableAcknowledgment = { id, before, after ->
+            callbacks++
+            assertEquals(flight.id, id)
+            assertEquals(flight.rowVersion, before)
+            assertEquals("AAAAAAAAAAI=", after)
+            assertEquals(1, dao.rows(owner.value!!).size)
+            if (callbacks == 1) throw CancellationException("process stopped before dependency persisted")
+        }
+        assertTrue(runCatching { repo.syncPending() }.exceptionOrNull() is CancellationException)
+        val retained = dao.rows(owner.value!!).single()
+        assertEquals("pending", retained.status)
+        assertEquals(retained.inputJson, retained.attemptInputJson)
+        assertFalse(repository().syncPending())
+        assertEquals(2, callbacks)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
     @Test fun lostResponseIsRetriedWithIdenticalInputAndOriginalVersion() = runBlocking {
         val repo = repository()
         repo.save(flight, input)
         val original = dao.rows(owner.value!!).single()
         online = true
         failure = IOException("lost response after server commit")
-        assertTrue(repo.syncPending())
+        val acknowledgments = mutableListOf<Pair<String, String>>()
+        assertTrue(repo.syncPending { id, version -> acknowledgments += id to version })
+        assertTrue(acknowledgments.isEmpty())
         val retained = dao.rows(owner.value!!).single()
         assertEquals(original.changeId, retained.changeId)
         assertEquals(original.inputJson, retained.inputJson)
         assertEquals(original.rowVersion, retained.rowVersion)
         failure = null
-        assertFalse(repo.syncPending())
+        assertFalse(repo.syncPending { id, version -> acknowledgments += id to version })
+        assertEquals(listOf(flight.id to "AAAAAAAAAAI="), acknowledgments)
         assertEquals(2, sends)
         assertTrue(dao.rows(owner.value!!).isEmpty())
     }
@@ -326,6 +352,40 @@ class FlightArrivalsRepositoryTest {
         finish.complete(Unit)
         assertTrue(upload.await())
         assertEquals(replacement, dao.rows(owner.value!!).single())
+    }
+
+    @Test fun acknowledgedVersionFollowsOwnCorrectionChainAndResetsForAnotherOwner() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        repo.syncPending()
+        assertEquals("AAAAAAAAAAI=", repo.acknowledgedVersion(flight.id, flight.rowVersion))
+        send = { _, _, version ->
+            assertEquals("AAAAAAAAAAI=", version)
+            FlightArrivalSaved(submitted, "AAAAAAAAAAM=")
+        }
+        repo.save(flight.copy(rowVersion = "AAAAAAAAAAI="), input.copy(remarks = "corrected"))
+        repo.syncPending()
+        assertEquals("AAAAAAAAAAM=", repo.acknowledgedVersion(flight.id, flight.rowVersion))
+        assertEquals("unrelated", repo.acknowledgedVersion(flight.id, "unrelated"))
+        owner.value = "api|another-account"
+        assertEquals(flight.rowVersion, repo.acknowledgedVersion(flight.id, flight.rowVersion))
+    }
+
+    @Test fun accountPauseWaitsForAnOnlineDepartureSessionGate() = runBlocking {
+        val repo = repository()
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val departure = async(start = CoroutineStart.UNDISPATCHED) {
+            repo.withCurrentSession { started.complete(Unit); finish.await() }
+        }
+        started.await()
+        val pause = async(start = CoroutineStart.UNDISPATCHED) { repo.pause() }
+        assertFalse(pause.isCompleted)
+        finish.complete(Unit)
+        departure.await()
+        pause.await()
+        assertTrue(runCatching { repo.withCurrentSession { } }.isFailure)
     }
 
     @Test fun ownAndForeignSubmissionsSelectTheCorrectReadOnlyState() {

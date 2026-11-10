@@ -13,10 +13,10 @@ import com.nags.operations.AppGraph
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 
-/** New arrival-only work; the retired work-order worker remains inert. */
+/** Drain arrival and departure intent; retain this worker identity for already scheduled jobs. */
 class FlightArrivalSyncWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = try {
-        if (AppGraph.get(applicationContext).syncFlightArrivals()) Result.retry() else Result.success()
+        if (AppGraph.get(applicationContext).syncFlightOperations()) Result.retry() else Result.success()
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (_: Exception) {

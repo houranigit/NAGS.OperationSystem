@@ -191,6 +191,19 @@ fun FlightsScreen(
         }
     }
     if (state.selectedFlightId != null) key(state.selectedFlightId) {
+        // These subscriptions outlive the editor so a completed disk save updates the sheet immediately.
+        val pendingArrivals by (viewModel.arrivals?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+            .collectAsStateWithLifecycle(initialValue = emptyList())
+        val pendingDepartures by (viewModel.departures?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+            .collectAsStateWithLifecycle(initialValue = emptyList())
+        val aircraftTypes by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
+        val actualsStaff by viewModel.actualsStaff.collectAsStateWithLifecycle(initialValue = emptyList())
+        val currentUserName by viewModel.currentUserDisplayName.collectAsStateWithLifecycle(initialValue = null)
+        val actuals = state.detail?.actualDetails(
+            pendingArrival = pendingArrivals.firstOrNull { it.flightId == state.selectedFlightId },
+            pendingDeparture = pendingDepartures.firstOrNull { it.flightId == state.selectedFlightId },
+            aircraftTypes = aircraftTypes, stationStaff = actualsStaff, currentUserName = currentUserName,
+            youLabel = stringResource(R.string.flight_actuals_you))
         var recordingForm by rememberSaveable { mutableStateOf<String?>(null) }
         // The open form owns a stable snapshot, including across activity recreation.
         // Background detail updates must not replace the form's original snapshot.
@@ -199,7 +212,7 @@ fun FlightsScreen(
             recordingFlightSnapshot?.let { Json.decodeFromString<FlightDetail>(it) }
         }
         val recordingFormState = rememberSaveableStateHolder()
-        FlightDetailsSheet(state = state, onClose = ::closeFlight,
+        FlightDetailsSheet(state = state, actuals = actuals, onClose = ::closeFlight,
             onRetry = { state.selectedFlightId?.let(viewModel::openFlight) },
             onInvite = viewModel::openInvitations,
             onOperations = { recordingFlightSnapshot = state.detail?.let { Json.encodeToString(it) }; recordingForm = "operations" },
@@ -216,14 +229,13 @@ fun FlightsScreen(
                     recordingFormState.removeState(activeForm)
                 }
                 if (activeForm == "operations") {
-                    val aircraftTypes by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
                     val catalogs by viewModel.operationsCatalogs.collectAsStateWithLifecycle(initialValue = FlightOperationsCatalogs())
-                    val pendingArrivals by (viewModel.arrivals?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
-                        .collectAsStateWithLifecycle(initialValue = emptyList())
                     FlightOperationsForm(state.detail ?: flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm, catalogs = catalogs,
                         pending = pendingArrivals.firstOrNull { it.flightId == flight.id },
+                        pendingDeparture = pendingDepartures.firstOrNull { it.flightId == flight.id },
                         onSaveArrival = { detail, input -> checkNotNull(viewModel.arrivals).save(detail, input) },
-                        onReviewArrival = { viewModel.reviewArrival(flight.id) })
+                        onReviewArrival = { viewModel.reviewArrival(flight.id) },
+                        onSaveDeparture = viewModel::saveDeparture)
                 } else {
                     FlightCancellationForm(flight, viewModel::customerLogo, onClose = closeForm)
                 }
