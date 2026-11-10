@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -300,13 +301,16 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
                             Modifier.size(logoSize).border(1.dp, Color(0xFFD1D1D6), RoundedCornerShape(10.dp)).padding(5.dp))
                     }
                     val number: @Composable (Modifier) -> Unit = { modifier ->
-                        Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(stringResource(R.string.flight_form_flt), style = labelStyle,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(flight.flightNumber, Modifier.onGloballyPositioned {
-                                onTitlePositioned(it.positionInWindow().y, it.size.height)
-                            }.semantics { heading() }, style = valueStyle,
-                                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                        // Keep the badge inside the same full height as the schedule and logo.
+                        Column(modifier.height(logoSize), verticalArrangement = Arrangement.SpaceBetween) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(stringResource(R.string.flight_form_flt), style = labelStyle,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(flight.flightNumber, Modifier.onGloballyPositioned {
+                                    onTitlePositioned(it.positionInWindow().y, it.size.height)
+                                }.semantics { heading() }, style = valueStyle,
+                                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                            }
                             FlightRecordingTypeBadge(flight)
                         }
                     }
