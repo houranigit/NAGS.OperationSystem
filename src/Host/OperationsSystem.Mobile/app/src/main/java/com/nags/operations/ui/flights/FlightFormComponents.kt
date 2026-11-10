@@ -2,8 +2,6 @@ package com.nags.operations.ui.flights
 
 import android.os.Build
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -12,8 +10,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -264,25 +260,19 @@ internal fun FlightRecordingFormScaffold(
     }
 }
 
-/** A translucent face, fine rim and soft elevation keep the form controls tactile. */
+/** Compact circular controls with restrained elevation. */
 @Composable
 private fun FlightFormHeaderButton(icon: ImageVector, description: String, enabled: Boolean = true,
     active: Boolean = false, loading: Boolean = false, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.94f else 1f,
-        animationSpec = spring(dampingRatio = 1f, stiffness = 900f), label = "Header button press")
-    val face = if (active) listOf(Color(0xFF73DF91), FlightFormGreen, Color(0xFF29B64A))
-        else listOf(Color.White.copy(alpha = 0.92f), Color(0xFFF4F4F8).copy(alpha = 0.76f), Color(0xFFE6E6ED).copy(alpha = 0.82f))
-    val rim = if (active) listOf(Color.White.copy(alpha = 0.75f), Color(0xFF299847).copy(alpha = 0.3f))
-        else listOf(Color.White, Color(0xFFC9C9D0).copy(alpha = 0.8f))
-    IconButton(onClick = onClick, enabled = enabled, interactionSource = interaction, modifier = Modifier.size(48.dp)) {
-        Box(Modifier.size(44.dp).graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(2.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.12f))
-            .background(Brush.verticalGradient(face), CircleShape).border(0.75.dp, Brush.verticalGradient(rim), CircleShape),
+    val face = if (active) FlightFormGreen
+        else MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.05f else 0.08f)
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) {
+        Box(Modifier.size(34.dp)
+            .shadow(1.5.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.1f))
+            .background(face, CircleShape),
             contentAlignment = Alignment.Center) {
             Icon(icon, description, Modifier.size(20.dp).flightFormRotating(loading),
-                tint = if (active) Color.White else if (enabled) MaterialTheme.colorScheme.onSurface else Color(0xFF9B9BA2))
+                tint = if (active) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.35f))
         }
     }
 }
