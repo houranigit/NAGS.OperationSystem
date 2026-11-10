@@ -102,7 +102,6 @@
     <string name="flight_form_discard_hint">These details haven’t been saved.</string>
     <string name="flight_form_discard">Discard</string>
     <string name="flight_form_keep_editing">Keep editing</string>
-    <string name="flight_form_context_schedule">%1$s · STA %2$s</string>
     <string name="flights_show_details">Show details</string>
     <string name="flights_hide_details">Hide details</string>
     <string name="flights_section_expanded">Expanded</string>

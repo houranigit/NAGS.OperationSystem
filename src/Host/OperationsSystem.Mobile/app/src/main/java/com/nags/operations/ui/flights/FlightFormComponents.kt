@@ -1,6 +1,9 @@
 package com.nags.operations.ui.flights
 
+import android.os.Build
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -9,6 +12,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,6 +28,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,6 +62,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -61,15 +76,25 @@ import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -79,9 +104,13 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -95,12 +124,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.ui.components.CustomerLogo
-import com.nags.operations.ui.util.formatIsoDateForDisplay
-import com.nags.operations.ui.util.stationTimeZone
-import com.nags.operations.ui.util.formatIsoTimeForDisplay
+import com.nags.operations.ui.components.FlightAircraftOperationRow
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.Flow
@@ -135,16 +163,32 @@ internal fun FlightRecordingFormScaffold(
 ) {
     Dialog(onDismissRequest = onRequestClose,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        val window = (LocalView.current.parent as? DialogWindowProvider)?.window
+        val view = LocalView.current
+        val window = (view.parent as? DialogWindowProvider)?.window
         SideEffect {
             // Let the window own both directions, so confirmed close keeps its native exit animation.
             // The dedicated dialog window is disposed with this form; no activity window is modified.
             window?.setWindowAnimations(R.style.Animation_OperationsFlightForm)
             window?.setDimAmount(0.28f)
+            window?.let {
+                WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars = true
+            }
         }
         val focus = LocalFocusManager.current
         val keyboard = LocalSoftwareKeyboardController.current
         val editor = remember { FlightFormFocusedEditor() }
+        val scroll = rememberScrollState()
+        val backdrop = rememberGraphicsLayer()
+        val density = LocalDensity.current
+        var headerHeight by remember { mutableIntStateOf(with(density) { 56.dp.roundToPx() }) }
+        var viewportTop by remember { mutableFloatStateOf(0f) }
+        var titleTop by remember(flight.id) { mutableFloatStateOf(Float.MAX_VALUE) }
+        var titleHeight by remember { mutableIntStateOf(1) }
+        // Use the actual heading bounds so the handoff follows font scaling and rotation.
+        val titleProgress by remember {
+            derivedStateOf { ((scroll.value - titleTop + headerHeight) / titleHeight.coerceAtLeast(1)).coerceIn(0f, 1f) }
+        }
+        val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         CompositionLocalProvider(LocalFlightFormFocusedEditor provides editor) {
             Surface(Modifier.fillMaxSize().onGloballyPositioned { editor.origin = it.positionInWindow() }
                 .pointerInput(editor, focus, keyboard) {
@@ -167,32 +211,51 @@ internal fun FlightRecordingFormScaffold(
                         }
                     }
                 }, color = FlightFormGround, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
-                Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().semantics { paneTitle = title },
-                    horizontalAlignment = Alignment.CenterHorizontally) {
-                    Row(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { focus.clearFocus(); keyboard?.hide(); onRequestClose() }, modifier = Modifier.size(48.dp)) {
-                            Box(Modifier.size(34.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), CircleShape), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Outlined.Close, stringResource(R.string.flights_cancel), Modifier.size(20.dp))
-                            }
-                        }
-                        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        IconButton(onClick = { focus.clearFocus(); keyboard?.hide(); onSave() }, enabled = saveEnabled && !saveLoading, modifier = Modifier.size(48.dp)) {
-                            Box(Modifier.size(34.dp).background(if (saveEnabled || saveLoading) FlightFormGreen
-                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), CircleShape), contentAlignment = Alignment.Center) {
-                                Icon(if (saveLoading) Icons.Outlined.Sync else Icons.Filled.Check,
-                                    if (saveLoading) stringResource(R.string.arrival_saving) else saveDescription,
-                                    Modifier.size(20.dp).flightFormRotating(saveLoading),
-                                    tint = if (saveEnabled || saveLoading) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
-                            }
+                Box(Modifier.fillMaxSize().imePadding().semantics { paneTitle = title }) {
+                    Column(Modifier.fillMaxSize().onGloballyPositioned { viewportTop = it.positionInWindow().y }
+                        .drawWithContent {
+                            if (supportsBlur) {
+                                backdrop.record { this@drawWithContent.drawContent() }
+                                drawLayer(backdrop)
+                            } else drawContent()
+                        }.background(FlightFormGround)
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                        .verticalScroll(scroll), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(Modifier.widthIn(max = 600.dp).fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = with(density) { headerHeight.toDp() } + 16.dp, bottom = 24.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            FlightRecordingIdentity(flight, loadCustomerLogo, onTitlePositioned = { top, height ->
+                                titleTop = top - viewportTop + scroll.value
+                                titleHeight = height
+                            })
+                            content()
                         }
                     }
-                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            FlightRecordingIdentity(flight, loadCustomerLogo)
-                            content()
+                    Box(Modifier.fillMaxWidth().align(Alignment.TopCenter).onSizeChanged { headerHeight = it.height }.clipToBounds()) {
+                        if (supportsBlur) Box(Modifier.matchParentSize().graphicsLayer {
+                            renderEffect = BlurEffect(20.dp.toPx(), 20.dp.toPx())
+                        }.drawBehind { drawLayer(backdrop) })
+                        // The material intercepts touches to fields obscured underneath it.
+                        Box(Modifier.matchParentSize().pointerInput(Unit) {}.drawBehind {
+                            val materialProgress = (scroll.value / 24.dp.toPx()).coerceIn(0f, 1f)
+                            val tint = if (supportsBlur) Color.White.copy(alpha = 0.55f * materialProgress)
+                                else FlightFormGround.copy(alpha = 0.96f * materialProgress)
+                            val edge = (1f - 10.dp.toPx() / size.height.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                            drawRect(Brush.verticalGradient(0f to tint, edge to tint, 1f to Color.Transparent))
+                        })
+                        Row(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                            .widthIn(max = 640.dp).fillMaxWidth().align(Alignment.TopCenter).padding(horizontal = 12.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            FlightFormHeaderButton(Icons.Outlined.Close, stringResource(R.string.flights_cancel),
+                                onClick = { focus.clearFocus(); keyboard?.hide(); onRequestClose() })
+                            Text(flight.flightNumber, Modifier.weight(1f).graphicsLayer { alpha = titleProgress }
+                                .clearAndSetSemantics { if (titleProgress >= 0.5f) text = AnnotatedString(flight.flightNumber) },
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, lineHeight = 20.sp), fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            FlightFormHeaderButton(if (saveLoading) Icons.Outlined.Sync else Icons.Filled.Check,
+                                if (saveLoading) stringResource(R.string.arrival_saving) else saveDescription,
+                                enabled = saveEnabled && !saveLoading, active = saveEnabled || saveLoading, loading = saveLoading,
+                                onClick = { focus.clearFocus(); keyboard?.hide(); onSave() })
                         }
                     }
                 }
@@ -201,34 +264,64 @@ internal fun FlightRecordingFormScaffold(
     }
 }
 
-/** Keep the three compact text lines level with the logo; the status stays at the right edge. */
+/** A translucent face, fine rim and soft elevation keep the form controls tactile. */
 @Composable
-private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>) {
-    val logoSize = with(LocalDensity.current) {
-        MaterialTheme.typography.titleSmall.lineHeight.toDp() + MaterialTheme.typography.bodySmall.lineHeight.toDp() * 2
+private fun FlightFormHeaderButton(icon: ImageVector, description: String, enabled: Boolean = true,
+    active: Boolean = false, loading: Boolean = false, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.94f else 1f,
+        animationSpec = spring(dampingRatio = 1f, stiffness = 900f), label = "Header button press")
+    val face = if (active) listOf(Color(0xFF73DF91), FlightFormGreen, Color(0xFF29B64A))
+        else listOf(Color.White.copy(alpha = 0.92f), Color(0xFFF4F4F8).copy(alpha = 0.76f), Color(0xFFE6E6ED).copy(alpha = 0.82f))
+    val rim = if (active) listOf(Color.White.copy(alpha = 0.75f), Color(0xFF299847).copy(alpha = 0.3f))
+        else listOf(Color.White, Color(0xFFC9C9D0).copy(alpha = 0.8f))
+    IconButton(onClick = onClick, enabled = enabled, interactionSource = interaction, modifier = Modifier.size(48.dp)) {
+        Box(Modifier.size(44.dp).graphicsLayer { scaleX = scale; scaleY = scale }
+            .shadow(2.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.12f))
+            .background(Brush.verticalGradient(face), CircleShape).border(0.75.dp, Brush.verticalGradient(rim), CircleShape),
+            contentAlignment = Alignment.Center) {
+            Icon(icon, description, Modifier.size(20.dp).flightFormRotating(loading),
+                tint = if (active) Color.White else if (enabled) MaterialTheme.colorScheme.onSurface else Color(0xFF9B9BA2))
+        }
     }
+}
+
+/** The same identity order as the details sheet, in the reference's icon-first card. */
+@Composable
+private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>,
+    onTitlePositioned: (Float, Int) -> Unit) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(logoSize))
-            Column(Modifier.weight(1f)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text(flight.flightNumber, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Surface(Modifier.widthIn(max = 88.dp * LocalDensity.current.fontScale), shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.11f)) {
-                        Text(stringResource(R.string.flights_scheduled), Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.tertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Surface(Modifier.fillMaxWidth(), color = Color.White, shape = RoundedCornerShape(28.dp)) {
+            Column(Modifier.padding(16.dp)) {
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val stackSchedule = maxWidth < 76.dp + 170.dp * LocalDensity.current.fontScale
+                    val logo: @Composable () -> Unit = {
+                        CustomerLogo(flight.customerId, loadCustomerLogo,
+                            Modifier.size(60.dp).border(1.dp, Color(0xFFD1D1D6), RoundedCornerShape(10.dp)).padding(5.dp))
+                    }
+                    val schedule: @Composable () -> Unit = {
+                        FlightScheduleTimeGroup(flight, MaterialTheme.typography.labelSmall,
+                            MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 22.sp,
+                                fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"))
+                    }
+                    if (stackSchedule) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        logo()
+                        Box(Modifier.align(Alignment.End)) { schedule() }
+                    } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top) {
+                        logo()
+                        schedule()
                     }
                 }
-                Text(flight.customerName, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(stringResource(R.string.flight_form_context_schedule, flight.stationIata,
-                    "${formatIsoDateForDisplay(flight.scheduledArrivalUtc, stationTimeZone(flight.stationTimeZoneId))} ${formatIsoTimeForDisplay(flight.scheduledArrivalUtc, stationTimeZone(flight.stationTimeZoneId))}"),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(flight.flightNumber, Modifier.padding(top = 12.dp).onGloballyPositioned {
+                    onTitlePositioned(it.positionInWindow().y, it.size.height)
+                }.semantics { heading() }, style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(flight.customerName, Modifier.fillMaxWidth().padding(top = 4.dp),
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName)
             }
         }
     }

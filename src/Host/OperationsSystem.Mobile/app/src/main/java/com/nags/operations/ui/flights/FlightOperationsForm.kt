@@ -49,7 +49,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
@@ -231,7 +230,7 @@ internal fun FlightOperationsForm(
     FlightRecordingFormScaffold(flight, stringResource(R.string.operations_title), stringResource(R.string.operations_save),
         loadCustomerLogo, requestClose,
         saveEnabled = arrivalEnabled && (arrivalChanged || reviewedChangeId != null), saveLoading = saving, onSave = saveArrival) {
-        OperationsSectionTitle(stringResource(R.string.operations_arrival))
+        FlightFormSectionTitle(stringResource(R.string.operations_arrival))
         if (pending != null && pending.status != "pending" && reviewedChangeId != pending.changeId) {
             ArrivalFormMessage(stringResource(R.string.arrival_sync_review), error = true)
             pending.error?.takeIf { pending.status != "pending" }?.let { ArrivalFormMessage(it, error = true) }
@@ -282,7 +281,7 @@ internal fun FlightOperationsForm(
             FlightTaskSection(workDrafts.tasks, catalogs, referenceYear, zone,
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(tasks = change(workDrafts.tasks))) })
         }
-        OperationsSectionTitle(stringResource(R.string.operations_departure), Modifier.padding(top = 6.dp))
+        FlightFormSectionTitle(stringResource(R.string.operations_departure))
         FlightFormFieldGroup { FlightSignatureField(signature, onOpen = { openPicker("signature") }) }
         FlightFormRemarks(departureRemarks, { departureRemarks = it }, stringResource(R.string.operations_departure_remarks))
         val formFocus = LocalFocusManager.current
@@ -310,12 +309,6 @@ internal fun FlightOperationsForm(
 private fun ArrivalFormMessage(message: String, error: Boolean = false) {
     Text(message, Modifier.padding(horizontal = 14.dp), style = MaterialTheme.typography.bodySmall,
         color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
-@Composable
-private fun OperationsSectionTitle(title: String, modifier: Modifier = Modifier) {
-    Text(title, modifier.padding(horizontal = 14.dp).semantics { heading() },
-        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 }
 
 private data class ArrivalChoice(val id: String, val title: String, val subtitle: String)

@@ -75,7 +75,6 @@
     <string name="flight_form_discard_hint">لم تُحفظ هذه البيانات.</string>
     <string name="flight_form_discard">تجاهل</string>
     <string name="flight_form_keep_editing">متابعة التعديل</string>
-    <string name="flight_form_context_schedule">%1$s · الوصول المجدول %2$s</string>
     <string name="flights_show_details">عرض التفاصيل</string>
     <string name="flights_hide_details">إخفاء التفاصيل</string>
     <string name="flights_section_expanded">موسّع</string>
