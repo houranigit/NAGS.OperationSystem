@@ -50,7 +50,7 @@ internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId
                     Text(stringResource(R.string.arrival_actual_details), style = labelStyle,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("${arrival.aircraftTypeModel} | ${arrival.aircraftTailNumber}", style = valueStyle)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.PersonOutline, null, Modifier.size(14.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(arrival.receivedByEmployee.fullName, Modifier.weight(1f), style = labelStyle,
@@ -79,7 +79,7 @@ internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId
             } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.Top) {
                 aircraft(Modifier.weight(1f))
-                actualTime(Modifier.weight(1f))
+                actualTime(Modifier)
             }
         }
         arrival.remarks?.takeIf { it.isNotBlank() }?.let { remarks ->
