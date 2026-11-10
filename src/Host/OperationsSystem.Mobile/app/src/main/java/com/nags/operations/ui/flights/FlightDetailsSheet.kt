@@ -96,6 +96,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.data.visibleArrival
 import com.nags.operations.ui.components.CustomerLogo
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.FlightAircraftOperationRow
@@ -187,6 +188,12 @@ internal fun FlightDetailsSheet(
                             FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName)
                             Spacer(Modifier.height(6.dp))
                             FlightSchedule(flight)
+                            flight.visibleArrival()?.let { arrival ->
+                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                    FlightArrivalSummary(arrival, stationTimeZone(flight.stationTimeZoneId), showRemarks = false)
+                                }
+                                Spacer(Modifier.height(10.dp))
+                            }
                             DetailDivider()
                             if (!flight.isPerLanding) {
                                 DetailPeopleRow(

@@ -34,9 +34,9 @@ import com.nags.operations.ui.util.formatIsoDateForDisplay
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
 import java.time.ZoneId
 
-/** Another employee's saved arrival belongs with the flight identity, outside the editor. */
+/** Saved actual arrival details, shared by the recording card and flight details sheet. */
 @Composable
-internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId) {
+internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId, showRemarks: Boolean = true) {
     HorizontalDivider(Modifier.padding(vertical = 10.dp), thickness = 0.5.dp,
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -82,7 +82,7 @@ internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId
                 actualTime(Modifier)
             }
         }
-        arrival.remarks?.takeIf { it.isNotBlank() }?.let { remarks ->
+        arrival.remarks?.takeIf { showRemarks && it.isNotBlank() }?.let { remarks ->
             val label = stringResource(R.string.flight_form_remarks)
             val quotedRemarks = stringResource(R.string.arrival_quoted_remarks, remarks)
             Text(buildAnnotatedString {
