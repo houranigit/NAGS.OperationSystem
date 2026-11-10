@@ -57,11 +57,11 @@ class FlightArrivalsRepository(
         check(flight.isInFlightWindow(now())) { "This flight is outside your current flight window." }
         localWrites.withLock {
             check(accepting && generation == observed && owner == currentOwner()) { "Your session changed. Reopen the flight." }
-            // Never replace an unresolved upload with another input: its success response
-            // could have been lost. Resolve/retry it before recording a correction.
-            check(dao.rows(owner).none { it.flightId == flight.id && it.status == "pending" }) { "This arrival is already saved locally. Resolve its sync status first." }
-            dao.put(FlightArrivalPendingEntity(owner, flight.id, flight.flightNumber, UUID.randomUUID().toString(),
-                json.encodeToString(normalized), flight.rowVersion, now().toString()))
+            val existing = dao.rows(owner).firstOrNull { it.flightId == flight.id && it.status == "pending" }
+            // Editing changes the desired input, never the request whose outcome is unknown.
+            dao.put(existing?.copy(inputJson = json.encodeToString(normalized), savedAtUtc = now().toString(), error = null)
+                ?: FlightArrivalPendingEntity(owner, flight.id, flight.flightNumber, UUID.randomUUID().toString(),
+                    json.encodeToString(normalized), flight.rowVersion, now().toString()))
         }
         // WorkManager scheduling failure must not turn a completed disk save into a
         // failed form save. Session/reconnect/poll refresh also drains persisted rows.
@@ -74,10 +74,13 @@ class FlightArrivalsRepository(
         val owner = currentOwner() ?: return@withLock false
         if (!online()) return@withLock dao.rows(owner).any { it.status == "pending" }
         var retry = false
-        for (row in localWrites.withLock { dao.rows(owner).filter { it.status == "pending" } }) {
+        for (snapshot in localWrites.withLock { dao.rows(owner).filter { it.status == "pending" } }) {
             if (!accepting || owner != currentOwner()) return@withLock false
-            if (!localWrites.withLock { isPending(row) }) continue
-            val input = runCatching { json.decodeFromString<SaveFlightArrivalRequest>(row.inputJson) }.getOrNull()
+            val row = localWrites.withLock {
+                val current = pendingRow(snapshot) ?: return@withLock null
+                current.copy(attemptInputJson = current.attemptInputJson ?: current.inputJson).also { dao.put(it) }
+            } ?: continue
+            val input = runCatching { json.decodeFromString<SaveFlightArrivalRequest>(checkNotNull(row.attemptInputJson)) }.getOrNull()
             if (input == null || input.validationErrors(row.rowVersion).isNotEmpty()) {
                 updateIfPending(row, row.copy(status = "failed", error = "The saved arrival is incomplete. Reload the flight and review it."))
                 continue
@@ -86,7 +89,16 @@ class FlightArrivalsRepository(
                 val result = send(row.flightId, input, row.rowVersion)
                 if (owner != currentOwner()) return@withLock false
                 accepted(row.flightId, result)
-                localWrites.withLock { dao.delete(owner, row.flightId, row.changeId) }
+                localWrites.withLock {
+                    pendingRow(row)?.let { latest ->
+                        if (latest.inputJson == row.attemptInputJson) dao.delete(owner, row.flightId, row.changeId)
+                        else {
+                            // Only acknowledgment of our exact earlier request advances a correction.
+                            // External conflicts still require explicit review; they are never rebased.
+                            dao.put(latest.copy(rowVersion = result.rowVersion, attemptInputJson = null, error = null))
+                        }
+                    }
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled // A cancelled send remains pending and replays safely.
             } catch (error: Exception) {
@@ -131,13 +143,13 @@ class FlightArrivalsRepository(
         }
     }
 
-    private suspend fun isPending(row: FlightArrivalPendingEntity): Boolean =
-        dao.rows(row.ownerSubject).any { it.flightId == row.flightId && it.changeId == row.changeId && it.status == "pending" }
+    private suspend fun pendingRow(row: FlightArrivalPendingEntity): FlightArrivalPendingEntity? =
+        dao.rows(row.ownerSubject).firstOrNull { it.flightId == row.flightId && it.changeId == row.changeId && it.status == "pending" }
 
     private suspend fun updateIfPending(original: FlightArrivalPendingEntity, updated: FlightArrivalPendingEntity) = localWrites.withLock {
         // Discard/replacement may finish during an HTTP request. A late failure must
         // never resurrect discarded input or replace a newer local correction.
-        if (isPending(original)) dao.put(updated)
+        pendingRow(original)?.let { latest -> dao.put(latest.copy(status = updated.status, error = updated.error)) }
     }
 
     suspend fun pause() {

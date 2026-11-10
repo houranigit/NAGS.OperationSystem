@@ -123,11 +123,114 @@ class FlightArrivalsRepositoryTest {
         assertEquals(0, sends)
     }
 
-    @Test fun pendingInputCannotBeReplacedBeforeItsOutcomeIsKnown() = runBlocking {
+    @Test fun repeatedOfflineEditsUploadOnlyTheLatestInput() = runBlocking {
         val repo = repository()
         repo.save(flight, input)
-        assertTrue(runCatching { repo.save(flight, input.copy(aircraftTailNumber = "HZ-NEW")) }.isFailure)
-        assertTrue(dao.rows(owner.value!!).single().inputJson.contains("HZ-TEST"))
+        val original = dao.rows(owner.value!!).single()
+        val latest = input.copy(aircraftTailNumber = "HZ-NEW", remarks = "latest")
+        repo.save(flight, input.copy(remarks = "intermediate"))
+        repo.save(flight, latest)
+        val row = dao.rows(owner.value!!).single()
+        assertEquals(original.changeId, row.changeId)
+        assertEquals(original.rowVersion, row.rowVersion)
+        assertNull(row.attemptInputJson)
+        assertEquals(latest.normalized(), Json.decodeFromString<SaveFlightArrivalRequest>(row.inputJson))
+        val sent = mutableListOf<SaveFlightArrivalRequest>()
+        send = { _, value, version ->
+            sent += value
+            assertEquals(flight.rowVersion, version)
+            FlightArrivalSaved(submitted, "AAAAAAAAAAI=")
+        }
+        online = true
+        assertFalse(repository().syncPending())
+        assertEquals(listOf(latest.normalized()), sent)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun editingDuringAnUploadKeepsTheCorrectionAndUsesTheAcknowledgedVersion() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        val sent = mutableListOf<Pair<SaveFlightArrivalRequest, String>>()
+        send = { _, value, version ->
+            sent += value to version
+            if (sent.size == 1) { started.complete(Unit); finish.await() }
+            FlightArrivalSaved(submitted, "AAAAAAAAAAI=")
+        }
+        val upload = async(start = CoroutineStart.UNDISPATCHED) { repo.syncPending() }
+        started.await()
+        val latest = input.copy(aircraftTailNumber = "HZ-NEW")
+        val save = async(start = CoroutineStart.UNDISPATCHED) { repo.save(flight, latest) }
+        assertTrue(save.isCompleted)
+        finish.complete(Unit)
+        assertTrue(upload.await())
+        val correction = dao.rows(owner.value!!).single()
+        assertEquals(latest.normalized(), Json.decodeFromString<SaveFlightArrivalRequest>(correction.inputJson))
+        assertEquals("AAAAAAAAAAI=", correction.rowVersion)
+        assertNull(correction.attemptInputJson)
+        assertFalse(repo.syncPending())
+        assertEquals(listOf(input.normalized() to flight.rowVersion, latest.normalized() to "AAAAAAAAAAI="), sent)
+    }
+
+    @Test fun editedInputSurvivesRestartAndReplaysAnAmbiguousRequestBeforeTheCorrection() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        assertTrue(runCatching {
+            failure = IOException("lost response")
+            repo.syncPending()
+        }.getOrThrow())
+        online = false
+        val latest = input.copy(remarks = "edited after lost response")
+        repo.save(flight, latest)
+        assertEquals(input.normalized(), Json.decodeFromString<SaveFlightArrivalRequest>(dao.rows(owner.value!!).single().attemptInputJson!!))
+        val sent = mutableListOf<Pair<SaveFlightArrivalRequest, String>>()
+        send = { _, value, version -> sent += value to version; FlightArrivalSaved(submitted, "AAAAAAAAAAI=") }
+        val restarted = repository()
+        online = true
+        assertTrue(restarted.syncPending())
+        assertFalse(restarted.syncPending())
+        assertEquals(listOf(input.normalized() to flight.rowVersion, latest.normalized() to "AAAAAAAAAAI="), sent)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun aLateFailureRetainsNewerLocalEditsAndTheOriginalAttempt() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        val started = CompletableDeferred<Unit>()
+        val finish = CompletableDeferred<Unit>()
+        send = { _, _, _ -> started.complete(Unit); finish.await(); throw IOException("late failure") }
+        val upload = async(start = CoroutineStart.UNDISPATCHED) { repo.syncPending() }
+        started.await()
+        val latest = input.copy(remarks = "new local edit")
+        repo.save(flight, latest)
+        finish.complete(Unit)
+        assertTrue(upload.await())
+        val row = dao.rows(owner.value!!).single()
+        assertEquals(latest.normalized(), Json.decodeFromString<SaveFlightArrivalRequest>(row.inputJson))
+        assertEquals(input.normalized(), Json.decodeFromString<SaveFlightArrivalRequest>(row.attemptInputJson!!))
+        assertEquals(flight.rowVersion, row.rowVersion)
+    }
+
+    @Test fun externalConflictsRetainTheEditedInputForExplicitReview() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        failure = IOException("lost response")
+        assertTrue(repo.syncPending())
+        val latest = input.copy(remarks = "new local edit")
+        repo.save(flight, latest)
+        failure = ApiException(409, "external conflict")
+        assertFalse(repo.syncPending())
+        val row = dao.rows(owner.value!!).single()
+        assertEquals("conflict", row.status)
+        assertEquals(flight.rowVersion, row.rowVersion)
+        assertEquals(latest.normalized(), Json.decodeFromString<SaveFlightArrivalRequest>(row.inputJson))
+        assertFalse(repo.syncPending())
+        assertEquals(2, sends)
     }
 
     @Test fun deniedOrExpiredFlightsKeepTheirInputForReview() = runBlocking {

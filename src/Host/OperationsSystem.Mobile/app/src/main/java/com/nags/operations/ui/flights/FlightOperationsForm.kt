@@ -1,8 +1,11 @@
 package com.nags.operations.ui.flights
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -23,10 +26,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -49,12 +57,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -62,10 +73,13 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
 import com.nags.operations.R
 import com.nags.operations.data.AircraftTypeCatalogItem
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.ui.util.parseInUserZone
+import com.nags.operations.ui.util.formatIsoForDisplay
+import java.time.OffsetDateTime
 import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlinx.coroutines.flow.Flow
@@ -122,6 +136,7 @@ internal fun FlightOperationsForm(
         arrivalInputTime(ata, originalAta),
         aircraftId, tailNumber, reference, arrivalRemarks).normalized()
     var arrivalBaseline by rememberSaveable { mutableStateOf(Json.encodeToString(input())) }
+    var queuedBaseline by rememberSaveable { mutableStateOf(pending?.inputJson) }
     var reviewedChangeId by rememberSaveable { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     var validationAttempted by rememberSaveable { mutableStateOf(false) }
@@ -131,18 +146,33 @@ internal fun FlightOperationsForm(
     val arrivalChanged = Json.encodeToString(input()) != arrivalBaseline
     val requiresReview = pending != null && pending.status != "pending" && reviewedChangeId != pending.changeId
     val readOnlyArrival = arrival?.takeIf { !flight.arrivalEditable() }
-    val arrivalEnabled = flight.arrivalEditable() && pending?.status != "pending" && !requiresReview && !saving
+    val arrivalEnabled = flight.arrivalEditable() && !requiresReview && !saving
     val errors = if (validationAttempted && arrivalEnabled) input().validationErrors(arrivalVersion) else emptySet()
     // Refresh untouched arrival fields while retaining edits in every other section.
-    LaunchedEffect(arrival, flight.rowVersion, pending?.changeId) {
+    LaunchedEffect(arrival, flight.rowVersion, pending?.changeId, pending?.inputJson, pending?.rowVersion) {
         if (pendingInput != null && reviewedChangeId != pending?.changeId) {
-            aircraftId = pendingInput.aircraftTypeId
-            originalAta = pendingInput.ata
-            ata = parseInUserZone(pendingInput.ata).toLocalDateTime().toString()
-            tailNumber = pendingInput.aircraftTailNumber
-            reference = pendingInput.customerWorkReferenceNumber.orEmpty()
-            arrivalRemarks = pendingInput.remarks.orEmpty()
-            arrivalBaseline = Json.encodeToString(input())
+            queuedBaseline = pending?.inputJson
+            arrivalVersion = pending?.rowVersion.orEmpty()
+            if (!arrivalChanged) {
+                aircraftId = pendingInput.aircraftTypeId
+                originalAta = pendingInput.ata
+                ata = parseInUserZone(pendingInput.ata).toLocalDateTime().toString()
+                tailNumber = pendingInput.aircraftTailNumber
+                reference = pendingInput.customerWorkReferenceNumber.orEmpty()
+                arrivalRemarks = pendingInput.remarks.orEmpty()
+                arrivalBaseline = Json.encodeToString(input())
+            }
+        } else if (pending == null && queuedBaseline != null) {
+            val acknowledged = arrival?.input()?.normalized()?.let { value ->
+                value.copy(ata = OffsetDateTime.parse(value.ata).toInstant().toString())
+            }
+            if (acknowledged != null && Json.encodeToString(acknowledged) == queuedBaseline) {
+                // Our queued save was acknowledged while this form was open. Keep any
+                // newer edits and advance only to that acknowledged input/version.
+                arrivalVersion = flight.rowVersion
+                arrivalBaseline = checkNotNull(queuedBaseline)
+                queuedBaseline = null
+            }
         } else if (!arrivalChanged && pending == null) {
             if (arrival != null) {
                 aircraftId = arrival.aircraftTypeId
@@ -214,11 +244,7 @@ internal fun FlightOperationsForm(
     FlightRecordingFormScaffold(flight, stringResource(R.string.operations_title), stringResource(R.string.operations_save),
         loadCustomerLogo, requestClose,
         saveEnabled = arrivalEnabled && (arrivalChanged || reviewedChangeId != null), saveLoading = saving, onSave = saveArrival) {
-        Row(Modifier.padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            OperationsSectionTitle(stringResource(R.string.operations_arrival), inset = false)
-            ArrivalSyncBadge(pending, published = arrival != null)
-        }
+        ArrivalSectionHeader(pending, arrival, flight.currentStaffMemberId)
         if (pending != null && pending.status != "pending" && reviewedChangeId != pending.changeId) {
             ArrivalFormMessage(stringResource(R.string.arrival_sync_review), error = true)
             pending.error?.takeIf { pending.status != "pending" }?.let { ArrivalFormMessage(it, error = true) }
@@ -264,7 +290,6 @@ internal fun FlightOperationsForm(
             FlightFormTextRow(stringResource(R.string.arrival_reference), if (readOnlyArrival != null) readOnlyArrival.customerWorkReferenceNumber.orEmpty() else reference, { reference = it }, stringResource(R.string.arrival_optional), enabled = arrivalEnabled)
         }
         FlightFormRemarks(if (readOnlyArrival != null) readOnlyArrival.remarks.orEmpty() else arrivalRemarks, { arrivalRemarks = it }, stringResource(R.string.operations_arrival_remarks), enabled = arrivalEnabled)
-        arrival?.let { ArrivalFormMessage(stringResource(R.string.arrival_submitted_by, it.submittedByEmployee.fullName)) }
         CompositionLocalProvider(LocalFlightMediaSession provides mediaSession) {
             FlightServiceSection(workDrafts.services, catalogs, referenceYear,
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(services = change(workDrafts.services))) })
@@ -307,29 +332,67 @@ private fun OperationsSectionTitle(title: String, modifier: Modifier = Modifier,
         style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 }
 
-/** A badge describes the persisted arrival, independently of unsaved form edits. */
+/** Compact status and attribution remain attached to the saved arrival. */
 @Composable
-private fun ArrivalSyncBadge(pending: FlightArrivalPendingEntity?, published: Boolean) {
-    if (pending == null && !published) return
-    val waiting = pending?.status == "pending"
-    val failed = pending != null && !waiting
-    val tint = when {
-        failed -> MaterialTheme.colorScheme.error
-        waiting -> Color(0xFF9A6700)
-        else -> Color(0xFF248A3D)
+private fun ArrivalSectionHeader(pending: FlightArrivalPendingEntity?, arrival: com.nags.operations.data.FlightArrivalSubmission?,
+    currentStaffMemberId: String?) {
+    val status = when {
+        pending != null -> stringResource(R.string.arrival_saved_locally)
+        arrival != null -> stringResource(R.string.arrival_published_online)
+        else -> null
     }
-    val description = stringResource(when {
-        failed -> R.string.arrival_sync_review
-        waiting -> R.string.arrival_pending
-        else -> R.string.arrival_synced
-    })
-    Box(Modifier.size(22.dp).background(if (waiting) Color(0xFFFFCC00).copy(alpha = 0.18f)
-        else tint.copy(alpha = 0.1f), CircleShape), contentAlignment = Alignment.Center) {
-        Icon(when {
-            failed -> Icons.Outlined.ErrorOutline
-            waiting -> Icons.Outlined.Sync
-            else -> Icons.Filled.CheckCircle
-        }, description, Modifier.size(14.dp).flightFormRotating(waiting), tint = tint)
+    val author = arrival?.submittedByEmployee?.takeUnless {
+        pending != null || it.staffMemberId.equals(currentStaffMemberId, ignoreCase = true)
+    }?.fullName
+    val savedAt = arrival?.updatedAtUtc ?: arrival?.createdAtUtc
+    val attribution = if (author != null && savedAt != null)
+        stringResource(R.string.arrival_author_at, author, formatIsoForDisplay(savedAt)) else null
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
+            val titleWidth = maxWidth * 0.45f
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                ArrivalHeaderTooltip(status) { action ->
+                    Row(action.heightIn(min = 24.dp).widthIn(max = titleWidth), horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        if (status != null) Icon(if (pending != null) Icons.Outlined.Info else Icons.Filled.CheckCircle,
+                            null, Modifier.size(14.dp), tint = if (pending != null) Color(0xFFB85C00) else Color(0xFF248A3D))
+                        OperationsSectionTitle(stringResource(R.string.operations_arrival), inset = false)
+                    }
+                }
+                if (attribution != null) ArrivalHeaderTooltip(attribution, Modifier.weight(1f)) { action ->
+                    Row(action.fillMaxWidth().heightIn(min = 24.dp), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.EditNote, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val label = stringResource(R.string.arrival_created_by, author.orEmpty())
+                        val nameSize = MaterialTheme.typography.bodySmall.fontSize
+                        Text(buildAnnotatedString {
+                            append(label)
+                            val start = label.indexOf(author.orEmpty())
+                            if (start >= 0 && !author.isNullOrEmpty())
+                                addStyle(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = nameSize), start, start + author.length)
+                        }, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Normal),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ArrivalHeaderTooltip(message: String?, modifier: Modifier = Modifier, content: @Composable (Modifier) -> Unit) {
+    if (message == null) {
+        content(modifier)
+        return
+    }
+    val state = rememberTooltipState(isPersistent = true)
+    val scope = rememberCoroutineScope()
+    TooltipBox(positionProvider = TooltipDefaults.rememberTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(message, style = MaterialTheme.typography.labelSmall) } },
+        state = state, modifier = modifier, enableUserInput = false) {
+        content(Modifier.clickable(onClickLabel = message, onClick = { scope.launch { state.show() } })
+            .semantics(mergeDescendants = true) { contentDescription = message })
     }
 }
 

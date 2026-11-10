@@ -265,7 +265,6 @@
     <string name="arrival_aircraft_required">اختر نوع الطائرة الفعلي.</string>
     <string name="arrival_tail_required">أدخل رقم تسجيل الطائرة.</string>
     <string name="arrival_reload_required">اتصل وأعد تحميل الرحلة قبل حفظ الوصول.</string>
-    <string name="arrival_submitted_by">أرسل بيانات الوصول %1$s</string>
     <string name="arrival_sync_title">مزامنة الوصول</string>
     <string name="arrival_sync_item">الرحلة %1$s</string>
     <string name="arrival_sync_retry">إعادة محاولة المزامنة</string>
@@ -274,4 +273,8 @@
     <string name="arrival_sync_no_pending">لا توجد بيانات وصول بانتظار المزامنة.</string>
     <string name="arrival_aircraft_unavailable">حدّث قائمة الطائرات واختر نوع طائرة متاحًا.</string>
     <string name="arrival_review_before_save">راجع بيانات الوصول المحفوظة ثم اضغط حفظ لإرسالها مجددًا.</string>
+    <string name="arrival_published_online">منشور عبر الإنترنت</string>
+    <string name="arrival_saved_locally">محفوظ محليًا</string>
+    <string name="arrival_author_at">أرسل بيانات الوصول الموظف %1$s في %2$s.</string>
+    <string name="arrival_created_by">أنشأه %1$s</string>
 </resources>

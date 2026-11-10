@@ -288,7 +288,6 @@
     <string name="arrival_aircraft_required">Select the actual aircraft type.</string>
     <string name="arrival_tail_required">Enter the aircraft tail number.</string>
     <string name="arrival_reload_required">Connect and reload the flight before saving arrival.</string>
-    <string name="arrival_submitted_by">Arrival submitted by %1$s</string>
     <string name="arrival_sync_title">Arrival uploads</string>
     <string name="arrival_sync_item">Flight %1$s</string>
     <string name="arrival_sync_retry">Retry upload</string>
@@ -297,4 +296,8 @@
     <string name="arrival_sync_no_pending">No pending arrival uploads.</string>
     <string name="arrival_aircraft_unavailable">Refresh the aircraft catalog and select an available aircraft type.</string>
     <string name="arrival_review_before_save">Review your saved arrival, then tap Save to upload it again.</string>
+    <string name="arrival_published_online">Published online</string>
+    <string name="arrival_saved_locally">Saved locally</string>
+    <string name="arrival_author_at">Arrival submitted by %1$s at %2$s.</string>
+    <string name="arrival_created_by">Created by %1$s</string>
 </resources>

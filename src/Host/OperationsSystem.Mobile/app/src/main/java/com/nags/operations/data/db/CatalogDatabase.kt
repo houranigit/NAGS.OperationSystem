@@ -15,7 +15,7 @@ import com.nags.operations.data.db.entities.FlightSnapshotEntity
 import com.nags.operations.data.db.entities.SharedCatalogSnapshotEntity
 
 /** Mobile caches and arrival intent remain separate from notifications and the untouched legacy database. */
-@Database(version = 4, exportSchema = true, entities = [
+@Database(version = 5, exportSchema = true, entities = [
     SharedCatalogSnapshotEntity::class, FlightSnapshotEntity::class, FlightDetailCacheEntity::class, FlightArrivalPendingEntity::class,
 ])
 abstract class CatalogDatabase : RoomDatabase() {
@@ -46,12 +46,20 @@ abstract class CatalogDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE flight_arrival_pending ADD COLUMN attemptInputJson TEXT")
+                // Older clients may already have sent these rows and lost the response.
+                db.execSQL("UPDATE flight_arrival_pending SET attemptInputJson = inputJson WHERE status = 'pending'")
+            }
+        }
+
         fun get(context: Context): CatalogDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 CatalogDatabase::class.java,
                 "shared-catalogs.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
         }
     }
 }

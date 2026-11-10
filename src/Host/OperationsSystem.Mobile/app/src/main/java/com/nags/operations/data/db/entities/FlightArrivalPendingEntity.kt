@@ -14,4 +14,6 @@ data class FlightArrivalPendingEntity(
     val savedAtUtc: String,
     val status: String = "pending",
     val error: String? = null,
+    // Retain any transmitted request until acknowledged, independently of later local edits.
+    val attemptInputJson: String? = null,
 )
