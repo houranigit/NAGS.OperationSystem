@@ -3,9 +3,6 @@ package com.nags.operations.ui.flights
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,9 +20,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -37,9 +36,9 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.LocationOn
-import androidx.compose.material.icons.automirrored.outlined.ForwardToInbox
-import androidx.compose.material.icons.outlined.Cancel
-import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.ArrowOutward
+import androidx.compose.material.icons.outlined.EventBusy
+import androidx.compose.material.icons.outlined.NoteAlt
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -60,6 +59,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -77,6 +77,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -87,8 +88,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.visibleArrival
@@ -239,33 +242,52 @@ private fun FlightRecordingActions(
     onCanceled: () -> Unit,
 ) {
     val style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
-    // Keep the requested physical order and trailing alignment in every locale.
+    val actionWidth = 48.dp
+    val actionGap = 4.dp
+    val toolbarWidth = actionWidth * 3 + actionGap * 2
+    // Keep all three slots alive: removing siblings would move the tapped button before it expands.
+    val expansions = FlightRecordingAction.entries.map { action ->
+        animateFloatAsState(
+            targetValue = if (expandedAction == action) 1f else 0f,
+            animationSpec = spring(dampingRatio = 1f, stiffness = 400f),
+            label = "${action.name} expansion",
+        ).value
+    }
+    // Physical Cancel / Send / Operate order is intentional, including in RTL locales.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val availableWidth = maxWidth
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically) {
-                if (loading) {
-                    repeat(3) {
-                        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                            Box(Modifier.size(36.dp).background(DetailFill, CircleShape))
-                        }
-                    }
-                } else FlightRecordingAction.entries.forEach { action ->
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+            Box(Modifier.width(toolbarWidth).height(48.dp)) {
+                FlightRecordingAction.entries.forEachIndexed { index, action ->
                     key(action) {
-                        if (expandedAction == null || expandedAction == action) {
-                            val expanded = expandedAction == action
-                            val label = stringResource(when (action) {
-                                FlightRecordingAction.Cancel -> R.string.flights_cancel_flight
-                                FlightRecordingAction.Send -> R.string.flights_send
-                                FlightRecordingAction.Operate -> R.string.flights_operate
-                            })
-                            val icon = when (action) {
-                                FlightRecordingAction.Cancel -> Icons.Outlined.Cancel
-                                FlightRecordingAction.Send -> Icons.AutoMirrored.Outlined.ForwardToInbox
-                                FlightRecordingAction.Operate -> Icons.Outlined.Edit
-                            }
-                            TextButton(onClick = {
+                        val expansion = expansions[index]
+                        val expanded = expandedAction == action
+                        val otherExpansion = expansions.filterIndexed { other, _ -> other != index }.maxOrNull() ?: 0f
+                        val opacity = (1f - otherExpansion * 3f).coerceIn(0f, 1f)
+                        val enabled = !loading && (expanded || expandedAction == null && opacity > 0.5f)
+                        val buttonWidth = actionWidth + (toolbarWidth - actionWidth) * expansion
+                        val labelWidth = (toolbarWidth - actionWidth) * expansion
+                        val label = stringResource(when (action) {
+                            FlightRecordingAction.Cancel -> R.string.flights_cancel_flight
+                            FlightRecordingAction.Send -> R.string.flights_send
+                            FlightRecordingAction.Operate -> R.string.flights_operate
+                        })
+                        val icon = when (action) {
+                            FlightRecordingAction.Cancel -> Icons.Outlined.EventBusy
+                            FlightRecordingAction.Send -> Icons.Outlined.ArrowOutward
+                            FlightRecordingAction.Operate -> Icons.Outlined.NoteAlt
+                        }
+                        Box(Modifier
+                            // Interpolate both edges from the original slot to the full toolbar.
+                            // Cancel anchors left, Operate anchors right, and Send grows both ways.
+                            .offset { IntOffset(((actionWidth + actionGap) * index * (1f - expansion)).roundToPx(), 0) }
+                            .width(buttonWidth).height(48.dp)
+                            .zIndex(if (expanded) 2f else if (expansion > 0f) 1f else 0f)
+                            .graphicsLayer { alpha = opacity }
+                            .then(if (!enabled) Modifier.clearAndSetSemantics { } else Modifier),
+                            contentAlignment = Alignment.Center) {
+                            if (loading) {
+                                Box(Modifier.size(36.dp).background(DetailFill, CircleShape))
+                            } else TextButton(onClick = {
                                 if (expanded) {
                                     onExpandedActionChange(null)
                                     when (action) {
@@ -274,18 +296,22 @@ private fun FlightRecordingActions(
                                         FlightRecordingAction.Operate -> onOperations()
                                     }
                                 } else onExpandedActionChange(action)
-                            }, modifier = Modifier.onGloballyPositioned {
-                                if (expanded) onExpandedBoundsChange(it.boundsInWindow())
-                            }.heightIn(min = 48.dp).widthIn(min = 48.dp, max = availableWidth),
-                                shape = CircleShape, contentPadding = PaddingValues(0.dp),
-                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) {
-                                Row(Modifier.heightIn(min = 36.dp).widthIn(min = 36.dp).background(DetailFill, CircleShape)
-                                    .padding(horizontal = 9.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(icon, contentDescription = if (expanded) null else label, modifier = Modifier.size(18.dp))
-                                    AnimatedVisibility(expanded,
-                                        enter = expandHorizontally(spring(dampingRatio = 1f, stiffness = 400f), expandFrom = Alignment.Start) + fadeIn(),
-                                        exit = ExitTransition.None) {
-                                        Text(label, Modifier.padding(start = 5.dp), style = style,
+                            }, enabled = enabled,
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                                    .onGloballyPositioned { if (expanded) onExpandedBoundsChange(it.boundsInWindow()) }
+                                    .semantics { contentDescription = label },
+                                shape = CircleShape, contentPadding = PaddingValues(horizontal = 6.dp),
+                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface,
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurface)) {
+                                Row(Modifier.fillMaxWidth().heightIn(min = 36.dp)
+                                    .background(DetailFill, CircleShape).clipToBounds()
+                                    .padding(horizontal = 9.dp, vertical = 8.dp).clearAndSetSemantics { },
+                                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                                    Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Box(Modifier.width(labelWidth).clipToBounds().graphicsLayer { alpha = expansion }) {
+                                        // Reveal a stable label instead of re-ellipsizing its text on every frame.
+                                        Text(label, Modifier.wrapContentWidth(Alignment.Start, unbounded = true)
+                                            .width(toolbarWidth - actionWidth).padding(start = 5.dp), style = style,
                                             maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                                     }
                                 }

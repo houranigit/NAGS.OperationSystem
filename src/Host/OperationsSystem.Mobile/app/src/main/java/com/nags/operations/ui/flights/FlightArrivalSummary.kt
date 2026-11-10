@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material.icons.outlined.Engineering
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -51,7 +51,7 @@ internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("${arrival.aircraftTypeModel} | ${arrival.aircraftTailNumber}", style = valueStyle)
                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.PersonOutline, null, Modifier.size(14.dp),
+                        Icon(Icons.Outlined.Engineering, null, Modifier.size(14.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(arrival.receivedByEmployee.fullName, Modifier.weight(1f), style = labelStyle,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
