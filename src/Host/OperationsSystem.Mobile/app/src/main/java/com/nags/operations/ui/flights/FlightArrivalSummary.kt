@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,8 +50,13 @@ internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId
                     Text(stringResource(R.string.arrival_actual_details), style = labelStyle,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("${arrival.aircraftTypeModel} | ${arrival.aircraftTailNumber}", style = valueStyle)
-                    Text(arrival.receivedByEmployee.fullName, style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.PersonOutline, null, Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(arrival.receivedByEmployee.fullName, Modifier.weight(1f), style = labelStyle,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
             val actualTime: @Composable (Modifier) -> Unit = { modifier ->
@@ -61,8 +67,8 @@ internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.CalendarMonth, null, Modifier.size(14.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(formatIsoDateForDisplay(arrival.ata, zone), style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        Text(formatIsoDateForDisplay(arrival.ata, zone), style = labelStyle,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
