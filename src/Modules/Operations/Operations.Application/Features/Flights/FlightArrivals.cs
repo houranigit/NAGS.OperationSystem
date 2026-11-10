@@ -58,8 +58,8 @@ public sealed class SaveFlightArrivalCommandHandler(
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
-        if (flight.CancellationSubmissions.Count > 0)
-            return Error.Conflict("A flight with cancellation submissions cannot have arrival submissions.", "Operations.Flight.CancellationSubmitted");
+        if (flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId))
+            return Error.Conflict("Revert your cancellation before submitting arrival details.", "Operations.Flight.OwnCancellationSubmitted");
 
         var own = flight.ArrivalSubmissions.SingleOrDefault(a => a.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
         // Competing input remains a later application workflow; domain history is preserved.
@@ -79,6 +79,10 @@ public sealed class SaveFlightArrivalCommandHandler(
 
         if (!flight.RowVersion.SequenceEqual(request.RowVersion))
             return ConcurrencyErrors.Stale;
+        if (flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee.StaffMemberId != actor.StaffMemberId) &&
+            !input.AcknowledgeConflictingSubmission)
+            return Error.Conflict("Another employee reported this flight as canceled. Confirm before saving work details.",
+                "Operations.Flight.CancellationConfirmationRequired");
         var aircraft = await resolver.AircraftTypeAsync(input.AircraftTypeId, cancellationToken);
         if (aircraft.IsFailure)
             return aircraft.Error;

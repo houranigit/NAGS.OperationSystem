@@ -8,6 +8,7 @@ import com.nags.operations.data.SaveFlightDepartureRequest
 import com.nags.operations.data.departureEditable
 import com.nags.operations.data.db.dao.FlightDepartureDao
 import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
+import com.nags.operations.data.hasOwnCancellation
 import com.nags.operations.data.isInFlightWindow
 import com.nags.operations.data.userMessage
 import io.ktor.client.plugins.HttpRequestTimeoutException
@@ -44,6 +45,8 @@ class FlightDeparturesRepository(
     private val fetchFlight: suspend (String) -> FlightDetail,
     private val now: () -> Instant = Instant::now,
     private val onSignatureAcknowledged: suspend (String, FlightDepartureSaved, ByteArray) -> Unit = { _, _, _ -> },
+    private val hasSavedCancellation: suspend (String) -> Boolean = { false },
+    private val submissionGate: Mutex = Mutex(),
 ) {
     private val gate = Mutex()
     private val localWrites = Mutex()
@@ -55,7 +58,11 @@ class FlightDeparturesRepository(
         if (owner == null) flowOf(emptyList()) else dao.observe(owner)
     }
 
-    suspend fun save(flight: FlightDetail, input: SaveFlightDepartureRequest) {
+    suspend fun save(flight: FlightDetail, input: SaveFlightDepartureRequest): Unit = submissionGate.withLock {
+        check(!flight.hasCancellationSubmission || input.acknowledgeConflictingSubmission) {
+            "Another employee reported this flight as canceled. Confirm departure before saving."
+        }
+        check(!hasSavedCancellation(flight.id)) { "Revert your cancellation and wait for it to sync before saving work on this flight." }
         val owner = checkNotNull(currentOwner()) { "Sign in to save departure details." }
         val observed = generation
         check(flight.departureEditable()) { "Only the employee who submitted the departure can update it." }
@@ -159,7 +166,7 @@ class FlightDeparturesRepository(
                     ownAcknowledgments[prepared.flightId] = chain
                     while (ownAcknowledgments.size > 64) ownAcknowledgments.remove(ownAcknowledgments.keys.first())
                     pendingRow(prepared)?.let { latest ->
-                        if (latest.inputJson == prepared.attemptInputJson && latest.signatureFile == prepared.attemptSignatureFile) {
+                        if (sameInput(latest.inputJson, prepared.attemptInputJson) && latest.signatureFile == prepared.attemptSignatureFile) {
                             dao.delete(owner, latest.flightId, latest.changeId)
                         } else {
                             val desired = json.decodeFromString<SaveFlightDepartureRequest>(latest.inputJson)
@@ -208,7 +215,8 @@ class FlightDeparturesRepository(
             val comparable = current.departureSubmissions.map { live ->
                 if (reviewed.firstOrNull { it.id == live.id }?.signatureVersion == null) live.copy(signatureVersion = null) else live
             }
-            if (current.hasCancellationSubmission || comparable.sortedBy { it.id } != reviewed.sortedBy { it.id })
+            if (current.hasOwnCancellation() || (current.hasCancellationSubmission &&
+                    !json.decodeFromString<SaveFlightDepartureRequest>(original.inputJson).acknowledgeConflictingSubmission) || comparable.sortedBy { it.id } != reviewed.sortedBy { it.id })
                 throw ApiException(409, "Departure details changed. Reload the flight and review them before saving again.")
         }
         return localWrites.withLock {
@@ -228,6 +236,11 @@ class FlightDeparturesRepository(
         key?.let { signatureStore.read(it).also(::checkSignatureBytes) }
     }
 
+    suspend fun hasSavedInput(flightId: String): Boolean = localWrites.withLock {
+        val owner = currentOwner() ?: return@withLock false
+        dao.rows(owner).any { it.flightId == flightId }
+    }
+
     suspend fun retry(flightId: String) = localWrites.withLock {
         val owner = currentOwner() ?: return@withLock
         check(accepting) { "Your session changed. Reopen Sync Center." }
@@ -241,6 +254,11 @@ class FlightDeparturesRepository(
         dao.rows(owner).firstOrNull { it.flightId == flightId }?.let { dao.delete(owner, it.flightId, it.changeId) }
         reclaimSignatures()
     }
+
+    private fun sameInput(first: String, second: String?): Boolean = runCatching {
+        json.decodeFromString<SaveFlightDepartureRequest>(first).withoutAcknowledgement().normalized() ==
+            json.decodeFromString<SaveFlightDepartureRequest>(checkNotNull(second)).withoutAcknowledgement().normalized()
+    }.getOrDefault(false)
 
     private suspend fun pendingRow(row: FlightDeparturePendingEntity) = dao.rows(row.ownerSubject)
         .firstOrNull { it.flightId == row.flightId && it.changeId == row.changeId && it.status == "pending" }

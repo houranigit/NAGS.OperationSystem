@@ -172,6 +172,39 @@ class FlightsRepository internal constructor(
         }
     }
 
+    /** Cache-only current evidence for mutually exclusive local submissions; never starts an HTTP read. */
+    suspend fun cachedFlight(id: String): FlightDetail? = captureSession()?.let { cachedDetailOrNull(it, id) }
+
+    suspend fun recordCancellation(id: String, saved: com.nags.operations.data.FlightCancellationSaved) {
+        updateCancellationCache(id, saved.rowVersion) { detail ->
+            detail.cancellationSubmissions.filterNot { it.id == saved.submission.id } + saved.submission
+        }
+    }
+
+    suspend fun recordCancellationReverted(id: String, saved: com.nags.operations.data.FlightCancellationReverted) {
+        updateCancellationCache(id, saved.rowVersion) { saved.cancellationSubmissions }
+    }
+
+    private suspend fun updateCancellationCache(id: String, rowVersion: String,
+        submissions: (FlightDetail) -> List<com.nags.operations.data.FlightCancellationSubmission>) {
+        val session = requireSession()
+        refreshMutex.withLock {
+            mutationMutex.withLock {
+                ensureCurrent(session)
+                dao.detail(session.owner, id)?.let { cached ->
+                    val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
+                    if (detail != null) {
+                        val cancellations = submissions(detail)
+                        val updated = detail.copy(cancellationSubmissions = cancellations,
+                            hasCancellationSubmission = cancellations.isNotEmpty(), rowVersion = rowVersion)
+                        dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
+                    }
+                }
+            }
+        }
+        _cacheChanges.tryEmit(Unit)
+    }
+
     suspend fun recordArrival(id: String, saved: com.nags.operations.data.FlightArrivalSaved) {
         val session = requireSession()
         refreshMutex.withLock {

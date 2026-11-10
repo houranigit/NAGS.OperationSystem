@@ -16,6 +16,10 @@ import io.ktor.client.request.headers
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.put
+import com.nags.operations.data.FlightCancellationSaved
+import com.nags.operations.data.FlightCancellationReverted
+import com.nags.operations.data.SaveFlightCancellationRequest
+import io.ktor.client.request.delete
 import com.nags.operations.data.FlightArrivalSaved
 import com.nags.operations.data.FlightDepartureSaved
 import com.nags.operations.data.SaveFlightDepartureRequest
@@ -104,6 +108,18 @@ class OperationsApi internal constructor(private val client: HttpClient) {
             contentType(ContentType.Application.Json)
             headers { append("If-Match", "\"$rowVersion\"") }
             setBody(input)
+        }.bodyOrThrow()
+
+    suspend fun saveCancellation(id: String, input: SaveFlightCancellationRequest, rowVersion: String): FlightCancellationSaved =
+        client.put(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(id)}/cancellation")) {
+            contentType(ContentType.Application.Json)
+            headers { append("If-Match", "\"$rowVersion\"") }
+            setBody(input)
+        }.bodyOrThrow()
+
+    suspend fun revertCancellation(id: String, submissionId: String, rowVersion: String): FlightCancellationReverted =
+        client.delete(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(id)}/cancellation/${UUID.fromString(submissionId)}")) {
+            headers { append("If-Match", "\"$rowVersion\"") }
         }.bodyOrThrow()
 
     private companion object {

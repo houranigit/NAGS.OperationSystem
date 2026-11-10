@@ -31,6 +31,10 @@ import com.nags.operations.R
 @Composable
 internal fun FlightProgressBadge(status: FlightProgressStatus, modifier: Modifier = Modifier) {
     val label = stringResource(when (status) {
+        FlightProgressStatus.CancellationSubmitted -> R.string.cancellation_submitted
+        FlightProgressStatus.CancellationPendingSync -> R.string.cancellation_pending
+        FlightProgressStatus.CancellationRevertPending -> R.string.cancellation_reverting
+        FlightProgressStatus.CancellationNeedsReview -> R.string.cancellation_needs_review
         FlightProgressStatus.Draft -> R.string.flight_progress_draft
         FlightProgressStatus.ArrivalSubmitted -> R.string.flight_progress_arrival_submitted
         FlightProgressStatus.ArrivalPendingSync -> R.string.flight_progress_arrival_pending
@@ -43,8 +47,10 @@ internal fun FlightProgressBadge(status: FlightProgressStatus, modifier: Modifie
         FlightProgressStatus.Draft -> Color(0xFFF1F3F5) to Color(0xFF4B5563)
         FlightProgressStatus.ArrivalSubmitted -> Color(0xFFE8F2FF) to Color(0xFF155EAB)
         FlightProgressStatus.DepartureSubmitted -> Color(0xFFE8F5EC) to Color(0xFF176A3A)
-        FlightProgressStatus.ArrivalPendingSync, FlightProgressStatus.DeparturePendingSync -> Color(0xFFFFF3D6) to Color(0xFF8B4B00)
-        FlightProgressStatus.ArrivalNeedsReview, FlightProgressStatus.DepartureNeedsReview -> Color(0xFFFDEDEB) to Color(0xFFA12622)
+        FlightProgressStatus.ArrivalPendingSync, FlightProgressStatus.DeparturePendingSync,
+        FlightProgressStatus.CancellationPendingSync, FlightProgressStatus.CancellationRevertPending -> Color(0xFFFFF3D6) to Color(0xFF8B4B00)
+        FlightProgressStatus.ArrivalNeedsReview, FlightProgressStatus.DepartureNeedsReview,
+        FlightProgressStatus.CancellationNeedsReview, FlightProgressStatus.CancellationSubmitted -> Color(0xFFFDEDEB) to Color(0xFFA12622)
     }
     Surface(modifier, shape = RoundedCornerShape(50), color = background, contentColor = foreground) {
         Text(label, Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
@@ -62,7 +68,7 @@ internal fun FlightOperationStatusRow(operationType: String, status: FlightProgr
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 val label = stringResource(R.string.flight_operation_type)
                 Text(buildAnnotatedString {
-                    append(label); append(" ")
+                    append(label); append("  ")
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)) { append(operationType) }
                 }, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Left, maxLines = 2, overflow = TextOverflow.Ellipsis)

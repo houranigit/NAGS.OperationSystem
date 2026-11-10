@@ -150,15 +150,18 @@ class FlightsViewModel internal constructor(
     val departures: com.nags.operations.data.repo.FlightDeparturesRepository? = null,
     val actualsStaff: Flow<List<com.nags.operations.data.StaffCatalogItem>> = flowOf(emptyList()),
     val currentUserDisplayName: Flow<String?> = flowOf(null),
+    val cancellations: com.nags.operations.data.repo.FlightCancellationsRepository? = null,
     private val loadDepartureSignature: suspend (FlightDetail, com.nags.operations.data.db.entities.FlightDeparturePendingEntity?) -> ByteArray? = { _, _ -> null },
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
         sharedCatalogsRepository: SharedCatalogsRepository, arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository,
         departureRepository: com.nags.operations.data.repo.FlightDeparturesRepository,
         currentUserDisplayName: Flow<String?> = flowOf(null),
-        loadDepartureSignature: suspend (FlightDetail, com.nags.operations.data.db.entities.FlightDeparturePendingEntity?) -> ByteArray? = { _, _ -> null }) : this(
+        loadDepartureSignature: suspend (FlightDetail, com.nags.operations.data.db.entities.FlightDeparturePendingEntity?) -> ByteArray? = { _, _ -> null },
+        cancellationRepository: com.nags.operations.data.repo.FlightCancellationsRepository? = null) : this(
         arrivals = arrivalRepository,
         departures = departureRepository,
+        cancellations = cancellationRepository,
         actualsStaff = sharedCatalogsRepository.stationStaffFlow(),
         currentUserDisplayName = currentUserDisplayName,
         loadDepartureSignature = loadDepartureSignature,
@@ -190,6 +193,14 @@ class FlightsViewModel internal constructor(
         check(!detail.fromCache) { "Connect to reload the latest flight." }
         _state.update { if (it.selectedFlightId == id) it.copy(detail = detail) else it }
         return detail
+    }
+
+    suspend fun saveCancellation(flight: FlightDetail, input: com.nags.operations.data.SaveFlightCancellationRequest) {
+        checkNotNull(cancellations) { "Cancellation saving is unavailable." }.save(flight, input)
+    }
+
+    suspend fun revertCancellation(flight: FlightDetail) {
+        checkNotNull(cancellations) { "Cancellation saving is unavailable." }.revert(flight)
     }
 
     suspend fun departureSignature(flight: FlightDetail, pending: com.nags.operations.data.db.entities.FlightDeparturePendingEntity?): ByteArray? =

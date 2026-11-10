@@ -527,6 +527,124 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         (await actorClient.SendAsync(hidden)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
+    [Fact]
+    public async Task Cancellation_save_and_revert_preserve_actor_ownership_conflicting_reports_and_retry_identity()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var reporter = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
+        var worker = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
+        using var reporterClient = reporter.Client;
+        using var workerClient = worker.Client;
+        var aircraftId = await PostForIdAsync(admin, $"{MasterDataBase}/aircraft-types",
+            new { manufacturer = "Airbus", model = $"A-{Guid.NewGuid():N}" });
+        var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "7500", [reporter.StaffId, worker.StaffId]);
+        var path = $"{Base}/flights/{id}";
+        async Task<FlightDetailDto> Detail(HttpClient client) => (await client.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        async Task<HttpResponseMessage> Write(HttpClient client, HttpMethod method, string suffix, object? body, string version)
+        {
+            using var request = new HttpRequestMessage(method, path + suffix) { Content = body is null ? null : JsonContent.Create(body) };
+            request.Headers.TryAddWithoutValidation("If-Match", version);
+            return await client.SendAsync(request);
+        }
+        async Task AssertConflict(HttpResponseMessage response, string code)
+        {
+            using (response)
+            {
+                response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+                (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString().ShouldBe(code);
+            }
+        }
+        var initial = await Detail(reporterClient);
+        initial.CanSaveCancellation.ShouldBeTrue();
+        var input = new SaveFlightCancellationRequest(DateTimeOffset.UtcNow, " Customer canceled ");
+        using var save = await Write(reporterClient, HttpMethod.Put, "/cancellation", input, initial.RowVersion);
+        save.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var saved = (await save.Content.ReadFromJsonAsync<FlightCancellationSavedDto>())!;
+        saved.Submission.SubmittedByEmployee.StaffMemberId.ShouldBe(reporter.StaffId);
+        saved.Submission.Remarks.ShouldBe("Customer canceled");
+        using var replay = await Write(reporterClient, HttpMethod.Put, "/cancellation", input, initial.RowVersion);
+        (await replay.Content.ReadFromJsonAsync<FlightCancellationSavedDto>())!.ShouldBe(saved);
+        var ownRead = await Detail(reporterClient);
+        ownRead.CancellationSubmissions!.ShouldHaveSingleItem().ShouldBe(saved.Submission);
+        ownRead.HasCancellationSubmission.ShouldBeTrue();
+        ownRead.CanSaveArrival.ShouldBeFalse();
+        ownRead.CanSaveDeparture.ShouldBeFalse();
+        var otherRead = await Detail(workerClient);
+        otherRead.CanSaveArrival.ShouldBeTrue();
+        otherRead.CanSaveDeparture.ShouldBeTrue();
+        using var notOwner = await Write(workerClient, HttpMethod.Delete, $"/cancellation/{saved.Submission.Id}", null, saved.RowVersion);
+        notOwner.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var arrival = new SaveFlightArrivalRequest(DateTimeOffset.UtcNow, aircraftId, "HZ-QA", null, null);
+        await AssertConflict(await Write(reporterClient, HttpMethod.Put, "/arrival", arrival, saved.RowVersion), "Operations.Flight.OwnCancellationSubmitted");
+        await AssertConflict(await Write(workerClient, HttpMethod.Put, "/arrival", arrival, saved.RowVersion), "Operations.Flight.CancellationConfirmationRequired");
+        using var arrivalSave = await Write(workerClient, HttpMethod.Put, "/arrival", arrival with { AcknowledgeConflictingSubmission = true }, saved.RowVersion);
+        arrivalSave.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var arrived = (await arrivalSave.Content.ReadFromJsonAsync<FlightArrivalSavedDto>())!;
+        var afterArrival = await Detail(workerClient);
+        afterArrival.CancellationSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(saved.Submission.Id);
+        afterArrival.ArrivalSubmissions!.ShouldHaveSingleItem().SubmittedByEmployee.StaffMemberId.ShouldBe(worker.StaffId);
+        afterArrival.CanSaveCancellation.ShouldBeFalse();
+        await AssertConflict(await Write(workerClient, HttpMethod.Put, "/cancellation", input with { AcknowledgeConflictingSubmission = true }, arrived.RowVersion), "Operations.Flight.OwnWorkSubmitted");
+        await AssertConflict(await Write(reporterClient, HttpMethod.Delete, $"/cancellation/{saved.Submission.Id}", null, saved.RowVersion), "General.ConcurrencyConflict");
+        using var reverted = await Write(reporterClient, HttpMethod.Delete, $"/cancellation/{saved.Submission.Id}", null, arrived.RowVersion);
+        reverted.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var removed = (await reverted.Content.ReadFromJsonAsync<FlightCancellationRevertedDto>())!;
+        removed.CancellationSubmissions.ShouldBeEmpty();
+        using var replayRevert = await Write(reporterClient, HttpMethod.Delete, $"/cancellation/{saved.Submission.Id}", null, arrived.RowVersion);
+        var revertedAgain = (await replayRevert.Content.ReadFromJsonAsync<FlightCancellationRevertedDto>())!;
+        revertedAgain.CancellationSubmissions.ShouldBeEmpty();
+        revertedAgain.RowVersion.ShouldBe(removed.RowVersion);
+        (await Detail(reporterClient)).CanSaveArrival.ShouldBeTrue();
+        await AssertConflict(await Write(reporterClient, HttpMethod.Put, "/cancellation", input, removed.RowVersion), "Operations.Flight.WorkConfirmationRequired");
+        using var replacement = await Write(reporterClient, HttpMethod.Put, "/cancellation", input with { AcknowledgeConflictingSubmission = true }, removed.RowVersion);
+        replacement.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var replaced = (await replacement.Content.ReadFromJsonAsync<FlightCancellationSavedDto>())!;
+        replaced.Submission.Id.ShouldNotBe(saved.Submission.Id);
+        await AssertConflict(await Write(reporterClient, HttpMethod.Delete, $"/cancellation/{saved.Submission.Id}", null, replaced.RowVersion), "Operations.Cancellation.SubmissionChanged");
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aPsYAAAAASUVORK5CYII=");
+        var departure = new SaveFlightDepartureRequest(DateTimeOffset.UtcNow.AddHours(1), png, DateTimeOffset.UtcNow, null);
+        await AssertConflict(await Write(reporterClient, HttpMethod.Put, "/departure", departure, replaced.RowVersion), "Operations.Flight.OwnCancellationSubmitted");
+        await AssertConflict(await Write(workerClient, HttpMethod.Put, "/departure", departure, replaced.RowVersion), "Operations.Flight.CancellationConfirmationRequired");
+        using var departed = await Write(workerClient, HttpMethod.Put, "/departure", departure with { AcknowledgeConflictingSubmission = true }, replaced.RowVersion);
+        departed.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var finalRead = await Detail(workerClient);
+        finalRead.CancellationSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(replaced.Submission.Id);
+        finalRead.DepartureSubmissions!.ShouldHaveSingleItem().SubmittedByEmployee.StaffMemberId.ShouldBe(worker.StaffId);
+    }
+
+    [Fact]
+    public async Task Cancellation_boundary_requires_permission_current_version_and_visible_staff_linked_flight()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var actor = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
+        var reader = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view"]);
+        using var actorClient = actor.Client;
+        using var readClient = reader.Client;
+        var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "7501", [actor.StaffId, reader.StaffId]);
+        var path = $"{Base}/flights/{id}/cancellation";
+        var detail = (await actorClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        var input = new SaveFlightCancellationRequest(DateTimeOffset.UtcNow, null);
+        using var missingVersion = await actorClient.PutAsJsonAsync(path, input);
+        missingVersion.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await readClient.PutAsJsonAsync(path, input)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var anonymous = factory.CreateClient();
+        (await anonymous.PutAsJsonAsync(path, input)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        using var invalid = new HttpRequestMessage(HttpMethod.Put, path) { Content = JsonContent.Create(input with { CanceledAtUtc = default }) };
+        invalid.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
+        (await actorClient.SendAsync(invalid)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var hiddenId = await ScheduleFlightAsync(admin, refs.StationId, refs, "7502");
+        using var hidden = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{hiddenId}/cancellation") { Content = JsonContent.Create(input) };
+        hidden.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
+        (await actorClient.SendAsync(hidden)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        var unchanged = (await actorClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        unchanged.CancellationSubmissions!.ShouldBeEmpty();
+        unchanged.RowVersion.ShouldBe(detail.RowVersion);
+        var readDetail = (await readClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
+        readDetail.CanSaveCancellation.ShouldBeFalse();
+    }
+
     private async Task<MasterDataRefs> SetupMasterDataAsync(HttpClient admin)
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];

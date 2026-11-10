@@ -32,7 +32,9 @@ data class SaveFlightArrivalRequest(
     val aircraftTailNumber: String,
     val customerWorkReferenceNumber: String? = null,
     val remarks: String? = null,
+    val acknowledgeConflictingSubmission: Boolean = false,
 ) {
+    fun withoutAcknowledgement() = copy(acknowledgeConflictingSubmission = false)
     fun normalized() = copy(aircraftTailNumber = aircraftTailNumber.trim(),
         customerWorkReferenceNumber = customerWorkReferenceNumber?.trim()?.takeIf(String::isNotEmpty),
         remarks = remarks?.trim()?.takeIf(String::isNotEmpty))
@@ -74,6 +76,6 @@ fun FlightDetail.visibleArrival(): FlightArrivalSubmission? = arrivalSubmissions
 } ?: arrivalSubmissions.firstOrNull { it.isAccepted } ?: arrivalSubmissions.firstOrNull()
 
 fun FlightDetail.arrivalEditable(): Boolean = canSaveArrival && validArrivalId(currentStaffMemberId) &&
-    !hasCancellationSubmission && (arrivalSubmissions.isEmpty() || arrivalSubmissions.any {
+    !hasOwnCancellation() && (arrivalSubmissions.isEmpty() || arrivalSubmissions.any {
         it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, ignoreCase = true)
     })

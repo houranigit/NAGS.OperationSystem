@@ -195,7 +195,7 @@ public sealed class FlightCancellationTests
     [InlineData("arrival", 2)]
     [InlineData("departure", 2)]
     [InlineData("both", 2)]
-    public void SubmitCancellation_RejectsExistingOperationsIncludingPendingSubmissions_AndPreservesTheirInputs(string operations, int count)
+    public void SubmitCancellation_RejectsOwnOperationsIncludingPendingSubmissions_AndPreservesTheirInputs(string operations, int count)
     {
         var flight = ScheduleFlight();
         for (var index = 0; index < count; index++)
@@ -212,7 +212,8 @@ public sealed class FlightCancellationTests
         var departures = flight.DepartureSubmissions.Select(item => (item.Id, item.Details, item.IsAccepted)).ToArray();
         var previousUpdatedAt = flight.UpdatedAtUtc;
 
-        var result = flight.SubmitCancellation(TestData.Staff(), Cancellation("Cancellation attempt"), Guid.NewGuid(), TestData.Now.AddMinutes(6));
+        var ownEmployee = flight.ArrivalSubmissions.FirstOrDefault()?.SubmittedByEmployee ?? flight.DepartureSubmissions.First().SubmittedByEmployee;
+        var result = flight.SubmitCancellation(ownEmployee, Cancellation("Cancellation attempt"), Guid.NewGuid(), TestData.Now.AddMinutes(6));
 
         result.Error.Code.ShouldBe("Operations.CancellationSubmission.OperationsAlreadyRecorded");
         result.Error.Type.ShouldBe(ErrorType.Conflict);
@@ -229,10 +230,11 @@ public sealed class FlightCancellationTests
     [InlineData(false, false)]
     [InlineData(true, true)]
     [InlineData(false, true)]
-    public void CancellationSubmissions_BlockArrivalAndDepartureEvenWhenNoCancellationIsAccepted(bool arrival, bool pending)
+    public void OwnCancellationSubmissions_BlockArrivalAndDepartureEvenWhenNoCancellationIsAccepted(bool arrival, bool pending)
     {
         var flight = ScheduleFlight();
-        flight.SubmitCancellation(TestData.Staff(), Cancellation("First input"), Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
+        var employee = TestData.Staff();
+        flight.SubmitCancellation(employee, Cancellation("First input"), Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
         if (pending)
             flight.SubmitCancellation(TestData.Staff(), Cancellation("Independent input"), Guid.NewGuid(), TestData.Now.AddMinutes(1))
                 .IsSuccess.ShouldBeTrue();
@@ -240,8 +242,8 @@ public sealed class FlightCancellationTests
         var previousUpdatedAt = flight.UpdatedAtUtc;
 
         Result result = arrival
-            ? flight.SubmitArrival(TestData.Staff(), Arrival(), Guid.NewGuid(), TestData.Now.AddMinutes(2))
-            : flight.SubmitDeparture(TestData.Staff(), Departure(), Guid.NewGuid(), TestData.Now.AddMinutes(2));
+            ? flight.SubmitArrival(employee, Arrival(), Guid.NewGuid(), TestData.Now.AddMinutes(2))
+            : flight.SubmitDeparture(employee, Departure(), Guid.NewGuid(), TestData.Now.AddMinutes(2));
 
         result.Error.Code.ShouldBe("Operations.Flight.CancellationSubmitted");
         result.Error.Type.ShouldBe(ErrorType.Conflict);
@@ -277,6 +279,55 @@ public sealed class FlightCancellationTests
         flight.UpdatedAtUtc.ShouldBe(TestData.Now);
         flight.ArrivalSubmissions.ShouldBeEmpty();
         flight.DepartureSubmissions.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void DistinctEmployeesMayReportCancellationAndWorkWithoutReplacingEitherInput(bool cancellationFirst, bool arrival)
+    {
+        var flight = ScheduleFlight();
+        var canceledBy = TestData.Staff();
+        var worker = TestData.Staff();
+        Result Work() => arrival
+            ? flight.SubmitArrival(worker, Arrival(), Guid.NewGuid(), TestData.Now.AddMinutes(1))
+            : flight.SubmitDeparture(worker, Departure(), Guid.NewGuid(), TestData.Now.AddMinutes(1));
+        if (cancellationFirst)
+        {
+            flight.SubmitCancellation(canceledBy, Cancellation(), Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
+            Work().IsSuccess.ShouldBeTrue();
+        }
+        else
+        {
+            Work().IsSuccess.ShouldBeTrue();
+            flight.SubmitCancellation(canceledBy, Cancellation(), Guid.NewGuid(), TestData.Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
+        }
+        flight.CancellationSubmissions.ShouldHaveSingleItem().SubmittedByEmployee.ShouldBe(canceledBy);
+        (arrival ? flight.ArrivalSubmissions.Count : flight.DepartureSubmissions.Count).ShouldBe(1);
+        flight.SubmitCancellation(worker, Cancellation(), Guid.NewGuid(), TestData.Now.AddMinutes(3)).IsFailure.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void RevertCancellationRemovesOnlyOwnIdentifiedInputAndDoesNotApproveAnotherEmployeesInput()
+    {
+        var flight = ScheduleFlight();
+        var firstEmployee = TestData.Staff();
+        var first = flight.SubmitCancellation(firstEmployee, Cancellation(), Guid.NewGuid(), TestData.Now).Value;
+        var secondEmployee = TestData.Staff();
+        var second = flight.SubmitCancellation(secondEmployee, Cancellation("Second"), Guid.NewGuid(), TestData.Now.AddMinutes(1)).Value;
+        flight.RevertCancellation(firstEmployee.StaffMemberId, second.Id, TestData.Now.AddMinutes(2)).Error.Type.ShouldBe(ErrorType.Forbidden);
+        flight.CancellationSubmissions.Count.ShouldBe(2);
+        flight.RevertCancellation(firstEmployee.StaffMemberId, first.Id, TestData.Now.AddMinutes(3)).IsSuccess.ShouldBeTrue();
+        flight.CancellationSubmissions.ShouldHaveSingleItem().ShouldBeSameAs(second);
+        second.IsAccepted.ShouldBeFalse();
+        flight.UpdatedAtUtc.ShouldBe(TestData.Now.AddMinutes(3));
+        flight.RevertCancellation(firstEmployee.StaffMemberId, first.Id, TestData.Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
+        flight.UpdatedAtUtc.ShouldBe(TestData.Now.AddMinutes(3));
+        var replacement = flight.SubmitCancellation(firstEmployee, Cancellation("Replacement"), Guid.NewGuid(), TestData.Now.AddMinutes(5)).Value;
+        flight.RevertCancellation(firstEmployee.StaffMemberId, first.Id, TestData.Now.AddMinutes(6)).Error.Type.ShouldBe(ErrorType.Conflict);
+        flight.CancellationSubmissions.ShouldContain(replacement);
     }
 
     private static Flight ScheduleFlight(AircraftTypeSnapshot? aircraft = null, StaffMemberSnapshot? employee = null, bool perLanding = false) =>

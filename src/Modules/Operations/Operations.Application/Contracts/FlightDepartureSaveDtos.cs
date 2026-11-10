@@ -5,6 +5,7 @@ public sealed record SaveFlightDepartureRequest(
     DateTimeOffset Atd,
     byte[]? SignatureContent,
     DateTimeOffset? SignatureSignedAtUtc,
-    string? Remarks);
+    string? Remarks,
+    bool AcknowledgeConflictingSubmission = false);
 
 public sealed record FlightDepartureSavedDto(FlightDepartureSubmissionDto Submission, string RowVersion);

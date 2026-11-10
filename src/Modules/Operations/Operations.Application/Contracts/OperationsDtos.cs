@@ -46,4 +46,6 @@ public sealed record FlightDetailDto(
     bool CanSaveArrival = false,
     bool HasCancellationSubmission = false,
     IReadOnlyList<FlightDepartureSubmissionDto>? DepartureSubmissions = null,
-    bool CanSaveDeparture = false);
+    bool CanSaveDeparture = false,
+    IReadOnlyList<FlightCancellationSubmissionDto>? CancellationSubmissions = null,
+    bool CanSaveCancellation = false);

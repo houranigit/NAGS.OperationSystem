@@ -1,10 +1,11 @@
 package com.nags.operations.ui.flights
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -38,7 +40,9 @@ import java.time.ZoneId
 
 /** Another employee's saved departure follows saved arrival in the identity card. */
 @Composable
-internal fun FlightDepartureSummary(departure: FlightDepartureSubmission, zone: ZoneId) {
+internal fun FlightDepartureSummary(departure: FlightDepartureSubmission, zone: ZoneId, signaturePreview: ByteArray? = null) {
+    val signature = rememberSignatureBitmap(signaturePreview)
+    val signatureDescription = stringResource(R.string.operations_signature_title)
     HorizontalDivider(Modifier.padding(vertical = 10.dp), thickness = 0.5.dp,
         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
     val labelStyle = MaterialTheme.typography.labelSmall
@@ -50,8 +54,13 @@ internal fun FlightDepartureSummary(departure: FlightDepartureSubmission, zone: 
                 Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.departure_actual_details), style = labelStyle,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    // Reserve the same value line as the arrival aircraft/tail row.
-                    Spacer(Modifier.height(with(LocalDensity.current) { valueStyle.lineHeight.toDp() }))
+                    // Fit the preview inside the value line; it must not move the employee caption.
+                    Box(Modifier.fillMaxWidth().height(with(LocalDensity.current) { valueStyle.lineHeight.toDp() }),
+                        contentAlignment = Alignment.CenterStart) {
+                        if (signature != null) Image(signature, signatureDescription, Modifier.fillMaxWidth().height(with(LocalDensity.current) { valueStyle.lineHeight.toDp() }),
+                            contentScale = ContentScale.Fit, alignment = Alignment.CenterStart)
+                        else Text("-", style = valueStyle, maxLines = 1)
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Engineering, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(departure.handledByEmployee.fullName, Modifier.weight(1f), style = labelStyle,

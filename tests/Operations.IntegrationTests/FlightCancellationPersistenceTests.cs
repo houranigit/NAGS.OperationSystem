@@ -239,7 +239,7 @@ public sealed class FlightCancellationPersistenceTests(FlightCancellationPersist
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(false, false)]
-    public async Task Pending_submissions_exclude_the_opposite_branch_after_reload(bool cancellationFirst, bool isArrival)
+    public async Task Own_pending_submissions_exclude_the_opposite_branch_after_reload(bool cancellationFirst, bool isArrival)
     {
         await using var db = fixture.CreateContext();
         await db.Database.MigrateAsync();
@@ -263,15 +263,14 @@ public sealed class FlightCancellationPersistenceTests(FlightCancellationPersist
 
         var reloaded = await LoadFlightAsync(db, flight.Id);
         var rowVersion = reloaded.RowVersion.ToArray();
-        var thirdEmployee = Employee("Third engineer", "E303");
         if (cancellationFirst)
         {
-            SubmitOperation(reloaded, isArrival, thirdEmployee, Now.AddMinutes(3)).Error.Code
+            SubmitOperation(reloaded, isArrival, firstEmployee, Now.AddMinutes(3)).Error.Code
                 .ShouldBe("Operations.Flight.CancellationSubmitted");
         }
         else
         {
-            reloaded.SubmitCancellation(thirdEmployee, details, Guid.NewGuid(), Now.AddMinutes(3)).Error.Code
+            reloaded.SubmitCancellation(firstEmployee, details, Guid.NewGuid(), Now.AddMinutes(3)).Error.Code
                 .ShouldBe("Operations.CancellationSubmission.OperationsAlreadyRecorded");
         }
         reloaded.UpdatedAtUtc.ShouldBe(Now.AddMinutes(2));
@@ -421,6 +420,46 @@ public sealed class FlightCancellationPersistenceTests(FlightCancellationPersist
         currentFlight.CancellationSubmissions.Count.ShouldBe(cancellationWins ? 1 : 0);
         currentFlight.ArrivalSubmissions.Count.ShouldBe(!cancellationWins && isArrival ? 1 : 0);
         currentFlight.DepartureSubmissions.Count.ShouldBe(!cancellationWins && !isArrival ? 1 : 0);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task Revert_cancellation_checks_the_aggregate_version_even_when_the_clock_does_not_change(bool revertWins, bool synchronousSave)
+    {
+        await using var db = fixture.CreateContext();
+        await db.Database.MigrateAsync();
+        var flight = ScheduleFlight();
+        var employee = Employee("Canceling engineer", "E410");
+        var other = Employee("Other engineer", "E411");
+        var matchingClock = Now.AddMinutes(1);
+        var canceled = flight.SubmitCancellation(employee, CancellationDetails.Create(Now, "First report").Value,
+            Guid.NewGuid(), matchingClock).Value;
+        var retained = flight.SubmitCancellation(other, CancellationDetails.Create(Now, "Other report").Value,
+            Guid.NewGuid(), matchingClock).Value;
+        db.Flights.Add(flight);
+        await SaveAsync(db, synchronousSave);
+        var before = flight.RowVersion.ToArray();
+        db.ChangeTracker.Clear();
+        await using var competingDb = fixture.CreateContext(db.Database.GetDbConnection().Database);
+        var winningFlight = await LoadFlightAsync(db, flight.Id);
+        var staleFlight = await LoadFlightAsync(competingDb, flight.Id);
+        var reverting = revertWins ? winningFlight : staleFlight;
+        var editing = revertWins ? staleFlight : winningFlight;
+        reverting.RevertCancellation(employee.StaffMemberId, canceled.Id, matchingClock).IsSuccess.ShouldBeTrue();
+        editing.ChangeFlightNumber(FlightNumber.Create("SV1021", "SV").Value, matchingClock).IsSuccess.ShouldBeTrue();
+        await SaveAsync(db, synchronousSave);
+        await Should.ThrowAsync<DbUpdateConcurrencyException>(() => SaveAsync(competingDb, synchronousSave));
+        db.ChangeTracker.Clear();
+        var current = await LoadFlightAsync(db, flight.Id);
+        current.RowVersion.SequenceEqual(before).ShouldBeFalse();
+        current.UpdatedAtUtc.ShouldBe(matchingClock);
+        current.CancellationSubmissions.Count.ShouldBe(revertWins ? 1 : 2);
+        current.CancellationSubmissions.Single(c => c.Id == retained.Id).IsAccepted.ShouldBeFalse();
+        current.CancellationSubmissions.Any(c => c.Id == canceled.Id).ShouldBe(!revertWins);
+        current.FlightNumber.Value.ShouldBe(revertWins ? "SV1020" : "SV1021");
     }
 
     private static Task<Flight> LoadFlightAsync(OperationsDbContext db, Guid flightId) =>

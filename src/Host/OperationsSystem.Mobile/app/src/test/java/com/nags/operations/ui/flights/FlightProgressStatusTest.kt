@@ -4,6 +4,8 @@ import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.FlightArrivalSubmission
 import com.nags.operations.data.FlightDepartureSubmission
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.data.FlightCancellationSubmission
+import com.nags.operations.data.db.entities.FlightCancellationPendingEntity
 import com.nags.operations.data.db.entities.FlightArrivalPendingEntity
 import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
 import org.junit.Assert.assertEquals
@@ -89,4 +91,25 @@ class FlightProgressStatusTest {
         assertEquals(FlightProgressStatus.DepartureSubmitted,
             arrived.copy(departureSubmissions = listOf(departure)).progressStatus())
     }
+    @Test fun cancellationSaveAndRevertRemainVisibleUntilAcknowledgedAndExposeConflicts() {
+        val pending = FlightCancellationPendingEntity("owner", flight.id, flight.flightNumber, staff, "change", "save", "{}", null,
+            flight.rowVersion, "2026-11-10T11:00:00Z")
+        assertEquals(FlightProgressStatus.CancellationPendingSync, flight.progressStatus(pendingCancellation = pending))
+        assertEquals(FlightProgressStatus.CancellationRevertPending,
+            flight.progressStatus(pendingCancellation = pending.copy(operation = "revert")))
+        assertEquals(FlightProgressStatus.CancellationNeedsReview,
+            flight.progressStatus(pendingCancellation = pending.copy(status = "conflict")))
+        assertEquals(FlightProgressStatus.Draft,
+            flight.progressStatus(pendingCancellation = pending.copy(staffMemberId = "other")))
+    }
+
+    @Test fun anOpposingCancellationReportIsVisibleWithoutHidingTheCallersPendingWork() {
+        val report = FlightCancellationSubmission("cancel", employee.copy(staffMemberId = "other"), "2026-11-10T11:00:00Z",
+            isAccepted = false, createdAtUtc = "2026-11-10T11:00:00Z")
+        val canceled = flight.copy(hasCancellationSubmission = true, cancellationSubmissions = listOf(report))
+        assertEquals(FlightProgressStatus.CancellationSubmitted, canceled.progressStatus())
+        assertEquals(FlightProgressStatus.ArrivalPendingSync, canceled.progressStatus(pendingArrival = pendingArrival))
+        assertEquals(FlightProgressStatus.DeparturePendingSync, canceled.progressStatus(pendingDeparture = pendingDeparture))
+    }
+
 }

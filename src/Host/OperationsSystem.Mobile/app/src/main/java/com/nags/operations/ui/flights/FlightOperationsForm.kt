@@ -158,11 +158,12 @@ internal fun FlightOperationsForm(
         arrivalInputTime(ata, originalAta, entryZone),
         aircraftId, tailNumber, reference, arrivalRemarks).normalized()
     var arrivalBaseline by rememberSaveable { mutableStateOf(Json.encodeToString(input())) }
-    var queuedBaseline by rememberSaveable { mutableStateOf(pending?.inputJson) }
+    var queuedBaseline by rememberSaveable { mutableStateOf(pendingInput?.withoutAcknowledgement()?.let { Json.encodeToString(it) }) }
     var reviewedChangeId by rememberSaveable { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     var validationAttempted by rememberSaveable { mutableStateOf(false) }
     var saveError by rememberSaveable { mutableStateOf<String?>(null) }
+    var confirmCanceledReport by rememberSaveable { mutableStateOf(false) }
     val formScope = rememberCoroutineScope()
     val aircraftAvailable = aircraftTypes.any { it.id.equals(aircraftId, ignoreCase = true) }
     val arrivalChanged = Json.encodeToString(input()) != arrivalBaseline
@@ -184,7 +185,7 @@ internal fun FlightOperationsForm(
     // Refresh untouched arrival fields while retaining edits in every other section.
     LaunchedEffect(arrival, flight.rowVersion, pending?.changeId, pending?.inputJson, pending?.rowVersion) {
         if (pendingInput != null && reviewedChangeId != pending?.changeId) {
-            queuedBaseline = pending?.inputJson
+            queuedBaseline = pendingInput.withoutAcknowledgement().let { Json.encodeToString(it) }
             arrivalVersion = pending?.rowVersion.orEmpty()
             if (!arrivalChanged) {
                 aircraftId = pendingInput.aircraftTypeId
@@ -263,14 +264,17 @@ internal fun FlightOperationsForm(
         workDrafts = next
     }
     val closeForm = { mediaSession.clear(); onClose() }
-    val saveChanges = {
+    val saveChanges: (Boolean) -> Unit = { acknowledgeConflict ->
         validationAttempted = true
         val arrivalValue = input()
         val saveArrivalInput = arrivalEnabled && (arrivalChanged || reviewedChangeId != null)
         val saveDepartureInput = departureEnabled && (departureChanged || reviewedDepartureChangeId != null)
         val arrivalValid = !saveArrivalInput || aircraftAvailable && arrivalValue.validationErrors(arrivalVersion).isEmpty()
         val departureValid = !saveDepartureInput || departureTime.isNotBlank() && !signatureRequired && !departureNeedsReview
-        if ((saveArrivalInput || saveDepartureInput) && arrivalValid && departureValid) {
+        if ((saveArrivalInput || saveDepartureInput) && arrivalValid && departureValid &&
+            flight.cancellationSubmissions.any { !it.submittedByEmployee.staffMemberId.equals(flight.currentStaffMemberId, true) } && !acknowledgeConflict) {
+            confirmCanceledReport = true
+        } else if ((saveArrivalInput || saveDepartureInput) && arrivalValid && departureValid) {
             saving = true; saveError = null
             val ink = signature
             val signedAt = if (signature.isNotBlank()) signatureSignedAtUtc else null
@@ -280,7 +284,7 @@ internal fun FlightOperationsForm(
                 try {
                     // Validate both sections before starting; a completed arrival disk save survives a departure disk failure.
                     if (saveArrivalInput) {
-                        onSaveArrival(flight.copy(rowVersion = arrivalVersion), arrivalValue)
+                        onSaveArrival(flight.copy(rowVersion = arrivalVersion), arrivalValue.copy(acknowledgeConflictingSubmission = acknowledgeConflict))
                         arrivalBaseline = Json.encodeToString(arrivalValue)
                         queuedBaseline = Json.encodeToString(arrivalValue)
                         reviewedChangeId = null
@@ -289,7 +293,7 @@ internal fun FlightOperationsForm(
                         val content = if (ink.isNotBlank()) withContext(Dispatchers.Default) { signaturePngContent(ink) }
                             else null
                         onSaveDeparture(flight.copy(rowVersion = departureVersion,
-                            departureSubmissions = Json.decodeFromString(departureReviewedSnapshot)), departureValue.copy(signatureContent = content))
+                            departureSubmissions = Json.decodeFromString(departureReviewedSnapshot)), departureValue.copy(signatureContent = content, acknowledgeConflictingSubmission = acknowledgeConflict))
                     }
                     closeForm()
                 } catch (cancelled: CancellationException) { throw cancelled }
@@ -338,10 +342,10 @@ internal fun FlightOperationsForm(
     FlightRecordingFormScaffold(flight, stringResource(R.string.operations_title), stringResource(R.string.operations_save),
         loadCustomerLogo, requestClose,
         saveEnabled = !saving && (arrivalEnabled && (arrivalChanged || reviewedChangeId != null) || departureEnabled && (departureChanged || reviewedDepartureChangeId != null)),
-        saveLoading = saving, onSave = saveChanges, progressStatus = progressStatus,
+        saveLoading = saving, onSave = { saveChanges(false) }, progressStatus = progressStatus,
         identityDetails = {
             otherEmployeeArrival?.let { FlightArrivalSummary(it, entryZone) }
-            otherEmployeeDeparture?.let { FlightDepartureSummary(it, entryZone) }
+            otherEmployeeDeparture?.let { FlightDepartureSummary(it, entryZone, savedSignaturePreview) }
         }) {
         saveError?.let { ArrivalFormMessage(it, error = true) }
         if (otherEmployeeArrival == null) {
@@ -447,6 +451,10 @@ internal fun FlightOperationsForm(
         signature = it
         signatureSignedAtUtc = if (it.isBlank()) null else Instant.now().toString()
     }, onDismiss = { picker = null })
+    if (confirmCanceledReport) FlightSubmissionConfirmation(
+        stringResource(R.string.submission_canceled_warning_title), stringResource(R.string.submission_canceled_warning),
+        stringResource(R.string.submission_save_anyway), onConfirm = { confirmCanceledReport = false; saveChanges(true) },
+        onDismiss = { confirmCanceledReport = false })
     if (confirmDiscard) FlightFormDiscardDialog(stringResource(R.string.operations_discard_title),
         onDismiss = { confirmDiscard = false }, onDiscard = closeForm)
 }

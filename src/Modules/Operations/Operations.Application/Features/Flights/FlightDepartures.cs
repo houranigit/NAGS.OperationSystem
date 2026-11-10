@@ -61,8 +61,8 @@ public sealed class SaveFlightDepartureCommandHandler(
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
-        if (flight.CancellationSubmissions.Count > 0)
-            return Error.Conflict("A flight with cancellation submissions cannot have departure submissions.", "Operations.Flight.CancellationSubmitted");
+        if (flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId))
+            return Error.Conflict("Revert your cancellation before submitting departure details.", "Operations.Flight.OwnCancellationSubmitted");
 
         var own = flight.DepartureSubmissions.SingleOrDefault(d => d.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
         if (own is null && flight.DepartureSubmissions.Count > 0)
@@ -93,6 +93,10 @@ public sealed class SaveFlightDepartureCommandHandler(
 
         if (!flight.RowVersion.SequenceEqual(request.RowVersion))
             return ConcurrencyErrors.Stale;
+        if (flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee.StaffMemberId != actor.StaffMemberId) &&
+            !input.AcknowledgeConflictingSubmission)
+            return Error.Conflict("Another employee reported this flight as canceled. Confirm before saving work details.",
+                "Operations.Flight.CancellationConfirmationRequired");
         var staff = await resolver.StaffMembersForStationAsync([actor.StaffMemberId], flight.Station.StationId, cancellationToken);
         if (staff.IsFailure)
             return staff.Error;

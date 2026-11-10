@@ -39,6 +39,12 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     private void EnsureSubmissionConcurrencyChecks()
     {
         ChangeTracker.DetectChanges();
+        // Removed submissions are no longer reachable through the aggregate's collections.
+        var changedSubmissionFlightIds = ChangeTracker.Entries<FlightArrivalSubmission>().Where(HasChangedOwnedGraph)
+            .Select(entry => entry.Entity.FlightId)
+            .Concat(ChangeTracker.Entries<FlightDepartureSubmission>().Where(HasChangedOwnedGraph).Select(entry => entry.Entity.FlightId))
+            .Concat(ChangeTracker.Entries<FlightCancellationSubmission>().Where(HasChangedOwnedGraph).Select(entry => entry.Entity.FlightId))
+            .ToHashSet();
         var serviceEntries = ChangeTracker.Entries<FlightService>().ToList();
         var changedServiceIds = serviceEntries.Where(HasChangedOwnedGraph).Select(entry => entry.Entity.Id).ToHashSet();
         foreach (var performer in ChangeTracker.Entries<FlightServicePerformer>().Where(HasChangedOwnedGraph))
@@ -84,9 +90,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         foreach (var flight in ChangeTracker.Entries<Flight>()
             .Where(entry => entry.State is EntityState.Unchanged or EntityState.Modified).ToList())
         {
-            if (flight.Entity.ArrivalSubmissions.Any(submission => HasChangedOwnedGraph(Entry(submission)))
-                || flight.Entity.DepartureSubmissions.Any(submission => HasChangedOwnedGraph(Entry(submission)))
-                || flight.Entity.CancellationSubmissions.Any(submission => HasChangedOwnedGraph(Entry(submission)))
+            if (changedSubmissionFlightIds.Contains(flight.Entity.Id)
                 || changedServiceFlightIds.Contains(flight.Entity.Id)
                 || changedTaskFlightIds.Contains(flight.Entity.Id)
                 || changedReturnFlightIds.Contains(flight.Entity.Id))

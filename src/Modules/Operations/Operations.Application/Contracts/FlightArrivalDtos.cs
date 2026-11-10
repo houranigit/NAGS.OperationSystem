@@ -30,6 +30,7 @@ public sealed record SaveFlightArrivalRequest(
     Guid AircraftTypeId,
     string AircraftTailNumber,
     string? CustomerWorkReferenceNumber,
-    string? Remarks);
+    string? Remarks,
+    bool AcknowledgeConflictingSubmission = false);
 
 public sealed record FlightArrivalSavedDto(FlightArrivalSubmissionDto Submission, string RowVersion);

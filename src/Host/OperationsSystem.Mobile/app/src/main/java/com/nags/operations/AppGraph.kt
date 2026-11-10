@@ -1,5 +1,8 @@
 package com.nags.operations
 
+import com.nags.operations.data.hasOwnCancellation
+import com.nags.operations.data.hasOwnWork
+
 import android.content.Context
 import androidx.work.WorkManager
 import androidx.work.await
@@ -72,6 +75,7 @@ class AppGraph private constructor(context: Context) {
     )
     val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline, customerLogos)
     private val flightOperationsSyncMutex = Mutex()
+    private val flightSubmissionGate = Mutex()
     val flightArrivals = FlightArrivalsRepository(
         catalogDatabase.flightArrivalDao(), logoOwners,
         currentOwner = {
@@ -85,6 +89,7 @@ class AppGraph private constructor(context: Context) {
             appScope.launch { syncFlightOperations() }
         },
         json = HttpClientFactory.json,
+        hasSavedCancellation = { id -> hasCancellationIntent(id) }, submissionGate = flightSubmissionGate,
         onAcknowledgedBeforeDelete = { id, requestVersion, acknowledgedVersion ->
             persistArrivalAcknowledgment(id, requestVersion, acknowledgedVersion)
         },
@@ -107,6 +112,19 @@ class AppGraph private constructor(context: Context) {
         acknowledgedArrivalVersion = flightArrivals::acknowledgedVersion,
         fetchFlight = flightsRepository::flight,
         onSignatureAcknowledged = { id, saved, bytes -> cacheAcknowledgedSignature(id, saved, bytes) },
+        hasSavedCancellation = { id -> hasCancellationIntent(id) }, submissionGate = flightSubmissionGate,
+    )
+    val flightCancellations = com.nags.operations.data.repo.FlightCancellationsRepository(
+        dao = catalogDatabase.flightCancellationDao(), ownerFlow = logoOwners,
+        currentOwner = {
+            if (tokenStore.getAccessToken().isNullOrBlank()) null
+            else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
+        },
+        online = { networkMonitor.isOnline.value }, send = operationsApi::saveCancellation, revert = operationsApi::revertCancellation,
+        accepted = flightsRepository::recordCancellation, onReverted = flightsRepository::recordCancellationReverted,
+        schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } },
+        json = HttpClientFactory.json, submissionGate = flightSubmissionGate,
+        hasSavedWork = { id -> flightArrivals.hasSavedInput(id) || flightDepartures.hasSavedInput(id) || flightsRepository.cachedFlight(id)?.hasOwnWork() == true },
     )
     val departureSignaturePreviews = DepartureSignaturePreviews(
         directory = File(appContext.noBackupFilesDir, "departure-signature-previews"),
@@ -207,9 +225,13 @@ class AppGraph private constructor(context: Context) {
             flightsRepository.clearLocal()
             flightArrivals.clear()
             flightDepartures.clear()
+            flightCancellations.clear()
             departureSignaturePreviews.clear()
         }
     }
+
+    private suspend fun hasCancellationIntent(id: String): Boolean =
+        flightCancellations.hasSavedInput(id) || flightsRepository.cachedFlight(id)?.hasOwnCancellation() == true
 
     private suspend fun cacheAcknowledgedSignature(id: String, saved: com.nags.operations.data.FlightDepartureSaved, bytes: ByteArray) {
         departureSignaturePreviews.recordAcknowledged(id, saved, bytes)
@@ -225,7 +247,8 @@ class AppGraph private constructor(context: Context) {
         return flightOperationsSyncMutex.withLock {
             val arrivalsPending = flightArrivals.syncPending()
             val departuresPending = flightDepartures.syncPending()
-            arrivalsPending || departuresPending
+            val cancellationsPending = flightCancellations.syncPending()
+            arrivalsPending || departuresPending || cancellationsPending
         }
     }
 
@@ -264,6 +287,7 @@ class AppGraph private constructor(context: Context) {
             flightsRepository.clearLocal()
             flightArrivals.clear()
             flightDepartures.clear()
+            flightCancellations.clear()
             departureSignaturePreviews.clear()
             tokenStore.clearAll()
         }
@@ -274,6 +298,7 @@ class AppGraph private constructor(context: Context) {
         sessionTransitionMutex.withLock {
             flightArrivals.resume()
             flightDepartures.resume()
+            flightCancellations.resume()
             catalogSyncScheduler.start()
             FlightArrivalSyncWorker.schedule(appContext)
             catalogRealtimeChannel.start()
@@ -290,6 +315,7 @@ class AppGraph private constructor(context: Context) {
     private suspend fun pauseCatalogSync() {
         flightArrivals.pause()
         flightDepartures.pause()
+        flightCancellations.pause()
         catalogRealtimeChannel.stop()
         catalogSyncScheduler.stop()
     }

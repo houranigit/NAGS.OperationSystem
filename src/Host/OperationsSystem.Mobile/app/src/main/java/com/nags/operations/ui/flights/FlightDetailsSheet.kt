@@ -29,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -111,6 +112,11 @@ internal fun FlightDetailsSheet(
     state: FlightsUiState,
     actuals: FlightActualDetails?,
     progressStatus: FlightProgressStatus,
+    showCancellation: Boolean,
+    showOperations: Boolean,
+    showRevertCancellation: Boolean,
+    showReviewCancellation: Boolean,
+    onRevertCancellation: () -> Unit,
     onClose: () -> Unit,
     onRetry: () -> Unit,
     onInvite: () -> Unit,
@@ -119,7 +125,18 @@ internal fun FlightDetailsSheet(
     loadCustomerLogo: (String) -> Flow<ByteArray?>,
 ) {
     val detailsTitle = stringResource(R.string.flights_details)
+    val availableActions = buildList {
+        if (showCancellation) add(FlightRecordingAction.Cancel)
+        if (showReviewCancellation) add(FlightRecordingAction.Review)
+        if (showRevertCancellation) add(FlightRecordingAction.Revert)
+        add(FlightRecordingAction.Send)
+        if (showOperations) add(FlightRecordingAction.Operate)
+    }
+    val toolbarWidth = 148.dp
     var expandedAction by rememberSaveable(state.selectedFlightId) { mutableStateOf<FlightRecordingAction?>(null) }
+    androidx.compose.runtime.LaunchedEffect(availableActions) {
+        if (expandedAction !in availableActions) expandedAction = null
+    }
     var contentOrigin by remember(state.selectedFlightId) { mutableStateOf(Offset.Zero) }
     var expandedActionBounds by remember(state.selectedFlightId) { mutableStateOf<Rect?>(null) }
     ModalBottomSheet(
@@ -141,10 +158,10 @@ internal fun FlightDetailsSheet(
             val isPerLanding = state.detail?.isPerLanding
                 ?: state.items.firstOrNull { it.id == state.selectedFlightId }?.isPerLanding ?: false
             val actions: @Composable (Boolean) -> Unit = { loading ->
-                FlightRecordingActions(loading = loading, expandedAction = expandedAction,
+                FlightRecordingActions(loading = loading, availableActions = availableActions, expandedAction = expandedAction,
                     onExpandedActionChange = { expandedAction = it; expandedActionBounds = null },
                     onExpandedBoundsChange = { expandedActionBounds = it },
-                    onOperations = onOperations, onCanceled = onCanceled)
+                    onOperations = onOperations, onCanceled = onCanceled, onRevertCancellation = onRevertCancellation)
             }
             Column(Modifier.fillMaxWidth().onGloballyPositioned { contentOrigin = it.positionInWindow() }
                 .pointerInput(expandedAction) {
@@ -169,7 +186,7 @@ internal fun FlightDetailsSheet(
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }
                     when {
-                        state.isLoadingDetail && state.detail == null -> FlightDetailsSkeleton(showPeople = !isPerLanding, actions = { actions(true) })
+                        state.isLoadingDetail && state.detail == null -> FlightDetailsSkeleton(showPeople = !isPerLanding, toolbarWidth = toolbarWidth, actions = { actions(true) })
                         state.detailError != null && state.detail == null -> ErrorState(message = state.detailError, onRetry = onRetry)
                         state.detail != null -> {
                             val flight = state.detail
@@ -177,7 +194,7 @@ internal fun FlightDetailsSheet(
                                 Text(stringResource(R.string.flights_cached_detail), modifier = Modifier.padding(bottom = 8.dp),
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            FlightIdentity(flight, loadCustomerLogo, actions = { actions(false) })
+                            FlightIdentity(flight, loadCustomerLogo, toolbarWidth = toolbarWidth, actions = { actions(false) })
                             Spacer(Modifier.height(8.dp))
                             FlightOperationStatusRow(flight.operationTypeName, progressStatus)
                             DetailDivider(Modifier.padding(vertical = 10.dp))
@@ -222,35 +239,38 @@ internal fun FlightDetailsSheet(
     }
 }
 
-private enum class FlightRecordingAction { Cancel, Send, Operate }
+private enum class FlightRecordingAction { Cancel, Review, Revert, Send, Operate }
 
 /** First tap reveals one action; a second tap opens its existing flow. */
 @Composable
 private fun FlightRecordingActions(
     loading: Boolean,
+    availableActions: List<FlightRecordingAction>,
     expandedAction: FlightRecordingAction?,
     onExpandedActionChange: (FlightRecordingAction?) -> Unit,
     onExpandedBoundsChange: (Rect) -> Unit,
     onOperations: () -> Unit,
     onCanceled: () -> Unit,
+    onRevertCancellation: () -> Unit,
 ) {
     val style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
     val actionWidth = 48.dp
-    val actionGap = 4.dp
-    val toolbarWidth = actionWidth * 3 + actionGap * 2
-    // Keep all three slots alive: removing siblings would move the tapped button before it expands.
-    val expansions = FlightRecordingAction.entries.map { action ->
-        animateFloatAsState(
+    val actionGap = 2.dp
+    val toolbarWidth = 148.dp
+    val collapsedWidth = actionWidth * availableActions.size + actionGap * (availableActions.size - 1)
+    // Keep the available slots alive while one action expands over its siblings.
+    val expansions = availableActions.map { action ->
+        key(action) { animateFloatAsState(
             targetValue = if (expandedAction == action) 1f else 0f,
             animationSpec = spring(dampingRatio = 1f, stiffness = 400f),
             label = "${action.name} expansion",
-        ).value
+        ).value }
     }
     // Physical Cancel / Send / Operate order is intentional, including in RTL locales.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
             Box(Modifier.width(toolbarWidth).height(48.dp)) {
-                FlightRecordingAction.entries.forEachIndexed { index, action ->
+                availableActions.forEachIndexed { index, action ->
                     key(action) {
                         val expansion = expansions[index]
                         val expanded = expandedAction == action
@@ -259,32 +279,43 @@ private fun FlightRecordingActions(
                         val enabled = !loading && (expanded || expandedAction == null && opacity > 0.5f)
                         val buttonWidth = actionWidth + (toolbarWidth - actionWidth) * expansion
                         val labelWidth = (toolbarWidth - actionWidth) * expansion
-                        val label = stringResource(when (action) {
+                        val accessibleLabel = stringResource(when (action) {
                             FlightRecordingAction.Cancel -> R.string.flights_cancel_flight
+                            FlightRecordingAction.Review -> R.string.cancellation_review
+                            FlightRecordingAction.Revert -> R.string.cancellation_revert
                             FlightRecordingAction.Send -> R.string.flights_send
                             FlightRecordingAction.Operate -> R.string.flights_operate
                         })
+                        val label = when (action) {
+                            FlightRecordingAction.Revert -> stringResource(R.string.cancellation_revert_short)
+                            FlightRecordingAction.Review -> stringResource(R.string.cancellation_review_short)
+                            else -> accessibleLabel
+                        }
                         val icon = when (action) {
                             FlightRecordingAction.Cancel -> Icons.Outlined.EventBusy
+                            FlightRecordingAction.Review -> Icons.Outlined.Edit
+                            FlightRecordingAction.Revert -> Icons.AutoMirrored.Outlined.Undo
                             FlightRecordingAction.Send -> Icons.Outlined.Share
                             FlightRecordingAction.Operate -> Icons.Outlined.Edit
                         }
                         Box(Modifier
                             // Interpolate both edges from the original slot to the full toolbar.
                             // Cancel anchors left, Operate anchors right, and Send grows both ways.
-                            .offset { IntOffset(((actionWidth + actionGap) * index * (1f - expansion)).roundToPx(), 0) }
+                            .offset { IntOffset(((toolbarWidth - collapsedWidth + (actionWidth + actionGap) * index) * (1f - expansion)).roundToPx(), 0) }
                             .width(buttonWidth).height(48.dp)
                             .zIndex(if (expanded) 2f else if (expansion > 0f) 1f else 0f)
                             .graphicsLayer { alpha = opacity }
                             .then(if (!enabled) Modifier.clearAndSetSemantics { } else Modifier),
                             contentAlignment = Alignment.Center) {
                             if (loading) {
-                                Box(Modifier.size(36.dp).background(DetailFill, CircleShape))
+                                Box(Modifier.size(32.dp).background(DetailFill, CircleShape))
                             } else TextButton(onClick = {
                                 if (expanded) {
                                     onExpandedActionChange(null)
                                     when (action) {
                                         FlightRecordingAction.Cancel -> onCanceled()
+                                        FlightRecordingAction.Review -> onCanceled()
+                                        FlightRecordingAction.Revert -> onRevertCancellation()
                                         FlightRecordingAction.Send -> Unit // Sending is not implemented yet.
                                         FlightRecordingAction.Operate -> onOperations()
                                     }
@@ -292,15 +323,15 @@ private fun FlightRecordingActions(
                             }, enabled = enabled,
                                 modifier = Modifier.fillMaxWidth().height(48.dp)
                                     .onGloballyPositioned { if (expanded) onExpandedBoundsChange(it.boundsInWindow()) }
-                                    .semantics { contentDescription = label },
-                                shape = CircleShape, contentPadding = PaddingValues(horizontal = 6.dp),
+                                    .semantics { contentDescription = accessibleLabel },
+                                shape = CircleShape, contentPadding = PaddingValues(horizontal = 8.dp),
                                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface,
                                     disabledContentColor = MaterialTheme.colorScheme.onSurface)) {
-                                Row(Modifier.fillMaxWidth().heightIn(min = 36.dp)
+                                Row(Modifier.fillMaxWidth().heightIn(min = 32.dp)
                                     .background(DetailFill, CircleShape).clipToBounds()
-                                    .padding(horizontal = 9.dp, vertical = 8.dp).clearAndSetSemantics { },
+                                    .padding(horizontal = 8.dp, vertical = 8.dp).clearAndSetSemantics { },
                                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                                    Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Box(Modifier.width(labelWidth).clipToBounds().graphicsLayer { alpha = expansion }) {
                                         // Reveal a stable label instead of re-ellipsizing its text on every frame.
                                         Text(label, Modifier.wrapContentWidth(Alignment.Start, unbounded = true)
@@ -318,19 +349,22 @@ private fun FlightRecordingActions(
 }
 
 @Composable
-private fun FlightIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>, actions: @Composable () -> Unit) {
+private fun FlightIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>, toolbarWidth: androidx.compose.ui.unit.Dp, actions: @Composable () -> Unit) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(40.dp))
-            Column(Modifier.weight(1f)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val numberStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
+            val actionOffset = (with(LocalDensity.current) { numberStyle.lineHeight.toDp() } - 48.dp) / 2
+            Box(Modifier.weight(1f)) {
+                Column(Modifier.fillMaxWidth()) {
                     Text(flight.flightNumber.ifBlank { flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—" },
-                        modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+                        modifier = Modifier.fillMaxWidth().padding(end = toolbarWidth + 8.dp), style = numberStyle,
                         maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                    Box(Modifier.width(152.dp)) { actions() }
+                    Text(flight.customerName, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                 }
-                Text(flight.customerName, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                // Keep the full touch target without making the flight-number text line 48dp tall.
+                Box(Modifier.width(toolbarWidth).align(Alignment.TopEnd).offset(y = actionOffset)) { actions() }
             }
         }
     }
@@ -471,16 +505,16 @@ private fun DetailPeopleRow(
 }
 
 @Composable
-private fun FlightDetailsSkeleton(showPeople: Boolean, actions: @Composable () -> Unit) {
+private fun FlightDetailsSkeleton(showPeople: Boolean, toolbarWidth: androidx.compose.ui.unit.Dp, actions: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().clearAndSetSemantics { progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate }) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             SkeletonBlock(Modifier.size(40.dp))
-            Column(Modifier.weight(1f)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SkeletonBlock(Modifier.weight(1f).height(30.dp))
-                    Box(Modifier.width(152.dp)) { actions() }
+            Box(Modifier.weight(1f)) {
+                Column(Modifier.fillMaxWidth()) {
+                    Box(Modifier.fillMaxWidth().padding(end = toolbarWidth + 8.dp)) { SkeletonBlock(Modifier.fillMaxWidth().height(30.dp)) }
+                    SkeletonBlock(Modifier.fillMaxWidth(0.75f).height(20.dp))
                 }
-                SkeletonBlock(Modifier.fillMaxWidth(0.75f).height(20.dp))
+                Box(Modifier.width(toolbarWidth).align(Alignment.TopEnd).offset(y = (-9).dp)) { actions() }
             }
         }
         Spacer(Modifier.height(8.dp))

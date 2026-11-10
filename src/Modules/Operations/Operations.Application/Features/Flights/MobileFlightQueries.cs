@@ -109,9 +109,13 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
         var station = await masterData.GetStationAsync(flight.Station.StationId, cancellationToken);
         if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
             return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
-        return FlightDetails.Map(flight, station.TimeZoneId, resolved.Value.StaffMemberId,
-            user?.HasPermission(OperationsPermissions.Flights.Operate) == true,
-            user?.HasPermission(OperationsPermissions.Flights.Operate) == true);
+        var staffId = resolved.Value.StaffMemberId;
+        var canOperate = user?.HasPermission(OperationsPermissions.Flights.Operate) == true;
+        var ownCancellation = flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee.StaffMemberId == staffId);
+        var ownWork = flight.ArrivalSubmissions.Any(a => a.SubmittedByEmployee.StaffMemberId == staffId) ||
+            flight.DepartureSubmissions.Any(d => d.SubmittedByEmployee.StaffMemberId == staffId);
+        return FlightDetails.Map(flight, station.TimeZoneId, staffId,
+            canOperate && !ownCancellation, canOperate && !ownCancellation, canOperate && !ownWork);
     }
 }
 

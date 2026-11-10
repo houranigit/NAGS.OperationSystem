@@ -125,7 +125,7 @@ private val SignatureSessionSaver = Saver<SignatureEditSession, String>(
     save = { Json.encodeToString(it) }, restore = { Json.decodeFromString<SignatureEditSession>(it) })
 
 @Composable
-private fun rememberSignatureBitmap(bytes: ByteArray?): ImageBitmap? = remember(bytes) {
+internal fun rememberSignatureBitmap(bytes: ByteArray?): ImageBitmap? = remember(bytes) {
     if (bytes == null) null else runCatching {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)

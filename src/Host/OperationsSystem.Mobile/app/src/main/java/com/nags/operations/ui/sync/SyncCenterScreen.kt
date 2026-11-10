@@ -73,6 +73,15 @@ fun SyncCenterScreen(
 ) {
     val pendingArrivals by viewModel.pendingArrivals.collectAsStateWithLifecycle()
     val arrivalActionError by viewModel.arrivalActionError.collectAsStateWithLifecycle()
+    val pendingCancellations by viewModel.pendingCancellations.collectAsStateWithLifecycle()
+    val cancellationActionFailed by viewModel.cancellationActionFailed.collectAsStateWithLifecycle()
+    var discardCancellationId by rememberSaveable { mutableStateOf<String?>(null) }
+    if (discardCancellationId != null) AlertDialog(onDismissRequest = { discardCancellationId = null },
+        title = { Text(stringResource(R.string.cancellation_sync_discard)) },
+        text = { Text(stringResource(R.string.cancellation_sync_discard_message)) },
+        confirmButton = { TextButton(onClick = { discardCancellationId?.let(viewModel::discardCancellation); discardCancellationId = null }) {
+            Text(stringResource(R.string.cancellation_sync_discard))
+        } }, dismissButton = { TextButton(onClick = { discardCancellationId = null }) { Text(stringResource(R.string.flights_cancel)) } })
     val pendingDepartures by viewModel.pendingDepartures.collectAsStateWithLifecycle()
     val departureActionFailed by viewModel.departureActionFailed.collectAsStateWithLifecycle()
     var discardDepartureId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -168,6 +177,28 @@ fun SyncCenterScreen(
                 }
             }
             if (departureActionFailed) item { Text(stringResource(R.string.departure_sync_action_failed), color = MaterialTheme.colorScheme.error) }
+            if (pendingCancellations.isNotEmpty()) {
+                item { Text(stringResource(R.string.cancellation_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                items(pendingCancellations, key = { "cancellation:${it.flightId}" }) { row ->
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
+                        Text(stringResource(when {
+                            row.status != "pending" -> R.string.cancellation_sync_review
+                            row.operation == "revert" -> R.string.cancellation_revert_pending_message
+                            else -> R.string.cancellation_pending_message
+                        }), style = MaterialTheme.typography.bodyMedium)
+                        row.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { viewModel.retryCancellation(row.flightId) }, enabled = isOnline) { Text(stringResource(R.string.arrival_sync_retry)) }
+                            TextButton(onClick = { discardCancellationId = row.flightId }, enabled = row.attemptOperation == null || row.status != "pending") {
+                                Text(stringResource(R.string.cancellation_sync_discard))
+                            }
+                        }
+                    }
+                }
+            }
+            if (cancellationActionFailed) item { Text(stringResource(R.string.cancellation_sync_action_failed), color = MaterialTheme.colorScheme.error) }
             item {
                 Text(
                     text = stringResource(R.string.sync_center_cached_data),

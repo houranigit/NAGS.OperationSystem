@@ -38,6 +38,8 @@ class FlightArrivalsRepository(
     private val json: Json,
     private val now: () -> Instant = Instant::now,
     private val onAcknowledgedBeforeDelete: suspend (String, String, String) -> Unit = { _, _, _ -> },
+    private val hasSavedCancellation: suspend (String) -> Boolean = { false },
+    private val submissionGate: Mutex = Mutex(),
 ) {
     // Network sends and session transitions share this gate. A new bearer cannot be
     // published while an old account's request is still using the HTTP client.
@@ -60,13 +62,19 @@ class FlightArrivalsRepository(
         check(normalized.validationErrors(flight.rowVersion).isEmpty()) { "Complete the required arrival fields." }
         check(flight.arrivalEditable()) { "Only the employee who submitted the arrival can update it." }
         check(flight.isInFlightWindow(now())) { "This flight is outside your current flight window." }
-        localWrites.withLock {
-            check(accepting && generation == observed && owner == currentOwner()) { "Your session changed. Reopen the flight." }
-            val existing = dao.rows(owner).firstOrNull { it.flightId == flight.id && it.status == "pending" }
-            // Editing changes the desired input, never the request whose outcome is unknown.
-            dao.put(existing?.copy(inputJson = json.encodeToString(normalized), savedAtUtc = now().toString(), error = null)
-                ?: FlightArrivalPendingEntity(owner, flight.id, flight.flightNumber, UUID.randomUUID().toString(),
-                    json.encodeToString(normalized), flight.rowVersion, now().toString()))
+        submissionGate.withLock {
+            check(!flight.hasCancellationSubmission || normalized.acknowledgeConflictingSubmission) {
+                "Another employee reported this flight as canceled. Confirm arrival before saving."
+            }
+            check(!hasSavedCancellation(flight.id)) { "Revert your cancellation and wait for it to sync before saving work on this flight." }
+            localWrites.withLock {
+                check(accepting && generation == observed && owner == currentOwner()) { "Your session changed. Reopen the flight." }
+                val existing = dao.rows(owner).firstOrNull { it.flightId == flight.id && it.status == "pending" }
+                // Editing changes the desired input, never the request whose outcome is unknown.
+                dao.put(existing?.copy(inputJson = json.encodeToString(normalized), savedAtUtc = now().toString(), error = null)
+                    ?: FlightArrivalPendingEntity(owner, flight.id, flight.flightNumber, UUID.randomUUID().toString(),
+                        json.encodeToString(normalized), flight.rowVersion, now().toString()))
+            }
         }
         // WorkManager scheduling failure must not turn a completed disk save into a
         // failed form save. Session/reconnect/poll refresh also drains persisted rows.
@@ -102,7 +110,7 @@ class FlightArrivalsRepository(
                 onAcknowledgedBeforeDelete(row.flightId, row.rowVersion, result.rowVersion)
                 localWrites.withLock {
                     pendingRow(row)?.let { latest ->
-                        if (latest.inputJson == row.attemptInputJson) dao.delete(owner, row.flightId, row.changeId)
+                        if (sameInput(latest.inputJson, row.attemptInputJson)) dao.delete(owner, row.flightId, row.changeId)
                         else {
                             // Only acknowledgment of our exact earlier request advances a correction.
                             // External conflicts still require explicit review; they are never rebased.
@@ -196,6 +204,11 @@ class FlightArrivalsRepository(
             dao.delete(owner, row.flightId, row.changeId)
         }
     }
+
+    private fun sameInput(first: String, second: String?): Boolean = runCatching {
+        json.decodeFromString<SaveFlightArrivalRequest>(first).withoutAcknowledgement().normalized() ==
+            json.decodeFromString<SaveFlightArrivalRequest>(checkNotNull(second)).withoutAcknowledgement().normalized()
+    }.getOrDefault(false)
 
     private suspend fun pendingRow(row: FlightArrivalPendingEntity): FlightArrivalPendingEntity? =
         dao.rows(row.ownerSubject).firstOrNull { it.flightId == row.flightId && it.changeId == row.changeId && it.status == "pending" }

@@ -25,7 +25,9 @@ data class SaveFlightDepartureRequest(
     val signatureContent: String? = null,
     val signatureSignedAtUtc: String? = null,
     val remarks: String? = null,
+    val acknowledgeConflictingSubmission: Boolean = false,
 ) {
+    fun withoutAcknowledgement() = copy(acknowledgeConflictingSubmission = false)
     fun normalized() = copy(remarks = remarks?.trim()?.takeIf(String::isNotEmpty))
 }
 
@@ -33,6 +35,6 @@ data class SaveFlightDepartureRequest(
 data class FlightDepartureSaved(val submission: FlightDepartureSubmission, val rowVersion: String)
 
 fun FlightDetail.departureEditable(): Boolean = canSaveDeparture && validArrivalId(currentStaffMemberId) &&
-    !hasCancellationSubmission && (departureSubmissions.isEmpty() || departureSubmissions.any {
+    !hasOwnCancellation() && (departureSubmissions.isEmpty() || departureSubmissions.any {
         it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, ignoreCase = true)
     })

@@ -72,6 +72,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nags.operations.data.hasOwnCancellation
+import com.nags.operations.data.hasOwnWork
+import com.nags.operations.data.ownCancellation
+import com.nags.operations.data.cancellationEditable
+import com.nags.operations.data.userMessage
 import com.nags.operations.R
 import com.nags.operations.data.FlightCategory
 import com.nags.operations.data.FlightDetail
@@ -196,6 +201,9 @@ fun FlightsScreen(
             .collectAsStateWithLifecycle(initialValue = emptyList())
         val pendingDepartures by (viewModel.departures?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
             .collectAsStateWithLifecycle(initialValue = emptyList())
+        val pendingCancellations by (viewModel.cancellations?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+            .collectAsStateWithLifecycle(initialValue = emptyList())
+        val pendingCancellation = pendingCancellations.firstOrNull { it.flightId == state.selectedFlightId }
         val aircraftTypes by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
         val actualsStaff by viewModel.actualsStaff.collectAsStateWithLifecycle(initialValue = emptyList())
         val currentUserName by viewModel.currentUserDisplayName.collectAsStateWithLifecycle(initialValue = null)
@@ -206,7 +214,33 @@ fun FlightsScreen(
             youLabel = stringResource(R.string.flight_actuals_you))
         val progressStatus = state.detail?.progressStatus(
             pendingArrival = pendingArrivals.firstOrNull { it.flightId == state.selectedFlightId },
-            pendingDeparture = pendingDepartures.firstOrNull { it.flightId == state.selectedFlightId }) ?: FlightProgressStatus.Draft
+            pendingDeparture = pendingDepartures.firstOrNull { it.flightId == state.selectedFlightId },
+            pendingCancellation = pendingCancellation) ?: FlightProgressStatus.Draft
+        val ownsWork = state.detail?.hasOwnWork() == true || pendingArrivals.any { it.flightId == state.selectedFlightId } ||
+            pendingDepartures.any { it.flightId == state.selectedFlightId }
+        val ownsCancellation = state.detail?.hasOwnCancellation() == true || pendingCancellation != null
+        var confirmRevert by rememberSaveable { mutableStateOf(false) }
+        var revertError by rememberSaveable { mutableStateOf<String?>(null) }
+        var reverting by remember { mutableStateOf(false) }
+        val cancellationScope = rememberCoroutineScope()
+        if (confirmRevert) FlightSubmissionConfirmation(stringResource(R.string.cancellation_revert),
+            stringResource(R.string.cancellation_revert_message), stringResource(R.string.cancellation_revert), onConfirm = {
+                confirmRevert = false
+                state.detail?.let { detail ->
+                    reverting = true; revertError = null
+                    cancellationScope.launch {
+                        try {
+                            val reviewed = if (pendingCancellation != null && pendingCancellation.status != "pending") viewModel.reviewArrival(detail.id) else detail
+                            viewModel.revertCancellation(reviewed)
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                        catch (error: Exception) { revertError = error.userMessage() }
+                        finally { reverting = false }
+                    }
+                }
+            }, onDismiss = { confirmRevert = false })
+        if (revertError != null) androidx.compose.material3.AlertDialog(onDismissRequest = { revertError = null },
+            title = { Text(stringResource(R.string.cancellation_revert_failed)) }, text = { Text(revertError.orEmpty()) },
+            confirmButton = { TextButton(onClick = { revertError = null }) { Text(stringResource(R.string.flights_cancel)) } })
         var recordingForm by rememberSaveable { mutableStateOf<String?>(null) }
         // The open form owns a stable snapshot, including across activity recreation.
         // Background detail updates must not replace the form's original snapshot.
@@ -215,7 +249,14 @@ fun FlightsScreen(
             recordingFlightSnapshot?.let { Json.decodeFromString<FlightDetail>(it) }
         }
         val recordingFormState = rememberSaveableStateHolder()
-        FlightDetailsSheet(state = state, actuals = actuals, progressStatus = progressStatus, onClose = ::closeFlight,
+        FlightDetailsSheet(state = state, actuals = actuals, progressStatus = progressStatus,
+            showCancellation = !ownsWork && !ownsCancellation && state.detail?.cancellationEditable() == true,
+            showOperations = !ownsCancellation,
+            showRevertCancellation = !reverting && state.detail?.canSaveCancellation == true &&
+                (state.detail?.ownCancellation() != null || pendingCancellation?.operation == "save") &&
+                (pendingCancellation?.operation != "revert" || pendingCancellation.status != "pending"),
+            showReviewCancellation = pendingCancellation?.operation == "save" && pendingCancellation.status != "pending",
+            onRevertCancellation = { confirmRevert = true }, onClose = ::closeFlight,
             onRetry = { state.selectedFlightId?.let(viewModel::openFlight) },
             onInvite = viewModel::openInvitations,
             onOperations = { recordingFlightSnapshot = state.detail?.let { Json.encodeToString(it) }; recordingForm = "operations" },
@@ -242,7 +283,9 @@ fun FlightsScreen(
                         onReviewArrival = { viewModel.reviewArrival(flight.id) },
                         onSaveDeparture = viewModel::saveDeparture)
                 } else {
-                    FlightCancellationForm(flight, viewModel::customerLogo, onClose = closeForm, progressStatus = progressStatus)
+                    FlightCancellationForm(state.detail ?: flight, viewModel::customerLogo, onClose = closeForm, progressStatus = progressStatus,
+                        pending = pendingCancellation, onSave = viewModel::saveCancellation,
+                        onReview = { viewModel.reviewArrival(flight.id) })
                 }
             }
         }
