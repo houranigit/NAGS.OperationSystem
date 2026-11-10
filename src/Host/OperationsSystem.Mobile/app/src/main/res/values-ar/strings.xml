@@ -89,6 +89,7 @@
     <string name="flights_card_aircraft">الطائرة</string>
     <string name="flights_card_sta">الوصول</string>
     <string name="flights_card_std">المغادرة</string>
+    <string name="flight_form_flt">الرحلة</string>
     <string name="flights_operation">العملية</string>
     <string name="flights_invite_employees">دعوة موظفين</string>
     <string name="flights_invite_hint">اختر الموظفين المتاحين في محطة هذه الرحلة. ستبقى التعيينات الحالية كما هي.</string>

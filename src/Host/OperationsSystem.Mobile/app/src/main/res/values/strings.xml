@@ -116,6 +116,7 @@
     <string name="flights_card_aircraft">Aircraft</string>
     <string name="flights_card_sta">STA</string>
     <string name="flights_card_std">STD</string>
+    <string name="flight_form_flt">FLT</string>
     <string name="flights_operation">Operation</string>
     <string name="flights_invite_employees">Invite employees</string>
     <string name="flights_invite_hint">Select available employees from this flight’s station. Existing assignments are kept.</string>

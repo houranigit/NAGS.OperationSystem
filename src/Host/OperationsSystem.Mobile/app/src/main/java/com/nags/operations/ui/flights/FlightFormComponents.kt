@@ -277,7 +277,7 @@ private fun FlightFormHeaderButton(icon: ImageVector, description: String, enabl
     }
 }
 
-/** The same identity order as the details sheet, in the reference's icon-first card. */
+/** Flight identity and schedule share aligned labels and values in the card's top row. */
 @Composable
 private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>,
     onTitlePositioned: (Float, Int) -> Unit) {
@@ -285,29 +285,45 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
         Surface(Modifier.fillMaxWidth(), color = Color.White, shape = RoundedCornerShape(28.dp)) {
             Column(Modifier.padding(16.dp)) {
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val stackSchedule = maxWidth < 76.dp + 170.dp * LocalDensity.current.fontScale
+                    val density = LocalDensity.current
+                    val labelStyle = MaterialTheme.typography.labelSmall
+                    val valueStyle = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 22.sp,
+                        fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum")
+                    var scheduleHeight by remember { mutableIntStateOf(0) }
+                    val logoSize = with(density) { if (scheduleHeight > 0) scheduleHeight.toDp() else 60.dp }
+                    val stackSchedule = maxWidth < 76.dp + 210.dp * density.fontScale
                     val logo: @Composable () -> Unit = {
                         CustomerLogo(flight.customerId, loadCustomerLogo,
-                            Modifier.size(60.dp).border(1.dp, Color(0xFFD1D1D6), RoundedCornerShape(10.dp)).padding(5.dp))
+                            Modifier.size(logoSize).border(1.dp, Color(0xFFD1D1D6), RoundedCornerShape(10.dp)).padding(5.dp))
+                    }
+                    val number: @Composable (Modifier) -> Unit = { modifier ->
+                        Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(stringResource(R.string.flight_form_flt), style = labelStyle,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(flight.flightNumber, Modifier.onGloballyPositioned {
+                                onTitlePositioned(it.positionInWindow().y, it.size.height)
+                            }.semantics { heading() }, style = valueStyle,
+                                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                     val schedule: @Composable () -> Unit = {
-                        FlightScheduleTimeGroup(flight, MaterialTheme.typography.labelSmall,
-                            MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 22.sp,
-                                fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"))
+                        FlightScheduleTimeGroup(flight, labelStyle, valueStyle,
+                            Modifier.onSizeChanged { scheduleHeight = it.height })
                     }
                     if (stackSchedule) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        logo()
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Top) {
+                            logo()
+                            number(Modifier.weight(1f))
+                        }
                         Box(Modifier.align(Alignment.End)) { schedule() }
-                    } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.Top) {
                         logo()
+                        number(Modifier.weight(1f))
                         schedule()
                     }
                 }
-                Text(flight.flightNumber, Modifier.padding(top = 12.dp).onGloballyPositioned {
-                    onTitlePositioned(it.positionInWindow().y, it.size.height)
-                }.semantics { heading() }, style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(flight.customerName, Modifier.fillMaxWidth().padding(top = 4.dp),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
