@@ -46,7 +46,7 @@
     <string name="flights_details">تفاصيل الرحلة</string>
     <string name="flights_send">إرسال الرحلة</string>
     <string name="flights_edit">تعديل الرحلة</string>
-    <string name="flights_operate">تشغيل</string>
+    <string name="flights_operate">فتح الرحلة</string>
     <string name="flights_cancel_flight">إلغاء الرحلة</string>
     <string name="arrival_choose_ata">تعديل وقت الوصول الفعلي</string>
     <string name="arrival_ata_short">الوصول الفعلي</string>

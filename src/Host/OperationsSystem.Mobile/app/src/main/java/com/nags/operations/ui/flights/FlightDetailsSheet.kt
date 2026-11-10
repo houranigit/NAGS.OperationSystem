@@ -36,9 +36,9 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.LocationOn
-import androidx.compose.material.icons.outlined.ArrowOutward
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.EventBusy
-import androidx.compose.material.icons.outlined.NoteAlt
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -273,8 +273,8 @@ private fun FlightRecordingActions(
                         })
                         val icon = when (action) {
                             FlightRecordingAction.Cancel -> Icons.Outlined.EventBusy
-                            FlightRecordingAction.Send -> Icons.Outlined.ArrowOutward
-                            FlightRecordingAction.Operate -> Icons.Outlined.NoteAlt
+                            FlightRecordingAction.Send -> Icons.Outlined.Share
+                            FlightRecordingAction.Operate -> Icons.Outlined.Edit
                         }
                         Box(Modifier
                             // Interpolate both edges from the original slot to the full toolbar.
