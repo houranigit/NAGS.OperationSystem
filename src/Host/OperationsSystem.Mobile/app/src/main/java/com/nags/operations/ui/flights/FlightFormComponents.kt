@@ -158,6 +158,7 @@ internal fun FlightRecordingFormScaffold(
     saveEnabled: Boolean = false,
     saveLoading: Boolean = false,
     onSave: () -> Unit = {},
+    identityDetails: @Composable () -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(onDismissRequest = onRequestClose,
@@ -226,7 +227,7 @@ internal fun FlightRecordingFormScaffold(
                             FlightRecordingIdentity(flight, loadCustomerLogo, onTitlePositioned = { top, height ->
                                 titleTop = top - viewportTop + scroll.value
                                 titleHeight = height
-                            })
+                            }, details = identityDetails)
                             content()
                         }
                     }
@@ -283,7 +284,7 @@ private fun FlightFormHeaderButton(icon: ImageVector, description: String, enabl
 /** Flight identity and schedule share aligned labels and values in the card's top row. */
 @Composable
 private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>,
-    onTitlePositioned: (Float, Int) -> Unit) {
+    onTitlePositioned: (Float, Int) -> Unit, details: @Composable () -> Unit) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Surface(Modifier.fillMaxWidth(), color = Color.White, shape = RoundedCornerShape(28.dp)) {
             Column(Modifier.padding(16.dp)) {
@@ -334,6 +335,7 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), thickness = 0.5.dp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
                 FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName)
+                details()
             }
         }
     }

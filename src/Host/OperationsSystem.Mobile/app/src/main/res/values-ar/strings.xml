@@ -272,4 +272,6 @@
     <string name="arrival_sync_no_pending">لا توجد بيانات وصول بانتظار المزامنة.</string>
     <string name="arrival_aircraft_unavailable">حدّث قائمة الطائرات واختر نوع طائرة متاحًا.</string>
     <string name="arrival_review_before_save">راجع بيانات الوصول المحفوظة ثم اضغط حفظ لإرسالها مجددًا.</string>
+    <string name="arrival_quoted_remarks">“%1$s”</string>
+    <string name="arrival_actual_details">تفاصيل الوصول الفعلي</string>
 </resources>

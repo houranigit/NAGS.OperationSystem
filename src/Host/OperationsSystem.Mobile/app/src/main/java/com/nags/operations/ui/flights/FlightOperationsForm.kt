@@ -132,6 +132,9 @@ internal fun FlightOperationsForm(
     val arrivalChanged = Json.encodeToString(input()) != arrivalBaseline
     val requiresReview = pending != null && pending.status != "pending" && reviewedChangeId != pending.changeId
     val readOnlyArrival = arrival?.takeIf { !flight.arrivalEditable() }
+    val otherEmployeeArrival = arrival?.takeIf {
+        pending == null && !it.submittedByEmployee.staffMemberId.equals(flight.currentStaffMemberId, ignoreCase = true)
+    }
     val arrivalEnabled = flight.arrivalEditable() && !requiresReview && !saving
     val errors = if (validationAttempted && arrivalEnabled) input().validationErrors(arrivalVersion) else emptySet()
     // Refresh untouched arrival fields while retaining edits in every other section.
@@ -229,52 +232,55 @@ internal fun FlightOperationsForm(
     }
     FlightRecordingFormScaffold(flight, stringResource(R.string.operations_title), stringResource(R.string.operations_save),
         loadCustomerLogo, requestClose,
-        saveEnabled = arrivalEnabled && (arrivalChanged || reviewedChangeId != null), saveLoading = saving, onSave = saveArrival) {
-        FlightFormSectionTitle(stringResource(R.string.operations_arrival))
-        if (pending != null && pending.status != "pending" && reviewedChangeId != pending.changeId) {
-            ArrivalFormMessage(stringResource(R.string.arrival_sync_review), error = true)
-            pending.error?.takeIf { pending.status != "pending" }?.let { ArrivalFormMessage(it, error = true) }
-            if (pending.status != "pending") TextButton(enabled = !saving, onClick = {
-                saving = true; saveError = null
-                formScope.launch {
-                    try {
-                        val latest = onReviewArrival()
-                        arrivalVersion = latest.rowVersion
-                        reviewedChangeId = pending.changeId
-                    } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (error: Exception) { saveError = error.userMessage() }
-                    finally { saving = false }
+        saveEnabled = arrivalEnabled && (arrivalChanged || reviewedChangeId != null), saveLoading = saving, onSave = saveArrival,
+        identityDetails = { otherEmployeeArrival?.let { FlightArrivalSummary(it, entryZone) } }) {
+        if (otherEmployeeArrival == null) {
+            FlightFormSectionTitle(stringResource(R.string.operations_arrival))
+            if (pending != null && pending.status != "pending" && reviewedChangeId != pending.changeId) {
+                ArrivalFormMessage(stringResource(R.string.arrival_sync_review), error = true)
+                pending.error?.takeIf { pending.status != "pending" }?.let { ArrivalFormMessage(it, error = true) }
+                if (pending.status != "pending") TextButton(enabled = !saving, onClick = {
+                    saving = true; saveError = null
+                    formScope.launch {
+                        try {
+                            val latest = onReviewArrival()
+                            arrivalVersion = latest.rowVersion
+                            reviewedChangeId = pending.changeId
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (error: Exception) { saveError = error.userMessage() }
+                        finally { saving = false }
+                    }
+                }) { Text(stringResource(R.string.arrival_reload_review)) }
+            } else if (pending != null && pending.status != "pending") ArrivalFormMessage(stringResource(R.string.arrival_review_before_save))
+            saveError?.let { ArrivalFormMessage(it, error = true) }
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                FlightFormFieldGroup {
+                    FlightFormDateTimeField(readOnlyArrival?.let { operationLocalTime(it.ata, entryZone) } ?: ata, stringResource(R.string.arrival_ata_short), stringResource(R.string.arrival_choose_ata),
+                        enabled = arrivalEnabled,
+                        errorMessage = if (ArrivalInputError.AtaRequired in errors) stringResource(R.string.arrival_ata_required) else null,
+                        onClick = { openPicker("ata") })
                 }
-            }) { Text(stringResource(R.string.arrival_reload_review)) }
-        } else if (pending != null && pending.status != "pending") ArrivalFormMessage(stringResource(R.string.arrival_review_before_save))
-        saveError?.let { ArrivalFormMessage(it, error = true) }
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            FlightFormFieldGroup {
-                FlightFormDateTimeField(readOnlyArrival?.let { operationLocalTime(it.ata, entryZone) } ?: ata, stringResource(R.string.arrival_ata_short), stringResource(R.string.arrival_choose_ata),
-                    enabled = arrivalEnabled,
-                    errorMessage = if (ArrivalInputError.AtaRequired in errors) stringResource(R.string.arrival_ata_required) else null,
-                    onClick = { openPicker("ata") })
             }
+            if (ArrivalInputError.VersionRequired in errors) ArrivalFormMessage(stringResource(R.string.arrival_reload_required), error = true)
+            FlightFormFieldGroup {
+                FlightFormChoiceRow(stringResource(R.string.arrival_aircraft), (readOnlyArrival?.aircraftTypeModel ?: selectedAircraft).ifBlank { stringResource(R.string.arrival_select_aircraft) },
+                    stringResource(R.string.arrival_aircraft_type), isPlaceholder = (readOnlyArrival?.aircraftTypeModel ?: selectedAircraft).isBlank(), enabled = arrivalEnabled,
+                    errorMessage = when {
+                        ArrivalInputError.AircraftRequired in errors -> stringResource(R.string.arrival_aircraft_required)
+                        validationAttempted && arrivalEnabled && !aircraftAvailable -> stringResource(R.string.arrival_aircraft_unavailable)
+                        else -> null
+                    }, onClick = { openPicker("aircraft") })
+                FlightFormDivider()
+                FlightFormTextRow(stringResource(R.string.arrival_tail_number), readOnlyArrival?.aircraftTailNumber ?: tailNumber, { tailNumber = it },
+                    stringResource(R.string.arrival_tail_hint), keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Next), enabled = arrivalEnabled,
+                    errorMessage = if (ArrivalInputError.TailRequired in errors) stringResource(R.string.arrival_tail_required) else null)
+            }
+            FlightFormFieldGroup {
+                FlightFormTextRow(stringResource(R.string.arrival_reference), if (readOnlyArrival != null) readOnlyArrival.customerWorkReferenceNumber.orEmpty() else reference, { reference = it }, stringResource(R.string.arrival_optional), enabled = arrivalEnabled)
+            }
+            FlightFormRemarks(if (readOnlyArrival != null) readOnlyArrival.remarks.orEmpty() else arrivalRemarks, { arrivalRemarks = it }, stringResource(R.string.operations_arrival_remarks), enabled = arrivalEnabled)
         }
-        if (ArrivalInputError.VersionRequired in errors) ArrivalFormMessage(stringResource(R.string.arrival_reload_required), error = true)
-        FlightFormFieldGroup {
-            FlightFormChoiceRow(stringResource(R.string.arrival_aircraft), (readOnlyArrival?.aircraftTypeModel ?: selectedAircraft).ifBlank { stringResource(R.string.arrival_select_aircraft) },
-                stringResource(R.string.arrival_aircraft_type), isPlaceholder = (readOnlyArrival?.aircraftTypeModel ?: selectedAircraft).isBlank(), enabled = arrivalEnabled,
-                errorMessage = when {
-                    ArrivalInputError.AircraftRequired in errors -> stringResource(R.string.arrival_aircraft_required)
-                    validationAttempted && arrivalEnabled && !aircraftAvailable -> stringResource(R.string.arrival_aircraft_unavailable)
-                    else -> null
-                }, onClick = { openPicker("aircraft") })
-            FlightFormDivider()
-            FlightFormTextRow(stringResource(R.string.arrival_tail_number), readOnlyArrival?.aircraftTailNumber ?: tailNumber, { tailNumber = it },
-                stringResource(R.string.arrival_tail_hint), keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Next), enabled = arrivalEnabled,
-                errorMessage = if (ArrivalInputError.TailRequired in errors) stringResource(R.string.arrival_tail_required) else null)
-        }
-        FlightFormFieldGroup {
-            FlightFormTextRow(stringResource(R.string.arrival_reference), if (readOnlyArrival != null) readOnlyArrival.customerWorkReferenceNumber.orEmpty() else reference, { reference = it }, stringResource(R.string.arrival_optional), enabled = arrivalEnabled)
-        }
-        FlightFormRemarks(if (readOnlyArrival != null) readOnlyArrival.remarks.orEmpty() else arrivalRemarks, { arrivalRemarks = it }, stringResource(R.string.operations_arrival_remarks), enabled = arrivalEnabled)
         CompositionLocalProvider(LocalFlightMediaSession provides mediaSession) {
             FlightServiceSection(workDrafts.services, catalogs, referenceYear, zone,
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(services = change(workDrafts.services))) })

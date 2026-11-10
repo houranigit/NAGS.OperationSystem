@@ -295,4 +295,6 @@
     <string name="arrival_sync_no_pending">No pending arrival uploads.</string>
     <string name="arrival_aircraft_unavailable">Refresh the aircraft catalog and select an available aircraft type.</string>
     <string name="arrival_review_before_save">Review your saved arrival, then tap Save to upload it again.</string>
+    <string name="arrival_quoted_remarks">“%1$s”</string>
+    <string name="arrival_actual_details">Actual arrival details</string>
 </resources>
