@@ -88,6 +88,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.visibleArrival
@@ -317,18 +318,19 @@ private fun FlightIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> F
 @Composable
 private fun FlightSchedule(flight: FlightDetail) {
     val labelStyle = MaterialTheme.typography.labelSmall
-    val valueStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
+    val valueStyle = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 22.sp,
+        fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
     val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         if (maxWidth < 320.dp * fontScale) {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 FlightScheduleStation(flight, labelStyle, valueStyle)
-                FlightScheduleTimeGroup(flight, labelStyle, valueStyle, Modifier.align(Alignment.End))
+                FlightScheduleTimeGroup(flight, labelStyle, valueStyle, Modifier.align(Alignment.End), captionStyle = labelStyle)
             }
         } else {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 FlightScheduleStation(flight, labelStyle, valueStyle, Modifier.weight(1f).alignBy(FirstBaseline))
-                FlightScheduleTimeGroup(flight, labelStyle, valueStyle, Modifier.alignBy(FirstBaseline))
+                FlightScheduleTimeGroup(flight, labelStyle, valueStyle, Modifier.alignBy(FirstBaseline), captionStyle = labelStyle)
             }
         }
     }
@@ -344,7 +346,7 @@ private fun FlightScheduleStation(flight: FlightDetail, labelStyle: TextStyle, v
         if (flight.stationIata.isNotBlank() && !flight.stationIata.equals(stationName, ignoreCase = true)) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.LocationOn, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-                Text(flight.stationIata, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium,
+                Text(flight.stationIata, style = labelStyle,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -352,13 +354,15 @@ private fun FlightScheduleStation(flight: FlightDetail, labelStyle: TextStyle, v
 }
 
 @Composable
-internal fun FlightScheduleTimeGroup(flight: FlightDetail, labelStyle: TextStyle, valueStyle: TextStyle, modifier: Modifier = Modifier) {
+internal fun FlightScheduleTimeGroup(flight: FlightDetail, labelStyle: TextStyle, valueStyle: TextStyle, modifier: Modifier = Modifier,
+    captionStyle: TextStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+) {
     Column(modifier.width(IntrinsicSize.Max), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         FlightScheduleTimes(flight, labelStyle, valueStyle)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.CalendarMonth, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
             Text(formatFlightDateRangeForDisplay(flight.scheduledArrivalUtc, flight.scheduledDepartureUtc, stationTimeZone(flight.stationTimeZoneId)),
-                style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, textAlign = TextAlign.End,
+                style = captionStyle, textAlign = TextAlign.End,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -463,15 +467,15 @@ private fun FlightDetailsSkeleton(showPeople: Boolean) {
         Spacer(Modifier.height(8.dp))
         SkeletonBlock(Modifier.width(200.dp).height(16.dp))
         DetailDivider(Modifier.padding(vertical = 10.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 SkeletonBlock(Modifier.width(96.dp).height(12.dp))
-                SkeletonBlock(Modifier.fillMaxWidth(0.8f).height(26.dp))
+                SkeletonBlock(Modifier.fillMaxWidth(0.8f).height(22.dp))
                 SkeletonBlock(Modifier.width(44.dp).height(14.dp))
             }
-            Column(Modifier.width(136.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.width(136.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 SkeletonBlock(Modifier.fillMaxWidth().height(12.dp))
-                SkeletonBlock(Modifier.fillMaxWidth().height(26.dp))
+                SkeletonBlock(Modifier.fillMaxWidth().height(22.dp))
                 SkeletonBlock(Modifier.width(96.dp).height(14.dp))
             }
         }
