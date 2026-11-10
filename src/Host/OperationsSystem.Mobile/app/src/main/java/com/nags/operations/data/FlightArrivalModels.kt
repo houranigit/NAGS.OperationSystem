@@ -59,11 +59,14 @@ internal fun validArrivalId(id: String?): Boolean = id != null &&
     runCatching { UUID.fromString(id) != UUID(0, 0) }.getOrDefault(false)
 
 /** Keep an unchanged instant during the repeated hour at the end of daylight saving. */
-fun arrivalInputTime(local: String, original: String?, zone: ZoneId = ZoneId.systemDefault()): String = runCatching {
+fun arrivalInputTime(local: String, original: String?, zone: ZoneId): String = runCatching {
     val value = LocalDateTime.parse(local)
     val previous = original?.let { OffsetDateTime.parse(it) }
     if (previous != null && previous.atZoneSameInstant(zone).toLocalDateTime() == value) previous.toInstant().toString()
-    else value.atZone(zone).toInstant().toString()
+    else {
+        val offset = zone.rules.getValidOffsets(value).singleOrNull() ?: return@runCatching ""
+        value.toInstant(offset).toString()
+    }
 }.getOrDefault("")
 
 fun FlightDetail.visibleArrival(): FlightArrivalSubmission? = arrivalSubmissions.firstOrNull {

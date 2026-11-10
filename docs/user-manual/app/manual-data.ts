@@ -298,7 +298,7 @@ export const manualArticles = [
       {
         "id": "details",
         "title": "Enter flight details",
-        "body": "Select customer, station, operation type, and optional aircraft type. Enter the flight number and scheduled arrival and departure using the time zone displayed by the form. Departure must be after arrival. Ad Hoc is not available for scheduled flights."
+        "body": "Select customer, station, operation type, and optional aircraft type. Enter the flight number and scheduled arrival and departure using the selected station’s configured time zone. Departure must be after arrival. Ad Hoc is not available for scheduled flights."
       },
       {
         "id": "services",
@@ -314,8 +314,8 @@ export const manualArticles = [
     "callouts": [
       {
         "tone": "info",
-        "title": "Use the displayed time zone",
-        "body": "The form and grid use your selected user time zone. The backend stores the schedule in UTC."
+        "title": "Use the station clock",
+        "body": "Scheduling and operation inputs in both apps use the flight station’s configured time zone. Flight times use the same station clock, independently of device settings. The backend stores instants in UTC."
       }
     ],
     "sectionId": "flight-operations",
@@ -361,7 +361,7 @@ export const manualArticles = [
       {
         "tone": "tip",
         "title": "Overnight departures",
-        "body": "When the departure clock time is at or before arrival, batch scheduling uses the following day for departure. Each selected date is interpreted in the displayed user time zone; invalid or ambiguous daylight-saving times are rejected."
+        "body": "When the departure clock time is at or before arrival, batch scheduling uses the following day for departure. Each selected date and clock time is interpreted in the selected station’s configured time zone using that date’s daylight-saving rules, then stored in UTC. Invalid or ambiguous daylight-saving times are rejected."
       }
     ],
     "sectionId": "flight-operations",
@@ -446,7 +446,7 @@ export const manualArticles = [
       {
         "id": "details",
         "title": "Open the flight details",
-        "body": "Tap a flight card to view its customer, station, operation type, scheduled arrival and departure, optional aircraft type, planned services, assigned staff, and flight ID. Times use the device time zone shown above the list. Details are saved when opened online. While offline, previously opened details remain readable with a cached-data notice; unopened details require a connection."
+        "body": "Tap a flight card to view its customer, station, operation type, scheduled arrival and departure, optional aircraft type, planned services, assigned staff, and flight ID. Times use the flight station’s configured time zone. Details are saved when opened online. While offline, previously opened details remain readable with a cached-data notice; unopened details require a connection."
       }
     ],
     "callouts": [
@@ -678,6 +678,11 @@ export const manualArticles = [
         "body": "Search for existing records, use stable codes, and review the record detail and existing constraints before editing or deactivating."
       },
       {
+        "id": "station-time-zone",
+        "title": "Choose the station time zone",
+        "body": "When creating or editing a station, select its time zone from the searchable Time zone list. This field is required. Flight scheduling and operation date/time inputs use the station’s selected zone."
+      },
+      {
         "id": "staff",
         "title": "Keep station staff accurate",
         "body": "Check staff station and active state before assigning a flight. Flight scheduling only offers eligible staff from its selected station."
@@ -712,7 +717,7 @@ export const masterDataMatrix = [
     id: "stations",
     record: "Stations",
     location: "Master Data → Stations",
-    keyFields: ["IATA (3)", "ICAO (4, optional)", "Name", "City", "Country"],
+    keyFields: ["IATA (3)", "ICAO (4, optional)", "Name", "City", "Country", "Time zone (required)"],
     usedBy: ["Flights", "Staff", "Operational filters"],
     controls: ["Keep codes unique", "Link the correct country", "Review staff"],
     screenshotKey: "master-data-stations",

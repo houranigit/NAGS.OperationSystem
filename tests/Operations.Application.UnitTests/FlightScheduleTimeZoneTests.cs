@@ -66,13 +66,4 @@ public sealed class FlightScheduleTimeZoneTests
         error.ShouldContain(expectedError);
     }
 
-    [Fact]
-    public void Browser_fixed_offset_fallback_remains_compatible_with_bulk_scheduling()
-    {
-        ScheduleFlightsCommandHandler.TryResolveTimeZone(
-            "Browser UTC+03:00",
-            out var zone).ShouldBeTrue();
-
-        zone.BaseUtcOffset.ShouldBe(TimeSpan.FromHours(3));
-    }
 }

@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.time.ZoneId
 import com.nags.operations.R
 
 /** Performed work is entered explicitly; scheduled services are never marked performed here. */
@@ -27,6 +28,7 @@ internal fun FlightServiceSection(
     items: List<FlightServiceDraft>,
     catalogs: FlightOperationsCatalogs,
     referenceYear: Int,
+    zone: ZoneId,
     onChange: ((List<FlightServiceDraft>) -> List<FlightServiceDraft>) -> Unit,
 ) {
     var selectingService by rememberSaveable { mutableStateOf<String?>(null) }
@@ -50,9 +52,9 @@ internal fun FlightServiceSection(
                 FlightFormDivider()
                 FlightWorkReferenceRow(item.reference, onChange = { reference -> update { it.copy(reference = reference) } })
                 FlightFormDivider()
-                FlightWorkPeriodFields(item.period, referenceYear, onChange = { period -> update { it.copy(period = period) } })
+                FlightWorkPeriodFields(item.period, referenceYear, zone, onChange = { period -> update { it.copy(period = period) } })
                 FlightFormDivider()
-                FlightWorkEmployeeList(item.employees, catalogs.stationStaff, showRemarks = false, referenceYear = referenceYear,
+                FlightWorkEmployeeList(item.employees, catalogs.stationStaff, showRemarks = false, referenceYear = referenceYear, zone = zone,
                     onChange = { employees -> update { it.copy(employees = employees) } })
                 FlightFormDivider()
                 FlightRemarksComposer(item.remarks, onRemarksChange = { remarks -> update { it.copy(remarks = remarks) } },
@@ -63,7 +65,7 @@ internal fun FlightServiceSection(
         } }
         FlightFormFieldGroup {
             FlightWorkAddRow(stringResource(R.string.work_add_service, items.size + 1), onClick = {
-                val added = FlightServiceDraft()
+                val added = FlightServiceDraft(period = FlightWorkPeriod.now(zone))
                 onChange { current -> current + added }
             })
         }

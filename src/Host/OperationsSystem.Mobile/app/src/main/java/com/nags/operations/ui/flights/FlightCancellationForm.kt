@@ -1,6 +1,7 @@
 package com.nags.operations.ui.flights
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -10,6 +11,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.ui.util.stationTimeZone
 import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlinx.coroutines.flow.Flow
@@ -21,10 +23,12 @@ internal fun FlightCancellationForm(
     loadCustomerLogo: (String) -> Flow<ByteArray?>,
     onClose: () -> Unit,
 ) {
+    val entryTimeZoneId = rememberSaveable { flight.stationTimeZoneId }
+    val entryZone = remember(entryTimeZoneId) { stationTimeZone(entryTimeZoneId) }
     val initialCanceledAt = rememberSaveable {
-        LocalDateTime.now().withSecond(0).withNano(0).toString()
+        LocalDateTime.now(entryZone).withSecond(0).withNano(0).toString()
     }
-    val referenceYear = rememberSaveable { LocalDate.now().year }
+    val referenceYear = rememberSaveable { LocalDate.now(entryZone).year }
     var canceledAt by rememberSaveable { mutableStateOf(initialCanceledAt) }
     var remarks by rememberSaveable { mutableStateOf("") }
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
@@ -59,7 +63,6 @@ internal fun FlightCancellationForm(
                 },
             )
         }
-        FlightFormTimeZoneHint()
         FlightFormRemarks(
             value = remarks,
             onValueChange = { remarks = it },

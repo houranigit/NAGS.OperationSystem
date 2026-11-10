@@ -10,9 +10,11 @@ public sealed record FlightListItemDto(
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc,
     bool IsPerLanding,
+    string StationTimeZoneId,
     string? AircraftTypeModel = null,
     Guid? CustomerId = null,
-    string? CustomerLogoVersion = null);
+    string? CustomerLogoVersion = null,
+    Guid? StationId = null);
 
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId);
@@ -38,6 +40,7 @@ public sealed record FlightDetailDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
+    string StationTimeZoneId,
     IReadOnlyList<FlightArrivalSubmissionDto>? ArrivalSubmissions = null,
     Guid? CurrentStaffMemberId = null,
     bool CanSaveArrival = false,

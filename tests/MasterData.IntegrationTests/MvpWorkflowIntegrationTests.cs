@@ -51,6 +51,7 @@ public class MvpWorkflowIntegrationTests(MasterDataApiFactory factory) : IClassF
             icaoCode = (string?)null,
             name = "MVP Station",
             city = "Amman",
+            timeZoneId = "Asia/Amman",
             countryId
         });
         createStation.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -69,6 +70,7 @@ public class MvpWorkflowIntegrationTests(MasterDataApiFactory factory) : IClassF
                 icaoCode = (string?)null,
                 name = "MVP Station Renamed",
                 city = "Aqaba",
+                timeZoneId = "Asia/Amman",
                 countryId
             })
         };

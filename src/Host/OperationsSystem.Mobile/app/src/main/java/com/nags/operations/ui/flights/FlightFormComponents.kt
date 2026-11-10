@@ -99,9 +99,9 @@ import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.ui.components.CustomerLogo
 import com.nags.operations.ui.util.formatIsoDateForDisplay
+import com.nags.operations.ui.util.stationTimeZone
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
 import java.time.LocalDateTime
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -226,7 +226,7 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
                 Text(flight.customerName, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(stringResource(R.string.flight_form_context_schedule, flight.stationIata,
-                    "${formatIsoDateForDisplay(flight.scheduledArrivalUtc)} ${formatIsoTimeForDisplay(flight.scheduledArrivalUtc)}"),
+                    "${formatIsoDateForDisplay(flight.scheduledArrivalUtc, stationTimeZone(flight.stationTimeZoneId))} ${formatIsoTimeForDisplay(flight.scheduledArrivalUtc, stationTimeZone(flight.stationTimeZoneId))}"),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -404,12 +404,6 @@ internal fun FlightFormModalSheet(title: String, onDismiss: () -> Unit, content:
     }
 }
 
-
-@Composable
-internal fun FlightFormTimeZoneHint() {
-    Text(stringResource(R.string.flight_form_local_time, ZoneId.systemDefault().id), Modifier.padding(horizontal = 14.dp),
-        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
 
 @Composable
 internal fun FlightFormRemarks(value: String, onValueChange: (String) -> Unit, description: String, enabled: Boolean = true) {

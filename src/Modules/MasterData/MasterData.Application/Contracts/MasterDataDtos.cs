@@ -214,7 +214,11 @@ public sealed record StationListItemDto(
     string? City,
     Guid CountryId,
     string CountryName,
-    bool IsActive);
+    bool IsActive,
+    string TimeZoneId);
+
+public sealed record GeoCoordinatesDto(decimal Latitude, decimal Longitude);
+public sealed record GeoCoordinatesInput(decimal? Latitude, decimal? Longitude);
 
 public sealed record StationDto(
     Guid Id,
@@ -228,9 +232,12 @@ public sealed record StationDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    string? LegacySystemId = null);
+    string TimeZoneId,
+    string? LegacySystemId = null,
+    GeoCoordinatesDto? GeoCoordinates = null);
 
-public sealed record StationOptionDto(Guid Id, string IataCode, string Name);
+public sealed record StationOptionDto(Guid Id, string IataCode, string Name, string TimeZoneId);
+public sealed record StationTimeZoneOptionDto(string Id, string DisplayName);
 
 // --- Customers -------------------------------------------------------------
 

@@ -106,6 +106,7 @@ public sealed class ScheduleFlightCommandHandler(
 
 // --- Schedule flights --------------------------------------------------------
 
+/// <summary>Schedules station-local wall times; legacy Utc field names are retained for API compatibility.</summary>
 public sealed record ScheduleFlightsCommand(
     Guid CustomerId,
     Guid StationId,
@@ -117,6 +118,7 @@ public sealed record ScheduleFlightsCommand(
     Guid? AircraftTypeId,
     IReadOnlyList<Guid> PlannedServiceIds,
     IReadOnlyList<Guid> AssignedStaffMemberIds,
+    // Retained for older clients; the handler always resolves the station’s configured zone.
     string? TimeZoneId = null) : ICommand<IReadOnlyList<Guid>>;
 
 public sealed class ScheduleFlightsCommandValidator : AbstractValidator<ScheduleFlightsCommand>
@@ -129,7 +131,6 @@ public sealed class ScheduleFlightsCommandValidator : AbstractValidator<Schedule
         RuleFor(x => x.FlightNumber).NotEmpty().MaximumLength(12);
         RuleFor(x => x.PlannedServiceIds).NotEmpty();
         RuleFor(x => x.SelectedDates).NotEmpty();
-        RuleFor(x => x.TimeZoneId).MaximumLength(128);
     }
 }
 
@@ -170,12 +171,10 @@ public sealed class ScheduleFlightsCommandHandler(
         if (selectedDates.Count == 0)
             return Error.Validation("At least one selected date is required.", "Operations.Flight.BatchDatesRequired");
 
-        if (!TryResolveTimeZone(request.TimeZoneId, out var scheduleTimeZone))
-        {
-            return Error.Validation(
-                $"Time zone '{request.TimeZoneId}' is not recognized. Refresh the page and try again.",
-                "Operations.Flight.BatchTimeZoneInvalid");
-        }
+        var stationTimeZone = await resolver.StationTimeZoneAsync(request.StationId, cancellationToken);
+        if (stationTimeZone.IsFailure)
+            return stationTimeZone.Error;
+        var scheduleTimeZone = stationTimeZone.Value;
 
         var references = await FlightBuildHelpers.BuildReferencesAsync(resolver, request.CustomerId, request.StationId,
             request.OperationTypeId, request.AircraftTypeId, request.FlightNumber, request.PlannedServiceIds, cancellationToken);
@@ -249,63 +248,6 @@ public sealed class ScheduleFlightsCommandHandler(
         await db.SaveChangesAsync(cancellationToken);
         mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         return ids;
-    }
-
-    internal static bool TryResolveTimeZone(string? timeZoneId, out TimeZoneInfo timeZone)
-    {
-        if (string.IsNullOrWhiteSpace(timeZoneId))
-        {
-            timeZone = TimeZoneInfo.Utc;
-            return true;
-        }
-
-        const string browserOffsetPrefix = "Browser UTC";
-        var rawBrowserOffset = timeZoneId.StartsWith(browserOffsetPrefix, StringComparison.Ordinal)
-            ? timeZoneId[browserOffsetPrefix.Length..]
-            : string.Empty;
-        if (rawBrowserOffset.Length > 1 &&
-            rawBrowserOffset[0] is '+' or '-' &&
-            TimeSpan.TryParse(rawBrowserOffset[1..], out var browserOffsetMagnitude))
-        {
-            var browserOffset = rawBrowserOffset[0] == '-' ? -browserOffsetMagnitude : browserOffsetMagnitude;
-            if (browserOffset >= TimeSpan.FromHours(-14) && browserOffset <= TimeSpan.FromHours(14))
-            {
-                timeZone = TimeZoneInfo.CreateCustomTimeZone(timeZoneId, browserOffset, timeZoneId, timeZoneId);
-                return true;
-            }
-        }
-
-        try
-        {
-            timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-            return true;
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            if (TimeZoneInfo.TryConvertIanaIdToWindowsId(timeZoneId, out var windowsId))
-            {
-                try
-                {
-                    timeZone = TimeZoneInfo.FindSystemTimeZoneById(windowsId);
-                    return true;
-                }
-                catch (TimeZoneNotFoundException)
-                {
-                    // Return a validation error below.
-                }
-                catch (InvalidTimeZoneException)
-                {
-                    // Return a validation error below.
-                }
-            }
-        }
-        catch (InvalidTimeZoneException)
-        {
-            // Return a validation error below.
-        }
-
-        timeZone = TimeZoneInfo.Utc;
-        return false;
     }
 
     internal static bool TryCombineUtc(

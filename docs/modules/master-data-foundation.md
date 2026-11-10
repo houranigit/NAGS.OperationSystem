@@ -231,6 +231,8 @@ The initial Station model preserves the legacy business fields and behavior:
 - Name
 - City
 - Country reference
+- Optional `GeoCoordinates` containing WGS 84 latitude/longitude in decimal degrees
+- `TimeZoneId` using an IANA identifier such as `Asia/Riyadh`
 - Active/inactive lifecycle
 - Created and updated timestamps
 
@@ -241,11 +243,28 @@ Initial legacy rules to preserve unless later changed:
 - ICAO code is optional; when supplied, it is trimmed and normalized to uppercase on the backend and must be globally unique.
 - A Station ICAO code is exactly four ASCII letters.
 - Name is required and has a maximum length of 150 characters.
-- City is required and has a maximum length of 100 characters.
+- City is optional and has a maximum length of 100 characters.
+- Coordinates are an optional pair; latitude must be within −90…90 and longitude within −180…180. They are stored to seven decimal places.
+- `TimeZoneId` is mandatory in storage and Station create/update APIs and must be a recognized IANA identifier. The migration and database default use `Etc/UTC` as a generic placeholder for existing records and older imports. Select the airport/city zone in the required searchable Station time-zone picker; its IANA options come from the server’s time-zone data. Coordinates do not determine that zone. The existing airport cities Jeddah, Riyadh, Dammam, Madinah, and Taif use `Asia/Riyadh` ([IANA zone table](https://data.iana.org/time-zones/tzdb/zone1970.tab)); Head Office in Jeddah uses the same zone.
+- Operation date/time inputs, including single and recurring flight scheduling, use the Station's current time zone. Instants remain stored and exchanged as UTC. Time-zone changes refresh mobile flight data.
 - A Station is active when created.
 - Station records are deactivated rather than hard deleted after use.
 
 All instants use `DateTimeOffset`/`TimeProvider` according to the project architecture. The new model must not copy direct `DateTime.UtcNow` calls from the legacy domain.
+
+### Current airport reference points
+
+The real airport stations use the official SANS AIP AD 2.2 airport reference points, converted from degrees/minutes/seconds to WGS 84 decimal degrees. These identify the airport rather than the city or a terminal entrance.
+
+| Station / airport | Latitude | Longitude |
+| --- | ---: | ---: |
+| [DMM / OEDF](https://aimss.sans.com.sa/assets/FileManagerFiles/AIRAC%20AIP%20AMDT%2010_26_2026_10_01/eAIP/AD%202%20OEDF%20DAMMAM%20-%20KING%20FAHD%20INTERNATIONAL-en-US.html) | 26.4711111 | 49.7977778 |
+| [JED / OEJN](https://aimss.sans.com.sa/assets/FileManagerFiles/AIRAC%20AIP%20AMDT%2010_26_2026_10_01/eAIP/AD%202%20OEJN%20JEDDAH%20-%20KING%20ABDULAZIZ%20INTERNATIONAL-en-US.html) | 21.6811111 | 39.1561111 |
+| [MED / OEMA](https://aimss.sans.com.sa/assets/FileManagerFiles/AIRAC%20AIP%20AMDT%2010_26_2026_10_01/eAIP/AD%202%20OEMA%20MADINAH%20-%20PRINCE%20MOHAMMAD%20BIN%20ABDULAZIZ%20INTERNATIONAL-en-US.html) | 24.5502778 | 39.7058333 |
+| [RUH / OERK](https://aimss.sans.com.sa/assets/FileManagerFiles/AIRAC%20AIP%20AMDT%2010_26_2026_10_01/eAIP/AD%202%20OERK%20RIYADH%20-%20KING%20KHALED%20INTERNATIONAL-en-US.html) | 24.9627778 | 46.7080556 |
+| [TIF / OETF](https://aimss.sans.com.sa/assets/FileManagerFiles/AIRAC%20AIP%20AMDT%2010_26_2026_10_01/eAIP/AD%202%20OETF%20TAIF%20INTERNATIONAL%20AIRPORT-en-US.html) | 21.4833333 | 40.5444444 |
+
+The `HOF` record is Head Office in Jeddah, and `TES` is a test station; neither receives airport coordinates.
 
 ## 10. Customer Baseline
 

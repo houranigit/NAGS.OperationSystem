@@ -233,9 +233,15 @@ public sealed record StationDetail(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    string? LegacySystemId = null);
+    string TimeZoneId,
+    string? LegacySystemId = null,
+    GeoCoordinatesModel? GeoCoordinates = null);
 
-public sealed record StationOption(Guid Id, string IataCode, string Name);
+public sealed record GeoCoordinatesModel(decimal Latitude, decimal Longitude);
+
+public sealed record StationOption(Guid Id, string IataCode, string Name, string TimeZoneId);
+
+public sealed record StationTimeZoneOption(string Id, string DisplayName);
 
 public sealed record NewStationStaffRequest(
     string FullName,
@@ -254,8 +260,11 @@ public sealed record CreateStationRequest(
     string? City,
     Guid CountryId,
     IReadOnlyList<NewStationStaffRequest>? Staff,
-    string? LegacySystemId = null);
-public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, string? LegacySystemId = null);
+    string TimeZoneId,
+    string? LegacySystemId = null,
+    GeoCoordinatesModel? GeoCoordinates = null);
+public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId,
+    string TimeZoneId, string? LegacySystemId = null, GeoCoordinatesModel? GeoCoordinates = null);
 
 // --- Customers -------------------------------------------------------------
 

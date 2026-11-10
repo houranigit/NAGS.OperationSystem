@@ -30,8 +30,14 @@ public sealed class MasterDataReader(MasterDataDbContext db) : IMasterDataReader
     public Task<StationReadSnapshot?> GetStationAsync(Guid id, CancellationToken cancellationToken) =>
         db.Stations.AsNoTracking()
             .Where(s => s.Id == id)
-            .Select(s => new StationReadSnapshot(s.Id, s.IataCode, s.IcaoCode, s.Name, s.IsActive))
+            .Select(s => new StationReadSnapshot(s.Id, s.IataCode, s.IcaoCode, s.Name, s.IsActive, s.TimeZoneId))
             .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<StationReadSnapshot>> GetStationsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        await db.Stations.AsNoTracking()
+            .Where(s => ids.Contains(s.Id))
+            .Select(s => new StationReadSnapshot(s.Id, s.IataCode, s.IcaoCode, s.Name, s.IsActive, s.TimeZoneId))
+            .ToListAsync(cancellationToken);
 
     public Task<OperationTypeReadSnapshot?> GetOperationTypeAsync(Guid id, CancellationToken cancellationToken) =>
         db.OperationTypes.AsNoTracking()

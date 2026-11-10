@@ -77,10 +77,12 @@ import androidx.compose.ui.unit.LayoutDirection
 import com.nags.operations.R
 import com.nags.operations.data.AircraftTypeCatalogItem
 import com.nags.operations.data.FlightDetail
-import com.nags.operations.ui.util.parseInUserZone
+import com.nags.operations.ui.util.operationLocalTime
+import com.nags.operations.ui.util.stationTimeZone
 import com.nags.operations.ui.util.formatIsoForDisplay
 import java.time.OffsetDateTime
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.LocalDateTime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -108,6 +110,9 @@ internal fun FlightOperationsForm(
     onSaveArrival: suspend (FlightDetail, SaveFlightArrivalRequest) -> Unit,
     onReviewArrival: suspend () -> FlightDetail,
 ) {
+    val entryTimeZoneId = rememberSaveable { flight.stationTimeZoneId }
+    val entryZone = remember(entryTimeZoneId) { stationTimeZone(entryTimeZoneId) }
+    val zone = entryZone
     val arrival = flight.visibleArrival()
     val pendingInput = remember(pending?.inputJson) {
         pending?.let { runCatching { Json.decodeFromString<SaveFlightArrivalRequest>(it.inputJson) }.getOrNull() }
@@ -115,12 +120,12 @@ internal fun FlightOperationsForm(
     val initialAircraftId = rememberSaveable { pendingInput?.aircraftTypeId ?: arrival?.aircraftTypeId ?: flight.aircraftTypeId.orEmpty() }
     val initialAircraftModel = rememberSaveable { arrival?.aircraftTypeModel ?: flight.aircraftTypeModel.orEmpty() }
     val initialAta = rememberSaveable {
-        runCatching { parseInUserZone(pendingInput?.ata ?: arrival?.ata ?: flight.scheduledArrivalUtc).toLocalDateTime().toString() }.getOrDefault("")
+        operationLocalTime(pendingInput?.ata ?: arrival?.ata ?: flight.scheduledArrivalUtc, entryZone)
     }
     val initialAtd = rememberSaveable {
-        runCatching { parseInUserZone(flight.scheduledDepartureUtc).toLocalDateTime().withSecond(0).withNano(0).toString() }.getOrDefault("")
+        operationLocalTime(flight.scheduledDepartureUtc, entryZone)
     }
-    val referenceYear = rememberSaveable { LocalDate.now().year }
+    val referenceYear = rememberSaveable { LocalDate.now(entryZone).year }
     var aircraftId by rememberSaveable { mutableStateOf(initialAircraftId) }
     var ata by rememberSaveable { mutableStateOf(initialAta) }
     var atd by rememberSaveable { mutableStateOf(initialAtd) }
@@ -133,7 +138,7 @@ internal fun FlightOperationsForm(
     var originalAta by rememberSaveable { mutableStateOf(pendingInput?.ata ?: arrival?.ata) }
     var arrivalVersion by rememberSaveable { mutableStateOf(pending?.rowVersion ?: flight.rowVersion) }
     fun input() = SaveFlightArrivalRequest(
-        arrivalInputTime(ata, originalAta),
+        arrivalInputTime(ata, originalAta, entryZone),
         aircraftId, tailNumber, reference, arrivalRemarks).normalized()
     var arrivalBaseline by rememberSaveable { mutableStateOf(Json.encodeToString(input())) }
     var queuedBaseline by rememberSaveable { mutableStateOf(pending?.inputJson) }
@@ -156,7 +161,7 @@ internal fun FlightOperationsForm(
             if (!arrivalChanged) {
                 aircraftId = pendingInput.aircraftTypeId
                 originalAta = pendingInput.ata
-                ata = parseInUserZone(pendingInput.ata).toLocalDateTime().toString()
+                ata = operationLocalTime(pendingInput.ata, entryZone)
                 tailNumber = pendingInput.aircraftTailNumber
                 reference = pendingInput.customerWorkReferenceNumber.orEmpty()
                 arrivalRemarks = pendingInput.remarks.orEmpty()
@@ -177,7 +182,7 @@ internal fun FlightOperationsForm(
             if (arrival != null) {
                 aircraftId = arrival.aircraftTypeId
                 originalAta = arrival.ata
-                ata = parseInUserZone(arrival.ata).toLocalDateTime().toString()
+                ata = operationLocalTime(arrival.ata, entryZone)
                 tailNumber = arrival.aircraftTailNumber
                 reference = arrival.customerWorkReferenceNumber.orEmpty()
                 arrivalRemarks = arrival.remarks.orEmpty()
@@ -237,14 +242,14 @@ internal fun FlightOperationsForm(
         ?: arrival?.takeIf { it.aircraftTypeId == aircraftId }?.aircraftTypeModel.orEmpty()
     fun openPicker(kind: String) {
         focus.clearFocus(); keyboard?.hide()
-        if (kind == "ata" && ata.isBlank()) ata = LocalDateTime.now().withSecond(0).withNano(0).toString()
-        if (kind == "atd" && atd.isBlank()) atd = LocalDateTime.now().withSecond(0).withNano(0).toString()
+        if (kind == "ata" && ata.isBlank()) ata = LocalDateTime.now(zone).withSecond(0).withNano(0).toString()
+        if (kind == "atd" && atd.isBlank()) atd = LocalDateTime.now(zone).withSecond(0).withNano(0).toString()
         picker = kind
     }
     FlightRecordingFormScaffold(flight, stringResource(R.string.operations_title), stringResource(R.string.operations_save),
         loadCustomerLogo, requestClose,
         saveEnabled = arrivalEnabled && (arrivalChanged || reviewedChangeId != null), saveLoading = saving, onSave = saveArrival) {
-        ArrivalSectionHeader(pending, arrival, flight.currentStaffMemberId)
+        ArrivalSectionHeader(pending, arrival, flight.currentStaffMemberId, entryZone)
         if (pending != null && pending.status != "pending" && reviewedChangeId != pending.changeId) {
             ArrivalFormMessage(stringResource(R.string.arrival_sync_review), error = true)
             pending.error?.takeIf { pending.status != "pending" }?.let { ArrivalFormMessage(it, error = true) }
@@ -264,12 +269,11 @@ internal fun FlightOperationsForm(
         saveError?.let { ArrivalFormMessage(it, error = true) }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             FlightFormFieldGroup {
-                FlightFormDateTimeField(readOnlyArrival?.let { parseInUserZone(it.ata).toLocalDateTime().toString() } ?: ata, stringResource(R.string.arrival_ata_short), stringResource(R.string.arrival_choose_ata),
+                FlightFormDateTimeField(readOnlyArrival?.let { operationLocalTime(it.ata, entryZone) } ?: ata, stringResource(R.string.arrival_ata_short), stringResource(R.string.arrival_choose_ata),
                     enabled = arrivalEnabled,
                     errorMessage = if (ArrivalInputError.AtaRequired in errors) stringResource(R.string.arrival_ata_required) else null,
                     onClick = { openPicker("ata") })
             }
-            FlightFormTimeZoneHint()
         }
         if (ArrivalInputError.VersionRequired in errors) ArrivalFormMessage(stringResource(R.string.arrival_reload_required), error = true)
         FlightFormFieldGroup {
@@ -291,9 +295,9 @@ internal fun FlightOperationsForm(
         }
         FlightFormRemarks(if (readOnlyArrival != null) readOnlyArrival.remarks.orEmpty() else arrivalRemarks, { arrivalRemarks = it }, stringResource(R.string.operations_arrival_remarks), enabled = arrivalEnabled)
         CompositionLocalProvider(LocalFlightMediaSession provides mediaSession) {
-            FlightServiceSection(workDrafts.services, catalogs, referenceYear,
+            FlightServiceSection(workDrafts.services, catalogs, referenceYear, zone,
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(services = change(workDrafts.services))) })
-            FlightTaskSection(workDrafts.tasks, catalogs, referenceYear,
+            FlightTaskSection(workDrafts.tasks, catalogs, referenceYear, zone,
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(tasks = change(workDrafts.tasks))) })
         }
         OperationsSectionTitle(stringResource(R.string.operations_departure), Modifier.padding(top = 6.dp))
@@ -335,7 +339,7 @@ private fun OperationsSectionTitle(title: String, modifier: Modifier = Modifier,
 /** Compact status and attribution remain attached to the saved arrival. */
 @Composable
 private fun ArrivalSectionHeader(pending: FlightArrivalPendingEntity?, arrival: com.nags.operations.data.FlightArrivalSubmission?,
-    currentStaffMemberId: String?) {
+    currentStaffMemberId: String?, zone: ZoneId) {
     val status = when {
         pending != null -> stringResource(R.string.arrival_saved_locally)
         arrival != null -> stringResource(R.string.arrival_published_online)
@@ -346,7 +350,7 @@ private fun ArrivalSectionHeader(pending: FlightArrivalPendingEntity?, arrival: 
     }?.fullName
     val savedAt = arrival?.updatedAtUtc ?: arrival?.createdAtUtc
     val attribution = if (author != null && savedAt != null)
-        stringResource(R.string.arrival_author_at, author, formatIsoForDisplay(savedAt)) else null
+        stringResource(R.string.arrival_author_at, author, formatIsoForDisplay(savedAt, zone)) else null
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) {
             val titleWidth = maxWidth * 0.45f

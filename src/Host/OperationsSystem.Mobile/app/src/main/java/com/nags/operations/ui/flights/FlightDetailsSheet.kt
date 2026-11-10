@@ -102,6 +102,7 @@ import com.nags.operations.ui.components.FlightAircraftOperationRow
 import com.nags.operations.ui.components.InitialsAvatarStack
 import com.nags.operations.ui.components.PerLandingBadge
 import com.nags.operations.ui.util.formatFlightDateRangeForDisplay
+import com.nags.operations.ui.util.stationTimeZone
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
 import kotlinx.coroutines.flow.Flow
 
@@ -365,7 +366,7 @@ private fun FlightScheduleTimeGroup(flight: FlightDetail, labelStyle: TextStyle,
         FlightScheduleTimes(flight, labelStyle, valueStyle)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.CalendarMonth, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-            Text(formatFlightDateRangeForDisplay(flight.scheduledArrivalUtc, flight.scheduledDepartureUtc),
+            Text(formatFlightDateRangeForDisplay(flight.scheduledArrivalUtc, flight.scheduledDepartureUtc, stationTimeZone(flight.stationTimeZoneId)),
                 style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, textAlign = TextAlign.End,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -386,10 +387,10 @@ private fun FlightScheduleTimes(flight: FlightDetail, labelStyle: TextStyle, tim
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(timeGap), verticalAlignment = Alignment.CenterVertically) {
-            Text(formatIsoTimeForDisplay(flight.scheduledArrivalUtc), Modifier.weight(1f), style = timeStyle,
+            Text(formatIsoTimeForDisplay(flight.scheduledArrivalUtc, stationTimeZone(flight.stationTimeZoneId)), Modifier.weight(1f), style = timeStyle,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(arrowSize))
-            Text(formatIsoTimeForDisplay(flight.scheduledDepartureUtc), Modifier.weight(1f), style = timeStyle, textAlign = TextAlign.End,
+            Text(formatIsoTimeForDisplay(flight.scheduledDepartureUtc, stationTimeZone(flight.stationTimeZoneId)), Modifier.weight(1f), style = timeStyle, textAlign = TextAlign.End,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }

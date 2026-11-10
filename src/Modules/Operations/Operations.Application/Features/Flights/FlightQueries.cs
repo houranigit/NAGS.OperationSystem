@@ -22,7 +22,7 @@ public sealed record GetFlightsQuery(
     DateTimeOffset? ToUtc = null,
     string? Sort = null) : IQuery<PagedResult<FlightListItemDto>>;
 
-public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsScope scope, ICustomerLogoReader logos)
+public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsScope scope, ICustomerLogoReader logos, IMasterDataReader masterData)
     : IQueryHandler<GetFlightsQuery, PagedResult<FlightListItemDto>>
 {
     public async Task<Result<PagedResult<FlightListItemDto>>> Handle(GetFlightsQuery request, CancellationToken cancellationToken)
@@ -41,25 +41,42 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
 
         var items = await FlightListQuery.ApplySort(query, request.Sort)
             .Skip(paging.Skip).Take(paging.PageSize)
-            .Select(f => new FlightListItemDto(f.Id, f.FlightNumber.Value, f.Customer.IataCode,
-                f.Customer.Name, f.Station.IataCode, f.OperationType.Name, f.Schedule.Sta, f.Schedule.Std,
-                f.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
-                f.AircraftType == null ? null : f.AircraftType.Model, f.Customer.CustomerId))
+            .Select(f => new
+            {
+                f.Id,
+                FlightNumber = f.FlightNumber.Value,
+                CustomerIataCode = f.Customer.IataCode,
+                CustomerName = f.Customer.Name,
+                f.Customer.CustomerId,
+                StationIataCode = f.Station.IataCode,
+                f.Station.StationId,
+                OperationTypeName = f.OperationType.Name,
+                ScheduledArrivalUtc = f.Schedule.Sta,
+                ScheduledDepartureUtc = f.Schedule.Std,
+                IsPerLanding = f.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
+                AircraftTypeModel = f.AircraftType == null ? null : f.AircraftType.Model
+            })
             .ToListAsync(cancellationToken);
-        var customerIds = items.Select(item => item.CustomerId.GetValueOrDefault()).Distinct().ToArray();
+        var customerIds = items.Select(item => item.CustomerId).Distinct().ToArray();
         var versions = await logos.GetLogoVersionsAsync(customerIds, cancellationToken);
-        var versionedItems = items.Select(item => item with
-        {
-            CustomerLogoVersion = versions.TryGetValue(item.CustomerId.GetValueOrDefault(), out var version)
-                ? version : CustomerLogoVersions.None
-        }).ToList();
+        var stations = await masterData.GetStationsAsync(items.Select(item => item.StationId).Distinct().ToArray(), cancellationToken);
+        var stationTimeZones = stations.ToDictionary(station => station.Id, station => station.TimeZoneId);
+        if (items.Any(item => !stationTimeZones.TryGetValue(item.StationId, out var zone) || string.IsNullOrWhiteSpace(zone)))
+            return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
+
+        var versionedItems = items.Select(item => new FlightListItemDto(
+            item.Id, item.FlightNumber, item.CustomerIataCode, item.CustomerName, item.StationIataCode,
+            item.OperationTypeName, item.ScheduledArrivalUtc, item.ScheduledDepartureUtc, item.IsPerLanding,
+            stationTimeZones[item.StationId], item.AircraftTypeModel, item.CustomerId,
+            versions.TryGetValue(item.CustomerId, out var version) ? version : CustomerLogoVersions.None,
+            item.StationId)).ToList();
         return paging.ToResult(versionedItems, total);
     }
 }
 
 public sealed record GetFlightByIdQuery(Guid Id) : IQuery<FlightDetailDto>;
 
-public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperationsScope scope)
+public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperationsScope scope, IMasterDataReader masterData)
     : IQueryHandler<GetFlightByIdQuery, FlightDetailDto>
 {
     public async Task<Result<FlightDetailDto>> Handle(GetFlightByIdQuery request, CancellationToken cancellationToken)
@@ -80,13 +97,16 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
         if (access.IsFailure)
             return access.Error;
 
-        return FlightDetails.Map(flight);
+        var station = await masterData.GetStationAsync(flight.Station.StationId, cancellationToken);
+        if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
+            return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
+        return FlightDetails.Map(flight, station.TimeZoneId);
     }
 }
 
 internal static class FlightDetails
 {
-    public static FlightDetailDto Map(Flight flight, Guid? currentStaffMemberId = null, bool canSaveArrival = false) =>
+    public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false) =>
         new(flight.Id, flight.FlightNumber.Value,
             flight.Customer.CustomerId, flight.Customer.IataCode, flight.Customer.Name,
             flight.Station.StationId, flight.Station.IataCode, flight.Station.Name,
@@ -97,7 +117,7 @@ internal static class FlightDetails
                 service.Service.Name, service.IsAircraftPerLanding)).ToList(),
             flight.AssignedEmployees.Select(employee => new AssignedEmployeeDto(employee.Employee.StaffMemberId,
                 employee.Employee.FullName, employee.Employee.EmployeeId)).ToList(),
-            flight.CreatedAtUtc, flight.UpdatedAtUtc, Convert.ToBase64String(flight.RowVersion),
+            flight.CreatedAtUtc, flight.UpdatedAtUtc, Convert.ToBase64String(flight.RowVersion), stationTimeZoneId,
             flight.ArrivalSubmissions.OrderBy(a => a.CreatedAtUtc).ThenBy(a => a.Id).Select(FlightArrivalSubmissionDto.Map).ToList(),
             currentStaffMemberId, canSaveArrival, flight.CancellationSubmissions.Count > 0);
 }

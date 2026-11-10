@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.time.ZoneId
 import com.nags.operations.R
 
 /** Repeatable task entries remain independent from scheduled services and from one another. */
@@ -35,6 +36,7 @@ internal fun FlightTaskSection(
     items: List<FlightTaskDraft>,
     catalogs: FlightOperationsCatalogs,
     referenceYear: Int,
+    zone: ZoneId,
     onChange: ((List<FlightTaskDraft>) -> List<FlightTaskDraft>) -> Unit,
 ) {
     var pickerTaskId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -104,18 +106,18 @@ internal fun FlightTaskSection(
                         }
                     }
                     FlightFormDivider()
-                    FlightWorkPeriodFields(task.period, referenceYear) { period -> updateTask(task.id) { it.copy(period = period) } }
+                    FlightWorkPeriodFields(task.period, referenceYear, zone) { period -> updateTask(task.id) { it.copy(period = period) } }
                     FlightFormDivider()
-                    FlightWorkEmployeeList(task.employees, catalogs.stationStaff, showRemarks = true, referenceYear = referenceYear,
+                    FlightWorkEmployeeList(task.employees, catalogs.stationStaff, showRemarks = true, referenceYear = referenceYear, zone = zone,
                         onChange = { employees -> updateTask(task.id) { it.copy(employees = employees) } })
                     FlightFormDivider()
-                    FlightWorkResourceList(FlightWorkResourceKind.Tool, task.tools, catalogs.tools, referenceYear,
+                    FlightWorkResourceList(FlightWorkResourceKind.Tool, task.tools, catalogs.tools, referenceYear, zone,
                         onChange = { tools -> updateTask(task.id) { it.copy(tools = tools) } })
                     FlightFormDivider()
-                    FlightWorkResourceList(FlightWorkResourceKind.Material, task.materials, catalogs.materials, referenceYear,
+                    FlightWorkResourceList(FlightWorkResourceKind.Material, task.materials, catalogs.materials, referenceYear, zone,
                         onChange = { materials -> updateTask(task.id) { it.copy(materials = materials) } })
                     FlightFormDivider()
-                    FlightWorkResourceList(FlightWorkResourceKind.GeneralSupport, task.generalSupports, catalogs.generalSupports, referenceYear,
+                    FlightWorkResourceList(FlightWorkResourceKind.GeneralSupport, task.generalSupports, catalogs.generalSupports, referenceYear, zone,
                         onChange = { supports -> updateTask(task.id) { it.copy(generalSupports = supports) } })
                     FlightFormDivider()
                     FlightRemarksComposer(task.remarks,
@@ -128,7 +130,7 @@ internal fun FlightTaskSection(
         }
         FlightFormFieldGroup {
             FlightWorkAddRow(stringResource(R.string.work_add_task, items.size + 1)) {
-                val added = FlightTaskDraft()
+                val added = FlightTaskDraft(period = FlightWorkPeriod.now(zone))
                 onChange { current -> current + added }
             }
         }

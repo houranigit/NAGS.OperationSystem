@@ -661,7 +661,7 @@ public class DataScopeIntegrationTests(MasterDataApiFactory factory) : IClassFix
             var countryId = await CreateCountryAsync(client);
             var iata = await UnusedTripletAsync(client);
             var create = await client.PostAsJsonAsync($"{Base}/stations",
-                new { iataCode = iata, icaoCode = (string?)null, name = $"Station {iata}", city = "City", countryId });
+                new { iataCode = iata, icaoCode = (string?)null, name = $"Station {iata}", city = "City", countryId, timeZoneId = "Asia/Riyadh" });
             create.StatusCode.ShouldBe(HttpStatusCode.Created);
             return await create.Content.ReadFromJsonAsync<Guid>();
         }

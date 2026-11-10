@@ -73,6 +73,7 @@
     private StationModel model = new();
     private readonly List<StaffRow> staff = [];
     private IReadOnlyList<CountryOption> countries = [];
+    private IReadOnlyList<StationTimeZoneOption> timeZones = [];
     private IReadOnlyList<ManpowerTypeOption> manpowerTypes = [];
     private IReadOnlyList<RoleOption> stationRoles = [];
     private bool canGrantPortal;
@@ -90,16 +91,20 @@
         try
         {
             var countriesTask = MasterData.GetCountryOptionsAsync();
+            var timeZonesTask = MasterData.GetStationTimeZonesAsync();
 
             if (StationId is { } id)
             {
                 var detailTask = MasterData.GetStationAsync(id);
 
-                await Task.WhenAll(countriesTask, detailTask);
+                await Task.WhenAll(countriesTask, timeZonesTask, detailTask);
 
                 countries = await countriesTask;
+                timeZones = await timeZonesTask;
                 var detail = await detailTask;
-                model = new StationModel { IataCode = detail.IataCode, IcaoCode = detail.IcaoCode, Name = detail.Name, City = detail.City, CountryId = detail.CountryId, LegacySystemId = detail.LegacySystemId };
+                if (!timeZones.Any(zone => zone.Id == detail.TimeZoneId))
+                    timeZones = [.. timeZones, new(detail.TimeZoneId, detail.TimeZoneId)];
+                model = new StationModel { IataCode = detail.IataCode, IcaoCode = detail.IcaoCode, Name = detail.Name, City = detail.City, CountryId = detail.CountryId, LegacySystemId = detail.LegacySystemId, TimeZoneId = detail.TimeZoneId, Latitude = detail.GeoCoordinates?.Latitude, Longitude = detail.GeoCoordinates?.Longitude };
                 rowVersion = detail.RowVersion;
             }
             else
@@ -112,9 +117,10 @@
                     ? Identity.GetRoleOptionsAsync("StationStaff", assignableOnly: true)
                     : Task.FromResult<IReadOnlyList<RoleOption>>([]);
 
-                await Task.WhenAll(countriesTask, manpowerTypesTask, stationRolesTask);
+                await Task.WhenAll(countriesTask, timeZonesTask, manpowerTypesTask, stationRolesTask);
 
                 countries = await countriesTask;
+                timeZones = await timeZonesTask;
                 manpowerTypes = await manpowerTypesTask;
                 stationRoles = await stationRolesTask;
             }
@@ -257,6 +263,24 @@
             </div>
         </div>
 
+        <div class="stf-field-block">
+            <label class="stf-label" for="station-time-zone">@UiStrings.Stations.TimeZone <span class="stf-required">*</span></label>
+            <RadzenDropDown @bind-Value="model.TimeZoneId" id="station-time-zone" Name="timeZoneId" Data="@timeZones"
+                            TextProperty="DisplayName" ValueProperty="Id" AllowFiltering="true"
+                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="stf-control"
+                            Placeholder="@UiStrings.Stations.SelectTimeZone" />
+        </div>
+        <div class="stf-grid-2">
+            <div class="stf-field-block">
+                <label class="stf-label" for="station-latitude">@UiStrings.Stations.Latitude</label>
+                <RadzenNumeric TValue="decimal?" @bind-Value="model.Latitude" id="station-latitude" Name="latitude" Min="-90" Max="90" ShowUpDown="false" class="stf-control" />
+            </div>
+            <div class="stf-field-block">
+                <label class="stf-label" for="station-longitude">@UiStrings.Stations.Longitude</label>
+                <RadzenNumeric TValue="decimal?" @bind-Value="model.Longitude" id="station-longitude" Name="longitude" Min="-180" Max="180" ShowUpDown="false" class="stf-control" />
+            </div>
+        </div>
+
         @if (StationId is null)
         {
             <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="Need help with airport codes?">
@@ -374,6 +398,14 @@
                     <span>Legacy system ID</span>
                     <strong>@Display(model.LegacySystemId)</strong>
                 </div>
+                <div>
+                    <span>@UiStrings.Stations.TimeZone</span>
+                    <strong>@model.TimeZoneId</strong>
+                </div>
+                <div>
+                    <span>@UiStrings.Stations.Coordinates</span>
+                    <strong>@(model.Latitude is { } latitude && model.Longitude is { } longitude ? $"{latitude}, {longitude}" : UiStrings.Common.None)</strong>
+                </div>
             </div>
         </div>
 
@@ -465,6 +497,12 @@
         if (!string.IsNullOrWhiteSpace(model.IcaoCode) && model.IcaoCode.Trim().Length != 4) { errorMessage = UiStrings.Stations.IcaoInvalid; return false; }
         if (string.IsNullOrWhiteSpace(model.Name)) { errorMessage = UiStrings.Stations.NameRequired; return false; }
         if (model.CountryId == Guid.Empty) { errorMessage = UiStrings.Stations.CountryRequired; return false; }
+        if (!timeZones.Any(zone => zone.Id == model.TimeZoneId)) { errorMessage = UiStrings.Stations.TimeZoneRequired; return false; }
+        if (model.Latitude.HasValue != model.Longitude.HasValue || model.Latitude is < -90 or > 90 || model.Longitude is < -180 or > 180)
+        {
+            errorMessage = UiStrings.Stations.CoordinatesInvalid;
+            return false;
+        }
         return true;
     }
 
@@ -499,11 +537,14 @@
             var icao = string.IsNullOrWhiteSpace(model.IcaoCode) ? null : model.IcaoCode.Trim().ToUpperInvariant();
             var name = model.Name.Trim();
             var city = Trim(model.City);
+            var coordinates = model.Latitude is { } latitude && model.Longitude is { } longitude
+                ? new GeoCoordinatesModel(latitude, longitude) : null;
+            var timeZoneId = model.TimeZoneId!.Trim();
             var legacySystemId = string.IsNullOrWhiteSpace(model.LegacySystemId) ? null : model.LegacySystemId.Trim();
 
             if (StationId is { } id)
             {
-                await MasterData.UpdateStationAsync(id, new UpdateStationRequest(iata, icao, name, city, model.CountryId, legacySystemId ?? string.Empty), rowVersion ?? string.Empty);
+                await MasterData.UpdateStationAsync(id, new UpdateStationRequest(iata, icao, name, city, model.CountryId, timeZoneId, legacySystemId ?? string.Empty, coordinates), rowVersion ?? string.Empty);
             }
             else
             {
@@ -512,7 +553,7 @@
                         r.FullName.Trim(), r.EmployeeId.Trim(), r.Email.Trim(), r.ManpowerTypeId, null, null, null,
                         r.GrantPortal ? r.PortalRoleId : null)).ToList()
                     : [];
-                await MasterData.CreateStationAsync(new CreateStationRequest(iata, icao, name, city, model.CountryId, staffRequests, legacySystemId));
+                await MasterData.CreateStationAsync(new CreateStationRequest(iata, icao, name, city, model.CountryId, staffRequests, timeZoneId, legacySystemId, coordinates));
             }
 
             DialogService.Close(true);
@@ -535,6 +576,9 @@
         public string? IcaoCode { get; set; }
         public string Name { get; set; } = string.Empty;
         public string? City { get; set; }
+        public string? TimeZoneId { get; set; }
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
         public Guid CountryId { get; set; }
     }
 

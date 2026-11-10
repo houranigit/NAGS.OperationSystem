@@ -136,7 +136,7 @@ public sealed class FlightCustomerLogoTests
         var logos = new LogoReader();
         logos.Versions[customerId] = "logo-v1";
         var result = await new GetFlightsQueryHandler(db,
-            new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, Guid.NewGuid(), true)), logos)
+            new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, Guid.NewGuid(), true)), logos, new SchedulingMasterDataReader())
             .Handle(new GetFlightsQuery(), CancellationToken.None);
 
         logos.VersionCalls.ShouldBe(1);

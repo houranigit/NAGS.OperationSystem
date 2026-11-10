@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import java.time.ZoneId
 import com.nags.operations.R
 import java.time.LocalDateTime
 
@@ -133,6 +134,7 @@ internal fun FlightWorkRemovableEntry(
 internal fun FlightWorkPeriodFields(
     period: FlightWorkPeriod,
     referenceYear: Int,
+    zone: ZoneId,
     onChange: (FlightWorkPeriod) -> Unit,
 ) {
     var picker by rememberSaveable { mutableStateOf<String?>(null) }
@@ -159,7 +161,7 @@ internal fun FlightWorkPeriodFields(
     if (picker != null) {
         val editingEnd = picker == "end"
         val value = runCatching { LocalDateTime.parse(if (editingEnd) period.end.ifBlank { period.start } else period.start) }
-            .getOrElse { LocalDateTime.now().withSecond(0).withNano(0) }
+            .getOrElse { LocalDateTime.now(zone).withSecond(0).withNano(0) }
         FlightFormDateTimeSheet(value, referenceYear,
             onValueChange = { if (editingEnd) onChange(period.copy(end = it.toString())) else onChange(period.copy(start = it.toString())) },
             onDismiss = { picker = null }, title = if (editingEnd) endLabel else startLabel)

@@ -34,7 +34,8 @@ public sealed class EmbeddedCreateAuthorizationTests
                     EmploymentContract: null,
                     WorkingDays: [],
                     Licenses: [],
-                    PortalAccessRoleId: null)]),
+                    PortalAccessRoleId: null)],
+                "America/Chicago"),
             CancellationToken.None);
 
         result.IsFailure.ShouldBeTrue();

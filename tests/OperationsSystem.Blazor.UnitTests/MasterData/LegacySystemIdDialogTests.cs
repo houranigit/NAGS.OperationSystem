@@ -187,7 +187,10 @@ public sealed class LegacySystemIdDialogTests
             if (catalog is "customers" or "stations")
                 SetModel("CountryId", Runtime.Id);
             if (catalog == "stations")
+            {
                 SetModel("IataCode", "MED");
+                SetModel("TimeZoneId", "Asia/Riyadh");
+            }
         }
     }
 
@@ -213,13 +216,16 @@ public sealed class LegacySystemIdDialogTests
             string response;
             if (method == "GET")
             {
-                response = path.Contains("/options", StringComparison.Ordinal)
+                response = path == "/masterdata/stations/time-zones"
+                    ? JsonSerializer.Serialize(new[] { new StationTimeZoneOption("Asia/Riyadh", "Asia/Riyadh") }, JsonOptions)
+                    : path.Contains("/options", StringComparison.Ordinal)
                     ? "[]"
                     : JsonSerializer.Serialize(new
                     {
                         Id, Name = "Test name", FullName = "Test staff", EmployeeId = "EMP-1", Email = "staff@example.com",
                         IataCode = path.Contains("/customers/", StringComparison.Ordinal) ? "SV" : "MED",
                         CountryId = Id, StationId = Id, ManpowerTypeId = Id, Model = "B737", Manufacturer = 0,
+                        TimeZoneId = "Asia/Riyadh",
                         IsActive = true, IsSystem, CreatedAtUtc = "2026-10-04T10:00:00Z", RowVersion = "saved-version",
                         LegacySystemId = "XYZ123", Address = new { }, Equipments = Array.Empty<object>(),
                         Contacts = Array.Empty<object>(), Licenses = Array.Empty<object>()

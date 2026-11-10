@@ -18,7 +18,7 @@ class FlightModelsContractTest {
             {
               "items": [{
                 "id": "flight-1", "flightNumber": "104", "customerIataCode": null,
-                "customerName": "Customer", "stationIataCode": "RUH", "operationTypeName": "Transit",
+                "customerName": "Customer", "stationIataCode": "RUH", "stationTimeZoneId": "Asia/Riyadh", "operationTypeName": "Transit",
                 "scheduledArrivalUtc": "2026-11-03T08:00:00+00:00",
                 "scheduledDepartureUtc": "2026-11-03T10:00:00+00:00", "isPerLanding": false
               }],
@@ -45,7 +45,7 @@ class FlightModelsContractTest {
             """
             {"items":[{
               "id":"flight-1","flightNumber":"TEST","customerName":"Customer",
-              "stationIataCode":"RUH","operationTypeName":"HAJJ","aircraftTypeModel":"A310","customerId":"customer-1","customerLogoVersion":"none",
+              "stationIataCode":"RUH","stationTimeZoneId":"Asia/Riyadh","operationTypeName":"HAJJ","aircraftTypeModel":"A310","customerId":"customer-1","customerLogoVersion":"none",
               "scheduledArrivalUtc":"2026-11-04T10:00:00Z",
               "scheduledDepartureUtc":"2026-11-04T12:00:00Z","isPerLanding":false
             }]}
@@ -67,7 +67,7 @@ class FlightModelsContractTest {
             {
               "id": "flight-1", "flightNumber": "104", "customerId": "customer-1",
               "customerIataCode": "SV", "customerName": "Customer", "stationId": "station-1",
-              "stationIata": "RUH", "stationName": "Riyadh", "operationTypeId": "operation-1",
+              "stationIata": "RUH", "stationTimeZoneId": "Asia/Riyadh", "stationName": "Riyadh", "operationTypeId": "operation-1",
               "operationTypeName": "Transit", "aircraftTypeId": null, "aircraftTypeModel": null,
               "scheduledArrivalUtc": "2026-11-03T08:00:00Z",
               "scheduledDepartureUtc": "2026-11-03T10:00:00Z", "isPerLanding": false,

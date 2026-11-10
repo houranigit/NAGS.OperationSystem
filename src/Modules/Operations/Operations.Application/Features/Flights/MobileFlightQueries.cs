@@ -30,7 +30,8 @@ public sealed record GetMobileFlightsQuery(
 public sealed class GetMobileFlightsQueryHandler(
     IOperationsDbContext db,
     IMobileFlightScope scope,
-    ICustomerLogoReader logos) : IQueryHandler<GetMobileFlightsQuery, MobileFlightPageDto>
+    ICustomerLogoReader logos,
+    IMasterDataReader masterData) : IQueryHandler<GetMobileFlightsQuery, MobileFlightPageDto>
 {
     public async Task<Result<MobileFlightPageDto>> Handle(GetMobileFlightsQuery request, CancellationToken cancellationToken)
     {
@@ -55,6 +56,10 @@ public sealed class GetMobileFlightsQueryHandler(
         List<MobileFlightListItemDto> items = [];
         if (!paging.IsOutOfRange(total))
         {
+            var station = await masterData.GetStationAsync(context.StationId, cancellationToken);
+            if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
+                return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
+            var stationTimeZoneId = station.TimeZoneId;
             items = await FlightListQuery.ApplySort(query, request.Sort)
                 .Skip(paging.Skip).Take(paging.PageSize)
                 .Select(f => new MobileFlightListItemDto(
@@ -67,7 +72,7 @@ public sealed class GetMobileFlightsQueryHandler(
                     !f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) &&
                     f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == context.StaffMemberId),
                     f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
-                    f.CreatedByUserId == context.UserId))
+                    f.CreatedByUserId == context.UserId, stationTimeZoneId))
                 .ToListAsync(cancellationToken);
 
             var customerIds = items.Select(item => item.CustomerId).Distinct().ToArray();
@@ -86,7 +91,7 @@ public sealed class GetMobileFlightsQueryHandler(
 
 public sealed record GetMobileFlightByIdQuery(Guid Id) : IQuery<FlightDetailDto>;
 
-public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMobileFlightScope scope, IUserContext? user = null)
+public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMobileFlightScope scope, IMasterDataReader masterData, IUserContext? user = null)
     : IQueryHandler<GetMobileFlightByIdQuery, FlightDetailDto>
 {
     public async Task<Result<FlightDetailDto>> Handle(GetMobileFlightByIdQuery request, CancellationToken cancellationToken)
@@ -99,9 +104,13 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
             .AsSplitQuery().Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
             .Include(f => f.ArrivalSubmissions).Include(f => f.CancellationSubmissions)
             .FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
-        return flight is null
-            ? Error.NotFound("Flight not found.", "Operations.Flight.NotFound")
-            : FlightDetails.Map(flight, resolved.Value.StaffMemberId, user?.HasPermission(OperationsPermissions.Flights.Operate) == true);
+        if (flight is null)
+            return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
+        var station = await masterData.GetStationAsync(flight.Station.StationId, cancellationToken);
+        if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
+            return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
+        return FlightDetails.Map(flight, station.TimeZoneId, resolved.Value.StaffMemberId,
+            user?.HasPermission(OperationsPermissions.Flights.Operate) == true);
     }
 }
 

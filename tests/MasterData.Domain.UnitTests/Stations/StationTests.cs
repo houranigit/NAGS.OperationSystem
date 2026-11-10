@@ -90,6 +90,73 @@ public sealed class StationTests
     }
 
     [Fact]
+    public void Legacy_domain_create_uses_generic_iana_time_zone()
+    {
+        var station = Station.Create("JED", null, "Name", null, CountryId, Now).Value;
+        station.TimeZoneId.ShouldBe("Etc/UTC");
+    }
+
+    [Fact]
+    public void Create_captures_coordinates_and_normalized_iana_time_zone()
+    {
+        var coordinates = GeoCoordinates.Create(21.679564m, 39.156536m).Value;
+        var station = Station.Create("JED", null, "Name", null, CountryId, Now,
+            geoCoordinates: coordinates, timeZoneId: " Asia/Riyadh ").Value;
+
+        station.GeoCoordinates.ShouldBe(coordinates);
+        station.TimeZoneId.ShouldBe("Asia/Riyadh");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Unknown/Station")]
+    [InlineData("Arab Standard Time")]
+    public void Create_rejects_invalid_or_non_iana_time_zone(string? timeZoneId)
+    {
+        var result = Station.Create("JED", null, "Name", null, CountryId, Now, timeZoneId: timeZoneId);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("MasterData.Station.TimeZoneInvalid");
+    }
+
+    [Theory]
+    [InlineData(-90, -180)]
+    [InlineData(90, 180)]
+    [InlineData(0, 0)]
+    public void Coordinates_accept_boundaries_and_zero(decimal latitude, decimal longitude)
+    {
+        var coordinates = GeoCoordinates.Create(latitude, longitude);
+        coordinates.IsSuccess.ShouldBeTrue();
+        coordinates.Value.Latitude.ShouldBe(latitude);
+        coordinates.Value.Longitude.ShouldBe(longitude);
+    }
+
+    [Theory]
+    [InlineData(-90.0001, 0)]
+    [InlineData(90.0001, 0)]
+    [InlineData(0, -180.0001)]
+    [InlineData(0, 180.0001)]
+    public void Coordinates_reject_out_of_range_values(decimal latitude, decimal longitude)
+    {
+        GeoCoordinates.Create(latitude, longitude).IsFailure.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Failed_time_zone_update_preserves_station_fields()
+    {
+        var station = Station.Create("JED", null, "Name", null, CountryId, Now,
+            timeZoneId: "Asia/Riyadh").Value;
+
+        station.Update("ORD", null, "Changed", null, CountryId, Now.AddDays(1),
+            timeZoneId: "Unknown/Station").IsFailure.ShouldBeTrue();
+
+        station.IataCode.ShouldBe("JED");
+        station.TimeZoneId.ShouldBe("Asia/Riyadh");
+        station.UpdatedAtUtc.ShouldBeNull();
+    }
+
+    [Fact]
     public void Deactivate_then_activate_toggles_state()
     {
         var station = Station.Create("JED", null, "Name", "City", CountryId, Now).Value;

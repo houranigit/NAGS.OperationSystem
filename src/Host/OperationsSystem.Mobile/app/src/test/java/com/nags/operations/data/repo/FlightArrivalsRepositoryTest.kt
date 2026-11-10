@@ -36,7 +36,7 @@ class FlightArrivalsRepositoryTest {
         receivedByEmployee = employee, remarks = "note", isAccepted = true, createdAtUtc = at.toString())
     private val flight = FlightDetail("44444444-4444-4444-4444-444444444444", "SV100", "customer", "SV", "Airline", "station", "AAA",
         "Station", "operation", "Transit", scheduledArrivalUtc = at.toString(), scheduledDepartureUtc = at.plusSeconds(3600).toString(),
-        isPerLanding = false, createdAtUtc = at.toString(), rowVersion = "AAAAAAAAAAE=", currentStaffMemberId = staff, canSaveArrival = true)
+        isPerLanding = false, createdAtUtc = at.toString(), rowVersion = "AAAAAAAAAAE=", stationTimeZoneId = "Asia/Riyadh", currentStaffMemberId = staff, canSaveArrival = true)
     private var send: suspend (String, SaveFlightArrivalRequest, String) -> FlightArrivalSaved = { _, request, version ->
         sends++
         assertEquals("HZ-TEST", request.aircraftTailNumber)

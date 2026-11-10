@@ -2,6 +2,7 @@ package com.nags.operations.ui.flights
 
 import androidx.compose.runtime.saveable.Saver
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.util.UUID
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -13,8 +14,8 @@ internal data class FlightWorkDrafts(
     val tasks: List<FlightTaskDraft> = emptyList(),
 )
 
-// Defaults include the creation minute and generated IDs; save them explicitly so restoring
-// later cannot create new work times or associate nested editors with a different entry.
+// Save creation times and generated IDs explicitly so restoring later cannot change
+// work times or associate nested editors with a different entry.
 private val WorkDraftJson = Json { encodeDefaults = true }
 
 internal val FlightWorkDraftsSaver = Saver<FlightWorkDrafts, String>(
@@ -24,9 +25,14 @@ internal val FlightWorkDraftsSaver = Saver<FlightWorkDrafts, String>(
 
 @Serializable
 internal data class FlightWorkPeriod(
-    val start: String = LocalDateTime.now().withSecond(0).withNano(0).toString(),
+    val start: String = "",
     val end: String = "",
-)
+) {
+    companion object {
+        fun now(zone: ZoneId) = FlightWorkPeriod(
+            start = LocalDateTime.now(zone).withSecond(0).withNano(0).toString())
+    }
+}
 
 @Serializable
 internal data class FlightServiceDraft(

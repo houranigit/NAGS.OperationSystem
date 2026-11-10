@@ -159,6 +159,14 @@
                             <dt>@UiStrings.Stations.Country</dt>
                             <dd>@s.CountryName</dd>
                         </div>
+                        <div class="st-metric">
+                            <dt>@UiStrings.Stations.TimeZone</dt>
+                            <dd>@s.TimeZoneId</dd>
+                        </div>
+                        <div class="st-metric">
+                            <dt>@UiStrings.Stations.Coordinates</dt>
+                            <dd>@(s.GeoCoordinates is { } coordinates ? $"{coordinates.Latitude}, {coordinates.Longitude}" : UiStrings.Common.None)</dd>
+                        </div>
                     </dl>
                 </RadzenCard>
 

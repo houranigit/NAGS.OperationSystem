@@ -5,7 +5,6 @@
 @inject NotificationService Notifications
 @inject GridPreferences GridPrefs
 @inject AuthSession Auth
-@inject UserTimeZone UserTimeZone
 
 <PageTitle>Flights</PageTitle>
 
@@ -34,10 +33,10 @@
                 <DataListFilter TValue="Guid?" Placeholder="All customers" Data="@customerOptions" Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync" AllowFiltering="true" />
                 <DataListFilter TValue="Guid?" Placeholder="All operations" Data="@operationTypeOptions" Value="@operationTypeFilter" ValueChanged="@OnOperationTypeFilterChangedAsync" />
                 <div class="ofl-date-range">
-                    <RadzenDatePicker TValue="DateTime?" Value="@fromFilter" Change="@OnFromFilterChangedAsync"
+                    <RadzenDatePicker Disabled="@(stationFilter is null)" TValue="DateTime?" Value="@fromFilter" Change="@OnFromFilterChangedAsync"
                                       DateFormat="yyyy-MM-dd" ShowTime="false" AllowClear="true"
                                       Placeholder="From date" class="ofl-date-filter" />
-                    <RadzenDatePicker TValue="DateTime?" Value="@toFilter" Change="@OnToFilterChangedAsync"
+                    <RadzenDatePicker Disabled="@(stationFilter is null)" TValue="DateTime?" Value="@toFilter" Change="@OnToFilterChangedAsync"
                                       DateFormat="yyyy-MM-dd" ShowTime="false" AllowClear="true"
                                       Placeholder="To date" class="ofl-date-filter" />
                 </div>
@@ -55,7 +54,7 @@
                                         <span class="ofl-per-landing-badge">Per Landing</span>
                                     }
                                 </div>
-                                <span>STA @DateTimeDisplay(flight.ScheduledArrivalUtc) @UserTimeZone.Id</span>
+                                <span>STA @DateTimeDisplay(flight)</span>
                             </div>
                         </div>
                     </Template>
@@ -111,7 +110,6 @@
     {
         appliedSearchQuery = SearchQuery;
         searchTerm = SearchQuery ?? string.Empty;
-        await UserTimeZone.InitializeAsync();
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
         await Task.WhenAll(
             LoadStationOptionsAsync(),
@@ -142,7 +140,7 @@
         try
         {
             stationOptions = (await MasterData.GetStationOptionsAsync())
-                .Select(x => new StationFilterOption($"{x.IataCode} · {x.Name}", x.Id))
+                .Select(x => new StationFilterOption($"{x.IataCode} · {x.Name}", x.Id, x.TimeZoneId))
                 .ToList();
         }
         catch (ApiException)
@@ -194,6 +192,11 @@
     private async Task OnStationFilterChangedAsync(Guid? value)
     {
         stationFilter = value;
+        if (stationFilter is null)
+        {
+            fromFilter = null;
+            toFilter = null;
+        }
         await ReloadAsync();
     }
 
@@ -313,7 +316,12 @@
         }
     }
 
-    private string DateTimeDisplay(DateTimeOffset value) => UserTimeZone.Format(value);
+    private static string DateTimeDisplay(FlightListItem flight) =>
+        StationTimeZone.FromId(flight.StationTimeZoneId).Format(flight.ScheduledArrivalUtc);
+
+    private StationTimeZone? FilterTimeZone => stationFilter is null
+        ? null
+        : StationTimeZone.FromId(stationOptions.First(option => option.Value == stationFilter).TimeZoneId);
 
     private static string DurationDisplay(FlightListItem flight)
     {
@@ -348,7 +356,7 @@
         if (value is not { } date)
             return null;
 
-        return UserTimeZone.DateBoundaryUtc(date, endOfDay);
+        return FilterTimeZone?.DateBoundaryUtc(date, endOfDay);
     }
 
     private static string CustomerFilterLabel(CustomerOption customer) =>
@@ -356,7 +364,7 @@
             ? customer.Name
             : $"{customer.IataCode.Trim().ToUpperInvariant()} · {customer.Name}";
 
-    private sealed record StationFilterOption(string Label, Guid? Value);
+    private sealed record StationFilterOption(string Label, Guid? Value, string TimeZoneId);
     private sealed record CustomerFilterOption(string Label, Guid? Value);
     private sealed record OperationTypeFilterOption(string Label, Guid? Value);
 }

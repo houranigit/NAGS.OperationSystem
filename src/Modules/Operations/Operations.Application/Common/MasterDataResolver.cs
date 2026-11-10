@@ -30,6 +30,20 @@ public sealed class MasterDataResolver(IMasterDataReader reader)
         return new StationSnapshot(s.Id, s.IataCode, s.Name);
     }
 
+    public async Task<Result<TimeZoneInfo>> StationTimeZoneAsync(Guid id, CancellationToken ct)
+    {
+        var station = await reader.GetStationAsync(id, ct);
+        if (station is null)
+            return Error.Validation("The station was not found.", "Operations.Ref.StationNotFound");
+        if (!station.IsActive)
+            return Error.Validation("The station is inactive.", "Operations.Ref.StationInactive");
+        if (TimeZoneInfo.TryFindSystemTimeZoneById(station.TimeZoneId ?? string.Empty, out var zone)
+            && (station.TimeZoneId == "UTC" || zone.HasIanaId))
+            return zone;
+
+        return Error.Failure("Operation data could not be loaded. Please try again.", "Operations.Ref.StationTimeZoneInvalid");
+    }
+
     public async Task<Result<OperationTypeSnapshot>> OperationTypeAsync(Guid id, CancellationToken ct)
     {
         var o = await reader.GetOperationTypeAsync(id, ct);

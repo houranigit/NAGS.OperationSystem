@@ -4,6 +4,8 @@ namespace Operations.Application.UnitTests;
 
 internal sealed class SchedulingMasterDataReader(string? customerIataCode = "SV") : IMasterDataReader
 {
+    public bool StationExists { get; set; } = true;
+    public string? StationTimeZoneId { get; set; } = "Asia/Riyadh";
     public Guid StationId { get; } = Guid.NewGuid();
     public Guid ServiceId { get; } = Guid.NewGuid();
     public Dictionary<Guid, StaffMemberReadSnapshot> StaffMembers { get; } = [];
@@ -12,7 +14,7 @@ internal sealed class SchedulingMasterDataReader(string? customerIataCode = "SV"
         Task.FromResult<CustomerReadSnapshot?>(new(id, customerIataCode, null, "Saudia", true));
 
     public Task<StationReadSnapshot?> GetStationAsync(Guid id, CancellationToken cancellationToken) =>
-        Task.FromResult<StationReadSnapshot?>(new(id, "RUH", null, "Riyadh", true));
+        Task.FromResult<StationReadSnapshot?>(StationExists ? new(id, "RUH", null, "Riyadh", true, StationTimeZoneId!) : null);
 
     public Task<OperationTypeReadSnapshot?> GetOperationTypeAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult<OperationTypeReadSnapshot?>(new(id, "Transit", true));

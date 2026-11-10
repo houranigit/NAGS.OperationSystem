@@ -176,8 +176,8 @@ class FlightsRepository internal constructor(
             mutationMutex.withLock {
                 ensureCurrent(session)
                 val cached = dao.detail(session.owner, id)
-                if (cached != null) {
-                    val detail = json.decodeFromString<FlightDetail>(cached.payloadJson)
+                val detail = cached?.let { runCatching { json.decodeFromString<FlightDetail>(it.payloadJson) }.getOrNull() }
+                if (cached != null && detail != null) {
                     val updated = detail.copy(arrivalSubmissions = detail.arrivalSubmissions.filterNot {
                         it.id == saved.submission.id
                     } + saved.submission, rowVersion = saved.rowVersion)

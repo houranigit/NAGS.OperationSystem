@@ -3,7 +3,6 @@
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
 @inject AuthSession Auth
-@inject UserTimeZone UserTimeZone
 
 <RadzenTemplateForm TItem="FlightFormModel" Data="@model" Submit="@SubmitAsync">
     <div class="opf-form">
@@ -166,7 +165,7 @@
                 <label class="opf-label">Station <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="flight_takeoff" class="opf-field-icon" />
-                    <RadzenDropDown @bind-Value="model.StationId" Disabled="@(FlightId is not null)" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
+                    <RadzenDropDown @bind-Value="model.StationId" @bind-Value:after="OnStationChanged" Disabled="@(FlightId is not null)" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
                                     AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control opf-control-icon" Placeholder="Select station" />
                 </div>
             </div>
@@ -199,18 +198,18 @@
 
         <div class="opf-grid-2">
             <div class="opf-field-block">
-                <label class="opf-label">Scheduled arrival (@UserTimeZone.Id) <span class="opf-required">*</span></label>
+                <label class="opf-label">Scheduled arrival <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="flight_land" class="opf-field-icon" />
-                    <RadzenDatePicker @bind-Value="model.ScheduledArrivalUtc" DateFormat="yyyy-MM-dd HH:mm"
+                    <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.ScheduledArrivalUtc" DateFormat="yyyy-MM-dd HH:mm"
                                       ShowTime="true" class="opf-control opf-control-icon" />
                 </div>
             </div>
             <div class="opf-field-block">
-                <label class="opf-label">Scheduled departure (@UserTimeZone.Id) <span class="opf-required">*</span></label>
+                <label class="opf-label">Scheduled departure <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="flight_takeoff" class="opf-field-icon" />
-                    <RadzenDatePicker @bind-Value="model.ScheduledDepartureUtc" DateFormat="yyyy-MM-dd HH:mm"
+                    <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.ScheduledDepartureUtc" DateFormat="yyyy-MM-dd HH:mm"
                                       ShowTime="true" class="opf-control opf-control-icon" />
                 </div>
             </div>
@@ -230,7 +229,7 @@
                 <label class="opf-label">Period start date <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="event" class="opf-field-icon" />
-                    <RadzenDatePicker @bind-Value="model.PeriodStartDate" DateFormat="yyyy-MM-dd" ShowTime="false"
+                    <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.PeriodStartDate" DateFormat="yyyy-MM-dd" ShowTime="false"
                                       class="opf-control opf-control-icon" />
                 </div>
             </div>
@@ -238,7 +237,7 @@
                 <label class="opf-label">Period end date <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="event_available" class="opf-field-icon" />
-                    <RadzenDatePicker @bind-Value="model.PeriodEndDate" DateFormat="yyyy-MM-dd" ShowTime="false"
+                    <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.PeriodEndDate" DateFormat="yyyy-MM-dd" ShowTime="false"
                                       class="opf-control opf-control-icon" />
                 </div>
             </div>
@@ -246,18 +245,18 @@
 
         <div class="opf-grid-2">
             <div class="opf-field-block">
-                <label class="opf-label">STA time (@UserTimeZone.Id) <span class="opf-required">*</span></label>
+                <label class="opf-label">STA time <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="schedule" class="opf-field-icon" />
-                    <RadzenDatePicker @bind-Value="model.ScheduledArrivalTimeUtc" DateFormat="HH:mm" ShowTime="true"
+                    <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.ScheduledArrivalTimeUtc" DateFormat="HH:mm" ShowTime="true"
                                       ShowSeconds="false" class="opf-control opf-control-icon" />
                 </div>
             </div>
             <div class="opf-field-block">
-                <label class="opf-label">STD time (@UserTimeZone.Id) <span class="opf-required">*</span></label>
+                <label class="opf-label">STD time <span class="opf-required">*</span></label>
                 <div class="opf-input-wrap">
                     <RadzenIcon Icon="schedule" class="opf-field-icon" />
-                    <RadzenDatePicker @bind-Value="model.ScheduledDepartureTimeUtc" DateFormat="HH:mm" ShowTime="true"
+                    <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.ScheduledDepartureTimeUtc" DateFormat="HH:mm" ShowTime="true"
                                       ShowSeconds="false" class="opf-control opf-control-icon" />
                 </div>
             </div>
@@ -462,7 +461,6 @@
     {
         try
         {
-            await UserTimeZone.InitializeAsync();
             var customersTask = MasterData.GetCustomerOptionsAsync();
             var stationsTask = MasterData.GetStationOptionsAsync();
             var operationTypesTask = MasterData.GetOperationTypeOptionsAsync();
@@ -484,6 +482,7 @@
             {
                 original = detail;
                 rowVersion = detail.RowVersion;
+                var zone = StationTimeZone.FromId(stations.FirstOrDefault(station => station.Id == detail.StationId)?.TimeZoneId ?? detail.StationTimeZoneId);
                 model = new FlightFormModel
                 {
                     FlightNumber = detail.FlightNumber,
@@ -491,28 +490,17 @@
                     StationId = detail.StationId,
                     OperationTypeId = detail.OperationTypeId,
                     AircraftTypeId = detail.AircraftTypeId,
-                    ScheduledArrivalUtc = UserTimeZone.ToLocalDateTime(detail.ScheduledArrivalUtc),
-                    ScheduledDepartureUtc = UserTimeZone.ToLocalDateTime(detail.ScheduledDepartureUtc),
+                    ScheduledArrivalUtc = zone.ToLocalDateTime(detail.ScheduledArrivalUtc),
+                    ScheduledDepartureUtc = zone.ToLocalDateTime(detail.ScheduledDepartureUtc),
                     PlannedServiceIds = detail.PlannedServices.Select(x => x.ServiceId).ToHashSet(),
                     AssignedStaffMemberIds = detail.AssignedEmployees.Select(x => x.StaffMemberId).ToHashSet()
                 };
             }
             else
             {
-                var now = UserTimeZone.ToLocal(DateTimeOffset.UtcNow).DateTime;
-                if (IsBulkCreate)
-                {
-                    var today = now.Date;
-                    model.PeriodStartDate = today;
-                    model.PeriodEndDate = today;
-                    model.ScheduledArrivalTimeUtc = today.AddHours(10);
-                    model.ScheduledDepartureTimeUtc = today.AddHours(12);
-                }
-                else
-                {
-                    model.ScheduledArrivalUtc = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Unspecified).AddHours(1);
-                    model.ScheduledDepartureUtc = model.ScheduledArrivalUtc.Value.AddHours(2);
-                }
+                if (stations.Count == 1)
+                    model.StationId = stations[0].Id;
+                OnStationChanged();
             }
 
             if (CanAssignStaff && model.StationId != Guid.Empty)
@@ -622,6 +610,30 @@
 
     private bool IsPerLandingMixedWithOtherServices =>
         IsPerLandingSelected && model.PlannedServiceIds.Count > 1;
+
+    private StationTimeZone SelectedTimeZone =>
+        StationTimeZone.FromId(stations.FirstOrDefault(station => station.Id == model.StationId)?.TimeZoneId
+            ?? original!.StationTimeZoneId);
+
+    private void OnStationChanged()
+    {
+        if (model.StationId == Guid.Empty)
+            return;
+
+        var now = SelectedTimeZone.ToLocalDateTime(DateTimeOffset.UtcNow);
+        if (IsBulkCreate)
+        {
+            model.PeriodStartDate ??= now.Date;
+            model.PeriodEndDate ??= now.Date;
+            model.ScheduledArrivalTimeUtc ??= now.Date.AddHours(10);
+            model.ScheduledDepartureTimeUtc ??= now.Date.AddHours(12);
+        }
+        else if (model.ScheduledArrivalUtc is null)
+        {
+            model.ScheduledArrivalUtc = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Unspecified).AddHours(1);
+            model.ScheduledDepartureUtc = model.ScheduledArrivalUtc.Value.AddHours(2);
+        }
+    }
 
     private CustomerOption? SelectedCustomer =>
         customers.FirstOrDefault(customer => customer.Id == model.CustomerId);
@@ -832,7 +844,7 @@
             model.AircraftTypeId,
             model.PlannedServiceIds.ToList(),
             AssignmentIdsForSave(),
-            UserTimeZone.Id));
+            SelectedTimeZone.Id));
 
         return ids.Count;
     }
@@ -890,6 +902,7 @@
             return "Station is required.";
         if (model.OperationTypeId == Guid.Empty)
             return "Operation type is required.";
+        var zone = SelectedTimeZone;
         if (IsBulkCreate)
         {
             if (model.PeriodStartDate is null || model.PeriodEndDate is null)
@@ -904,9 +917,9 @@
         }
         if (model.ScheduledArrivalUtc is null || model.ScheduledDepartureUtc is null)
             return "Scheduled arrival and departure are required.";
-        if (!UserTimeZone.TryToUtc(model.ScheduledArrivalUtc, out var arrivalUtc, out var arrivalError))
+        if (!zone.TryToUtc(model.ScheduledArrivalUtc, out var arrivalUtc, out var arrivalError))
             return arrivalError;
-        if (!UserTimeZone.TryToUtc(model.ScheduledDepartureUtc, out var departureUtc, out var departureError))
+        if (!zone.TryToUtc(model.ScheduledDepartureUtc, out var departureUtc, out var departureError))
             return departureError;
         if (departureUtc <= arrivalUtc)
             return "Scheduled departure must be after scheduled arrival.";
@@ -955,7 +968,7 @@
             : null;
     }
 
-    private DateTimeOffset ToUtc(DateTime value) => UserTimeZone.ToUtc(value)!.Value;
+    private DateTimeOffset ToUtc(DateTime value) => SelectedTimeZone.ToUtc(value);
 
     private sealed class FlightFormModel
     {

@@ -356,6 +356,9 @@ public sealed class MasterDataApiClient(BrowserApiClient api)
     public Task<IReadOnlyList<StationOption>> GetStationOptionsAsync(CancellationToken ct = default) =>
         api.GetAsync<IReadOnlyList<StationOption>>("/masterdata/stations/options", ct);
 
+    public Task<IReadOnlyList<StationTimeZoneOption>> GetStationTimeZonesAsync(CancellationToken ct = default) =>
+        api.GetAsync<IReadOnlyList<StationTimeZoneOption>>("/masterdata/stations/time-zones", ct);
+
     public Task<StationDetail> GetStationAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<StationDetail>($"/masterdata/stations/{id}", ct);
 

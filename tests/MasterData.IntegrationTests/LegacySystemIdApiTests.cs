@@ -143,12 +143,13 @@ public sealed class LegacySystemIdApiTests(MasterDataApiFactory factory) : IClas
             {
                 payload["countryId"] = countryId;
                 payload["iataCode"] = NextStationCode();
+                payload["timeZoneId"] = "Etc/UTC";
             }
             else
             {
                 var stationId = await CreateAsync(client, "stations", new
                 {
-                    iataCode = NextStationCode(), name = "Legacy staff station " + unique, countryId
+                    iataCode = NextStationCode(), name = "Legacy staff station " + unique, countryId, timeZoneId = "Etc/UTC"
                 });
                 var manpowerTypeId = await CreateAsync(client, "manpower-types", new { name = "Legacy staff type " + unique });
                 payload.Remove("name");

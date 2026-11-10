@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.time.ZoneId
 import com.nags.operations.R
 import com.nags.operations.data.ResourceCatalogItem
 import com.nags.operations.data.StaffCatalogItem
@@ -30,6 +31,7 @@ internal fun FlightWorkEmployeeList(
     options: List<StaffCatalogItem>,
     showRemarks: Boolean,
     referenceYear: Int,
+    zone: ZoneId,
     onChange: (List<FlightEmployeeDraft>) -> Unit,
 ) {
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
@@ -59,7 +61,7 @@ internal fun FlightWorkEmployeeList(
                     stringResource(R.string.work_select_employee), leadingPadding = 0.dp, onClick = { openPicker(item.id) })
             }
             FlightFormDivider()
-            FlightWorkPeriodFields(item.period, referenceYear,
+            FlightWorkPeriodFields(item.period, referenceYear, zone,
                 onChange = { period -> onChange(items.map { if (it.id == item.id) it.copy(period = period) else it }) })
             if (showRemarks) FlightWorkNotes("", {}, item.remarks,
                 onRemarksChange = { remarks -> onChange(items.map { if (it.id == item.id) it.copy(remarks = remarks) else it }) },
@@ -78,7 +80,7 @@ internal fun FlightWorkEmployeeList(
             if (!selectionHandled) options.firstOrNull { it.id == id }?.let { selected ->
                 selectionHandled = true
                 onChange(if (editingId == null) items + FlightEmployeeDraft(employeeId = selected.id,
-                    employeeName = selected.fullName, employeeCode = selected.employeeId)
+                    employeeName = selected.fullName, employeeCode = selected.employeeId, period = FlightWorkPeriod.now(zone))
                 else items.map { if (it.id == editingId) it.copy(employeeId = selected.id,
                     employeeName = selected.fullName, employeeCode = selected.employeeId) else it })
             }
@@ -110,6 +112,7 @@ internal fun FlightWorkResourceList(
     items: List<FlightResourceDraft>,
     options: List<ResourceCatalogItem>,
     referenceYear: Int,
+    zone: ZoneId,
     onChange: (List<FlightResourceDraft>) -> Unit,
 ) {
     var pickerOpen by rememberSaveable(kind) { mutableStateOf(false) }
@@ -135,7 +138,7 @@ internal fun FlightWorkResourceList(
                     stringResource(kind.selectLabel), leadingPadding = 0.dp, onClick = { openPicker(item.id) })
             }
             FlightFormDivider()
-            FlightWorkPeriodFields(item.period, referenceYear,
+            FlightWorkPeriodFields(item.period, referenceYear, zone,
                 onChange = { period -> onChange(items.map { if (it.id == item.id) it.copy(period = period) else it }) })
             FlightWorkNotes("", {}, item.remarks,
                 onRemarksChange = { remarks -> onChange(items.map { if (it.id == item.id) it.copy(remarks = remarks) else it }) },
@@ -153,7 +156,7 @@ internal fun FlightWorkResourceList(
         onSelect = { id ->
             if (!selectionHandled) options.firstOrNull { it.id == id }?.let { selected ->
                 selectionHandled = true
-                onChange(if (editingId == null) items + FlightResourceDraft(resourceId = selected.id, resourceName = selected.name)
+                onChange(if (editingId == null) items + FlightResourceDraft(resourceId = selected.id, resourceName = selected.name, period = FlightWorkPeriod.now(zone))
                 else items.map { if (it.id == editingId) it.copy(resourceId = selected.id, resourceName = selected.name) else it })
             }
         },

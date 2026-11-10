@@ -4,7 +4,7 @@ namespace OperationsSystem.Blazor.Client.State;
 
 /// <summary>
 /// Holds the browser's IANA time zone for the current portal session. API contracts and storage
-/// remain UTC; this service is the single presentation-boundary conversion point.
+/// remain UTC; operational inputs use the station zone separately.
 /// </summary>
 public sealed class UserTimeZone(IJSRuntime js)
 {

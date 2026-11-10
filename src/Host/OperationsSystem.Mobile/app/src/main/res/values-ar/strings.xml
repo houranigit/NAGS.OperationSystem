@@ -60,7 +60,6 @@
     <string name="arrival_aircraft">الطائرة</string>
     <string name="operations_title">عمليات الرحلة</string>
     <string name="arrival_ata">وقت الوصول الفعلي (ATA)</string>
-    <string name="flight_form_local_time">الأوقات بتوقيت %1$s</string>
     <string name="arrival_aircraft_type">نوع الطائرة الفعلي</string>
     <string name="arrival_select_aircraft">اختر نوع الطائرة</string>
     <string name="arrival_tail_number">رقم التسجيل</string>

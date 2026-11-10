@@ -825,4 +825,11 @@
   <data name="Notifications.ScheduleUpdated" xml:space="preserve"><value>Schedule changed</value></data>
   <data name="Notifications.CachedDescription" xml:space="preserve"><value>Showing saved notifications. Read status will sync when connected.</value></data>
   <data name="Notifications.NewCount" xml:space="preserve"><value>{0} new</value></data>
+  <data name="Stations.TimeZone" xml:space="preserve"><value>Time zone</value></data>
+  <data name="Stations.Latitude" xml:space="preserve"><value>Latitude</value></data>
+  <data name="Stations.Longitude" xml:space="preserve"><value>Longitude</value></data>
+  <data name="Stations.Coordinates" xml:space="preserve"><value>Coordinates</value></data>
+  <data name="Stations.TimeZoneRequired" xml:space="preserve"><value>Select a time zone.</value></data>
+  <data name="Stations.CoordinatesInvalid" xml:space="preserve"><value>Enter both latitude (-90 to 90) and longitude (-180 to 180), or leave both empty.</value></data>
+  <data name="Stations.SelectTimeZone" xml:space="preserve"><value>Select time zone</value></data>
 </root>

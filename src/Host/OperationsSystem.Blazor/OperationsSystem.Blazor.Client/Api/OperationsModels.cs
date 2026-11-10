@@ -11,7 +11,9 @@ public sealed record FlightListItem(
     string OperationTypeName,
     DateTimeOffset ScheduledArrivalUtc,
     DateTimeOffset ScheduledDepartureUtc,
-    bool IsPerLanding);
+    bool IsPerLanding,
+    string StationTimeZoneId,
+    Guid? StationId = null);
 
 public sealed record PlannedServiceModel(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId);
@@ -36,7 +38,8 @@ public sealed record FlightDetail(
     IReadOnlyList<AssignedEmployeeModel> AssignedEmployees,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
-    string RowVersion);
+    string RowVersion,
+    string StationTimeZoneId);
 
 public sealed record ScheduleFlightRequestModel(
     Guid CustomerId,

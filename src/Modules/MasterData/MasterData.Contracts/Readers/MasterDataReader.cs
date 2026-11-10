@@ -8,7 +8,7 @@ namespace MasterData.Contracts.Readers;
 
 public sealed record CustomerReadSnapshot(Guid Id, string? IataCode, string? IcaoCode, string Name, bool IsActive);
 
-public sealed record StationReadSnapshot(Guid Id, string IataCode, string? IcaoCode, string Name, bool IsActive);
+public sealed record StationReadSnapshot(Guid Id, string IataCode, string? IcaoCode, string Name, bool IsActive, string TimeZoneId);
 
 public sealed record AtaChapterReadSnapshot(Guid Id, Guid CategoryId, string CategoryName, string Code, string Title, bool IsActive, bool CategoryIsActive);
 
@@ -53,6 +53,18 @@ public interface IMasterDataReader
     public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken);
 
     public Task<StationReadSnapshot?> GetStationAsync(Guid id, CancellationToken cancellationToken);
+
+    // Default implementation keeps existing adapters compatible; the EF reader uses one query.
+    public async Task<IReadOnlyList<StationReadSnapshot>> GetStationsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken)
+    {
+        var stations = new List<StationReadSnapshot>();
+        foreach (var id in ids.Distinct())
+        {
+            if (await GetStationAsync(id, cancellationToken) is { } station)
+                stations.Add(station);
+        }
+        return stations;
+    }
 
     public Task<OperationTypeReadSnapshot?> GetOperationTypeAsync(Guid id, CancellationToken cancellationToken);
 

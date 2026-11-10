@@ -174,5 +174,5 @@ if (unresolvedReference) {
   );
 }
 
-await writeFile(outputFile, html);
+await writeFile(outputFile, html.replace(/\r+\n/g, "\n"));
 process.stdout.write(`Email manual: ${outputFile}\n`);

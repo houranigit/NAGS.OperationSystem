@@ -1,4 +1,5 @@
 using MasterData.Domain.AircraftTypes;
+using MasterData.Application.Contracts;
 using MasterData.Contracts.Resources;
 
 namespace MasterData.Api.Endpoints;
@@ -76,8 +77,10 @@ public sealed record CreateStationRequest(
     string? City,
     Guid CountryId,
     IReadOnlyList<NewStationStaffRequest>? Staff,
-    string? LegacySystemId = null);
-public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, string? LegacySystemId = null);
+    string TimeZoneId,
+    string? LegacySystemId = null,
+    GeoCoordinatesInput? GeoCoordinates = null);
+public sealed record UpdateStationRequest(string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, string TimeZoneId, string? LegacySystemId = null, GeoCoordinatesInput? GeoCoordinates = null);
 
 public sealed record NewStationStaffRequest(
     string FullName,

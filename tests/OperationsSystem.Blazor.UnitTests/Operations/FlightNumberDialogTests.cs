@@ -179,6 +179,58 @@ public sealed class FlightNumberDialogTests
         runtime.Writes.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task Scheduling_converts_entered_wall_clocks_using_the_selected_station()
+    {
+        var (dialog, runtime) = CreateDialog("XY", "123");
+
+        await InvokeAsync(dialog, "CreateAsync");
+
+        runtime.ScheduledArrivalUtc.ShouldBe(new DateTimeOffset(2026, 11, 5, 7, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public async Task Changing_station_reinterprets_the_wall_clock_in_the_new_station_zone()
+    {
+        var (dialog, runtime) = CreateDialog("XY", "123");
+        var stationId = Guid.NewGuid();
+        SetField(dialog, "stations", new StationOption[] { new(stationId, "ORD", "Chicago", "America/Chicago") });
+        SetModel(dialog, "StationId", stationId);
+
+        await InvokeAsync(dialog, "CreateAsync");
+
+        runtime.ScheduledArrivalUtc.ShouldBe(new DateTimeOffset(2026, 11, 5, 16, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public async Task Recurring_scheduling_sends_the_station_zone()
+    {
+        var (dialog, runtime) = CreateDialog("XY", "123", bulkMode: true);
+
+        await InvokeAsync(dialog, "CreateBulkAsync");
+
+        runtime.ScheduledTimeZoneId.ShouldBe("Asia/Riyadh");
+    }
+
+    [Theory]
+    [InlineData(2026, 3, 8, 2, 30, "does not exist")]
+    [InlineData(2026, 11, 1, 1, 30, "occurs twice")]
+    public async Task Scheduling_rejects_dst_gaps_and_overlaps_in_the_station_zone(int year, int month, int day, int hour, int minute, string message)
+    {
+        var (dialog, runtime) = CreateDialog("XY", "123");
+        var stationId = Guid.NewGuid();
+        SetField(dialog, "stations", new StationOption[] { new(stationId, "ORD", "Chicago", "America/Chicago") });
+        SetModel(dialog, "StationId", stationId);
+        SetModel(dialog, "ScheduledArrivalUtc", new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Unspecified));
+        SetModel(dialog, "ScheduledDepartureUtc", new DateTime(year, month, day, 5, 0, 0, DateTimeKind.Unspecified));
+
+        await InvokeAsync(dialog, "NextAsync");
+
+        ReadField<int>(dialog, "step").ShouldBe(0);
+        ReadField<string>(dialog, "errorMessage").ShouldContain(message);
+        runtime.Writes.ShouldBe(0);
+    }
+
     private static (ScheduleFlightDialog, FlightRuntime) CreateDialog(string? code, string flightNumber, bool bulkMode = false)
     {
         var runtime = new FlightRuntime();
@@ -191,12 +243,13 @@ public sealed class FlightNumberDialogTests
         Inject("Operations", new OperationsApiClient(api));
         Inject("MasterData", new MasterDataApiClient(api));
         Inject("Auth", new AuthSession(api, tokens, refresher));
-        Inject("UserTimeZone", new UserTimeZone(runtime));
         var customerId = Guid.NewGuid();
         SetField(dialog, "customers", new CustomerOption[] { new(customerId, code, "Test customer") });
         var model = typeof(ScheduleFlightDialog).GetField("model", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(dialog)!;
         SetModel("CustomerId", customerId);
-        SetModel("StationId", Guid.NewGuid());
+        var stationId = Guid.NewGuid();
+        SetModel("StationId", stationId);
+        SetField(dialog, "stations", new StationOption[] { new(stationId, "MED", "Medina", "Asia/Riyadh") });
         SetModel("OperationTypeId", Guid.NewGuid());
         SetModel("FlightNumber", flightNumber);
         var date = new DateTime(2026, 11, 5, 10, 0, 0, DateTimeKind.Unspecified);
@@ -218,7 +271,7 @@ public sealed class FlightNumberDialogTests
         var date = new DateTimeOffset(2026, 11, 5, 10, 0, 0, TimeSpan.Zero);
         var original = new FlightDetail(Guid.NewGuid(), flightNumber, Guid.NewGuid(), customerCode, "Test customer",
             Guid.NewGuid(), "MED", "Medina", Guid.NewGuid(), "Transit", null, null, date, date.AddHours(2), false,
-            [], [], date, null, "saved-version");
+            [], [], date, null, "saved-version", "Asia/Riyadh");
         typeof(ScheduleFlightDialog).GetProperty(nameof(ScheduleFlightDialog.FlightId))!.SetValue(dialog, original.Id);
         SetField(dialog, "original", original);
         SetField(dialog, "rowVersion", original.RowVersion);
@@ -245,6 +298,8 @@ public sealed class FlightNumberDialogTests
         private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
         public FlightDetail? Detail { get; set; }
         public string? ScheduledNumber { get; private set; }
+        public DateTimeOffset? ScheduledArrivalUtc { get; private set; }
+        public string? ScheduledTimeZoneId { get; private set; }
         public string? ChangedNumber { get; private set; }
         public string? PlanningVersion { get; private set; }
         public int Requests { get; private set; }
@@ -284,12 +339,15 @@ public sealed class FlightNumberDialogTests
             {
                 Writes++;
                 ScheduledNumber = bulk.FlightNumber;
+                ScheduledTimeZoneId = bulk.TimeZoneId;
                 response = JsonSerializer.Serialize(new[] { Guid.NewGuid() });
             }
             else
             {
                 Writes++;
-                ScheduledNumber = ((ScheduleFlightRequestModel)args[2]!).FlightNumber;
+                var scheduled = (ScheduleFlightRequestModel)args[2]!;
+                ScheduledNumber = scheduled.FlightNumber;
+                ScheduledArrivalUtc = scheduled.ScheduledArrivalUtc;
                 response = JsonSerializer.Serialize(Guid.NewGuid());
             }
             return (TValue)(object)response;

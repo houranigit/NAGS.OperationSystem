@@ -349,7 +349,7 @@ public class StaffMemberApiTests(MasterDataApiFactory factory) : IClassFixture<M
         var countryId = await CreateCountryAsync(client);
         var iata = await UnusedStationIataAsync(client);
         var create = await client.PostAsJsonAsync($"{Base}/stations",
-            new { iataCode = iata, icaoCode = (string?)null, name = $"Station {iata}", city = "City", countryId });
+            new { iataCode = iata, icaoCode = (string?)null, name = $"Station {iata}", city = "City", countryId, timeZoneId = "Etc/UTC" });
         create.StatusCode.ShouldBe(HttpStatusCode.Created);
         return await create.Content.ReadFromJsonAsync<Guid>();
     }

@@ -568,6 +568,13 @@ public static class UiStrings
         public static string IcaoCode => UiText.Get("Stations.IcaoCode", "ICAO");
         public static string Name => UiText.Get("Stations.Name", "Name");
         public static string City => UiText.Get("Stations.City", "City");
+        public static string TimeZone => UiText.Get("Stations.TimeZone", "Time zone");
+        public static string Latitude => UiText.Get("Stations.Latitude", "Latitude");
+        public static string Longitude => UiText.Get("Stations.Longitude", "Longitude");
+        public static string Coordinates => UiText.Get("Stations.Coordinates", "Coordinates");
+        public static string SelectTimeZone => UiText.Get("Stations.SelectTimeZone", "Select time zone");
+        public static string TimeZoneRequired => UiText.Get("Stations.TimeZoneRequired", "Select a time zone.");
+        public static string CoordinatesInvalid => UiText.Get("Stations.CoordinatesInvalid", "Enter both latitude (-90 to 90) and longitude (-180 to 180), or leave both empty.");
         public static string Country => UiText.Get("Stations.Country", "Country");
         public static string NoIcao => UiText.Get("Stations.NoIcao", "\u2014");
         public static string Status => UiText.Get("Stations.Status", "Status");

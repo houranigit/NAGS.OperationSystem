@@ -31,6 +31,12 @@ internal static class StationEndpoints
             return result.ToOk();
         }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.Stations.View);
 
+        stations.MapGet("/time-zones", async (ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetStationTimeZonesQuery(), ct);
+            return result.ToOk();
+        }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.Stations.View);
+
         stations.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new GetStationByIdQuery(id), ct);
@@ -46,7 +52,7 @@ internal static class StationEndpoints
                 (s.Licenses ?? []).Select(l => new StaffLicenseInput(l.Id, l.LicenseId, l.LicenseNumber)).ToList(),
                 s.PortalAccessRoleId)).ToList();
 
-            var result = await sender.Send(new CreateStationCommand(request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, staff, request.LegacySystemId), ct);
+            var result = await sender.Send(new CreateStationCommand(request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, staff, request.TimeZoneId, request.LegacySystemId, request.GeoCoordinates), ct);
             return result.ToCreated(id => $"/api/v1/masterdata/stations/{id}");
         }).RequirePermission(MasterDataPermissions.Stations.Create);
 
@@ -55,7 +61,7 @@ internal static class StationEndpoints
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
 
-            var result = await sender.Send(new UpdateStationCommand(id, request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, rowVersion, request.LegacySystemId), ct);
+            var result = await sender.Send(new UpdateStationCommand(id, request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, rowVersion, request.TimeZoneId, request.LegacySystemId, request.GeoCoordinates), ct);
             return result.ToNoContent();
         }).RequirePermission(MasterDataPermissions.Stations.Update);
 

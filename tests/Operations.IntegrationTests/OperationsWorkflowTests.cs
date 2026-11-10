@@ -975,7 +975,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var stationCode = NextThreeLetterCode();
         object StationBody(string name) => new
         {
-            iataCode = stationCode, icaoCode = (string?)null, name, city = "City", countryId = refs.CountryId
+            iataCode = stationCode, icaoCode = (string?)null, name, city = "City", countryId = refs.CountryId, timeZoneId = "Etc/UTC"
         };
         var stationName = station.GetProperty("name").GetString()!;
         (await UpdateCatalogAsync(admin, "stations", refs.StationId, StationBody(stationName),
@@ -1010,7 +1010,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var employeeId = $"EMBED-{suffix}";
         var embeddedStationId = await PostForIdAsync(admin, $"{MasterDataBase}/stations", new
         {
-            iataCode = NextThreeLetterCode(), icaoCode = (string?)null, name = $"Embedded station {suffix}", city = "City", countryId = refs.CountryId,
+            iataCode = NextThreeLetterCode(), icaoCode = (string?)null, name = $"Embedded station {suffix}", city = "City", countryId = refs.CountryId, timeZoneId = "Etc/UTC",
             staff = new[] { new
             {
                 fullName = $"Embedded staff {suffix}", employeeId, email = $"embedded-staff-{suffix}@example.com",
@@ -1024,7 +1024,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             .GetProperty("stationId").GetGuid().ShouldBe(embeddedStationId);
         await PostForIdAsync(admin, $"{MasterDataBase}/stations", new
         {
-            iataCode = NextThreeLetterCode(), icaoCode = (string?)null, name = $"Empty station {suffix}", city = "City", countryId = refs.CountryId
+            iataCode = NextThreeLetterCode(), icaoCode = (string?)null, name = $"Empty station {suffix}", city = "City", countryId = refs.CountryId, timeZoneId = "Etc/UTC"
         });
         await live.ExpectNoRefreshAsync();
     }
@@ -1236,7 +1236,7 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
         var countryId = countries.Items[0].Id;
 
         var stationId = await PostForIdAsync(admin, $"{MasterDataBase}/stations",
-            new { iataCode = NextThreeLetterCode(), icaoCode = (string?)null, name = $"Station {suffix}", city = "City", countryId });
+            new { iataCode = NextThreeLetterCode(), icaoCode = (string?)null, name = $"Station {suffix}", city = "City", countryId, timeZoneId = "Etc/UTC" });
         var customerId = await PostForIdAsync(admin, $"{MasterDataBase}/customers", new
         {
             iataCode = (string?)null,

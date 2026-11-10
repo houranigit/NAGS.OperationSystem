@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.ui.util.formatFlightDateRangeForDisplay
+import com.nags.operations.ui.util.stationTimeZone
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
 
 private val ScheduledBlue = Color(0xFF007AFF)
@@ -128,7 +129,7 @@ fun FlightCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    formatFlightDateRangeForDisplay(flight.scheduledArrivalUtc, flight.scheduledDepartureUtc),
+                    formatFlightDateRangeForDisplay(flight.scheduledArrivalUtc, flight.scheduledDepartureUtc, stationTimeZone(flight.stationTimeZoneId)),
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     fontWeight = FontWeight.Medium,
@@ -140,10 +141,10 @@ fun FlightCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    FlightCardField(stringResource(R.string.flights_card_sta), formatIsoTimeForDisplay(flight.scheduledArrivalUtc),
+                    FlightCardField(stringResource(R.string.flights_card_sta), formatIsoTimeForDisplay(flight.scheduledArrivalUtc, stationTimeZone(flight.stationTimeZoneId)),
                         Modifier.weight(1f, fill = false))
                     VerticalDivider(Modifier.height(14.dp), color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f))
-                    FlightCardField(stringResource(R.string.flights_card_std), formatIsoTimeForDisplay(flight.scheduledDepartureUtc),
+                    FlightCardField(stringResource(R.string.flights_card_std), formatIsoTimeForDisplay(flight.scheduledDepartureUtc, stationTimeZone(flight.stationTimeZoneId)),
                         Modifier.weight(1f, fill = false))
                 }
             }

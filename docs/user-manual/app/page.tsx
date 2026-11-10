@@ -314,7 +314,7 @@ function ArticleReader({
           </div>
           <div className="rail-note">
             <span>Time zone</span>
-            <p>The portal uses its displayed user time zone. Android shows scheduled times in the device time zone.</p>
+            <p>Both apps display flight times in the station’s configured time zone. Scheduling and operation inputs use that same zone.</p>
           </div>
         </aside>
       </div>

@@ -1,5 +1,6 @@
 package com.nags.operations.data
 
+import java.time.ZoneId
 import kotlinx.serialization.Serializable
 
 /** The mobile feed is restricted by station, membership and the rolling 24-hour window. */
@@ -36,7 +37,10 @@ data class FlightListItem(
     val stationId: String? = null,
     val isMyFlight: Boolean = false,
     val isMyAdHocFlight: Boolean = false,
-)
+    val stationTimeZoneId: String,
+) {
+    init { ZoneId.of(stationTimeZoneId) }
+}
 
 @Serializable
 data class PlannedService(
@@ -78,8 +82,11 @@ data class FlightDetail(
     val currentStaffMemberId: String? = null,
     val canSaveArrival: Boolean = false,
     val hasCancellationSubmission: Boolean = false,
+    val stationTimeZoneId: String,
     @kotlinx.serialization.Transient val fromCache: Boolean = false,
-)
+) {
+    init { ZoneId.of(stationTimeZoneId) }
+}
 
 @Serializable
 data class InviteEmployeesRequest(val staffMemberIds: List<String>)

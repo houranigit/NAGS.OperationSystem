@@ -21,6 +21,13 @@ public sealed class StationConfiguration : IEntityTypeConfiguration<Station>
         builder.Property(s => s.Name).HasMaxLength(150).IsRequired();
         builder.Property(s => s.City).HasMaxLength(100);
 
+        builder.Property(s => s.TimeZoneId).HasMaxLength(128).HasDefaultValue("Etc/UTC").IsRequired();
+        builder.ComplexProperty(s => s.GeoCoordinates, coordinates =>
+        {
+            coordinates.Property(c => c.Latitude).HasColumnName("Latitude").HasPrecision(10, 7);
+            coordinates.Property(c => c.Longitude).HasColumnName("Longitude").HasPrecision(10, 7);
+        });
+
         builder.Property(s => s.CountryId).IsRequired();
         builder.HasIndex(s => s.CountryId);
 

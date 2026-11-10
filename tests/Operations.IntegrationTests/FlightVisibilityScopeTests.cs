@@ -411,7 +411,7 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
     {
         var suffix = Guid.NewGuid().ToString("N")[..8];
         return await PostForIdAsync(admin, $"{MasterDataBase}/stations",
-            new { iataCode = NextThreeLetterCode(), icaoCode = (string?)null, name = $"Station {suffix}", city = "City", countryId });
+            new { iataCode = NextThreeLetterCode(), icaoCode = (string?)null, name = $"Station {suffix}", city = "City", countryId, timeZoneId = "Etc/UTC" });
     }
 
     /// <summary>Creates a staff member at the refs station with a role holding <paramref name="permissions"/> and returns a logged-in client.</summary>

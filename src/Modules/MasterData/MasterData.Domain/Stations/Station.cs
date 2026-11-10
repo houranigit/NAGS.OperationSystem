@@ -22,6 +22,8 @@ public sealed class Station : AggregateRoot<Guid>, ILegacySystemIdentified, IAud
     public string Name { get; private set; } = null!;
     public string? City { get; private set; }
     public Guid CountryId { get; private set; }
+    public GeoCoordinates? GeoCoordinates { get; private set; }
+    public string TimeZoneId { get; private set; } = "Etc/UTC";
     public bool IsActive { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset? UpdatedAtUtc { get; private set; }
@@ -51,7 +53,9 @@ public sealed class Station : AggregateRoot<Guid>, ILegacySystemIdentified, IAud
         string? city,
         Guid countryId,
         DateTimeOffset now,
-        Guid? id = null)
+        Guid? id = null,
+        GeoCoordinates? geoCoordinates = null,
+        string? timeZoneId = "Etc/UTC")
     {
         var iataCheck = NormalizeIata(iataCode);
         if (iataCheck.IsFailure)
@@ -68,6 +72,10 @@ public sealed class Station : AggregateRoot<Guid>, ILegacySystemIdentified, IAud
         var cityCheck = ValidateCity(city);
         if (cityCheck.IsFailure)
             return cityCheck.Error;
+
+        var zoneCheck = NormalizeTimeZoneId(timeZoneId);
+        if (zoneCheck.IsFailure)
+            return zoneCheck.Error;
 
         if (countryId == Guid.Empty)
             return Error.Validation("A country is required.", "MasterData.Station.CountryRequired");
@@ -80,6 +88,8 @@ public sealed class Station : AggregateRoot<Guid>, ILegacySystemIdentified, IAud
             Name = nameCheck.Value,
             City = cityCheck.Value,
             CountryId = countryId,
+            GeoCoordinates = geoCoordinates,
+            TimeZoneId = zoneCheck.Value,
             IsActive = true,
             CreatedAtUtc = now
         };
@@ -91,7 +101,9 @@ public sealed class Station : AggregateRoot<Guid>, ILegacySystemIdentified, IAud
         string? name,
         string? city,
         Guid countryId,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        GeoCoordinates? geoCoordinates = null,
+        string? timeZoneId = null)
     {
         var iataCheck = NormalizeIata(iataCode);
         if (iataCheck.IsFailure)
@@ -109,6 +121,10 @@ public sealed class Station : AggregateRoot<Guid>, ILegacySystemIdentified, IAud
         if (cityCheck.IsFailure)
             return cityCheck.Error;
 
+        var zoneCheck = NormalizeTimeZoneId(timeZoneId ?? TimeZoneId);
+        if (zoneCheck.IsFailure)
+            return zoneCheck.Error;
+
         if (countryId == Guid.Empty)
             return Error.Validation("A country is required.", "MasterData.Station.CountryRequired");
 
@@ -117,6 +133,8 @@ public sealed class Station : AggregateRoot<Guid>, ILegacySystemIdentified, IAud
         Name = nameCheck.Value;
         City = cityCheck.Value;
         CountryId = countryId;
+        GeoCoordinates = geoCoordinates;
+        TimeZoneId = zoneCheck.Value;
         UpdatedAtUtc = now;
         return Result.Success();
     }
@@ -139,6 +157,32 @@ public sealed class Station : AggregateRoot<Guid>, ILegacySystemIdentified, IAud
         IsActive = false;
         UpdatedAtUtc = now;
         return Result.Success();
+    }
+
+    private static Result<string> NormalizeTimeZoneId(string? timeZoneId)
+    {
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+            return Error.Validation("A valid IANA time zone is required.", "MasterData.Station.TimeZoneInvalid");
+
+        var normalized = timeZoneId.Trim();
+        if (normalized.Length is 0 or > 128)
+            return Error.Validation("A valid IANA time zone is required.", "MasterData.Station.TimeZoneInvalid");
+
+        try
+        {
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(normalized);
+            if (normalized != "UTC" && !zone.HasIanaId)
+                return Error.Validation("Use an IANA time zone, such as Asia/Riyadh.", "MasterData.Station.TimeZoneInvalid");
+            return normalized;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return Error.Validation("The station time zone is not recognized.", "MasterData.Station.TimeZoneInvalid");
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return Error.Validation("The station time zone is invalid.", "MasterData.Station.TimeZoneInvalid");
+        }
     }
 
     private static Result<string> NormalizeIata(string? iataCode)

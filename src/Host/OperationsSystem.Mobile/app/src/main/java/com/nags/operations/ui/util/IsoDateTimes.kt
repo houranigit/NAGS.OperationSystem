@@ -61,3 +61,9 @@ fun formatFlightDateRangeForDisplay(arrivalIso: String, departureIso: String, zo
     } catch (_: Exception) {
         formatIsoDateForDisplay(arrivalIso, zoneId)
     }
+
+/** Flight metadata carries the validated station zone; device settings never select it. */
+fun stationTimeZone(id: String): ZoneId = ZoneId.of(id)
+
+fun operationLocalTime(iso: String, zone: ZoneId): String =
+    runCatching { parseInUserZone(iso, zone).toLocalDateTime().toString() }.getOrDefault("")

@@ -23,6 +23,26 @@ public sealed class MobileFlightTests
     private static readonly Guid UserId = Guid.NewGuid();
     private static readonly MobileFlightScopeContext Context = new(StationId, StaffId, UserId, Now);
 
+    [Fact]
+    public async Task MobileReads_RejectAnOrphanStationInsteadOfReturningMissingTimeZoneMetadata()
+    {
+        await using var db = NewDb();
+        var flight = FlightFor("100", assigned: true, sta: Now.AddHours(-1), std: Now.AddHours(1));
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        var reader = new SchedulingMasterDataReader { StationExists = false };
+
+        var page = await new GetMobileFlightsQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance, reader)
+            .Handle(new GetMobileFlightsQuery(), CancellationToken.None);
+        var detail = await new GetMobileFlightByIdQueryHandler(db, Scope(), reader)
+            .Handle(new GetMobileFlightByIdQuery(flight.Id), CancellationToken.None);
+
+        page.IsFailure.ShouldBeTrue();
+        detail.IsFailure.ShouldBeTrue();
+        page.Error.Code.ShouldBe("Operations.Flight.StationDataUnavailable");
+        detail.Error.Code.ShouldBe("Operations.Flight.StationDataUnavailable");
+    }
+
     [Theory]
     [InlineData(UserType.SystemAdministrator)]
     [InlineData(UserType.ViewerOnly)]
@@ -88,7 +108,7 @@ public sealed class MobileFlightTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var result = await new GetMobileFlightsQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance)
+        var result = await new GetMobileFlightsQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
             .Handle(new GetMobileFlightsQuery(Category: category), CancellationToken.None);
 
         result.Value.Items.Count.ShouldBe(count);
@@ -128,15 +148,20 @@ public sealed class MobileFlightTests
         db.Flights.Add(flight);
         await db.SaveChangesAsync();
 
-        var list = await new GetMobileFlightsQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance)
+        var list = await new GetMobileFlightsQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
             .Handle(new GetMobileFlightsQuery(), CancellationToken.None);
-        var detail = await new GetMobileFlightByIdQueryHandler(db, Scope())
+        var detail = await new GetMobileFlightByIdQueryHandler(db, Scope(), new SchedulingMasterDataReader())
             .Handle(new GetMobileFlightByIdQuery(flight.Id), CancellationToken.None);
 
         list.Value.Items.Count.ShouldBe(visible ? 1 : 0);
         detail.IsSuccess.ShouldBe(visible);
         if (!visible)
             detail.Error.Type.ShouldBe(ErrorType.NotFound);
+        else
+        {
+            detail.Value.StationTimeZoneId.ShouldBe("Asia/Riyadh");
+            list.Value.Items.Single().StationTimeZoneId.ShouldBe("Asia/Riyadh");
+        }
     }
 
     [Theory]
@@ -157,7 +182,7 @@ public sealed class MobileFlightTests
         var reader = new SchedulingMasterDataReader();
         var logos = new LogoReader();
 
-        var detail = await new GetMobileFlightByIdQueryHandler(db, Scope())
+        var detail = await new GetMobileFlightByIdQueryHandler(db, Scope(), new SchedulingMasterDataReader())
             .Handle(new GetMobileFlightByIdQuery(flight.Id), CancellationToken.None);
         var logo = await new GetMobileFlightCustomerLogoQueryHandler(db, Scope(), logos)
             .Handle(new GetMobileFlightCustomerLogoQuery(flight.Customer.CustomerId), CancellationToken.None);
@@ -184,7 +209,7 @@ public sealed class MobileFlightTests
         db.Flights.AddRange(first, second, FlightFor("300", perLanding: true), FlightFor("400"));
         await db.SaveChangesAsync();
         var logos = new LogoReader();
-        var handler = new GetMobileFlightsQueryHandler(db, Scope(), logos);
+        var handler = new GetMobileFlightsQueryHandler(db, Scope(), logos, new SchedulingMasterDataReader());
 
         var result = await handler.Handle(new GetMobileFlightsQuery(PageSize: 1,
             Sort: "flightNumber", Category: "MyFlights"), CancellationToken.None);
@@ -211,7 +236,7 @@ public sealed class MobileFlightTests
     {
         await using var db = NewDb();
 
-        var result = await new GetMobileFlightsQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance)
+        var result = await new GetMobileFlightsQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
             .Handle(new GetMobileFlightsQuery(Category: category), CancellationToken.None);
 
         result.Error.Code.ShouldBe("Operations.Mobile.InvalidCategory");

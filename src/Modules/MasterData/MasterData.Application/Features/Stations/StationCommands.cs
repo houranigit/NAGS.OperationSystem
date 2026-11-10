@@ -7,6 +7,7 @@ using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Application.Abstractions;
 using MasterData.Application.Authorization;
+using MasterData.Application.Contracts;
 using MasterData.Application.Features.StaffMembers;
 using MasterData.Contracts;
 using MasterData.Domain.Authorization;
@@ -40,7 +41,9 @@ public sealed record CreateStationCommand(
     string? City,
     Guid CountryId,
     IReadOnlyList<NewStationStaffInput> Staff,
-    string? LegacySystemId = null) : ICommand<Guid>;
+    string TimeZoneId,
+    string? LegacySystemId = null,
+    GeoCoordinatesInput? GeoCoordinates = null) : ICommand<Guid>;
 
 public sealed class CreateStationCommandValidator : AbstractValidator<CreateStationCommand>
 {
@@ -52,6 +55,7 @@ public sealed class CreateStationCommandValidator : AbstractValidator<CreateStat
         RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
         RuleFor(x => x.City).MaximumLength(100);
         RuleFor(x => x.CountryId).NotEmpty();
+        RuleFor(x => x.TimeZoneId).NotEmpty().MaximumLength(128);
     }
 }
 
@@ -74,7 +78,21 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
         if (countryCheck.IsFailure)
             return countryCheck.Error;
 
-        var result = Station.Create(request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, now);
+        GeoCoordinates? coordinates = null;
+        if (request.GeoCoordinates is { } location)
+        {
+            if (location.Latitude is not { } latitude || location.Longitude is not { } longitude)
+                return Error.Validation("Latitude and longitude are both required when coordinates are provided.",
+                    "MasterData.Station.CoordinatesIncomplete");
+
+            var coordinateResult = GeoCoordinates.Create(latitude, longitude);
+            if (coordinateResult.IsFailure)
+                return coordinateResult.Error;
+            coordinates = coordinateResult.Value;
+        }
+
+        var result = Station.Create(request.IataCode, request.IcaoCode, request.Name, request.City,
+            request.CountryId, now, geoCoordinates: coordinates, timeZoneId: request.TimeZoneId);
         if (result.IsFailure)
             return result.Error;
 
@@ -187,7 +205,7 @@ public sealed class CreateStationCommandHandler(IMasterDataDbContext db, IUserCo
 
 // --- Update ---------------------------------------------------------------
 
-public sealed record UpdateStationCommand(Guid Id, string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, byte[] RowVersion, string? LegacySystemId = null) : ICommand;
+public sealed record UpdateStationCommand(Guid Id, string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, byte[] RowVersion, string TimeZoneId, string? LegacySystemId = null, GeoCoordinatesInput? GeoCoordinates = null) : ICommand;
 
 public sealed class UpdateStationCommandValidator : AbstractValidator<UpdateStationCommand>
 {
@@ -200,6 +218,7 @@ public sealed class UpdateStationCommandValidator : AbstractValidator<UpdateStat
         RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
         RuleFor(x => x.City).MaximumLength(100);
         RuleFor(x => x.CountryId).NotEmpty();
+        RuleFor(x => x.TimeZoneId).NotEmpty().MaximumLength(128);
         RuleFor(x => x.RowVersion).NotEmpty();
     }
 }
@@ -221,8 +240,23 @@ public sealed class UpdateStationCommandHandler(IMasterDataDbContext db, IMaster
         if (countryCheck.IsFailure)
             return countryCheck.Error;
 
+        GeoCoordinates? coordinates = null;
+        if (request.GeoCoordinates is { } location)
+        {
+            if (location.Latitude is not { } latitude || location.Longitude is not { } longitude)
+                return Error.Validation("Latitude and longitude are both required when coordinates are provided.",
+                    "MasterData.Station.CoordinatesIncomplete");
+
+            var coordinateResult = GeoCoordinates.Create(latitude, longitude);
+            if (coordinateResult.IsFailure)
+                return coordinateResult.Error;
+            coordinates = coordinateResult.Value;
+        }
+
         var previousIataCode = station.IataCode;
-        var result = station.Update(request.IataCode, request.IcaoCode, request.Name, request.City, request.CountryId, timeProvider.GetUtcNow());
+        var previousTimeZoneId = station.TimeZoneId;
+        var result = station.Update(request.IataCode, request.IcaoCode, request.Name, request.City,
+            request.CountryId, timeProvider.GetUtcNow(), coordinates, request.TimeZoneId);
         if (result.IsFailure)
             return result.Error;
 
@@ -247,6 +281,8 @@ public sealed class UpdateStationCommandHandler(IMasterDataDbContext db, IMaster
             await db.SaveChangesAsync(cancellationToken);
             if (staffOptionsChanged)
                 mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.StaffMembers, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
+            if (station.TimeZoneId != previousTimeZoneId)
+                mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()));
         }
         catch (DbUpdateConcurrencyException)
         {

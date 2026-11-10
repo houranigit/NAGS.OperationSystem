@@ -19,6 +19,89 @@ namespace Operations.Application.UnitTests;
 
 public sealed class FlightSchedulingTests
 {
+    [Theory]
+    [InlineData("America/Chicago", 16, 15)]
+    [InlineData("Etc/UTC", 10, 10)]
+    [InlineData("UTC", 10, 10)]
+    public async Task BatchSchedule_UsesTheStationZoneInsteadOfTheSuppliedBrowserZoneAcrossDst(string zone, int winterHour, int summerHour)
+    {
+        await using var db = NewDb();
+        var reader = new SchedulingMasterDataReader { StationTimeZoneId = zone };
+        var result = await new ScheduleFlightsCommandHandler(db, AdminScope(), new MasterDataResolver(reader),
+            new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+            .Handle(new ScheduleFlightsCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "123",
+                new TimeOnly(10, 0), new TimeOnly(11, 0),
+                [new DateOnly(2026, 1, 15), new DateOnly(2026, 7, 15)],
+                null, [reader.ServiceId], [], "Asia/Riyadh"), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var arrivals = await db.Flights.OrderBy(f => f.Schedule.Sta).Select(f => f.Schedule.Sta).ToListAsync();
+        arrivals.ShouldBe([
+            new DateTimeOffset(2026, 1, 15, winterHour, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 7, 15, summerHour, 0, 0, TimeSpan.Zero)]);
+    }
+
+    [Theory]
+    [InlineData(null, "Operations.Ref.StationTimeZoneInvalid")]
+    [InlineData("", "Operations.Ref.StationTimeZoneInvalid")]
+    [InlineData("Browser UTC+03:00", "Operations.Ref.StationTimeZoneInvalid")]
+    [InlineData("not/a-zone", "Operations.Ref.StationTimeZoneInvalid")]
+    public async Task BatchSchedule_RejectsInvalidStationDataBeforeSaving(string? zone, string errorCode)
+    {
+        await using var db = NewDb();
+        var reader = new SchedulingMasterDataReader { StationTimeZoneId = zone };
+        var result = await new ScheduleFlightsCommandHandler(db, AdminScope(), new MasterDataResolver(reader),
+            new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+            .Handle(new ScheduleFlightsCommand(Guid.NewGuid(), reader.StationId, Guid.NewGuid(), "123",
+                new TimeOnly(10, 0), new TimeOnly(11, 0), [new DateOnly(2026, 7, 15)],
+                null, [reader.ServiceId], [], "Asia/Riyadh"), CancellationToken.None);
+
+        result.Error.Code.ShouldBe(errorCode);
+        (await db.Flights.CountAsync()).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task FlightReads_UseCurrentStationConfigurationForExistingFlights()
+    {
+        await using var db = NewDb();
+        var flight = NewFlight(Guid.NewGuid(), []);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        var reader = new SchedulingMasterDataReader { StationTimeZoneId = "Asia/Riyadh" };
+        var handler = new GetFlightByIdQueryHandler(db, AdminScope(), reader);
+
+        var initial = await handler.Handle(new GetFlightByIdQuery(flight.Id), CancellationToken.None);
+        initial.Value.StationTimeZoneId.ShouldBe("Asia/Riyadh");
+        reader.StationTimeZoneId = "America/Chicago";
+        var updated = await handler.Handle(new GetFlightByIdQuery(flight.Id), CancellationToken.None);
+        updated.Value.StationTimeZoneId.ShouldBe("America/Chicago");
+        updated.Value.ScheduledArrivalUtc.ShouldBe(initial.Value.ScheduledArrivalUtc);
+        var page = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance, reader)
+            .Handle(new GetFlightsQuery(), CancellationToken.None);
+        page.Value.Items.Single().StationId.ShouldBe(flight.Station.StationId);
+        page.Value.Items.Single().StationTimeZoneId.ShouldBe("America/Chicago");
+    }
+
+    [Fact]
+    public async Task FlightReads_RejectAnOrphanStationInsteadOfReturningMissingTimeZoneMetadata()
+    {
+        await using var db = NewDb();
+        var flight = NewFlight(Guid.NewGuid(), []);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        var reader = new SchedulingMasterDataReader { StationExists = false };
+
+        var detail = await new GetFlightByIdQueryHandler(db, AdminScope(), reader)
+            .Handle(new GetFlightByIdQuery(flight.Id), CancellationToken.None);
+        var page = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance, reader)
+            .Handle(new GetFlightsQuery(), CancellationToken.None);
+
+        detail.IsFailure.ShouldBeTrue();
+        page.IsFailure.ShouldBeTrue();
+        detail.Error.Code.ShouldBe("Operations.Flight.StationDataUnavailable");
+        page.Error.Code.ShouldBe("Operations.Flight.StationDataUnavailable");
+    }
+
     public static TheoryData<string?, string, string> ValidFlightNumbers => new()
     {
         { "SV", "456", "SV456" },
@@ -82,7 +165,7 @@ public sealed class FlightSchedulingTests
         var flight = await db.Flights.Include(f => f.PlannedServices).SingleAsync();
         flight.FlightNumber.Value.ShouldBe(expectedNumber);
         flight.PlannedServices.ShouldHaveSingleItem().Service.ServiceId.ShouldBe(reader.ServiceId);
-        var page = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance)
+        var page = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
             .Handle(new GetFlightsQuery(Search: expectedNumber), CancellationToken.None);
         var item = page.Value.Items.ShouldHaveSingleItem();
         item.Id.ShouldBe(result.Value);
@@ -101,7 +184,7 @@ public sealed class FlightSchedulingTests
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
-        var result = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance)
+        var result = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
             .Handle(new GetFlightsQuery(), CancellationToken.None);
 
         var item = result.Value.Items.ShouldHaveSingleItem();
@@ -118,7 +201,7 @@ public sealed class FlightSchedulingTests
         db.Flights.AddRange(first, second);
         await db.SaveChangesAsync();
 
-        var result = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance)
+        var result = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
             .Handle(new GetFlightsQuery(Sort: "StationIataCode:asc"), CancellationToken.None);
 
         result.Value.Items.Select(flight => flight.Id).ShouldBe([first.Id, second.Id]);
@@ -146,7 +229,7 @@ public sealed class FlightSchedulingTests
         flights.ShouldAllBe(flight => flight.FlightNumber.Value == expectedNumber);
         flights.All(flight => flight.PlannedServices.Count == 1).ShouldBeTrue();
         flights[0].PlannedServices[0].Id.ShouldNotBe(flights[1].PlannedServices[0].Id);
-        var page = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance)
+        var page = await new GetFlightsQueryHandler(db, AdminScope(), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
             .Handle(new GetFlightsQuery(Search: expectedNumber), CancellationToken.None);
         page.Value.Items.Select(item => item.Id).ShouldBe(result.Value, ignoreOrder: true);
         page.Value.Items.ShouldAllBe(item => item.FlightNumber == expectedNumber);
@@ -283,7 +366,7 @@ public sealed class FlightSchedulingTests
         db.Flights.AddRange(assigned, perLanding, NewFlight(stationId, []), NewFlight(Guid.NewGuid(), [], perLanding: true));
         await db.SaveChangesAsync();
 
-        var result = await new GetFlightsQueryHandler(db, new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, staffId)), NoopCustomerLogoReader.Instance)
+        var result = await new GetFlightsQueryHandler(db, new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, staffId)), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
             .Handle(new GetFlightsQuery(), CancellationToken.None);
 
         result.Value.Items.Select(flight => flight.Id).ShouldBe([assigned.Id, perLanding.Id], ignoreOrder: true);
@@ -298,7 +381,7 @@ public sealed class FlightSchedulingTests
         db.Flights.AddRange(flight, NewFlight(Guid.NewGuid(), []));
         await db.SaveChangesAsync();
 
-        var result = await new GetFlightsQueryHandler(db, new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, Guid.NewGuid(), CanViewStationWide: true)), NoopCustomerLogoReader.Instance)
+        var result = await new GetFlightsQueryHandler(db, new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, Guid.NewGuid(), CanViewStationWide: true)), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
             .Handle(new GetFlightsQuery(), CancellationToken.None);
 
         result.Value.Items.ShouldHaveSingleItem().Id.ShouldBe(flight.Id);

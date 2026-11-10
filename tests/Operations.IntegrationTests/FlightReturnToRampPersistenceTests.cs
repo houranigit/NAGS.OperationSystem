@@ -14,6 +14,7 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
 {
     private const string TaskBaseline = "20261108204611_Operations_FlightTasks";
     private const string ReturnMigration = "20261109002742_Operations_FlightReturnToRamps";
+    private const string SignatureMigration = "20261109153847_Operations_UnifyCustomerSignatures";
     private static readonly DateTimeOffset Now = new(2026, 11, 8, 15, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -218,12 +219,14 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         var rootUpdatedAt = flight.UpdatedAtUtc;
         db.ChangeTracker.Clear();
 
-        await db.Database.MigrateAsync();
+        await db.Database.MigrateAsync(SignatureMigration);
 
         var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
         applied.Length.ShouldBe(previous.Length + 1);
         applied.Take(previous.Length).ShouldBe(previous);
-        applied.Last().ShouldContain("Signature");
+        applied.Last().ShouldBe(SignatureMigration);
+        // Verify the historical boundary before loading with the complete current model.
+        await db.Database.MigrateAsync();
         var reloaded = await LoadAsync(db, flight.Id);
         reloaded.RowVersion.ShouldBe(version);
         reloaded.UpdatedAtUtc.ShouldBe(rootUpdatedAt);

@@ -45,7 +45,7 @@ class FlightScopeTest {
     fun mobileContractReadsScopeAndServerMembershipWithoutInferringOperationNames() {
         val page = Json.decodeFromString<FlightPage>(
             """{"items":[{"id":"one","flightNumber":"123","customerName":"Customer",
-              "stationIataCode":"JED","stationId":"station","operationTypeName":"Custom label",
+              "stationIataCode":"JED","stationTimeZoneId":"Asia/Riyadh","stationId":"station","operationTypeName":"Custom label",
               "scheduledArrivalUtc":"2026-11-05T12:00:00Z","scheduledDepartureUtc":"2026-11-05T13:00:00Z",
               "isPerLanding":true,"isMyFlight":false,"isMyAdHocFlight":true}],
               "stationId":"station","asOfUtc":"2026-11-05T12:00:00Z",
@@ -64,5 +64,5 @@ class FlightScopeTest {
 
     private fun row(sta: String, std: String) = FlightListItem("one", "123", customerName = "Customer",
         stationIataCode = "JED", operationTypeName = "Transit", scheduledArrivalUtc = sta,
-        scheduledDepartureUtc = std, isPerLanding = false)
+        scheduledDepartureUtc = std, isPerLanding = false, stationTimeZoneId = "Asia/Riyadh")
 }

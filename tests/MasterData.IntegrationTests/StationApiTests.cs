@@ -11,7 +11,9 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
     private sealed record PagedList<T>(List<T> Items, int Page, int PageSize, long TotalCount);
     private sealed record StationItem(Guid Id, string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, string CountryName, bool IsActive);
     private sealed record StationDetail(Guid Id, string IataCode, string? IcaoCode, string Name, string? City, Guid CountryId, string CountryName, bool IsActive,
-        DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
+        DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion,
+        GeoCoordinatesDetail? GeoCoordinates, string? TimeZoneId);
+    private sealed record GeoCoordinatesDetail(decimal Latitude, decimal Longitude);
     private sealed record CountryDetail(Guid Id, string Name, string IsoCode, bool IsActive, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string RowVersion);
 
     [Fact]
@@ -30,7 +32,8 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
         var iata = await UnusedIataAsync(client);
 
         var create = await client.PostAsJsonAsync($"{Base}/stations",
-            new { iataCode = iata.ToLowerInvariant(), icaoCode = (string?)null, name = "Test Station", city = "Test City", countryId });
+            new { iataCode = iata.ToLowerInvariant(), icaoCode = (string?)null, name = "Test Station", city = "Test City", countryId, timeZoneId = "Asia/Riyadh",
+                geoCoordinates = new { latitude = 21.679564m, longitude = 39.156536m } });
         create.StatusCode.ShouldBe(HttpStatusCode.Created);
         var id = await create.Content.ReadFromJsonAsync<Guid>();
 
@@ -39,6 +42,8 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
         detail.CountryId.ShouldBe(countryId);
         detail.CountryName.ShouldNotBeNullOrWhiteSpace();
         detail.IsActive.ShouldBeTrue();
+        detail.TimeZoneId.ShouldBe("Asia/Riyadh");
+        detail.GeoCoordinates.ShouldBe(new GeoCoordinatesDetail(21.679564m, 39.156536m));
     }
 
     [Fact]
@@ -49,11 +54,11 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
         var iata = await UnusedIataAsync(client);
 
         (await client.PostAsJsonAsync($"{Base}/stations",
-            new { iataCode = iata, icaoCode = (string?)null, name = "First", city = "City", countryId }))
+            new { iataCode = iata, icaoCode = (string?)null, name = "First", city = "City", countryId, timeZoneId = "Asia/Riyadh" }))
             .StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var second = await client.PostAsJsonAsync($"{Base}/stations",
-            new { iataCode = iata, icaoCode = (string?)null, name = "Second", city = "City", countryId });
+            new { iataCode = iata, icaoCode = (string?)null, name = "Second", city = "City", countryId, timeZoneId = "Asia/Riyadh" });
         second.StatusCode.ShouldBe(HttpStatusCode.Conflict);
     }
 
@@ -65,7 +70,7 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
         var iata = await UnusedIataAsync(client);
 
         var create = await client.PostAsJsonAsync($"{Base}/stations",
-            new { iataCode = iata, icaoCode = (string?)null, name = "Legacy Station", city = (string?)null, countryId });
+            new { iataCode = iata, icaoCode = (string?)null, name = "Legacy Station", city = (string?)null, countryId, timeZoneId = "Asia/Riyadh" });
 
         create.StatusCode.ShouldBe(HttpStatusCode.Created);
         var id = await create.Content.ReadFromJsonAsync<Guid>();
@@ -87,7 +92,7 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
 
         var iata = await UnusedIataAsync(client);
         var create = await client.PostAsJsonAsync($"{Base}/stations",
-            new { iataCode = iata, icaoCode = (string?)null, name = "Test", city = "City", countryId });
+            new { iataCode = iata, icaoCode = (string?)null, name = "Test", city = "City", countryId, timeZoneId = "Asia/Riyadh" });
 
         create.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
@@ -103,7 +108,8 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
         var before = await client.GetFromJsonAsync<StationDetail>($"{Base}/stations/{id}");
         var request = new HttpRequestMessage(HttpMethod.Put, $"{Base}/stations/{id}")
         {
-            Content = JsonContent.Create(new { iataCode = iata, icaoCode = (string?)null, name = "Renamed Station", city = "New City", countryId })
+            Content = JsonContent.Create(new { iataCode = iata, icaoCode = (string?)null, name = "Renamed Station", city = "New City", countryId, timeZoneId = "America/Chicago",
+                geoCoordinates = new { latitude = 41.978611m, longitude = -87.904724m } })
         };
         request.Headers.TryAddWithoutValidation("If-Match", before!.RowVersion);
         (await client.SendAsync(request)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
@@ -111,6 +117,105 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
         var after = await client.GetFromJsonAsync<StationDetail>($"{Base}/stations/{id}");
         after!.Name.ShouldBe("Renamed Station");
         after.City.ShouldBe("New City");
+        after.TimeZoneId.ShouldBe("America/Chicago");
+        after.GeoCoordinates.ShouldBe(new GeoCoordinatesDetail(41.978611m, -87.904724m));
+
+        // A second coordinate update uses the new ETag, proving coordinates share the station write.
+        var clear = new HttpRequestMessage(HttpMethod.Put, $"{Base}/stations/{id}")
+        {
+            Content = JsonContent.Create(new { iataCode = iata, icaoCode = (string?)null,
+                name = "Renamed Station", city = "New City", countryId, timeZoneId = "America/Chicago" })
+        };
+        clear.Headers.TryAddWithoutValidation("If-Match", after.RowVersion);
+        (await client.SendAsync(clear)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var cleared = await client.GetFromJsonAsync<StationDetail>($"{Base}/stations/{id}");
+        cleared!.GeoCoordinates.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Unknown/Station")]
+    [InlineData("Arab Standard Time")]
+    public async Task Create_requires_valid_iana_time_zone(string? timeZoneId)
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var countryId = await EnsureActiveCountryAsync(client);
+        var iata = await UnusedIataAsync(client);
+        var response = await client.PostAsJsonAsync($"{Base}/stations", new
+        {
+            iataCode = iata, icaoCode = (string?)null, name = "Station", city = (string?)null,
+            countryId, timeZoneId
+        });
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Theory]
+    [InlineData(true, false, HttpStatusCode.BadRequest)]
+    [InlineData(false, true, HttpStatusCode.BadRequest)]
+    [InlineData(true, true, HttpStatusCode.Created)]
+    public async Task Create_requires_both_coordinate_properties_and_accepts_zero(
+        bool includeLatitude, bool includeLongitude, HttpStatusCode expectedStatus)
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var countryId = await EnsureActiveCountryAsync(client);
+        var iata = await UnusedIataAsync(client);
+        var coordinates = new Dictionary<string, decimal>();
+        if (includeLatitude)
+            coordinates["latitude"] = 0m;
+        if (includeLongitude)
+            coordinates["longitude"] = 0m;
+
+        var response = await client.PostAsJsonAsync($"{Base}/stations", new
+        {
+            iataCode = iata, icaoCode = (string?)null, name = "Station", city = (string?)null,
+            countryId, timeZoneId = "Asia/Riyadh", geoCoordinates = coordinates
+        });
+
+        response.StatusCode.ShouldBe(expectedStatus);
+        if (expectedStatus == HttpStatusCode.Created)
+        {
+            var id = await response.Content.ReadFromJsonAsync<Guid>();
+            var detail = await client.GetFromJsonAsync<StationDetail>($"{Base}/stations/{id}");
+            detail!.GeoCoordinates.ShouldBe(new GeoCoordinatesDetail(0m, 0m));
+        }
+    }
+
+    private sealed record TimeZoneOption(string Id, string DisplayName);
+
+    [Fact]
+    public async Task Time_zone_options_include_required_default_and_station_zone()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var options = await client.GetFromJsonAsync<List<TimeZoneOption>>($"{Base}/stations/time-zones");
+
+        options.ShouldNotBeNull();
+        options.ShouldContain(option => option.Id == "Etc/UTC");
+        options.ShouldContain(option => option.Id == "UTC");
+        options.ShouldContain(option => option.Id == "Asia/Riyadh");
+        options.ShouldAllBe(option => option.DisplayName.Contains(option.Id, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Update_requires_time_zone_and_preserves_existing_station_when_omitted()
+    {
+        var client = await factory.CreateAuthenticatedAdminClientAsync();
+        var countryId = await EnsureActiveCountryAsync(client);
+        var iata = await UnusedIataAsync(client);
+        var id = await CreateStationAsync(client, iata, countryId);
+        var before = await client.GetFromJsonAsync<StationDetail>($"{Base}/stations/{id}");
+        var request = new HttpRequestMessage(HttpMethod.Put, $"{Base}/stations/{id}")
+        {
+            Content = JsonContent.Create(new { iataCode = iata, icaoCode = (string?)null,
+                name = "Unaccepted change", city = "City", countryId })
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", before!.RowVersion);
+
+        (await client.SendAsync(request)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var after = await client.GetFromJsonAsync<StationDetail>($"{Base}/stations/{id}");
+        after!.TimeZoneId.ShouldBe("Asia/Riyadh");
+        after.Name.ShouldBe(before.Name);
+        after.RowVersion.ShouldBe(before.RowVersion);
     }
 
     private sealed record StaffItem(Guid Id, string FullName, string Email);
@@ -130,6 +235,7 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
             name = "Atomic Station",
             city = "City",
             countryId,
+            timeZoneId = "Asia/Riyadh",
             staff = new[]
             {
                 new { fullName = "Staff One", employeeId = $"EMP-1-{iata}", email = $"one-{iata}@test.com", manpowerTypeId, employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null },
@@ -158,6 +264,7 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
             name = "Rollback Station",
             city = "City",
             countryId,
+            timeZoneId = "Asia/Riyadh",
             staff = new[]
             {
                 new { fullName = "Bad Staff", employeeId = $"EMP-BAD-{iata}", email = $"bad-{iata}@test.com", manpowerTypeId = Guid.NewGuid(), employmentContract = (object?)null, workingDays = (string[]?)null, licenses = Array.Empty<object>(), portalAccessRoleId = (Guid?)null }
@@ -181,7 +288,7 @@ public class StationApiTests(MasterDataApiFactory factory) : IClassFixture<Maste
     private static async Task<Guid> CreateStationAsync(HttpClient client, string iata, Guid countryId)
     {
         var create = await client.PostAsJsonAsync($"{Base}/stations",
-            new { iataCode = iata, icaoCode = (string?)null, name = $"Station {iata}", city = "City", countryId });
+            new { iataCode = iata, icaoCode = (string?)null, name = $"Station {iata}", city = "City", countryId, timeZoneId = "Asia/Riyadh" });
         create.StatusCode.ShouldBe(HttpStatusCode.Created);
         return await create.Content.ReadFromJsonAsync<Guid>();
     }

@@ -63,7 +63,7 @@ public sealed class GetStationsQueryHandler(IMasterDataDbContext db, IMasterData
             .Select(s => new StationListItemDto(
                 s.Id, s.IataCode, s.IcaoCode, s.Name, s.City, s.CountryId,
                 db.Countries.Where(c => c.Id == s.CountryId).Select(c => c.Name).FirstOrDefault() ?? string.Empty,
-                s.IsActive))
+                s.IsActive, s.TimeZoneId))
             .ToListAsync(cancellationToken);
 
         return paging.ToResult<StationListItemDto>(items, total);
@@ -110,7 +110,8 @@ public sealed class GetStationByIdQueryHandler(IMasterDataDbContext db, IMasterD
         return new StationDto(
             station.Id, station.IataCode, station.IcaoCode, station.Name, station.City,
             station.CountryId, countryName, station.IsActive,
-            station.CreatedAtUtc, station.UpdatedAtUtc, Convert.ToBase64String(station.RowVersion), station.LegacySystemId);
+            station.CreatedAtUtc, station.UpdatedAtUtc, Convert.ToBase64String(station.RowVersion), station.TimeZoneId, station.LegacySystemId,
+            station.GeoCoordinates is { } coordinates ? new GeoCoordinatesDto(coordinates.Latitude, coordinates.Longitude) : null);
     }
 }
 
@@ -139,9 +140,37 @@ public sealed class GetActiveStationOptionsQueryHandler(IMasterDataDbContext db,
         IReadOnlyList<StationOptionDto> options = await query
             .OrderBy(s => s.IataCode)
             .ThenBy(s => s.Id)
-            .Select(s => new StationOptionDto(s.Id, s.IataCode, s.Name))
+            .Select(s => new StationOptionDto(s.Id, s.IataCode, s.Name, s.TimeZoneId))
             .ToListAsync(cancellationToken);
 
         return Result.Success(options);
+    }
+}
+
+// --- Time zones (for station maintenance) ---------------------------------
+
+public sealed record GetStationTimeZonesQuery : IQuery<IReadOnlyList<StationTimeZoneOptionDto>>;
+
+public sealed class GetStationTimeZonesQueryHandler
+    : IQueryHandler<GetStationTimeZonesQuery, IReadOnlyList<StationTimeZoneOptionDto>>
+{
+    public Task<Result<IReadOnlyList<StationTimeZoneOptionDto>>> Handle(
+        GetStationTimeZonesQuery request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var options = new Dictionary<string, StationTimeZoneOptionDto>(StringComparer.Ordinal);
+        foreach (var zone in TimeZoneInfo.GetSystemTimeZones())
+        {
+            var id = zone.HasIanaId ? zone.Id
+                : TimeZoneInfo.TryConvertWindowsIdToIanaId(zone.Id, out var ianaId) ? ianaId : null;
+            if (id is not null)
+                options.TryAdd(id, new StationTimeZoneOptionDto(id, $"{id} — {zone.DisplayName}"));
+        }
+
+        // These valid aliases are also persisted by older imports and the station migration.
+        options.TryAdd("Etc/UTC", new StationTimeZoneOptionDto("Etc/UTC", "Etc/UTC — Coordinated Universal Time (UTC+00:00)"));
+        options.TryAdd("UTC", new StationTimeZoneOptionDto("UTC", "UTC — Coordinated Universal Time (UTC+00:00)"));
+        IReadOnlyList<StationTimeZoneOptionDto> result = options.Values.OrderBy(option => option.Id, StringComparer.Ordinal).ToList();
+        return Task.FromResult(Result.Success(result));
     }
 }

@@ -14,6 +14,10 @@ import java.io.IOException
 import java.time.Instant
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import java.nio.file.Files
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
@@ -77,6 +81,63 @@ class FlightsRepositoryCacheTest {
         logoStore = logoStore,
         dao = dao, ownerFlow = owner, currentOwner = { owner.value }, isOnline = { online }, now = { clock },
     )
+
+    @Test
+    fun registerWithoutRequiredStationTimeMetadataUsesTheExistingRefreshPolicy() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        val snapshot = dao.snapshot(owner.value!!)!!
+        val payload = Json.parseToJsonElement(snapshot.payloadJson).jsonObject
+        val oldRows = JsonArray(payload.getValue("items").jsonArray.map { row ->
+            JsonObject(row.jsonObject - "stationTimeZoneId")
+        })
+        dao.putSnapshot(snapshot.copy(payloadJson = JsonObject(payload + ("items" to oldRows)).toString()))
+
+        online = false
+        assertTrue(runCatching { repository.flights() }.isFailure)
+        assertTrue(runCatching { repository.flight("one") }.isFailure)
+        online = true
+        repository.refreshCache()
+        assertEquals("Asia/Riyadh", repository.flights().items.first().stationTimeZoneId)
+    }
+
+    @Test
+    fun detailWithoutRequiredStationTimeMetadataRequiresTheExistingOnlineRead() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        val cached = dao.detail(owner.value!!, "one")!!
+        val oldDetail = JsonObject(Json.parseToJsonElement(cached.payloadJson).jsonObject - "stationTimeZoneId")
+        dao.putDetails(listOf(cached.copy(payloadJson = oldDetail.toString())))
+
+        online = false
+        assertEquals(2, repository.flights().items.size)
+        assertTrue(runCatching { repository.flight("one") }.isFailure)
+        online = true
+        assertEquals("Asia/Riyadh", repository.flight("one").stationTimeZoneId)
+        online = false
+        assertEquals("Asia/Riyadh", repository.flight("one").stationTimeZoneId)
+    }
+
+    @Test
+    fun acceptedArrivalDoesNotDependOnDecodingAnOlderDetailCache() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        val cached = dao.detail(owner.value!!, "one")!!
+        val oldDetail = JsonObject(Json.parseToJsonElement(cached.payloadJson).jsonObject - "stationTimeZoneId")
+        dao.putDetails(listOf(cached.copy(payloadJson = oldDetail.toString())))
+        val employee = com.nags.operations.data.AssignedEmployee("staff", "Employee", "E1")
+        val arrival = com.nags.operations.data.FlightArrivalSubmission("arrival", employee,
+            "2026-11-04T10:00:00Z", "aircraft", "A320", "HZ-TEST", receivedByEmployee = employee,
+            isAccepted = true, createdAtUtc = "2026-11-04T10:00:00Z")
+
+        repository.recordArrival("one", com.nags.operations.data.FlightArrivalSaved(arrival, "new-version"))
+
+        online = false
+        assertTrue(runCatching { repository.flight("one") }.isFailure)
+    }
 
     @Test
     fun notificationLinksReadLocalMyFlightsWithoutNetworkOrDetailRequests() = runBlocking {
@@ -715,12 +776,12 @@ class FlightsRepositoryCacheTest {
 
     private fun item(id: String, number: String = "123") = FlightListItem(
         id, number, "XY", "Airline", "AAA", "Scheduled", "2026-11-04T10:00:00Z", "2026-11-04T11:00:00Z", false,
-        stationId = "station", isMyFlight = true,
+        stationId = "station", isMyFlight = true, stationTimeZoneId = "Asia/Riyadh",
     )
     private fun detail(id: String, number: String = "123") = FlightDetail(
         id, number, "customer", "XY", "Airline", "station", "AAA", "Station", "operation", "Scheduled",
         scheduledArrivalUtc = "2026-11-04T10:00:00Z", scheduledDepartureUtc = "2026-11-04T11:00:00Z",
-        isPerLanding = false, createdAtUtc = "2026-11-03T10:00:00Z", rowVersion = "version",
+        isPerLanding = false, createdAtUtc = "2026-11-03T10:00:00Z", rowVersion = "version", stationTimeZoneId = "Asia/Riyadh",
     )
 }
 

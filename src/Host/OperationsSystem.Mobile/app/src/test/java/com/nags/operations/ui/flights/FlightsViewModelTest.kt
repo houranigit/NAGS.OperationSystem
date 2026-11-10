@@ -1197,10 +1197,10 @@ class FlightsViewModelTest {
     private fun page(id: String) = FlightPage(items = listOf(row(id)), totalCount = 1)
     private fun row(id: String) = FlightListItem(id, "123", customerName = "Airline", stationIataCode = "JED",
         operationTypeName = "Transit", scheduledArrivalUtc = "2026-11-03T10:00:00Z",
-        scheduledDepartureUtc = "2026-11-03T12:00:00Z", isPerLanding = false, isMyFlight = true)
+        scheduledDepartureUtc = "2026-11-03T12:00:00Z", isPerLanding = false, isMyFlight = true, stationTimeZoneId = "Asia/Riyadh")
     private fun detail(id: String) = FlightDetail(id, "123", "customer", customerName = "Airline",
         stationId = "station", stationIata = "JED", stationName = "Jeddah", operationTypeId = "operation",
         operationTypeName = "Transit", scheduledArrivalUtc = "2026-11-03T10:00:00Z",
         scheduledDepartureUtc = "2026-11-03T12:00:00Z", isPerLanding = false,
-        createdAtUtc = "2026-11-03T09:00:00Z", rowVersion = "v1")
+        createdAtUtc = "2026-11-03T09:00:00Z", rowVersion = "v1", stationTimeZoneId = "Asia/Riyadh")
 }
