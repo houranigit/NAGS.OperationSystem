@@ -54,9 +54,9 @@ fun formatFlightDateRangeForDisplay(arrivalIso: String, departureIso: String, zo
         val fullDate = DateTimeFormatter.ofPattern("MMM d yyyy", locale)
         when {
             arrival == departure -> formatIsoDateForDisplay(arrivalIso, zoneId)
-            arrival.year != departure.year -> "${arrival.format(fullDate)}-${departure.format(fullDate)}"
-            arrival.month != departure.month -> "${arrival.format(monthDay)}-${departure.format(fullDate)}"
-            else -> "${arrival.format(monthDay)}-${departure.format(DateTimeFormatter.ofPattern("d yyyy", locale))}"
+            arrival.year != departure.year -> "${arrival.format(fullDate)} - ${departure.format(fullDate)}"
+            arrival.month != departure.month -> "${arrival.format(monthDay)} - ${departure.format(fullDate)}"
+            else -> "${arrival.format(monthDay)} - ${departure.format(DateTimeFormatter.ofPattern("d yyyy", locale))}"
         }
     } catch (_: Exception) {
         formatIsoDateForDisplay(arrivalIso, zoneId)

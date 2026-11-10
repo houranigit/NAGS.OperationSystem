@@ -40,7 +40,7 @@ class IsoDateTimesTest {
             assertEquals("Nov 4, 2026", formatIsoDateForDisplay(arrival, zone))
             assertEquals("23:30", formatIsoTimeForDisplay(arrival, zone))
             assertEquals("02:00", formatIsoTimeForDisplay(departure, zone))
-            assertEquals("Nov 4-5 2026", formatFlightDateRangeForDisplay(arrival, departure, zone))
+            assertEquals("Nov 4 - 5 2026", formatFlightDateRangeForDisplay(arrival, departure, zone))
             assertEquals("Nov 4, 2026", formatFlightDateRangeForDisplay(arrival, "2026-11-05T05:45:00Z", zone))
         } finally {
             Locale.setDefault(previousLocale)
@@ -59,9 +59,9 @@ class IsoDateTimesTest {
         try {
             Locale.setDefault(Locale.US)
             val zone = ZoneId.of("UTC")
-            assertEquals("Nov 27-30 2026", formatFlightDateRangeForDisplay("2026-11-27T10:00:00Z", "2026-11-30T12:00:00Z", zone))
-            assertEquals("Nov 30-Dec 1 2026", formatFlightDateRangeForDisplay("2026-11-30T23:00:00Z", "2026-12-01T01:00:00Z", zone))
-            assertEquals("Dec 31 2026-Jan 1 2027", formatFlightDateRangeForDisplay("2026-12-31T23:00:00Z", "2027-01-01T01:00:00Z", zone))
+            assertEquals("Nov 27 - 30 2026", formatFlightDateRangeForDisplay("2026-11-27T10:00:00Z", "2026-11-30T12:00:00Z", zone))
+            assertEquals("Nov 30 - Dec 1 2026", formatFlightDateRangeForDisplay("2026-11-30T23:00:00Z", "2026-12-01T01:00:00Z", zone))
+            assertEquals("Dec 31 2026 - Jan 1 2027", formatFlightDateRangeForDisplay("2026-12-31T23:00:00Z", "2027-01-01T01:00:00Z", zone))
         } finally {
             Locale.setDefault(previousLocale)
         }

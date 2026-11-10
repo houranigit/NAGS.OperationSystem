@@ -125,6 +125,7 @@ import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.ui.components.CustomerLogo
 import com.nags.operations.ui.components.FlightAircraftOperationRow
+import com.nags.operations.ui.components.PerLandingBadge
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.Flow
@@ -132,6 +133,8 @@ import kotlinx.coroutines.launch
 
 internal val FlightFormGround = Color(0xFFF2F2F7)
 internal val FlightFormGreen = Color(0xFF34C759)
+// Shared fixed identity from MasterData.Contracts.Seeding.WellKnownMasterDataIds.
+private const val AdHocOperationTypeId = "30000000-0000-0000-0000-000000000001"
 
 /** Used only while work is in progress; honor the system animation setting. */
 @Composable
@@ -288,7 +291,7 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
                     val density = LocalDensity.current
                     val labelStyle = MaterialTheme.typography.labelSmall
                     val valueStyle = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 22.sp,
-                        fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum")
+                        fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
                     var scheduleHeight by remember { mutableIntStateOf(0) }
                     val logoSize = with(density) { if (scheduleHeight > 0) scheduleHeight.toDp() else 60.dp }
                     val stackSchedule = maxWidth < 76.dp + 210.dp * density.fontScale
@@ -304,6 +307,7 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
                                 onTitlePositioned(it.positionInWindow().y, it.size.height)
                             }.semantics { heading() }, style = valueStyle,
                                 maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                            FlightRecordingTypeBadge(flight)
                         }
                     }
                     val schedule: @Composable () -> Unit = {
@@ -324,11 +328,28 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
                         schedule()
                     }
                 }
-                Text(flight.customerName, Modifier.fillMaxWidth().padding(top = 4.dp),
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                HorizontalDivider(Modifier.padding(vertical = 10.dp), thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
                 FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName)
             }
+        }
+    }
+}
+
+@Composable
+private fun FlightRecordingTypeBadge(flight: FlightDetail) {
+    // AdHoc has the same precedence over legacy mixed designations as the mobile feed.
+    val isAdHoc = flight.operationTypeId.equals(AdHocOperationTypeId, ignoreCase = true)
+    if (flight.isPerLanding && !isAdHoc) {
+        PerLandingBadge()
+    } else {
+        val foreground = if (isAdHoc) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+        val background = if (isAdHoc) foreground.copy(alpha = 0.11f) else Color(0xFF007AFF).copy(alpha = 0.11f)
+        Surface(shape = RoundedCornerShape(50), color = background, contentColor = foreground) {
+            Text(stringResource(if (isAdHoc) R.string.flights_tab_adhoc else R.string.flights_scheduled),
+                Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.1.sp),
+                fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
         }
     }
 }

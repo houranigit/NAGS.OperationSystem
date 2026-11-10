@@ -55,7 +55,7 @@ class StationOperationTimeTest {
         val previous = Locale.getDefault()
         try {
             Locale.setDefault(Locale.US)
-            assertEquals("Nov 9-10 2026", formatFlightDateRangeForDisplay(
+            assertEquals("Nov 9 - 10 2026", formatFlightDateRangeForDisplay(
                 "2026-11-09T20:30:00Z", "2026-11-09T22:30:00Z", ZoneId.of("Asia/Riyadh")))
         } finally {
             Locale.setDefault(previous)
