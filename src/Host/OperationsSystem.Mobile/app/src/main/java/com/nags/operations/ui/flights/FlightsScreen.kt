@@ -193,7 +193,7 @@ fun FlightsScreen(
     if (state.selectedFlightId != null) key(state.selectedFlightId) {
         var recordingForm by rememberSaveable { mutableStateOf<String?>(null) }
         // The open form owns a stable snapshot, including across activity recreation.
-        // A silent detail refresh can temporarily clear state.detail.
+        // Background detail updates must not replace the form's original snapshot.
         var recordingFlightSnapshot by rememberSaveable { mutableStateOf<String?>(null) }
         val recordingFlight = remember(recordingFlightSnapshot) {
             recordingFlightSnapshot?.let { Json.decodeFromString<FlightDetail>(it) }

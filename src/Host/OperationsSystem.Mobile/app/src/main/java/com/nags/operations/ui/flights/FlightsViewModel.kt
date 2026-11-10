@@ -434,8 +434,12 @@ class FlightsViewModel internal constructor(
 
     fun openFlight(id: String) {
         detailJob?.cancel()
-        _state.update {
-            it.copy(selectedFlightId = id, lastUnavailableFlightId = null, detail = null,
+        _state.update { current ->
+            // Refresh an open flight in place; a different flight still needs its initial loader.
+            val retained = current.detail?.takeIf {
+                current.selectedFlightId == id && it.id == id && it.isInFlightWindow(now())
+            }
+            current.copy(selectedFlightId = id, lastUnavailableFlightId = null, detail = retained,
                 isLoadingDetail = true, detailError = null, invitationSent = false)
         }
         detailJob = scope.launch {

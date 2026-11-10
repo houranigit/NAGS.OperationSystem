@@ -275,20 +275,122 @@ class FlightsViewModelTest {
     fun aCompletedFlightSyncReloadsTheListAndOpenDetailWithoutAnotherSyncLoop() {
         val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val cached = MutableStateFlow(FlightSyncStatus(itemCount = 1, lastSuccessUtc = "2026-11-04T10:00:00Z"))
-        var number = "123"
+        val refreshedDetail = CompletableDeferred<FlightDetail>()
         var listReads = 0
         var detailReads = 0
         val vm = model(changes = changes, cacheStatus = cached,
             list = { _, _, _ -> listReads++; page("one") },
-            readDetail = { detailReads++; detail(it).copy(flightNumber = number) })
+            readDetail = { if (++detailReads == 1) detail(it) else refreshedDetail.await() })
         vm.refresh()
         vm.openFlight("one")
-        number = "456"
-        changes.tryEmit(Unit)
+        val visible = vm.state.value.detail
+
+        assertTrue(changes.tryEmit(Unit))
+
         assertEquals(2, listReads)
         assertEquals(2, detailReads)
+        assertEquals("one", vm.state.value.selectedFlightId)
+        assertSame(visible, vm.state.value.detail)
+        assertTrue(vm.state.value.isLoadingDetail)
+        assertNull(vm.state.value.detailError)
+        assertFalse(vm.state.value.showRefreshIndicator)
+
+        refreshedDetail.complete(detail("one").copy(flightNumber = "456", rowVersion = "v2"))
+
         assertEquals("456", vm.state.value.detail!!.flightNumber)
+        assertEquals("v2", vm.state.value.detail!!.rowVersion)
+        assertFalse(vm.state.value.isLoadingDetail)
         assertEquals(listOf("one"), vm.state.value.items.map { it.id })
+        assertEquals(2, listReads)
+        assertEquals(2, detailReads)
+    }
+
+    @Test
+    fun aFailedAutomaticDetailRefreshKeepsVisibleContentAndCanRetry() {
+        for (failure in listOf(IOException("Connection lost"), ApiException(503, "Server unavailable"))) {
+            val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+            val cached = MutableStateFlow(FlightSyncStatus(itemCount = 1, lastSuccessUtc = "2026-11-04T10:00:00Z"))
+            var fail = false
+            val vm = model(changes = changes, cacheStatus = cached, readDetail = {
+                if (fail) throw failure
+                detail(it)
+            })
+            vm.refresh()
+            vm.openFlight("one")
+            val visible = vm.state.value.detail
+            fail = true
+
+            assertTrue(changes.tryEmit(Unit))
+
+            assertSame(visible, vm.state.value.detail)
+            assertEquals("one", vm.state.value.selectedFlightId)
+            assertNotNull(vm.state.value.detailError)
+            assertFalse(vm.state.value.isLoadingDetail)
+            assertEquals(listOf("one"), vm.state.value.items.map { it.id })
+
+            fail = false
+            assertTrue(changes.tryEmit(Unit))
+
+            assertNotNull(vm.state.value.detail)
+            assertNull(vm.state.value.detailError)
+            assertFalse(vm.state.value.isLoadingDetail)
+        }
+    }
+
+    @Test
+    fun anAutomaticDetailRefreshClearsRetainedContentWhenAccessIsRevoked() {
+        for (status in listOf(401, 403, 404)) {
+            val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+            val cached = MutableStateFlow(FlightSyncStatus(itemCount = 2, lastSuccessUtc = "2026-11-04T10:00:00Z"))
+            var denied = false
+            val vm = model(changes = changes, cacheStatus = cached,
+                list = { _, _, _ -> FlightPage(items = listOf(row("one"), row("two")), totalCount = 2) },
+                readDetail = {
+                    if (denied) throw ApiException(status, "Flight unavailable")
+                    detail(it)
+                })
+            vm.refresh()
+            vm.openFlight("one")
+            assertNotNull(vm.state.value.detail)
+            denied = true
+
+            assertTrue(changes.tryEmit(Unit))
+
+            assertNull(vm.state.value.detail)
+            assertNull(vm.state.value.selectedFlightId)
+            assertFalse(vm.state.value.isLoadingDetail)
+            if (status == 401) {
+                assertTrue(vm.state.value.items.isEmpty())
+            } else {
+                assertEquals(listOf("two"), vm.state.value.items.map { it.id })
+                assertEquals("one", vm.state.value.lastUnavailableFlightId)
+                assertEquals("Flight unavailable", vm.state.value.detailError)
+                assertFalse(vm.state.value.permissionDenied)
+            }
+        }
+    }
+
+    @Test
+    fun openingADifferentFlightClearsThePreviousDetailUntilItsInitialLoadCompletes() {
+        val first = CompletableDeferred<FlightDetail>()
+        val second = CompletableDeferred<FlightDetail>()
+        val vm = model(readDetail = { if (it == "one") first.await() else second.await() })
+
+        vm.openFlight("one")
+        assertEquals("one", vm.state.value.selectedFlightId)
+        assertNull(vm.state.value.detail)
+        assertTrue(vm.state.value.isLoadingDetail)
+        first.complete(detail("one"))
+        assertEquals("one", vm.state.value.detail!!.id)
+        assertFalse(vm.state.value.isLoadingDetail)
+
+        vm.openFlight("two")
+        assertEquals("two", vm.state.value.selectedFlightId)
+        assertNull(vm.state.value.detail)
+        assertTrue(vm.state.value.isLoadingDetail)
+        second.complete(detail("two"))
+        assertEquals("two", vm.state.value.detail!!.id)
+        assertFalse(vm.state.value.isLoadingDetail)
     }
 
     @Test

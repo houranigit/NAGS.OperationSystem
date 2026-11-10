@@ -94,6 +94,7 @@ import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.visibleArrival
 import com.nags.operations.ui.components.CustomerLogo
 import com.nags.operations.ui.components.ErrorState
+import com.nags.operations.ui.components.InlineErrorBanner
 import com.nags.operations.ui.components.FlightAircraftOperationRow
 import com.nags.operations.ui.components.InitialsAvatarStack
 import com.nags.operations.ui.components.PerLandingBadge
@@ -156,7 +157,7 @@ internal fun FlightDetailsSheet(
                 }.semantics { paneTitle = detailsTitle }) {
                 if (state.isLoadingDetail || state.detail != null) {
                     Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
-                        FlightRecordingActions(loading = state.isLoadingDetail || state.detail == null,
+                        FlightRecordingActions(loading = state.detail == null,
                             expandedAction = expandedAction,
                             onExpandedActionChange = { expandedAction = it; expandedActionBounds = null },
                             onExpandedBoundsChange = { expandedActionBounds = it },
@@ -170,8 +171,8 @@ internal fun FlightDetailsSheet(
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }
                     when {
-                        state.isLoadingDetail -> FlightDetailsSkeleton(showPeople = !isPerLanding)
-                        state.detailError != null -> ErrorState(message = state.detailError, onRetry = onRetry)
+                        state.isLoadingDetail && state.detail == null -> FlightDetailsSkeleton(showPeople = !isPerLanding)
+                        state.detailError != null && state.detail == null -> ErrorState(message = state.detailError, onRetry = onRetry)
                         state.detail != null -> {
                             val flight = state.detail
                             if (flight.fromCache) {
@@ -208,10 +209,14 @@ internal fun FlightDetailsSheet(
                                 DetailDivider()
                             }
                             if (state.canInviteEmployees && !flight.isPerLanding) {
-                                TextButton(onClick = onInvite, enabled = state.isOnline && !flight.fromCache && !state.isInviting,
+                                TextButton(onClick = onInvite, enabled = state.isOnline && !flight.fromCache && !state.isInviting && !state.isLoadingDetail,
                                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.tertiary)) {
                                     Text(stringResource(R.string.flights_invite_employees), fontWeight = FontWeight.SemiBold)
                                 }
+                            }
+                            state.detailError?.let { error ->
+                                InlineErrorBanner(message = error, onRetry = onRetry,
+                                    modifier = Modifier.padding(top = 8.dp))
                             }
                         }
                     }
