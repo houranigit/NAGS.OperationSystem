@@ -42,6 +42,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Flight
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -125,7 +126,6 @@ import androidx.core.view.WindowCompat
 import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.ui.components.CustomerLogo
-import com.nags.operations.ui.components.FlightAircraftOperationRow
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.Flow
@@ -133,8 +133,6 @@ import kotlinx.coroutines.launch
 
 internal val FlightFormGround = Color(0xFFF2F2F7)
 internal val FlightFormGreen = Color(0xFF34C759)
-// Shared fixed identity from MasterData.Contracts.Seeding.WellKnownMasterDataIds.
-private const val AdHocOperationTypeId = "30000000-0000-0000-0000-000000000001"
 
 /** Used only while work is in progress; honor the system animation setting. */
 @Composable
@@ -159,6 +157,7 @@ internal fun FlightRecordingFormScaffold(
     saveLoading: Boolean = false,
     onSave: () -> Unit = {},
     identityDetails: @Composable () -> Unit = {},
+    progressStatus: FlightProgressStatus? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(onDismissRequest = onRequestClose,
@@ -224,7 +223,7 @@ internal fun FlightRecordingFormScaffold(
                         Column(Modifier.widthIn(max = 600.dp).fillMaxWidth()
                             .padding(start = 16.dp, end = 16.dp, top = with(density) { headerHeight.toDp() } + 16.dp, bottom = 24.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            FlightRecordingIdentity(flight, loadCustomerLogo, onTitlePositioned = { top, height ->
+                            FlightRecordingIdentity(flight, loadCustomerLogo, progressStatus ?: flight.progressStatus(), onTitlePositioned = { top, height ->
                                 titleTop = top - viewportTop + scroll.value
                                 titleHeight = height
                             }, details = identityDetails)
@@ -284,7 +283,7 @@ private fun FlightFormHeaderButton(icon: ImageVector, description: String, enabl
 /** Flight identity and schedule share aligned labels and values in the card's top row. */
 @Composable
 private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>,
-    onTitlePositioned: (Float, Int) -> Unit, details: @Composable () -> Unit) {
+    progressStatus: FlightProgressStatus, onTitlePositioned: (Float, Int) -> Unit, details: @Composable () -> Unit) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Surface(Modifier.fillMaxWidth(), color = Color.White, shape = RoundedCornerShape(28.dp)) {
             Column(Modifier.padding(16.dp)) {
@@ -301,7 +300,7 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
                             Modifier.size(logoSize).border(1.dp, Color(0xFFD1D1D6), RoundedCornerShape(10.dp)).padding(5.dp))
                     }
                     val number: @Composable (Modifier) -> Unit = { modifier ->
-                        // Keep the badge inside the same full height as the schedule and logo.
+                        // The aircraft caption shares the date's third line and the logo's bottom edge.
                         Column(modifier.height(logoSize), verticalArrangement = Arrangement.SpaceBetween) {
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(stringResource(R.string.flight_form_flt), style = labelStyle,
@@ -311,7 +310,15 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
                                 }.semantics { heading() }, style = valueStyle,
                                     maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                             }
-                            FlightRecordingTypeBadge(flight)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Outlined.Flight, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(flight.aircraftTypeModel?.takeIf { it.isNotBlank() }
+                                    ?: stringResource(R.string.flights_card_aircraft_unavailable), Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
                     val schedule: @Composable () -> Unit = {
@@ -334,7 +341,7 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
                 }
                 HorizontalDivider(Modifier.padding(vertical = 10.dp), thickness = 0.5.dp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
-                FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName)
+                FlightOperationStatusRow(flight.operationTypeName, progressStatus)
                 details()
             }
         }
@@ -342,50 +349,35 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
 }
 
 @Composable
-private fun FlightRecordingTypeBadge(flight: FlightDetail) {
-    // AdHoc has the same precedence over legacy mixed designations as the mobile feed.
-    val isAdHoc = flight.operationTypeId.equals(AdHocOperationTypeId, ignoreCase = true)
-    val isPerLanding = flight.isPerLanding && !isAdHoc
-    val foreground = when {
-        isPerLanding -> Color(0xFF9A4500)
-        isAdHoc -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.tertiary
-    }
-    val background = when {
-        isPerLanding -> Color(0xFFFFF1DE)
-        isAdHoc -> foreground.copy(alpha = 0.11f)
-        else -> Color(0xFF007AFF).copy(alpha = 0.11f)
-    }
-    val label = when {
-        isPerLanding -> R.string.flights_per_landing
-        isAdHoc -> R.string.flights_tab_adhoc
-        else -> R.string.flights_scheduled
-    }
-    Surface(shape = RoundedCornerShape(50), color = background, contentColor = foreground) {
-        Text(stringResource(label), Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.1.sp),
-            fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
 internal fun FlightFormDateTimeField(value: String, label: String, description: String, enabled: Boolean = true,
-    errorMessage: String? = null, onClick: () -> Unit) {
+    errorMessage: String? = null, onClear: (() -> Unit)? = null, clearDescription: String? = null, onClick: () -> Unit) {
     val locale = LocalLocale.current.platformLocale
     val dateTime = value.takeIf { it.isNotBlank() }?.let(LocalDateTime::parse)
+    val hasClear = onClear != null && dateTime != null
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     FlightFormValidation(errorMessage) {
         Surface(onClick = { focus.clearFocus(); keyboard?.hide(); onClick() }, enabled = enabled, color = MaterialTheme.colorScheme.surface,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = description }) {
-            BoxWithConstraints(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f).padding(horizontal = 14.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
+            // A trailing clear target owns the end inset; avoid adding the field's 14dp inset
+            // and an extra row gap between the entered value and its close icon.
+            BoxWithConstraints(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f)
+                .padding(start = 14.dp, end = if (hasClear) 0.dp else 14.dp,
+                    top = if (hasClear) 0.dp else 6.dp, bottom = if (hasClear) 0.dp else 6.dp),
+                contentAlignment = Alignment.Center) {
                 val labelMaxWidth = maxWidth * 0.45f
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(label, Modifier.widthIn(max = labelMaxWidth),
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, Modifier.padding(end = 8.dp).widthIn(max = labelMaxWidth),
                         style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     FlightFormValueText(dateTime?.format(DateTimeFormatter.ofPattern("MMM d, yyyy · HH:mm", locale)) ?: "—",
                         Modifier.weight(1f))
+                    if (hasClear) IconButton(onClick = {
+                        focus.clearFocus(); keyboard?.hide(); onClear?.invoke()
+                    }, enabled = enabled, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Outlined.Close, clearDescription ?: description, Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }

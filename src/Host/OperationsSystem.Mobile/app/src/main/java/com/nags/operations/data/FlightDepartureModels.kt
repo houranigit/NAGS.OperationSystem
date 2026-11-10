@@ -12,6 +12,7 @@ data class FlightDepartureSubmission(
     val isAccepted: Boolean,
     val createdAtUtc: String,
     val updatedAtUtc: String? = null,
+    val signatureVersion: String? = null,
 )
 
 fun FlightDetail.visibleDeparture(): FlightDepartureSubmission? = departureSubmissions.firstOrNull {

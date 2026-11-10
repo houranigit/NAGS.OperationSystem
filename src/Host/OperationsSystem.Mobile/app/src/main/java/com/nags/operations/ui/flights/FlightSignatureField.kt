@@ -1,5 +1,16 @@
 package com.nags.operations.ui.flights
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import androidx.core.graphics.createBitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -10,6 +21,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -68,8 +80,10 @@ import kotlin.math.roundToInt
 
 /** Normalized ink stays in form state until the departure save encodes a PNG. */
 @Composable
-internal fun FlightSignatureField(value: String, hasSavedSignature: Boolean = false, enabled: Boolean = true, onOpen: () -> Unit) {
+internal fun FlightSignatureField(value: String, hasSavedSignature: Boolean = false, savedPreview: ByteArray? = null,
+    loading: Boolean = false, enabled: Boolean = true, onOpen: () -> Unit) {
     val ink = remember(value) { readSignature(value) }
+    val preview = rememberSignatureBitmap(savedPreview)
     val hasSignature = ink.strokes.isNotEmpty() || hasSavedSignature
     val title = stringResource(R.string.operations_signature_title)
     val description = stringResource(if (hasSignature) R.string.operations_signature_edit else R.string.operations_signature_title)
@@ -91,6 +105,10 @@ internal fun FlightSignatureField(value: String, hasSavedSignature: Boolean = fa
                         Canvas(Modifier.weight(1f, fill = false).width(88.dp).height(32.dp).clearAndSetSemantics {}) {
                             drawSignature(ink.strokes, ink.aspectRatio, inkColor, 1.dp.toPx())
                         }
+                    } else if (preview != null) {
+                        Image(preview, null, Modifier.width(88.dp).height(32.dp).background(Color.White).clearAndSetSemantics {}, contentScale = ContentScale.Fit)
+                    } else if (loading) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
                         FlightFormValueText(stringResource(if (hasSavedSignature) R.string.operations_signature_captured else R.string.operations_signature_add),
                             Modifier.weight(1f), isPlaceholder = !hasSavedSignature)
@@ -103,11 +121,37 @@ internal fun FlightSignatureField(value: String, hasSavedSignature: Boolean = fa
     }
 }
 
+private val SignatureSessionSaver = Saver<SignatureEditSession, String>(
+    save = { Json.encodeToString(it) }, restore = { Json.decodeFromString<SignatureEditSession>(it) })
+
 @Composable
-internal fun FlightSignatureSheet(value: String, onValueChange: (String) -> Unit, onDismiss: () -> Unit) {
-    val ink = remember(value) { readSignature(value) }
+private fun rememberSignatureBitmap(bytes: ByteArray?): ImageBitmap? = remember(bytes) {
+    if (bytes == null) null else runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) null else {
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = signaturePreviewSampleSize(bounds.outWidth, bounds.outHeight)
+            }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+        }
+    }.getOrNull()
+}
+
+@Composable
+internal fun FlightSignatureSheet(value: String, hasSavedSignature: Boolean, savedPreview: ByteArray?, loading: Boolean,
+    onRetry: () -> Unit, onValueChange: (String) -> Unit, onDismiss: () -> Unit) {
+    // Pin the original and keep all replacement strokes local until Use. Late image loading must
+    // never replace the user's draft or reset Undo history.
+    var session by rememberSaveable(stateSaver = SignatureSessionSaver) {
+        mutableStateOf(SignatureEditSession(value, value.isNotBlank() || hasSavedSignature))
+    }
+    var originalPreview by remember { mutableStateOf(savedPreview) }
+    LaunchedEffect(savedPreview) { if (originalPreview == null) originalPreview = savedPreview }
+    val preview = rememberSignatureBitmap(originalPreview)
+    val ink = remember(session.displayedInk) { readSignature(session.displayedInk) }
     val latestInk by rememberUpdatedState(ink)
-    val latestOnValueChange by rememberUpdatedState(onValueChange)
+    val latestDraw by rememberUpdatedState<(String) -> Unit>({ session = session.draw(it) })
     var activeStroke by remember { mutableStateOf<List<Offset>>(emptyList()) }
     var activeAspect by remember { mutableFloatStateOf(2f) }
     val title = stringResource(R.string.operations_signature_title)
@@ -129,77 +173,99 @@ internal fun FlightSignatureSheet(value: String, onValueChange: (String) -> Unit
                 }
             }
             BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-                // Reserve the footer before choosing the pad height in a short landscape sheet.
-                val clearHeight = maxOf(48.dp, with(LocalDensity.current) { MaterialTheme.typography.bodyMedium.lineHeight.toDp() } + 16.dp)
+                val footerHeight = maxOf(48.dp, with(LocalDensity.current) { MaterialTheme.typography.bodyMedium.lineHeight.toDp() } + 16.dp)
                 val canvasHeight = (maxWidth * 0.55f).coerceIn(160.dp, 200.dp)
-                    .coerceAtMost((maxHeight - clearHeight).coerceAtLeast(64.dp))
+                    .coerceAtMost((maxHeight - footerHeight).coerceAtLeast(64.dp))
                 val shape = RoundedCornerShape(12.dp)
                 Box(Modifier.fillMaxWidth().height(canvasHeight).clip(shape)
                     .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)) {
-                    Canvas(Modifier.fillMaxSize().semantics {
-                        contentDescription = drawDescription
-                        stateDescription = if (ink.strokes.isNotEmpty()) capturedDescription else addDescription
-                    }.pointerInput(Unit) {
-                        awaitEachGesture {
-                            // Take the gesture on touch-down so writing vertically never drags the sheet.
-                            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                            down.consume()
-                            val current = latestInk
-                            val canvasSize = Size(size.width.toFloat(), size.height.toFloat())
-                            val aspect = canvasSize.width / canvasSize.height
-                            val fitted = signatureBounds(canvasSize, current.aspectRatio)
-                            // Fit previous ink without distortion, then rebase it into this full canvas.
-                            // New strokes can follow the finger through space exposed by a resize.
-                            val previousStrokes = current.strokes.map { stroke ->
-                                stroke.map { point ->
-                                    Offset((fitted.left + point.x * fitted.width) / canvasSize.width,
-                                        (fitted.top + point.y * fitted.height) / canvasSize.height)
-                                }
-                            }
-                            val bounds = Rect(Offset.Zero, canvasSize)
-                            val points = mutableListOf(normalizeSignaturePoint(down.position, bounds))
-                            activeAspect = aspect
-                            activeStroke = points.toList()
-                            var completed = false
-                            try {
-                                while (true) {
-                                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                    val point = normalizeSignaturePoint(change.position, bounds)
-                                    if ((point - points.last()).getDistance() >= 0.001f) {
-                                        points += point
-                                        activeStroke = points.toList()
-                                    }
-                                    event.changes.forEach { it.consume() }
-                                    if (!change.pressed) {
-                                        completed = true
-                                        break
-                                    }
-                                }
-                                if (completed) {
-                                    latestOnValueChange(writeSignature(SignatureInk(aspect, previousStrokes + listOf(points.toList()))))
-                                }
-                            } finally {
-                                activeStroke = emptyList()
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape), contentAlignment = Alignment.Center) {
+                    if (session.viewingOriginal && ink.strokes.isEmpty()) {
+                        when {
+                            preview != null -> Image(preview, null, Modifier.fillMaxSize().padding(8.dp).background(Color.White), contentScale = ContentScale.Fit)
+                            loading -> CircularProgressIndicator(Modifier.size(28.dp))
+                            else -> Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(stringResource(R.string.operations_signature_preview_unavailable),
+                                    style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                TextButton(onClick = onRetry) { Text(stringResource(R.string.operations_signature_retry)) }
                             }
                         }
-                    }) {
-                        drawSignature(ink.strokes, ink.aspectRatio, inkColor, 2.5.dp.toPx())
-                        if (activeStroke.isNotEmpty()) drawSignature(listOf(activeStroke), activeAspect, inkColor, 2.5.dp.toPx())
-                    }
-                    if (ink.strokes.isEmpty() && activeStroke.isEmpty()) {
-                        Text(stringResource(R.string.operations_signature_hint), Modifier.align(Alignment.Center).clearAndSetSemantics {},
-                            style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Canvas(Modifier.fillMaxSize().semantics {
+                            contentDescription = if (session.viewingOriginal) capturedDescription else drawDescription
+                            stateDescription = if (ink.strokes.isNotEmpty()) capturedDescription else addDescription
+                        }.pointerInput(session.viewingOriginal) {
+                            if (session.viewingOriginal) return@pointerInput
+                            awaitEachGesture {
+                                // Take the gesture on touch-down so writing vertically never drags the sheet.
+                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                down.consume()
+                                val current = latestInk
+                                val canvasSize = Size(size.width.toFloat(), size.height.toFloat())
+                                val aspect = canvasSize.width / canvasSize.height
+                                val fitted = signatureBounds(canvasSize, current.aspectRatio)
+                                // Fit previous ink without distortion, then rebase it into this full canvas.
+                                // New strokes can follow the finger through space exposed by a resize.
+                                val previousStrokes = current.strokes.map { stroke ->
+                                    stroke.map { point ->
+                                        Offset((fitted.left + point.x * fitted.width) / canvasSize.width,
+                                            (fitted.top + point.y * fitted.height) / canvasSize.height)
+                                    }
+                                }
+                                val bounds = Rect(Offset.Zero, canvasSize)
+                                val points = mutableListOf(normalizeSignaturePoint(down.position, bounds))
+                                activeAspect = aspect
+                                activeStroke = points.toList()
+                                var completed = false
+                                try {
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        val point = normalizeSignaturePoint(change.position, bounds)
+                                        if ((point - points.last()).getDistance() >= 0.001f) {
+                                            points += point
+                                            activeStroke = points.toList()
+                                        }
+                                        event.changes.forEach { it.consume() }
+                                        if (!change.pressed) {
+                                            completed = true
+                                            break
+                                        }
+                                    }
+                                    if (completed) {
+                                        latestDraw(writeSignature(SignatureInk(aspect, previousStrokes + listOf(points.toList()))))
+                                    }
+                                } finally {
+                                    activeStroke = emptyList()
+                                }
+                            }
+                        }) {
+                            drawSignature(ink.strokes, ink.aspectRatio, inkColor, 2.5.dp.toPx())
+                            if (activeStroke.isNotEmpty()) drawSignature(listOf(activeStroke), activeAspect, inkColor, 2.5.dp.toPx())
+                        }
+                        if (!session.viewingOriginal && ink.strokes.isEmpty() && activeStroke.isEmpty()) {
+                            Text(stringResource(R.string.operations_signature_hint), Modifier.clearAndSetSemantics {},
+                                style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { onValueChange("") }, enabled = ink.strokes.isNotEmpty() && activeStroke.isEmpty(),
-                    modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(stringResource(R.string.operations_signature_clear), style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold)
+            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
+                if (session.viewingOriginal) {
+                    TextButton(onClick = close) { Text(stringResource(R.string.operations_signature_keep)) }
+                    TextButton(onClick = { session = session.replace() }) { Text(stringResource(R.string.operations_signature_replace)) }
+                } else {
+                    TextButton(onClick = { session = session.undo() }, enabled = session.history.isNotEmpty() && activeStroke.isEmpty()) {
+                        Text(stringResource(R.string.operations_signature_undo))
+                    }
+                    TextButton(onClick = { session = session.clear() }, enabled = ink.strokes.isNotEmpty() && activeStroke.isEmpty()) {
+                        Text(stringResource(R.string.operations_signature_clear))
+                    }
+                    TextButton(onClick = { onValueChange(session.draft); close() }, enabled = ink.strokes.isNotEmpty() && activeStroke.isEmpty()) {
+                        Text(stringResource(R.string.operations_signature_use), fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

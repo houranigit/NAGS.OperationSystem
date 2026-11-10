@@ -45,7 +45,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -97,9 +96,7 @@ import com.nags.operations.data.FlightDetail
 import com.nags.operations.ui.components.CustomerLogo
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.InlineErrorBanner
-import com.nags.operations.ui.components.FlightAircraftOperationRow
 import com.nags.operations.ui.components.InitialsAvatarStack
-import com.nags.operations.ui.components.PerLandingBadge
 import com.nags.operations.ui.util.formatFlightDateRangeForDisplay
 import com.nags.operations.ui.util.stationTimeZone
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
@@ -113,6 +110,7 @@ private val DetailEdge = Color(0xFFE7EBF0)
 internal fun FlightDetailsSheet(
     state: FlightsUiState,
     actuals: FlightActualDetails?,
+    progressStatus: FlightProgressStatus,
     onClose: () -> Unit,
     onRetry: () -> Unit,
     onInvite: () -> Unit,
@@ -142,6 +140,12 @@ internal fun FlightDetailsSheet(
             var servicesExpanded by rememberSaveable { mutableStateOf(false) }
             val isPerLanding = state.detail?.isPerLanding
                 ?: state.items.firstOrNull { it.id == state.selectedFlightId }?.isPerLanding ?: false
+            val actions: @Composable (Boolean) -> Unit = { loading ->
+                FlightRecordingActions(loading = loading, expandedAction = expandedAction,
+                    onExpandedActionChange = { expandedAction = it; expandedActionBounds = null },
+                    onExpandedBoundsChange = { expandedActionBounds = it },
+                    onOperations = onOperations, onCanceled = onCanceled)
+            }
             Column(Modifier.fillMaxWidth().onGloballyPositioned { contentOrigin = it.positionInWindow() }
                 .pointerInput(expandedAction) {
                     awaitEachGesture {
@@ -158,15 +162,6 @@ internal fun FlightDetailsSheet(
                         if (isTap && outsideAction) { expandedAction = null; expandedActionBounds = null }
                     }
                 }.semantics { paneTitle = detailsTitle }) {
-                if (state.isLoadingDetail || state.detail != null) {
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
-                        FlightRecordingActions(loading = state.detail == null,
-                            expandedAction = expandedAction,
-                            onExpandedActionChange = { expandedAction = it; expandedActionBounds = null },
-                            onExpandedBoundsChange = { expandedActionBounds = it },
-                            onOperations = onOperations, onCanceled = onCanceled)
-                    }
-                }
                 Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState())
                     .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 20.dp)) {
                     if (state.invitationSent) {
@@ -174,7 +169,7 @@ internal fun FlightDetailsSheet(
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }
                     when {
-                        state.isLoadingDetail && state.detail == null -> FlightDetailsSkeleton(showPeople = !isPerLanding)
+                        state.isLoadingDetail && state.detail == null -> FlightDetailsSkeleton(showPeople = !isPerLanding, actions = { actions(true) })
                         state.detailError != null && state.detail == null -> ErrorState(message = state.detailError, onRetry = onRetry)
                         state.detail != null -> {
                             val flight = state.detail
@@ -182,9 +177,9 @@ internal fun FlightDetailsSheet(
                                 Text(stringResource(R.string.flights_cached_detail), modifier = Modifier.padding(bottom = 8.dp),
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            FlightIdentity(flight, loadCustomerLogo)
+                            FlightIdentity(flight, loadCustomerLogo, actions = { actions(false) })
                             Spacer(Modifier.height(8.dp))
-                            FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName)
+                            FlightOperationStatusRow(flight.operationTypeName, progressStatus)
                             DetailDivider(Modifier.padding(vertical = 10.dp))
                             FlightSchedule(flight)
                             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -323,23 +318,20 @@ private fun FlightRecordingActions(
 }
 
 @Composable
-private fun FlightIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-        CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(40.dp))
-        Column(Modifier.weight(1f)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(flight.flightNumber.ifBlank { flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—" },
-                    modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
-                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                if (flight.isPerLanding) PerLandingBadge()
-                Surface(Modifier.widthIn(max = 92.dp), shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.11f)) {
-                    Text(stringResource(R.string.flights_scheduled), Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.tertiary,
+private fun FlightIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>, actions: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(40.dp))
+            Column(Modifier.weight(1f)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(flight.flightNumber.ifBlank { flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—" },
+                        modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
                         maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                    Box(Modifier.width(152.dp)) { actions() }
                 }
+                Text(flight.customerName, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
             }
-            Text(flight.customerName, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -353,12 +345,12 @@ private fun FlightSchedule(flight: FlightDetail) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         if (maxWidth < 320.dp * fontScale) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                FlightScheduleStation(flight, labelStyle, valueStyle)
+                FlightScheduleAircraft(flight, labelStyle, valueStyle)
                 FlightScheduleTimeGroup(flight, labelStyle, valueStyle, Modifier.align(Alignment.End), captionStyle = labelStyle)
             }
         } else {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                FlightScheduleStation(flight, labelStyle, valueStyle, Modifier.weight(1f).alignBy(FirstBaseline))
+                FlightScheduleAircraft(flight, labelStyle, valueStyle, Modifier.weight(1f).alignBy(FirstBaseline))
                 FlightScheduleTimeGroup(flight, labelStyle, valueStyle, Modifier.alignBy(FirstBaseline), captionStyle = labelStyle)
             }
         }
@@ -366,18 +358,16 @@ private fun FlightSchedule(flight: FlightDetail) {
 }
 
 @Composable
-private fun FlightScheduleStation(flight: FlightDetail, labelStyle: TextStyle, valueStyle: TextStyle, modifier: Modifier = Modifier) {
-    val stationName = flight.stationName.ifBlank { flight.stationIata }
+private fun FlightScheduleAircraft(flight: FlightDetail, labelStyle: TextStyle, valueStyle: TextStyle, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(stringResource(R.string.flights_schedule), style = labelStyle,
             color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(stationName, style = valueStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        if (flight.stationIata.isNotBlank() && !flight.stationIata.equals(stationName, ignoreCase = true)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.LocationOn, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-                Text(flight.stationIata, style = labelStyle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+        Text(flight.aircraftTypeModel?.takeIf { it.isNotBlank() } ?: stringResource(R.string.flights_card_aircraft_unavailable),
+            style = valueStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.LocationOn, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+            Text(flight.stationIata.ifBlank { stringResource(R.string.flights_card_aircraft_unavailable) }, style = labelStyle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -481,20 +471,23 @@ private fun DetailPeopleRow(
 }
 
 @Composable
-private fun FlightDetailsSkeleton(showPeople: Boolean) {
+private fun FlightDetailsSkeleton(showPeople: Boolean, actions: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().clearAndSetSemantics { progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate }) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             SkeletonBlock(Modifier.size(40.dp))
             Column(Modifier.weight(1f)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    SkeletonBlock(Modifier.width(84.dp).height(30.dp))
-                    SkeletonBlock(Modifier.width(72.dp).height(22.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SkeletonBlock(Modifier.weight(1f).height(30.dp))
+                    Box(Modifier.width(152.dp)) { actions() }
                 }
                 SkeletonBlock(Modifier.fillMaxWidth(0.75f).height(20.dp))
             }
         }
         Spacer(Modifier.height(8.dp))
-        SkeletonBlock(Modifier.width(200.dp).height(16.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            SkeletonBlock(Modifier.width(156.dp).height(16.dp))
+            SkeletonBlock(Modifier.width(104.dp).height(22.dp))
+        }
         DetailDivider(Modifier.padding(vertical = 10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {

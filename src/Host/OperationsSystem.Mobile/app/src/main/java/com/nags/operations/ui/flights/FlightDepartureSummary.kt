@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -48,9 +50,12 @@ internal fun FlightDepartureSummary(departure: FlightDepartureSubmission, zone: 
                 Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.departure_actual_details), style = labelStyle,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Reserve the same value line as the arrival aircraft/tail row.
+                    Spacer(Modifier.height(with(LocalDensity.current) { valueStyle.lineHeight.toDp() }))
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Engineering, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(departure.handledByEmployee.fullName, style = valueStyle)
+                        Text(departure.handledByEmployee.fullName, Modifier.weight(1f), style = labelStyle,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

@@ -95,6 +95,8 @@ internal fun FlightOperationsForm(
     catalogs: FlightOperationsCatalogs = FlightOperationsCatalogs(),
     pending: FlightArrivalPendingEntity? = null,
     pendingDeparture: FlightDeparturePendingEntity? = null,
+    progressStatus: FlightProgressStatus? = null,
+    loadSignature: suspend (FlightDetail, FlightDeparturePendingEntity?) -> ByteArray? = { _, _ -> null },
     onSaveArrival: suspend (FlightDetail, SaveFlightArrivalRequest) -> Unit,
     onReviewArrival: suspend () -> FlightDetail,
     onSaveDeparture: suspend (FlightDetail, SaveFlightDepartureRequest) -> Unit,
@@ -104,6 +106,21 @@ internal fun FlightOperationsForm(
     val zone = entryZone
     val arrival = flight.visibleArrival()
     val departure = flight.visibleDeparture()
+    val hasSavedSignature = departure != null || pendingDeparture?.signatureFile != null
+    var savedSignaturePreview by remember { mutableStateOf<ByteArray?>(null) }
+    var signaturePreviewLoading by remember { mutableStateOf(false) }
+    var signaturePreviewRetry by remember { mutableStateOf(0) }
+    LaunchedEffect(departure?.id, departure?.signatureVersion, departure?.updatedAtUtc,
+        pendingDeparture?.changeId, pendingDeparture?.signatureFile, signaturePreviewRetry) {
+        savedSignaturePreview = null
+        if (hasSavedSignature) {
+            signaturePreviewLoading = true
+            try { savedSignaturePreview = loadSignature(flight, pendingDeparture) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* The existing signature remains unchanged when a preview cannot load. */ }
+            finally { signaturePreviewLoading = false }
+        }
+    }
     val pendingInput = remember(pending?.inputJson) {
         pending?.let { runCatching { Json.decodeFromString<SaveFlightArrivalRequest>(it.inputJson) }.getOrNull() }
     }
@@ -321,7 +338,7 @@ internal fun FlightOperationsForm(
     FlightRecordingFormScaffold(flight, stringResource(R.string.operations_title), stringResource(R.string.operations_save),
         loadCustomerLogo, requestClose,
         saveEnabled = !saving && (arrivalEnabled && (arrivalChanged || reviewedChangeId != null) || departureEnabled && (departureChanged || reviewedDepartureChangeId != null)),
-        saveLoading = saving, onSave = saveChanges,
+        saveLoading = saving, onSave = saveChanges, progressStatus = progressStatus,
         identityDetails = {
             otherEmployeeArrival?.let { FlightArrivalSummary(it, entryZone) }
             otherEmployeeDeparture?.let { FlightDepartureSummary(it, entryZone) }
@@ -402,21 +419,16 @@ internal fun FlightOperationsForm(
                 }) { Text(stringResource(R.string.departure_reload_review)) }
             }
             FlightFormFieldGroup {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) {
-                        FlightFormDateTimeField(atd, stringResource(R.string.operations_atd_short), stringResource(R.string.operations_choose_atd),
-                            enabled = departureEnabled,
-                            errorMessage = if (validationAttempted && departureChanged && departureTime.isBlank()) stringResource(R.string.departure_atd_required) else null,
-                            onClick = { openPicker("atd") })
-                    }
-                    if (atd.isNotBlank()) IconButton(enabled = departureEnabled, onClick = { atd = ""; originalAtd = null }, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Outlined.Close, stringResource(R.string.operations_clear_atd), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                FlightFormDateTimeField(atd, stringResource(R.string.operations_atd_short), stringResource(R.string.operations_choose_atd),
+                    enabled = departureEnabled,
+                    errorMessage = if (validationAttempted && departureChanged && departureTime.isBlank()) stringResource(R.string.departure_atd_required) else null,
+                    onClear = if (atd.isNotBlank()) ({ atd = ""; originalAtd = null }) else null,
+                    clearDescription = stringResource(R.string.operations_clear_atd),
+                    onClick = { openPicker("atd") })
             }
             FlightFormFieldGroup {
-                FlightSignatureField(signature, hasSavedSignature = departure != null || pendingDeparture?.signatureFile != null, enabled = departureEnabled,
-                    onOpen = { openPicker("signature") })
+                FlightSignatureField(signature, hasSavedSignature = hasSavedSignature, savedPreview = savedSignaturePreview,
+                    loading = signaturePreviewLoading, enabled = departureEnabled, onOpen = { openPicker("signature") })
             }
             if (validationAttempted && departureChanged && signatureRequired) ArrivalFormMessage(stringResource(R.string.departure_signature_required), error = true)
             FlightFormRemarks(departureRemarks, { departureRemarks = it }, stringResource(R.string.operations_departure_remarks), enabled = departureEnabled)
@@ -430,7 +442,8 @@ internal fun FlightOperationsForm(
     }
     if (picker == "aircraft") ArrivalAircraftPicker(title = stringResource(R.string.arrival_aircraft_type),
         options = aircraftChoices, selectedId = aircraftId, onDismiss = { picker = null }, onSelect = { aircraftId = it })
-    if (picker == "signature") FlightSignatureSheet(signature, {
+    if (picker == "signature") FlightSignatureSheet(signature, hasSavedSignature, savedSignaturePreview,
+        signaturePreviewLoading, onRetry = { signaturePreviewRetry++ }, onValueChange = {
         signature = it
         signatureSignedAtUtc = if (it.isBlank()) null else Instant.now().toString()
     }, onDismiss = { picker = null })

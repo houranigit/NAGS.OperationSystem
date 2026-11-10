@@ -15,7 +15,7 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
         LoginViewModel::class.java -> LoginViewModel(graph.authRepository)
         FlightsViewModel::class.java -> FlightsViewModel(
             graph.flightsRepository, graph.authRepository, graph.networkMonitor, graph.sharedCatalogsRepository, graph.flightArrivals, graph.flightDepartures,
-            graph.tokenStore.displayNameFlow,
+            graph.tokenStore.displayNameFlow, graph.departureSignaturePreviews::load,
         )
         AccountViewModel::class.java -> AccountViewModel(graph.authRepository, graph.networkMonitor)
         SyncCenterViewModel::class.java -> SyncCenterViewModel(

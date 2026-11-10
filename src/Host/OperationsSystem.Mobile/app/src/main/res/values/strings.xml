@@ -315,4 +315,19 @@
     <string name="departure_sync_action_failed">Could not update the saved departure. Please try again.</string>
     <string name="flight_actuals_saved_locally">Saved on this device</string>
     <string name="flight_actuals_you">You</string>
+    <string name="flight_operation_type">Operation Type</string>
+    <string name="flight_progress_draft">Draft</string>
+    <string name="flight_progress_arrival_submitted">Arrival submitted</string>
+    <string name="flight_progress_arrival_pending">Arrival pending sync</string>
+    <string name="flight_progress_arrival_review">Arrival needs review</string>
+    <string name="flight_progress_departure_submitted">Departure submitted</string>
+    <string name="flight_progress_departure_pending">Departure pending sync</string>
+    <string name="flight_progress_departure_review">Departure needs review</string>
+    <string name="operations_signature_keep">Keep signature</string>
+    <string name="operations_signature_replace">Replace signature</string>
+    <string name="operations_signature_use">Use signature</string>
+    <string name="operations_signature_undo">Undo</string>
+    <string name="operations_signature_preview_unavailable">Signature preview is unavailable. Your saved signature is kept.</string>
+    <string name="operations_signature_loading">Loading signature…</string>
+    <string name="operations_signature_retry">Retry preview</string>
 </resources>

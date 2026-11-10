@@ -18,6 +18,7 @@ import com.nags.operations.data.repo.FlightsRepository
 import com.nags.operations.data.repo.FlightArrivalsRepository
 import com.nags.operations.data.repo.FlightDeparturesRepository
 import com.nags.operations.data.repo.DiskDepartureSignatureStore
+import com.nags.operations.data.repo.DepartureSignaturePreviews
 import com.nags.operations.data.outbox.FlightArrivalSyncWorker
 import com.nags.operations.data.repo.NotificationsRepository
 import com.nags.operations.data.repo.SharedCatalogsRepository
@@ -105,6 +106,16 @@ class AppGraph private constructor(context: Context) {
         hasSavedArrival = flightArrivals::hasSavedInput,
         acknowledgedArrivalVersion = flightArrivals::acknowledgedVersion,
         fetchFlight = flightsRepository::flight,
+        onSignatureAcknowledged = { id, saved, bytes -> cacheAcknowledgedSignature(id, saved, bytes) },
+    )
+    val departureSignaturePreviews = DepartureSignaturePreviews(
+        directory = File(appContext.noBackupFilesDir, "departure-signature-previews"),
+        currentOwner = {
+            if (tokenStore.getAccessToken().isNullOrBlank()) null
+            else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
+        },
+        online = { networkMonitor.isOnline.value }, fetch = operationsApi::departureSignature,
+        pendingBytes = { id, changeId -> flightDepartures.signaturePreview(id, changeId) },
     )
     val notificationsRepository: NotificationsRepository =
         NotificationsRepository(notificationsApi, database, tokenStore, appScope, networkMonitor.isOnline)
@@ -196,7 +207,12 @@ class AppGraph private constructor(context: Context) {
             flightsRepository.clearLocal()
             flightArrivals.clear()
             flightDepartures.clear()
+            departureSignaturePreviews.clear()
         }
+    }
+
+    private suspend fun cacheAcknowledgedSignature(id: String, saved: com.nags.operations.data.FlightDepartureSaved, bytes: ByteArray) {
+        departureSignaturePreviews.recordAcknowledged(id, saved, bytes)
     }
 
     private suspend fun persistArrivalAcknowledgment(id: String, before: String, after: String) {
@@ -248,6 +264,7 @@ class AppGraph private constructor(context: Context) {
             flightsRepository.clearLocal()
             flightArrivals.clear()
             flightDepartures.clear()
+            departureSignaturePreviews.clear()
             tokenStore.clearAll()
         }
     }

@@ -395,6 +395,27 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         saved.Submission.Remarks.ShouldBe("Departure remarks");
         saved.Submission.IsAccepted.ShouldBeTrue();
         saved.RowVersion.ShouldNotBe(detail.RowVersion);
+        string PreviewUrl(FlightDepartureSubmissionDto submission, Guid? flightId = null, Guid? submissionId = null) =>
+            $"{Base}/flights/mobile/{flightId ?? id}/departure-signatures/{submissionId ?? submission.Id}" +
+            $"?expectedUpdatedAt={Uri.EscapeDataString((submission.UpdatedAtUtc ?? submission.CreatedAtUtc).ToString("O"))}";
+        foreach (var client in new[] { firstClient, secondClient })
+        {
+            using var preview = await client.GetAsync(PreviewUrl(saved.Submission));
+            preview.StatusCode.ShouldBe(HttpStatusCode.OK);
+            preview.Content.Headers.ContentType!.MediaType.ShouldBe("image/png");
+            preview.Headers.CacheControl!.Private.ShouldBeTrue();
+            preview.Headers.CacheControl.NoStore.ShouldBeTrue();
+            (await preview.Content.ReadAsByteArrayAsync()).ShouldBe(png);
+        }
+        using (var wrongSubmission = await firstClient.GetAsync(PreviewUrl(saved.Submission, submissionId: Guid.NewGuid())))
+            wrongSubmission.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        var hiddenId = await ScheduleFlightAsync(admin, refs.StationId, refs, "7301");
+        using (var hiddenPreview = await firstClient.GetAsync(PreviewUrl(saved.Submission, flightId: hiddenId)))
+            hiddenPreview.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        using (var anonymous = factory.CreateClient())
+        using (var unauthenticated = await anonymous.GetAsync(PreviewUrl(saved.Submission)))
+            unauthenticated.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        saved.Submission.SignatureVersion.ShouldNotBeNullOrWhiteSpace();
         string originalKey;
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -431,6 +452,14 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         corrected.Submission.Id.ShouldBe(saved.Submission.Id);
         corrected.Submission.Remarks.ShouldBe("Corrected");
         corrected.Submission.UpdatedAtUtc.ShouldNotBeNull();
+        corrected.Submission.SignatureVersion.ShouldBe(saved.Submission.SignatureVersion);
+        using (var stalePreview = await firstClient.GetAsync(PreviewUrl(saved.Submission)))
+            stalePreview.StatusCode.ShouldBe(HttpStatusCode.PreconditionFailed);
+        using (var correctedPreview = await firstClient.GetAsync(PreviewUrl(corrected.Submission)))
+        {
+            correctedPreview.StatusCode.ShouldBe(HttpStatusCode.OK);
+            (await correctedPreview.Content.ReadAsByteArrayAsync()).ShouldBe(png);
+        }
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
@@ -441,6 +470,8 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
         // Re-signing stores a new file and releases only an unreferenced previous file.
         using var resign = await Save(firstClient, input with { SignatureSignedAtUtc = input.SignatureSignedAtUtc!.Value.AddSeconds(1) }, corrected.RowVersion);
         resign.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var resigned = (await resign.Content.ReadFromJsonAsync<FlightDepartureSavedDto>())!;
+        resigned.Submission.SignatureVersion.ShouldNotBe(corrected.Submission.SignatureVersion);
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();

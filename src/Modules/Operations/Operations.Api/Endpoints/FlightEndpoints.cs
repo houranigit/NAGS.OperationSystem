@@ -49,6 +49,15 @@ internal static class FlightEndpoints
                     entityTag: new EntityTagHeaderValue($"\"{result.Value.Version}\""));
         }).RequirePermission(OperationsPermissions.Flights.View);
 
+        mobile.MapGet("/{id:guid}/departure-signatures/{submissionId:guid}", async (
+            Guid id, Guid submissionId, DateTimeOffset expectedUpdatedAt, HttpResponse response, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetMobileFlightDepartureSignatureQuery(id, submissionId, expectedUpdatedAt), ct);
+            if (result.IsFailure) return ApiResults.Problem(result.Error);
+            response.Headers.CacheControl = "private, no-store";
+            return Results.File(result.Value.Content, "image/png", enableRangeProcessing: false);
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
         mobile.MapGet("/{id:guid}/invitation-options", async (Guid id, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new GetFlightInvitationOptionsQuery(id, MobileOnly: true), ct);

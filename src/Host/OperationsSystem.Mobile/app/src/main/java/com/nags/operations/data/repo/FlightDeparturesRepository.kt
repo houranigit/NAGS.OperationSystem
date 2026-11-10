@@ -43,6 +43,7 @@ class FlightDeparturesRepository(
     private val acknowledgedArrivalVersion: suspend (String, String) -> String,
     private val fetchFlight: suspend (String) -> FlightDetail,
     private val now: () -> Instant = Instant::now,
+    private val onSignatureAcknowledged: suspend (String, FlightDepartureSaved, ByteArray) -> Unit = { _, _, _ -> },
 ) {
     private val gate = Mutex()
     private val localWrites = Mutex()
@@ -144,6 +145,11 @@ class FlightDeparturesRepository(
                 }
                 val result = send(prepared.flightId, hydrated, checkNotNull(prepared.attemptRowVersion))
                 if (owner != currentOwner()) return@withLock false
+                hydrated.signatureContent?.let { content ->
+                    try { onSignatureAcknowledged(prepared.flightId, result, Base64.getDecoder().decode(content)) }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { /* Preview caching must not invalidate the acknowledged departure. */ }
+                }
                 accepted(prepared.flightId, result)
                 localWrites.withLock {
                     resetAcknowledgments(owner)
@@ -197,7 +203,12 @@ class FlightDeparturesRepository(
             val current = fetchFlight(original.flightId)
             if (current.fromCache) throw IOException("Connect to reload the latest flight before synchronizing departure.")
             val reviewed = json.decodeFromString<List<FlightDepartureSubmission>>(original.reviewedDepartureJson)
-            if (current.hasCancellationSubmission || current.departureSubmissions.sortedBy { it.id } != reviewed.sortedBy { it.id })
+            // Older cached/queued snapshots predate opaque signature versions. Ignore only that
+            // absent metadata, while preserving every existing departure concurrency check.
+            val comparable = current.departureSubmissions.map { live ->
+                if (reviewed.firstOrNull { it.id == live.id }?.signatureVersion == null) live.copy(signatureVersion = null) else live
+            }
+            if (current.hasCancellationSubmission || comparable.sortedBy { it.id } != reviewed.sortedBy { it.id })
                 throw ApiException(409, "Departure details changed. Reload the flight and review them before saving again.")
         }
         return localWrites.withLock {
@@ -206,6 +217,15 @@ class FlightDeparturesRepository(
             latest.copy(attemptInputJson = latest.inputJson, attemptRowVersion = latest.rowVersion,
                 attemptSignatureFile = latest.signatureFile).also { dao.put(it) }
         }
+    }
+
+    /** Preview only the current account's retained desired or frozen attempted signature. */
+    suspend fun signaturePreview(flightId: String, changeId: String? = null, attempted: Boolean = false): ByteArray? = localWrites.withLock {
+        val owner = currentOwner() ?: return@withLock null
+        val row = dao.rows(owner).firstOrNull { it.flightId == flightId && (changeId == null || it.changeId == changeId) }
+            ?: return@withLock null
+        val key = if (attempted) row.attemptSignatureFile else row.signatureFile
+        key?.let { signatureStore.read(it).also(::checkSignatureBytes) }
     }
 
     suspend fun retry(flightId: String) = localWrites.withLock {

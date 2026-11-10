@@ -81,6 +81,17 @@ class OperationsApi internal constructor(private val client: HttpClient) {
         }
     }
 
+    suspend fun departureSignature(flightId: String, submissionId: String, expectedUpdatedAt: String): ByteArray? =
+        client.prepareGet(HttpClientFactory.url("api/v1/operations/flights/mobile/${UUID.fromString(flightId)}/departure-signatures/${UUID.fromString(submissionId)}")) {
+            parameter("expectedUpdatedAt", expectedUpdatedAt)
+        }.execute { response ->
+            if (response.status == HttpStatusCode.NotFound) return@execute null
+            if (!response.status.isSuccess()) throw ApiException(response.status.value, "Could not load the customer signature.")
+            val bytes = response.bodyAsChannel().readBuffer(MAX_LOGO_BYTES + 1L).readByteArray()
+            if (bytes.size > MAX_LOGO_BYTES) throw IOException("Customer signature exceeds the size limit.")
+            bytes.takeIf { it.isNotEmpty() }
+        }
+
     suspend fun saveArrival(id: String, input: SaveFlightArrivalRequest, rowVersion: String): FlightArrivalSaved =
         client.put(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(id)}/arrival")) {
             contentType(ContentType.Application.Json)

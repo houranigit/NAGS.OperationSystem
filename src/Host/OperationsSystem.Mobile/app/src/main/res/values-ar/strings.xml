@@ -292,4 +292,19 @@
     <string name="departure_sync_action_failed">تعذر تحديث المغادرة المحفوظة. يرجى المحاولة مجددًا.</string>
     <string name="flight_actuals_saved_locally">محفوظ على هذا الجهاز</string>
     <string name="flight_actuals_you">أنت</string>
+    <string name="flight_operation_type">نوع العملية</string>
+    <string name="flight_progress_draft">مسودة</string>
+    <string name="flight_progress_arrival_submitted">تم تسجيل الوصول</string>
+    <string name="flight_progress_arrival_pending">الوصول بانتظار المزامنة</string>
+    <string name="flight_progress_arrival_review">الوصول يحتاج إلى مراجعة</string>
+    <string name="flight_progress_departure_submitted">تم تسجيل المغادرة</string>
+    <string name="flight_progress_departure_pending">المغادرة بانتظار المزامنة</string>
+    <string name="flight_progress_departure_review">المغادرة تحتاج إلى مراجعة</string>
+    <string name="operations_signature_keep">الاحتفاظ بالتوقيع</string>
+    <string name="operations_signature_replace">استبدال التوقيع</string>
+    <string name="operations_signature_use">استخدام التوقيع</string>
+    <string name="operations_signature_undo">تراجع</string>
+    <string name="operations_signature_preview_unavailable">معاينة التوقيع غير متاحة. يتم الاحتفاظ بتوقيعك المحفوظ.</string>
+    <string name="operations_signature_loading">جارٍ تحميل التوقيع…</string>
+    <string name="operations_signature_retry">إعادة محاولة المعاينة</string>
 </resources>

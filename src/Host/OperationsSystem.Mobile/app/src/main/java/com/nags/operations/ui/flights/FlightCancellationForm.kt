@@ -22,6 +22,7 @@ internal fun FlightCancellationForm(
     flight: FlightDetail,
     loadCustomerLogo: (String) -> Flow<ByteArray?>,
     onClose: () -> Unit,
+    progressStatus: FlightProgressStatus? = null,
 ) {
     val entryTimeZoneId = rememberSaveable { flight.stationTimeZoneId }
     val entryZone = remember(entryTimeZoneId) { stationTimeZone(entryTimeZoneId) }
@@ -50,6 +51,7 @@ internal fun FlightCancellationForm(
         saveDescription = stringResource(R.string.cancellation_save),
         loadCustomerLogo = loadCustomerLogo,
         onRequestClose = requestClose,
+        progressStatus = progressStatus,
     ) {
         FlightFormFieldGroup {
             FlightFormDateTimeField(

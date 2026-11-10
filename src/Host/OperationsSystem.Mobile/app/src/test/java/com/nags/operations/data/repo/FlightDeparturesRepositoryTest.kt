@@ -33,6 +33,7 @@ class FlightDeparturesRepositoryTest {
     private var failure: Exception? = null
     private var acceptedFailure = false
     private var fetches = 0
+    private var previewAcknowledged: suspend (String, FlightDepartureSaved, ByteArray) -> Unit = { _, _, _ -> }
     private val staff = "11111111-1111-1111-1111-111111111111"
     private val at = Instant.parse("2026-11-09T12:00:00Z")
     private val employee = AssignedEmployee(staff, "Employee", "E1")
@@ -55,7 +56,57 @@ class FlightDeparturesRepositoryTest {
         send = { id, value, version -> send(id, value, version) }, accepted = { _, _ -> if (acceptedFailure) throw IOException("disk unavailable") },
         schedule = { scheduled++ }, json = Json, hasSavedArrival = { savedArrival },
         acknowledgedArrivalVersion = { id, reviewed -> acknowledgedArrival(id, reviewed) },
-        fetchFlight = { fetches++; live }, now = { at })
+        fetchFlight = { fetches++; live }, now = { at },
+        onSignatureAcknowledged = { id, saved, bytes -> previewAcknowledged(id, saved, bytes) })
+
+    @Test fun acknowledgedPngIsCachedBeforeQueueCleanupAndPreviewFailureCannotUndoTheSave() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        val pending = dao.rows(owner.value!!).single()
+        assertArrayEquals(png, repo.signaturePreview(flight.id, pending.changeId))
+        var previews = 0
+        previewAcknowledged = { id, saved, bytes ->
+            previews++
+            assertEquals(flight.id, id)
+            assertEquals(submitted.id, saved.submission.id)
+            assertArrayEquals(png, bytes)
+            assertTrue(files.files.isNotEmpty())
+            throw IOException("preview cache unavailable")
+        }
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals(1, previews)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+        assertTrue(files.files.isEmpty())
+    }
+
+    @Test fun liveComparisonIgnoresOnlyMissingLegacySignatureMetadata() = runBlocking {
+        val cases = listOf(
+            Triple(submitted, submitted.copy(signatureVersion = "new-metadata"), false),
+            Triple(submitted, submitted.copy(signatureVersion = "new-metadata", remarks = "changed"), true),
+            Triple(submitted.copy(signatureVersion = "v1"), submitted.copy(signatureVersion = "v2"), true),
+            Triple(submitted.copy(signatureVersion = "v1"), submitted.copy(signatureVersion = "v1"), false),
+        )
+        for ((reviewed, latest, conflict) in cases) {
+            val repo = repository()
+            repo.clear()
+            online = false
+            sent.clear()
+            val reviewedFlight = flight.copy(departureSubmissions = listOf(reviewed))
+            repo.save(reviewedFlight, input.copy(signatureContent = null, signatureSignedAtUtc = null))
+            repo.onArrivalAcknowledged(flight.id, flight.rowVersion, "AAAAAAAAAAI=")
+            live = flight.copy(departureSubmissions = listOf(latest))
+            online = true
+            assertFalse(repo.syncPending())
+            if (conflict) {
+                assertEquals("conflict", dao.rows(owner.value!!).single().status)
+                assertTrue(sent.isEmpty())
+            } else {
+                assertTrue(dao.rows(owner.value!!).isEmpty())
+                assertEquals(1, sent.size)
+            }
+        }
+    }
 
     @Test fun offlineSignatureAndInputSurviveRepositoryRecreationAndLeaveTheQueueOnlyAfterAcknowledgment() = runBlocking {
         repository().save(flight, input)

@@ -150,15 +150,18 @@ class FlightsViewModel internal constructor(
     val departures: com.nags.operations.data.repo.FlightDeparturesRepository? = null,
     val actualsStaff: Flow<List<com.nags.operations.data.StaffCatalogItem>> = flowOf(emptyList()),
     val currentUserDisplayName: Flow<String?> = flowOf(null),
+    private val loadDepartureSignature: suspend (FlightDetail, com.nags.operations.data.db.entities.FlightDeparturePendingEntity?) -> ByteArray? = { _, _ -> null },
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
         sharedCatalogsRepository: SharedCatalogsRepository, arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository,
         departureRepository: com.nags.operations.data.repo.FlightDeparturesRepository,
-        currentUserDisplayName: Flow<String?> = flowOf(null)) : this(
+        currentUserDisplayName: Flow<String?> = flowOf(null),
+        loadDepartureSignature: suspend (FlightDetail, com.nags.operations.data.db.entities.FlightDeparturePendingEntity?) -> ByteArray? = { _, _ -> null }) : this(
         arrivals = arrivalRepository,
         departures = departureRepository,
         actualsStaff = sharedCatalogsRepository.stationStaffFlow(),
         currentUserDisplayName = currentUserDisplayName,
+        loadDepartureSignature = loadDepartureSignature,
         fetchProfile = authRepository::profile,
         fetchFlights = repository::flights,
         fetchFlight = repository::flight,
@@ -188,6 +191,9 @@ class FlightsViewModel internal constructor(
         _state.update { if (it.selectedFlightId == id) it.copy(detail = detail) else it }
         return detail
     }
+
+    suspend fun departureSignature(flight: FlightDetail, pending: com.nags.operations.data.db.entities.FlightDeparturePendingEntity?): ByteArray? =
+        loadDepartureSignature(flight, pending)
 
     suspend fun saveDeparture(flight: FlightDetail, input: com.nags.operations.data.SaveFlightDepartureRequest) {
         checkNotNull(departures) { "Departure saving is unavailable." }.save(flight, input)
