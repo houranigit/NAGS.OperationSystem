@@ -126,7 +126,6 @@ import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.ui.components.CustomerLogo
 import com.nags.operations.ui.components.FlightAircraftOperationRow
-import com.nags.operations.ui.components.PerLandingBadge
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.Flow
@@ -344,17 +343,26 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
 private fun FlightRecordingTypeBadge(flight: FlightDetail) {
     // AdHoc has the same precedence over legacy mixed designations as the mobile feed.
     val isAdHoc = flight.operationTypeId.equals(AdHocOperationTypeId, ignoreCase = true)
-    if (flight.isPerLanding && !isAdHoc) {
-        PerLandingBadge()
-    } else {
-        val foreground = if (isAdHoc) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
-        val background = if (isAdHoc) foreground.copy(alpha = 0.11f) else Color(0xFF007AFF).copy(alpha = 0.11f)
-        Surface(shape = RoundedCornerShape(50), color = background, contentColor = foreground) {
-            Text(stringResource(if (isAdHoc) R.string.flights_tab_adhoc else R.string.flights_scheduled),
-                Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.1.sp),
-                fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-        }
+    val isPerLanding = flight.isPerLanding && !isAdHoc
+    val foreground = when {
+        isPerLanding -> Color(0xFF9A4500)
+        isAdHoc -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.tertiary
+    }
+    val background = when {
+        isPerLanding -> Color(0xFFFFF1DE)
+        isAdHoc -> foreground.copy(alpha = 0.11f)
+        else -> Color(0xFF007AFF).copy(alpha = 0.11f)
+    }
+    val label = when {
+        isPerLanding -> R.string.flights_per_landing
+        isAdHoc -> R.string.flights_tab_adhoc
+        else -> R.string.flights_scheduled
+    }
+    Surface(shape = RoundedCornerShape(50), color = background, contentColor = foreground) {
+        Text(stringResource(label), Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.1.sp),
+            fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
     }
 }
 
