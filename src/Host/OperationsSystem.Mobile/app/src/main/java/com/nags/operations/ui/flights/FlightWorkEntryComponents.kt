@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import java.time.ZoneId
 import com.nags.operations.R
+import com.nags.operations.ui.theme.AccentRed
 import java.time.LocalDateTime
 
 private val WorkAddGreen = Color(0xFF248A3D)
@@ -117,7 +118,7 @@ internal fun FlightWorkRemovableEntry(
                     modifier = if (compactDelete) Modifier.align(Alignment.Center).width(64.dp).height(34.dp)
                         else Modifier.width(80.dp).heightIn(min = 48.dp),
                     shape = RoundedCornerShape(if (compactDelete) 10.dp else 12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = WorkRemoveRed, contentColor = Color.White),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentRed, contentColor = Color.White),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         horizontal = if (compactDelete) 6.dp else 10.dp, vertical = if (compactDelete) 0.dp else 8.dp)) {
                     Text(stringResource(R.string.work_delete),

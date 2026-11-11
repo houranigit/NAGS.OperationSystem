@@ -101,6 +101,8 @@ import com.nags.operations.ui.components.CustomerLogo
 import com.nags.operations.ui.components.ErrorState
 import com.nags.operations.ui.components.InlineErrorBanner
 import com.nags.operations.ui.components.InitialsAvatarStack
+import com.nags.operations.ui.theme.AccentBlue
+import com.nags.operations.ui.theme.AccentRed
 import com.nags.operations.ui.util.formatFlightDateRangeForDisplay
 import com.nags.operations.ui.util.stationTimeZone
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
@@ -246,10 +248,11 @@ private data class FlightActionMetrics(
     val headingHeight: Dp,
     val expandedFaceHeight: Dp,
     val touchHeight: Dp,
-    val bottomInset: Dp,
-    val slotWidth: Dp = 48.dp,
-    val toolbarWidth: Dp = 144.dp,
-    val collapsedFaceSize: Dp = 44.dp,
+    val slotWidth: Dp = 40.dp,
+    val toolbarWidth: Dp = 128.dp,
+    val collapsedFaceSize: Dp = 36.dp,
+    val expandedFaceWidth: Dp = 128.dp,
+    val iconSize: Dp = 20.dp,
 )
 
 @Composable
@@ -258,11 +261,10 @@ private fun flightActionMetrics(): FlightActionMetrics {
     val density = LocalDensity.current
     val labelHeight = measurer.measure(stringResource(R.string.flights_operate),
         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), maxLines = 1).size.height
-    val headingLayout = measurer.measure("0", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
-    val heading = with(density) { headingLayout.size.height.toDp() }
-    val inset = with(density) { (headingLayout.size.height - headingLayout.lastBaseline).toDp() }.coerceAtLeast(0.dp)
-    val face = maxOf(44.dp, with(density) { labelHeight.toDp() } + 8.dp)
-    return FlightActionMetrics(heading, face, maxOf(48.dp, face + inset + 2.dp), inset)
+    val headingHeight = measurer.measure("0", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1).size.height
+    val heading = with(density) { headingHeight.toDp() }
+    val face = maxOf(32.dp, with(density) { labelHeight.toDp() } + 8.dp)
+    return FlightActionMetrics(heading, face, maxOf(48.dp, maxOf(36.dp, face) + 4.dp))
 }
 
 private enum class FlightRecordingAction { Cancel, Review, Revert, Send, Operate }
@@ -302,8 +304,15 @@ private fun FlightRecordingActions(
                     val opacity = (1f - otherExpansion * 3f).coerceIn(0f, 1f)
                     val enabled = !loading && (expanded || expandedAction == null && opacity > 0.5f)
                     val buttonWidth = metrics.slotWidth + (metrics.toolbarWidth - metrics.slotWidth) * expansion
-                    val faceWidth = buttonWidth - (metrics.slotWidth - metrics.collapsedFaceSize)
+                    val faceWidth = metrics.collapsedFaceSize + (metrics.expandedFaceWidth - metrics.collapsedFaceSize) * expansion
                     val faceHeight = metrics.collapsedFaceSize + (metrics.expandedFaceHeight - metrics.collapsedFaceSize) * expansion
+                    val accent = when {
+                        expanded && action == FlightRecordingAction.Cancel -> AccentRed
+                        expanded && action == FlightRecordingAction.Send -> AccentBlue
+                        else -> null
+                    }
+                    val containerColor = accent ?: DetailFill
+                    val contentColor = if (accent != null) Color.White else MaterialTheme.colorScheme.onSurface
                     val accessibleLabel = stringResource(when (action) {
                         FlightRecordingAction.Cancel -> R.string.flights_cancel_flight
                         FlightRecordingAction.Review -> R.string.cancellation_review
@@ -323,7 +332,7 @@ private fun FlightRecordingActions(
                         FlightRecordingAction.Send -> Icons.Outlined.Share
                         FlightRecordingAction.Operate -> Icons.Outlined.Edit
                     }
-                    val labelLimit = metrics.toolbarWidth - (metrics.slotWidth - metrics.collapsedFaceSize) - 16.dp - 16.dp - 6.dp
+                    val labelLimit = metrics.expandedFaceWidth - 16.dp - metrics.iconSize - 6.dp
                     val labelWidth = with(density) {
                         measurer.measure(label, style = style, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
                             constraints = Constraints(maxWidth = labelLimit.roundToPx().coerceAtLeast(0))).size.width.toDp()
@@ -348,15 +357,17 @@ private fun FlightRecordingActions(
                         }
                         .semantics { contentDescription = accessibleLabel }
                         .then(if (!enabled) Modifier.clearAndSetSemantics { } else Modifier)) {
-                        Box(Modifier.width(faceWidth).height(faceHeight).align(Alignment.BottomCenter)
-                            .offset(y = -metrics.bottomInset).background(DetailFill, CircleShape), contentAlignment = Alignment.Center) {
+                        // Align the painted edge, not an invisible touch-slot inset, with the sheet gutter.
+                        Box(Modifier.width(faceWidth).height(faceHeight).align(Alignment.TopEnd)
+                            .offset(y = 2.dp)
+                            .background(if (loading) DetailFill else containerColor, CircleShape), contentAlignment = Alignment.Center) {
                             if (!loading) Row(Modifier.padding(horizontal = 8.dp).clearAndSetSemantics { },
                                 verticalAlignment = Alignment.CenterVertically) {
-                                Icon(icon, null, Modifier.size(16.dp))
+                                Icon(icon, null, Modifier.size(metrics.iconSize), tint = contentColor)
                                 Spacer(Modifier.width(6.dp * expansion))
                                 Box(Modifier.width(labelWidth * expansion).clipToBounds().graphicsLayer { alpha = expansion }) {
                                     Text(label, Modifier.wrapContentWidth(Alignment.Start, unbounded = true).width(labelWidth),
-                                        style = style, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                                        style = style, color = contentColor, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                         }
@@ -379,7 +390,7 @@ private fun FlightIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> F
                     Text(flight.flightNumber.ifBlank { flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—" },
                         Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
                         maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                    actions()
+                    Box(Modifier.align(Alignment.Top)) { actions() }
                 }
                 Text(flight.customerName, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
@@ -531,7 +542,7 @@ private fun FlightDetailsSkeleton(showPeople: Boolean, metrics: FlightActionMetr
                 Row(Modifier.fillMaxWidth().heightIn(min = metrics.touchHeight), horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.Bottom) {
                     SkeletonBlock(Modifier.weight(1f).height(metrics.headingHeight))
-                    actions()
+                    Box(Modifier.align(Alignment.Top)) { actions() }
                 }
                 SkeletonBlock(Modifier.fillMaxWidth(0.75f).height(20.dp))
             }
