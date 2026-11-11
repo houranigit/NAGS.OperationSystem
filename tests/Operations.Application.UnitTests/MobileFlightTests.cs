@@ -298,21 +298,143 @@ public sealed class MobileFlightTests
     }
 
     [Theory]
+    [InlineData("MyFlights")]
+    [InlineData("PerLanding")]
+    [InlineData("AdHoc")]
+    public async Task Feed_ProjectsNormalCycleWorkForEachMobileCategory(string category)
+    {
+        await using var db = NewDb();
+        var flight = FlightFor("100", assigned: category == "MyFlights",
+            perLanding: category == "PerLanding", adHoc: category == "AdHoc");
+        flight.AddService(new ServiceSnapshot(Guid.NewGuid(), "Ground power"), null,
+            TimeWindow.Create(Now, null).Value, null, UserId, Now).IsSuccess.ShouldBeTrue();
+        flight.AddTask(FlightTaskType.Minor, null, null,
+            TimeWindow.Create(Now, Now.AddMinutes(5)).Value, null, UserId, Now).IsSuccess.ShouldBeTrue();
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var result = await new GetMobileFlightsQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
+            .Handle(new GetMobileFlightsQuery(Category: category), CancellationToken.None);
+
+        var row = result.Value.Items.ShouldHaveSingleItem();
+        row.ActiveWorkCount.ShouldBe(1);
+        row.CompletedWorkCount.ShouldBe(1);
+        row.HasOpenReturnToRamp.ShouldBeFalse();
+        row.LatestReturnToRampSequence.ShouldBeNull();
+        row.LatestCancellationAtUtc.ShouldBeNull();
+        db.ChangeTracker.Entries<Flight>().ShouldBeEmpty();
+        db.ChangeTracker.Entries<FlightService>().ShouldBeEmpty();
+        db.ChangeTracker.Entries<FlightTask>().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("open-empty", true, 2, 0, 0)]
+    [InlineData("open-mixed", true, 2, 1, 1)]
+    [InlineData("closed", false, 2, 0, 2)]
+    [InlineData("removed-latest", false, 1, 0, 1)]
+    public async Task Feed_CountsOnlyTheLatestExistingReturnToRampCycle(
+        string scenario, bool open, int sequence, int active, int completed)
+    {
+        await using var db = NewDb();
+        var flight = FlightFor("100", assigned: true);
+        var employee = new StaffMemberSnapshot(StaffId, "Assigned staff", "E1");
+        var signature = CustomerSignature.Create("signature.png", "signatures/mobile-card.png", "image/png", 100, Now).Value;
+        flight.SubmitDeparture(employee, DepartureDetails.Create(Now, signature, employee, null).Value,
+            UserId, Now).IsSuccess.ShouldBeTrue();
+        flight.AddService(new ServiceSnapshot(Guid.NewGuid(), "Normal work"), null,
+            TimeWindow.Create(Now, null).Value, null, UserId, Now).IsSuccess.ShouldBeTrue();
+        flight.AddTask(FlightTaskType.Minor, null, null,
+            TimeWindow.Create(Now, Now.AddMinutes(5)).Value, null, UserId, Now).IsSuccess.ShouldBeTrue();
+
+        var first = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddMinutes(10), employee, null).Value,
+            UserId, Now).Value;
+        var firstWindow = TimeWindow.Create(Now.AddMinutes(10), Now.AddMinutes(20)).Value;
+        flight.AddService(new ServiceSnapshot(Guid.NewGuid(), "First RTR work"), null, firstWindow, null,
+            UserId, Now, first.Id, [new FlightServicePerformerInput(employee, firstWindow)]).IsSuccess.ShouldBeTrue();
+        flight.CloseReturnToRamp(first.Id, RtrDepartureDetails.Create(Now.AddMinutes(30), null, employee, null).Value,
+            UserId, Now).IsSuccess.ShouldBeTrue();
+        var second = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddMinutes(40), employee, null).Value,
+            UserId, Now).Value;
+        if (scenario is "open-mixed" or "closed")
+        {
+            var serviceWindow = TimeWindow.Create(Now.AddMinutes(40), open ? null : Now.AddMinutes(50)).Value;
+            flight.AddService(new ServiceSnapshot(Guid.NewGuid(), "Second RTR work"), null, serviceWindow, null,
+                UserId, Now, second.Id, [new FlightServicePerformerInput(employee, serviceWindow)]).IsSuccess.ShouldBeTrue();
+            var taskWindow = TimeWindow.Create(Now.AddMinutes(40), Now.AddMinutes(55)).Value;
+            flight.AddTask(FlightTaskType.Minor, null, null, taskWindow, null, UserId, Now, second.Id,
+                [new FlightTaskPerformerInput(employee, taskWindow)]).IsSuccess.ShouldBeTrue();
+            if (!open)
+                flight.CloseReturnToRamp(second.Id,
+                    RtrDepartureDetails.Create(Now.AddMinutes(60), null, employee, null).Value, UserId, Now).IsSuccess.ShouldBeTrue();
+        }
+        if (scenario == "removed-latest")
+            flight.RemoveReturnToRamp(second.Id, UserId, Now).IsSuccess.ShouldBeTrue();
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var result = await new GetMobileFlightsQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
+            .Handle(new GetMobileFlightsQuery(), CancellationToken.None);
+
+        var row = result.Value.Items.ShouldHaveSingleItem();
+        row.HasDepartureSubmission.ShouldBeTrue();
+        row.HasOpenReturnToRamp.ShouldBe(open);
+        row.LatestReturnToRampSequence.ShouldBe(sequence);
+        row.ActiveWorkCount.ShouldBe(active);
+        row.CompletedWorkCount.ShouldBe(completed);
+        db.ChangeTracker.Entries<Flight>().ShouldBeEmpty();
+        db.ChangeTracker.Entries<FlightReturnToRamp>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Feed_ProjectsLatestReportedCancellationTimeWithoutInferringApproval()
+    {
+        await using var db = NewDb();
+        var flight = FlightFor("100", assigned: true);
+        flight.SubmitCancellation(new StaffMemberSnapshot(StaffId, "Assigned staff", "E1"),
+            CancellationDetails.Create(Now.AddMinutes(-10), null).Value, UserId, Now).IsSuccess.ShouldBeTrue();
+        flight.SubmitCancellation(new StaffMemberSnapshot(Guid.NewGuid(), "Other staff", "E2"),
+            CancellationDetails.Create(Now.AddMinutes(-30), null).Value, UserId, Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
+        flight.CancellationSubmissions.ShouldAllBe(item => !item.IsAccepted);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var result = await new GetMobileFlightsQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader())
+            .Handle(new GetMobileFlightsQuery(), CancellationToken.None);
+
+        var row = result.Value.Items.ShouldHaveSingleItem();
+        row.HasCancellationSubmission.ShouldBeTrue();
+        row.LatestCancellationAtUtc.ShouldBe(Now.AddMinutes(-10));
+        row.ActiveWorkCount.ShouldBe(0);
+        row.CompletedWorkCount.ShouldBe(0);
+        row.LatestReturnToRampSequence.ShouldBeNull();
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData(MobileFlightCategory.MyFlights)]
     [InlineData(MobileFlightCategory.PerLanding)]
     [InlineData(MobileFlightCategory.AdHoc)]
-    public void MobileVisibilityPredicate_TranslatesWithTheProductionSqlServerProvider(MobileFlightCategory? category)
+    public void MobileCardProjection_TranslatesWithTheProductionSqlServerProvider(MobileFlightCategory? category)
     {
         using var db = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
             .UseSqlServer("Server=localhost;Database=translation-only;Integrated Security=true;TrustServerCertificate=true").Options);
 
-        var sql = MobileFlightQuery.ApplyScope(db.Flights.AsNoTracking(), Context, category).Select(f => f.Id).ToQueryString();
+        var sql = MobileFlightQuery.ProjectListItems(
+                MobileFlightQuery.ApplyScope(db.Flights.AsNoTracking(), Context, category)
+                    .OrderBy(f => f.Id).Skip(0).Take(20), Context, "Asia/Riyadh")
+            .ToQueryString();
 
         sql.ShouldContain("WHERE");
         sql.ShouldContain("StationId");
         sql.ShouldContain("ScheduledArrivalUtc");
         sql.ShouldContain("ScheduledDepartureUtc");
+        sql.ShouldContain("flight_services");
+        sql.ShouldContain("flight_tasks");
+        sql.ShouldContain("flight_return_to_ramps");
+        sql.ShouldContain("CanceledAtUtc");
     }
 
     private static StaticMobileScope Scope() => new(Context);

@@ -820,6 +820,65 @@ class FlightsRepositoryCacheTest {
         assertEquals(2, repository.syncStatus.first().itemCount)
     }
 
+    @Test fun acknowledgedArrivalAndDeparturePreserveCurrentCycleWorkSummaries() = runBlocking {
+        serverItems = listOf(item("one").copy(hasOpenReturnToRamp = true, latestReturnToRampSequence = 2,
+            activeWorkCount = 1, completedWorkCount = 3))
+        val repository = repository()
+        repository.refreshCache()
+        val employee = com.nags.operations.data.AssignedEmployee("staff", "Employee", "E1")
+        val arrival = com.nags.operations.data.FlightArrivalSubmission("arrival", employee, clock, "aircraft", "A320", "TAIL",
+            receivedByEmployee = employee, isAccepted = false, createdAtUtc = clock)
+        val departure = com.nags.operations.data.FlightDepartureSubmission("departure", employee, clock, employee,
+            isAccepted = false, createdAtUtc = clock)
+        repository.recordArrival("one", com.nags.operations.data.FlightArrivalSaved(arrival, "arrival-version"))
+        repository.recordDeparture("one", com.nags.operations.data.FlightDepartureSaved(departure, "departure-version"))
+        online = false
+
+        val cached = repository().flights().items.single()
+        assertEquals(true, cached.hasOpenReturnToRamp)
+        assertEquals(2, cached.latestReturnToRampSequence)
+        assertEquals(1, cached.activeWorkCount)
+        assertEquals(3, cached.completedWorkCount)
+    }
+
+    @Test fun cancellationCorrectionAndReversionRecomputeTheLatestKnownReportTime() = runBlocking {
+        val employee = com.nags.operations.data.AssignedEmployee("staff", "Employee", "E1")
+        val original = com.nags.operations.data.FlightCancellationSubmission("mine", employee, "2026-11-04T09:45:00Z",
+            isAccepted = false, createdAtUtc = clock)
+        val other = original.copy(id = "other", submittedByEmployee = employee.copy(staffMemberId = "other"),
+            canceledAtUtc = "2026-11-04T12:30:00+03:00")
+        serverItems = listOf(item("one").copy(hasCancellationSubmission = true,
+            latestCancellationAtUtc = original.canceledAtUtc))
+        detailLoader = { id -> detail(id).copy(cancellationSubmissions = listOf(original, other), hasCancellationSubmission = true) }
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        val corrected = original.copy(canceledAtUtc = "2026-11-04T09:10:00Z")
+        repository.recordCancellation("one", com.nags.operations.data.FlightCancellationSaved(corrected, "corrected-version"))
+        online = false
+        assertEquals(other.canceledAtUtc, repository().flights().items.single().latestCancellationAtUtc)
+
+        repository.recordCancellationReverted("one", com.nags.operations.data.FlightCancellationReverted(listOf(corrected), "remaining-version"))
+        assertEquals(corrected.canceledAtUtc, repository().flights().items.single().latestCancellationAtUtc)
+        repository.recordCancellationReverted("one", com.nags.operations.data.FlightCancellationReverted(emptyList(), "empty-version"))
+        assertNull(repository().flights().items.single().latestCancellationAtUtc)
+    }
+
+    @Test fun aPartialCancellationAcknowledgementDoesNotInventTheLatestReportTime() = runBlocking {
+        serverItems = listOf(item("one").copy(hasCancellationSubmission = true,
+            latestCancellationAtUtc = "2026-11-04T09:45:00Z"))
+        val repository = repository()
+        repository.refreshCache()
+        val employee = com.nags.operations.data.AssignedEmployee("staff", "Employee", "E1")
+        val correction = com.nags.operations.data.FlightCancellationSubmission("mine", employee, "2026-11-04T09:10:00Z",
+            isAccepted = false, createdAtUtc = clock)
+        repository.recordCancellation("one", com.nags.operations.data.FlightCancellationSaved(correction, "corrected-version"))
+        online = false
+
+        assertEquals(true, repository().flights().items.single().hasCancellationSubmission)
+        assertNull(repository().flights().items.single().latestCancellationAtUtc)
+    }
+
     @Test fun legacyCardFlagsUseExistingScopedDetailWithoutOverridingANewerExplicitServerFalse() = runBlocking {
         val employee = com.nags.operations.data.AssignedEmployee("staff", "Employee", "E1")
         val arrival = com.nags.operations.data.FlightArrivalSubmission("arrival", employee, clock, "aircraft", "A320", "TAIL",
@@ -879,6 +938,30 @@ class FlightsRepositoryCacheTest {
         assertEquals(true, pending.await().items.first().hasArrivalSubmission)
         online = false
         assertEquals(true, repository().flights().items.first().hasArrivalSubmission)
+    }
+
+    @Test fun aListReadStartedBeforeACancellationTimeCorrectionCannotRestoreItsOldTime() = runBlocking {
+        val employee = com.nags.operations.data.AssignedEmployee("staff", "Employee", "E1")
+        val original = com.nags.operations.data.FlightCancellationSubmission("cancel", employee, "2026-11-04T09:05:00Z",
+            isAccepted = true, createdAtUtc = clock)
+        val oldRow = item("one").copy(hasCancellationSubmission = true, latestCancellationAtUtc = original.canceledAtUtc)
+        serverItems = listOf(oldRow)
+        detailLoader = { id -> detail(id).copy(cancellationSubmissions = listOf(original), hasCancellationSubmission = true) }
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        val requested = CompletableDeferred<Unit>()
+        val response = CompletableDeferred<FlightPage>()
+        pageLoader = { _, _, _ -> requested.complete(Unit); response.await() }
+        val pending = async(start = CoroutineStart.UNDISPATCHED) { repository.flights(FlightCategory.MyFlights) }
+        requested.await()
+        repository.recordCancellation("one", com.nags.operations.data.FlightCancellationSaved(
+            original.copy(canceledAtUtc = clock), "corrected-version"))
+        response.complete(FlightPage(listOf(oldRow), 1, 20, 1, 1))
+
+        assertEquals(clock, pending.await().items.single().latestCancellationAtUtc)
+        online = false
+        assertEquals(clock, repository().flights().items.single().latestCancellationAtUtc)
     }
 
     private fun scoped(page: FlightPage): FlightPage {

@@ -60,20 +60,9 @@ public sealed class GetMobileFlightsQueryHandler(
             if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
                 return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
             var stationTimeZoneId = station.TimeZoneId;
-            items = await FlightListQuery.ApplySort(query, request.Sort)
-                .Skip(paging.Skip).Take(paging.PageSize)
-                .Select(f => new MobileFlightListItemDto(
-                    f.Id, f.FlightNumber.Value, f.Customer.IataCode, f.Customer.Name, f.Station.IataCode,
-                    f.OperationType.Name, f.Schedule.Sta, f.Schedule.Std,
-                    f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
-                    f.AircraftType == null ? null : f.AircraftType.Model, f.Customer.CustomerId, null,
-                    f.Station.StationId,
-                    f.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
-                    !f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) &&
-                    f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == context.StaffMemberId),
-                    f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
-                    f.CreatedByUserId == context.UserId, stationTimeZoneId,
-                    f.ArrivalSubmissions.Any(), f.DepartureSubmissions.Any(), f.CancellationSubmissions.Any()))
+            items = await MobileFlightQuery.ProjectListItems(
+                    FlightListQuery.ApplySort(query, request.Sort).Skip(paging.Skip).Take(paging.PageSize),
+                    context, stationTimeZoneId)
                 .ToListAsync(cancellationToken);
 
             var customerIds = items.Select(item => item.CustomerId).Distinct().ToArray();
@@ -154,6 +143,35 @@ public sealed class GetMobileFlightCustomerLogoQueryHandler(
 
 internal static class MobileFlightQuery
 {
+    public static IQueryable<MobileFlightListItemDto> ProjectListItems(
+        IQueryable<Flight> query, MobileFlightScopeContext scope, string stationTimeZoneId) =>
+        query.Select(f => new
+        {
+            Flight = f,
+            LatestReturnToRampId = f.ReturnToRamps.OrderByDescending(r => r.Sequence)
+                .Select(r => (Guid?)r.Id).FirstOrDefault(),
+            LatestReturnToRampSequence = f.ReturnToRamps.Select(r => (int?)r.Sequence).Max()
+        }).Select(row => new MobileFlightListItemDto(
+            row.Flight.Id, row.Flight.FlightNumber.Value, row.Flight.Customer.IataCode,
+            row.Flight.Customer.Name, row.Flight.Station.IataCode, row.Flight.OperationType.Name,
+            row.Flight.Schedule.Sta, row.Flight.Schedule.Std,
+            row.Flight.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
+            row.Flight.AircraftType == null ? null : row.Flight.AircraftType.Model,
+            row.Flight.Customer.CustomerId, null, row.Flight.Station.StationId,
+            row.Flight.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
+            !row.Flight.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) &&
+            row.Flight.AssignedEmployees.Any(e => e.Employee.StaffMemberId == scope.StaffMemberId),
+            row.Flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
+            row.Flight.CreatedByUserId == scope.UserId, stationTimeZoneId,
+            row.Flight.ArrivalSubmissions.Any(), row.Flight.DepartureSubmissions.Any(),
+            row.Flight.CancellationSubmissions.Any(),
+            row.Flight.ReturnToRamps.Any(r => r.DepartureDetails == null), row.LatestReturnToRampSequence,
+            row.Flight.ServiceRecords.Count(s => s.ReturnToRampId == row.LatestReturnToRampId && s.Window.ToUtc == null) +
+            row.Flight.TaskRecords.Count(t => t.ReturnToRampId == row.LatestReturnToRampId && t.Window.ToUtc == null),
+            row.Flight.ServiceRecords.Count(s => s.ReturnToRampId == row.LatestReturnToRampId && s.Window.ToUtc != null) +
+            row.Flight.TaskRecords.Count(t => t.ReturnToRampId == row.LatestReturnToRampId && t.Window.ToUtc != null),
+            row.Flight.CancellationSubmissions.Select(c => (DateTimeOffset?)c.Details.CanceledAtUtc).Max()));
+
     public static IQueryable<Flight> ApplyScope(
         IQueryable<Flight> query,
         MobileFlightScopeContext scope,

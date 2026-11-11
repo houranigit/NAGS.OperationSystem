@@ -1,5 +1,6 @@
 package com.nags.operations.data
 
+import com.nags.operations.data.db.entities.FlightCancellationPendingEntity
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -58,6 +59,65 @@ class FlightModelsContractTest {
         assertEquals("A310", cached.single().aircraftTypeModel)
         assertEquals("customer-1", cached.single().customerId)
         assertEquals("none", cached.single().customerLogoVersion)
+    }
+
+    @Test
+    fun olderRegistersKeepMissingCycleSummariesUnknown() {
+        val flight = json.decodeFromString<FlightListItem>(
+            """{"id":"flight-1","flightNumber":"104","customerName":"Customer",
+                "stationIataCode":"RUH","stationTimeZoneId":"Asia/Riyadh","operationTypeName":"Transit",
+                "scheduledArrivalUtc":"2026-11-03T08:00:00Z","scheduledDepartureUtc":"2026-11-03T10:00:00Z",
+                "isPerLanding":false}""",
+        )
+
+        assertNull(flight.hasOpenReturnToRamp)
+        assertNull(flight.latestReturnToRampSequence)
+        assertNull(flight.activeWorkCount)
+        assertNull(flight.completedWorkCount)
+        assertNull(flight.latestCancellationAtUtc)
+    }
+
+    @Test
+    fun currentCycleSummariesAndKnownZeroWorkSurviveRegisterCaching() {
+        val flight = json.decodeFromString<FlightListItem>(
+            """{"id":"flight-1","flightNumber":"104","customerName":"Customer",
+                "stationIataCode":"RUH","stationTimeZoneId":"Asia/Riyadh","operationTypeName":"Transit",
+                "scheduledArrivalUtc":"2026-11-03T08:00:00Z","scheduledDepartureUtc":"2026-11-03T10:00:00Z",
+                "isPerLanding":false,"hasOpenReturnToRamp":true,"latestReturnToRampSequence":2,
+                "activeWorkCount":0,"completedWorkCount":3,"latestCancellationAtUtc":"2026-11-03T07:30:00Z"}""",
+        )
+        val cached = json.decodeFromString<FlightListItem>(json.encodeToString(flight))
+
+        assertEquals(true, cached.hasOpenReturnToRamp)
+        assertEquals(2, cached.latestReturnToRampSequence)
+        assertEquals(0, cached.activeWorkCount)
+        assertEquals(3, cached.completedWorkCount)
+        assertEquals("2026-11-03T07:30:00Z", cached.latestCancellationAtUtc)
+    }
+
+    @Test
+    fun cancellationCardTimeUsesDesiredSaveOrTheFrozenSaveBeingReverted() {
+        val attempted = "2026-11-03T07:00:00Z"
+        val desired = "2026-11-03T07:30:00Z"
+        val row = FlightCancellationPendingEntity("owner", "flight", "104", "staff", "change", "save",
+            json.encodeToString(SaveFlightCancellationRequest(desired)), null, "version", desired,
+            attemptOperation = "save", attemptInputJson = json.encodeToString(SaveFlightCancellationRequest(attempted)))
+
+        assertEquals(desired, row.cancellationAtUtcForCard())
+        assertEquals(desired, row.copy(status = "failed").cancellationAtUtcForCard())
+        assertEquals(attempted, row.copy(operation = "revert", inputJson = null).cancellationAtUtcForCard())
+        assertNull(row.copy(operation = "revert", inputJson = null, attemptOperation = "revert",
+            submissionId = "confirmed").cancellationAtUtcForCard())
+    }
+
+    @Test
+    fun cancellationCardTimeDoesNotInventValuesForMalformedLocalInput() {
+        val row = FlightCancellationPendingEntity("owner", "flight", "104", "staff", "change", "save",
+            "broken", null, "version", "2026-11-03T07:30:00Z")
+
+        assertNull(row.cancellationAtUtcForCard())
+        assertNull(row.copy(inputJson = json.encodeToString(SaveFlightCancellationRequest("invalid-time"))).cancellationAtUtcForCard())
+        assertNull(row.copy(operation = "revert", inputJson = null).cancellationAtUtcForCard())
     }
 
     @Test

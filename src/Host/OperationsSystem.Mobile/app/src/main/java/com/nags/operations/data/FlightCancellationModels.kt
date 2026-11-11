@@ -1,6 +1,8 @@
 package com.nags.operations.data
 
+import com.nags.operations.data.db.entities.FlightCancellationPendingEntity
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 @Serializable
 data class FlightCancellationSubmission(
@@ -28,6 +30,18 @@ data class FlightCancellationSaved(val submission: FlightCancellationSubmission,
 
 @Serializable
 data class FlightCancellationReverted(val cancellationSubmissions: List<FlightCancellationSubmission>, val rowVersion: String)
+
+/** A revert may still represent the immutable save whose server outcome is unknown. */
+internal fun FlightCancellationPendingEntity.cancellationAtUtcForCard(): String? {
+    val savedInput = when {
+        operation == "save" -> inputJson
+        attemptOperation == "save" -> attemptInputJson
+        else -> null
+    } ?: return null
+    return runCatching {
+        Json.decodeFromString<SaveFlightCancellationRequest>(savedInput).canceledAtUtc.also { parseFlightInstant(it) }
+    }.getOrNull()
+}
 
 fun FlightDetail.ownCancellation(): FlightCancellationSubmission? = cancellationSubmissions.firstOrNull {
     !currentStaffMemberId.isNullOrBlank() && it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true)

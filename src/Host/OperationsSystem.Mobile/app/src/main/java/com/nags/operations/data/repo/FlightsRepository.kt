@@ -185,25 +185,31 @@ class FlightsRepository internal constructor(
     }
 
     suspend fun recordCancellationReverted(id: String, saved: com.nags.operations.data.FlightCancellationReverted) {
-        updateCancellationCache(id, saved.rowVersion, saved.cancellationSubmissions.isNotEmpty()) { saved.cancellationSubmissions }
+        updateCancellationCache(id, saved.rowVersion, saved.cancellationSubmissions.isNotEmpty(), saved.cancellationSubmissions) {
+            saved.cancellationSubmissions
+        }
     }
 
     private suspend fun updateCancellationCache(id: String, rowVersion: String, hasCancellation: Boolean,
+        confirmedSubmissions: List<com.nags.operations.data.FlightCancellationSubmission>? = null,
         submissions: (FlightDetail) -> List<com.nags.operations.data.FlightCancellationSubmission>) {
         val session = requireSession()
         refreshMutex.withLock {
             mutationMutex.withLock {
                 ensureCurrent(session)
+                var confirmedCancellations = confirmedSubmissions
                 dao.detail(session.owner, id)?.let { cached ->
                     val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
                     if (detail != null) {
                         val cancellations = submissions(detail)
+                        confirmedCancellations = cancellations
                         val updated = detail.copy(cancellationSubmissions = cancellations,
                             hasCancellationSubmission = cancellations.isNotEmpty(), rowVersion = rowVersion)
                         dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
                     }
                 }
-                updateSnapshotReportsLocked(session, id) { it.copy(hasCancellationSubmission = hasCancellation) }
+                updateSnapshotReportsLocked(session, id) { it.copy(hasCancellationSubmission = hasCancellation,
+                    latestCancellationAtUtc = confirmedCancellations?.latestCancellationAtUtc()) }
             }
         }
         _cacheChanges.tryEmit(Unit)
@@ -261,10 +267,11 @@ class FlightsRepository internal constructor(
         val presenceChanged = (original.hasArrivalSubmission == true) != (updated.hasArrivalSubmission == true) ||
             (original.hasDepartureSubmission == true) != (updated.hasDepartureSubmission == true) ||
             (original.hasCancellationSubmission == true) != (updated.hasCancellationSubmission == true)
-        // A list response started before a report change must not undo its flags. Filling only
+        val reportSummaryChanged = presenceChanged || original.latestCancellationAtUtc != updated.latestCancellationAtUtc
+        // A list response started before a report change must not undo its summary. Filling only
         // missing false metadata does not invalidate unrelated planning reads.
-        if (presenceChanged) listRevision++
-        return presenceChanged
+        if (reportSummaryChanged) listRevision++
+        return reportSummaryChanged
     }
 
     fun customerLogo(customerId: String): Flow<ByteArray?> = logoStore?.observe(customerId) ?: flowOf(null)
@@ -655,6 +662,7 @@ private fun FlightListItem.withReportFlags(detail: FlightDetail) = copy(
     hasArrivalSubmission = detail.arrivalSubmissions.isNotEmpty(),
     hasDepartureSubmission = detail.departureSubmissions.isNotEmpty(),
     hasCancellationSubmission = detail.hasCancellationSubmission || detail.cancellationSubmissions.isNotEmpty(),
+    latestCancellationAtUtc = detail.cancellationSubmissions.latestCancellationAtUtc(),
 )
 
 /** A known server false must not be replaced by an older cached detail's positive report. */
@@ -662,4 +670,11 @@ private fun FlightListItem.withMissingReportFlags(detail: FlightDetail) = copy(
     hasArrivalSubmission = hasArrivalSubmission ?: detail.arrivalSubmissions.isNotEmpty(),
     hasDepartureSubmission = hasDepartureSubmission ?: detail.departureSubmissions.isNotEmpty(),
     hasCancellationSubmission = hasCancellationSubmission ?: (detail.hasCancellationSubmission || detail.cancellationSubmissions.isNotEmpty()),
+    latestCancellationAtUtc = latestCancellationAtUtc ?: if (hasCancellationSubmission == null)
+        detail.cancellationSubmissions.latestCancellationAtUtc() else null,
 )
+
+private fun List<com.nags.operations.data.FlightCancellationSubmission>.latestCancellationAtUtc(): String? =
+    mapNotNull { submission -> runCatching {
+        parseFlightInstant(submission.canceledAtUtc) to submission.canceledAtUtc
+    }.getOrNull() }.maxByOrNull { it.first }?.second

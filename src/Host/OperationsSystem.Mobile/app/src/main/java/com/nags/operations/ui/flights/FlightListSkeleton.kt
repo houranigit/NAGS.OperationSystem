@@ -66,11 +66,11 @@ internal fun FlightCardSkeleton(modifier: Modifier = Modifier) {
         .background(MaterialTheme.colorScheme.surface, shape)
         .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), shape)
         .semantics { contentDescription = description }
-        .padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+        .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth().height(38.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            SkeletonBlock(brush, Modifier.size(36.dp), corner = 10)
+            SkeletonBlock(brush, Modifier.size(32.dp), corner = 10)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 SkeletonBlock(brush, Modifier.width(66.dp).height(15.dp))
                 SkeletonBlock(brush, Modifier.fillMaxWidth(0.8f).height(11.dp))
@@ -83,6 +83,7 @@ internal fun FlightCardSkeleton(modifier: Modifier = Modifier) {
             SkeletonBlock(brush, Modifier.width(1.dp).height(14.dp), corner = 0)
             SkeletonBlock(brush, Modifier.width(94.dp).height(11.dp))
         }
+        SkeletonBlock(brush, Modifier.width(132.dp).height(12.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
         Row(Modifier.fillMaxWidth().height(16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

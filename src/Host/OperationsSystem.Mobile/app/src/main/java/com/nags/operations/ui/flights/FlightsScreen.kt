@@ -71,11 +71,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.nags.operations.data.hasOwnCancellation
 import com.nags.operations.data.hasOwnWork
 import com.nags.operations.data.ownCancellation
 import com.nags.operations.data.cancellationEditable
+import com.nags.operations.data.cancellationAtUtcForCard
 import com.nags.operations.data.userMessage
 import com.nags.operations.R
 import com.nags.operations.data.FlightCategory
@@ -88,9 +92,11 @@ import com.nags.operations.ui.invite.InviteEmployeesDialog
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import java.time.Instant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -309,10 +315,22 @@ private fun FlightListPage(
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val savedCancellations by (viewModel.cancellations?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val arrivalIds = remember(savedArrivals) { savedArrivals.mapTo(mutableSetOf()) { it.flightId } }
-    val departureIds = remember(savedDepartures) { savedDepartures.mapTo(mutableSetOf()) { it.flightId } }
+    val arrivalsById = remember(savedArrivals) { savedArrivals.associateBy { it.flightId } }
+    val departuresById = remember(savedDepartures) { savedDepartures.associateBy { it.flightId } }
+    val cancellationsById = remember(savedCancellations) { savedCancellations.associateBy { it.flightId } }
     val cancellationIds = remember(savedCancellations) {
         savedCancellations.filter { it.keepsCancellationOnCard() }.mapTo(mutableSetOf()) { it.flightId }
+    }
+    var cardNow by remember { mutableStateOf(Instant.now()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(active, lifecycleOwner) {
+        if (!active) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                cardNow = Instant.now()
+                delay(60_000L - cardNow.toEpochMilli() % 60_000L)
+            }
+        }
     }
     // Only the settled feed can prefetch; tab selection does not reset its scroll position.
     val currentState by rememberUpdatedState(state)
@@ -366,8 +384,21 @@ private fun FlightListPage(
                     }
                 }
                 items(state.items, key = { it.id }, contentType = { "flight" }) { flight ->
+                    val pendingProgress = flight.cardPendingProgress(arrivalsById[flight.id], departuresById[flight.id], cancellationsById[flight.id])
+                    val needsReview = pendingProgress == FlightProgressStatus.ArrivalNeedsReview ||
+                        pendingProgress == FlightProgressStatus.DepartureNeedsReview || pendingProgress == FlightProgressStatus.CancellationNeedsReview
+                    val pendingLabel = when {
+                        needsReview -> stringResource(R.string.flight_card_needs_review)
+                        pendingProgress == FlightProgressStatus.CancellationRevertPending -> stringResource(R.string.flight_card_revert_pending)
+                        pendingProgress != null -> stringResource(R.string.flight_card_pending_sync)
+                        else -> null
+                    }
                     FlightCard(flight = flight,
-                        reportStatus = flight.cardReportStatus(flight.id in arrivalIds, flight.id in departureIds, flight.id in cancellationIds),
+                        now = cardNow,
+                        reportStatus = flight.cardReportStatus(flight.id in arrivalsById, flight.id in departuresById, flight.id in cancellationIds, cardNow),
+                        pendingSyncLabel = pendingLabel,
+                        hasSyncError = needsReview,
+                        cancellationAtUtc = cancellationsById[flight.id]?.cancellationAtUtcForCard() ?: flight.latestCancellationAtUtc,
                         onClick = {
                         if (active) {
                             keyboard?.hide()

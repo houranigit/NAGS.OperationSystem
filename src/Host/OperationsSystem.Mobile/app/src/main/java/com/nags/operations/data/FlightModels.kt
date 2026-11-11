@@ -42,6 +42,12 @@ data class FlightListItem(
     val hasArrivalSubmission: Boolean? = null,
     val hasDepartureSubmission: Boolean? = null,
     val hasCancellationSubmission: Boolean? = null,
+    // Current-cycle summaries are unknown in snapshots from an older API.
+    val hasOpenReturnToRamp: Boolean? = null,
+    val latestReturnToRampSequence: Int? = null,
+    val activeWorkCount: Int? = null,
+    val completedWorkCount: Int? = null,
+    val latestCancellationAtUtc: String? = null,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
 }
