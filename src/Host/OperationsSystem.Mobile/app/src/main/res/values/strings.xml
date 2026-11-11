@@ -355,4 +355,8 @@
     <string name="cancellation_revert_short">Revert</string>
     <string name="cancellation_review">Review cancellation</string>
     <string name="cancellation_review_short">Review</string>
+    <string name="flight_card_canceled">Canceled</string>
+    <string name="flight_card_arrived">Arrived</string>
+    <string name="flight_card_departed">Departed</string>
+    <string name="flight_card_conflict">Conflict!</string>
 </resources>

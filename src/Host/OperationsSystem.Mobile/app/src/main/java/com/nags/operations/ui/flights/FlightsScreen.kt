@@ -302,6 +302,18 @@ private fun FlightListPage(
     listState: LazyListState,
     active: Boolean,
 ) {
+    // Account-scoped durable input updates card badges immediately, without detail HTTP reads.
+    val savedArrivals by (viewModel.arrivals?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val savedDepartures by (viewModel.departures?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val savedCancellations by (viewModel.cancellations?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val arrivalIds = remember(savedArrivals) { savedArrivals.mapTo(mutableSetOf()) { it.flightId } }
+    val departureIds = remember(savedDepartures) { savedDepartures.mapTo(mutableSetOf()) { it.flightId } }
+    val cancellationIds = remember(savedCancellations) {
+        savedCancellations.filter { it.keepsCancellationOnCard() }.mapTo(mutableSetOf()) { it.flightId }
+    }
     // Only the settled feed can prefetch; tab selection does not reset its scroll position.
     val currentState by rememberUpdatedState(state)
     val keyboard = LocalSoftwareKeyboardController.current
@@ -354,7 +366,9 @@ private fun FlightListPage(
                     }
                 }
                 items(state.items, key = { it.id }, contentType = { "flight" }) { flight ->
-                    FlightCard(flight = flight, onClick = {
+                    FlightCard(flight = flight,
+                        reportStatus = flight.cardReportStatus(flight.id in arrivalIds, flight.id in departureIds, flight.id in cancellationIds),
+                        onClick = {
                         if (active) {
                             keyboard?.hide()
                             focusManager.clearFocus()

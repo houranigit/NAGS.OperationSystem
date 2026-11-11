@@ -72,7 +72,8 @@ public sealed class GetMobileFlightsQueryHandler(
                     !f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) &&
                     f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == context.StaffMemberId),
                     f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
-                    f.CreatedByUserId == context.UserId, stationTimeZoneId))
+                    f.CreatedByUserId == context.UserId, stationTimeZoneId,
+                    f.ArrivalSubmissions.Any(), f.DepartureSubmissions.Any(), f.CancellationSubmissions.Any()))
                 .ToListAsync(cancellationToken);
 
             var customerIds = items.Select(item => item.CustomerId).Distinct().ToArray();

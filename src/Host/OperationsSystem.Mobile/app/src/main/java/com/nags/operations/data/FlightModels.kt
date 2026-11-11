@@ -38,6 +38,10 @@ data class FlightListItem(
     val isMyFlight: Boolean = false,
     val isMyAdHocFlight: Boolean = false,
     val stationTimeZoneId: String,
+    // Missing metadata in older snapshots remains distinguishable from a current server's false.
+    val hasArrivalSubmission: Boolean? = null,
+    val hasDepartureSubmission: Boolean? = null,
+    val hasCancellationSubmission: Boolean? = null,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
 }

@@ -14,7 +14,10 @@ public sealed record FlightListItemDto(
     string? AircraftTypeModel = null,
     Guid? CustomerId = null,
     string? CustomerLogoVersion = null,
-    Guid? StationId = null);
+    Guid? StationId = null,
+    bool HasArrivalSubmission = false,
+    bool HasDepartureSubmission = false,
+    bool HasCancellationSubmission = false);
 
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId);

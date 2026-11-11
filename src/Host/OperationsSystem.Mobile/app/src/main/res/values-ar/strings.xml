@@ -332,4 +332,8 @@
     <string name="cancellation_revert_short">تراجع</string>
     <string name="cancellation_review">مراجعة الإلغاء</string>
     <string name="cancellation_review_short">مراجعة</string>
+    <string name="flight_card_canceled">ملغاة</string>
+    <string name="flight_card_arrived">وصلت</string>
+    <string name="flight_card_departed">غادرت</string>
+    <string name="flight_card_conflict">تعارض!</string>
 </resources>

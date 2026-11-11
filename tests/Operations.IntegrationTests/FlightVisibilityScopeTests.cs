@@ -161,6 +161,94 @@ public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : I
     }
 
     [Fact]
+    public async Task Flight_list_report_flags_include_all_submissions_without_changing_mobile_scope_or_paging()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var reader = await CreateStaffLoginAsync(admin, refs, RegularStaffPermissions);
+        using var client = reader.Client;
+        var now = DateTimeOffset.UtcNow;
+        var userId = (await client.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("id").GetGuid();
+        var expected = new Dictionary<Guid, (bool Arrival, bool Departure, bool Cancellation)>();
+        var flights = new List<Flight>();
+        var workReporters = new[] { new StaffMemberSnapshot(Guid.NewGuid(), "Work reporter one", "W1"),
+            new StaffMemberSnapshot(Guid.NewGuid(), "Work reporter two", "W2") };
+        var cancellationReporters = new[] { new StaffMemberSnapshot(Guid.NewGuid(), "Cancel reporter one", "C1"),
+            new StaffMemberSnapshot(Guid.NewGuid(), "Cancel reporter two", "C2") };
+        Flight CreateFlight(string number, Guid stationId) => Flight.ScheduleNew(
+            new CustomerSnapshot(refs.CustomerId, null, "Report flags customer"),
+            new StationSnapshot(stationId, "TST", "Report flags station"),
+            new OperationTypeSnapshot(refs.OperationTypeId, "Transit"), FlightNumber.Create(number).Value,
+            ScheduledTime.Create(now.AddHours(1), now.AddHours(2)).Value,
+            new AircraftTypeSnapshot(Guid.NewGuid(), "Airbus", "A320"),
+            [new ServiceSnapshot(refs.ServiceId, "Service")],
+            [new StaffMemberSnapshot(reader.StaffId, "Assigned reader", "READER")], userId, now).Value;
+        for (var mask = 0; mask < 8; mask++)
+        {
+            var flight = CreateFlight($"76{mask:00}", refs.StationId);
+            var flags = (Arrival: (mask & 1) != 0, Departure: (mask & 2) != 0, Cancellation: (mask & 4) != 0);
+            foreach (var reporter in workReporters)
+            {
+                if (flags.Arrival)
+                    flight.SubmitArrival(reporter, ArrivalDetails.Create(null, now, flight.AircraftType,
+                        "HZ-REPORT", reporter, null).Value, userId, now).IsSuccess.ShouldBeTrue();
+                if (flags.Departure)
+                    flight.SubmitDeparture(reporter, DepartureDetails.Create(now.AddHours(1),
+                        CustomerSignature.Create("signature.png", $"test-signatures/{Guid.NewGuid():N}.png", "image/png", 1, now).Value,
+                        reporter, null).Value, userId, now).IsSuccess.ShouldBeTrue();
+            }
+            if (flags.Cancellation)
+                foreach (var reporter in cancellationReporters)
+                    flight.SubmitCancellation(reporter, CancellationDetails.Create(now, null).Value,
+                        userId, now).IsSuccess.ShouldBeTrue();
+            // Competing, unaccepted reports still determine the badge, even when none belongs to this reader.
+            flight.ArrivalSubmissions.ShouldAllBe(report => !report.IsAccepted);
+            flight.DepartureSubmissions.ShouldAllBe(report => !report.IsAccepted);
+            flight.CancellationSubmissions.ShouldAllBe(report => !report.IsAccepted);
+            expected.Add(flight.Id, flags);
+            flights.Add(flight);
+        }
+        var hidden = CreateFlight("7699", Guid.NewGuid());
+        hidden.SubmitCancellation(cancellationReporters[0], CancellationDetails.Create(now, null).Value,
+            userId, now).IsSuccess.ShouldBeTrue();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            db.Flights.AddRange(flights.Append(hidden));
+            await db.SaveChangesAsync();
+        }
+
+        var mobileItems = new List<MobileFlightListItemDto>();
+        for (var pageNumber = 1; pageNumber <= 3; pageNumber++)
+        {
+            var page = (await client.GetFromJsonAsync<MobileFlightPageDto>(
+                $"{Base}/flights/mobile?category=MyFlights&page={pageNumber}&pageSize=3"))!;
+            page.TotalCount.ShouldBe(8);
+            page.Items.Count.ShouldBe(pageNumber < 3 ? 3 : 2);
+            page.StationId.ShouldBe(refs.StationId);
+            mobileItems.AddRange(page.Items);
+        }
+        mobileItems.Select(item => item.Id).ShouldBe(expected.Keys, ignoreOrder: true);
+        foreach (var item in mobileItems)
+        {
+            var flags = expected[item.Id];
+            item.HasArrivalSubmission.ShouldBe(flags.Arrival);
+            item.HasDepartureSubmission.ShouldBe(flags.Departure);
+            item.HasCancellationSubmission.ShouldBe(flags.Cancellation);
+        }
+        var register = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>(
+            $"{Base}/flights?stationId={refs.StationId}&pageSize=100"))!;
+        register.Items.Select(item => item.Id).ShouldBe(expected.Keys, ignoreOrder: true);
+        foreach (var item in register.Items)
+        {
+            var flags = expected[item.Id];
+            item.HasArrivalSubmission.ShouldBe(flags.Arrival);
+            item.HasDepartureSubmission.ShouldBe(flags.Departure);
+            item.HasCancellationSubmission.ShouldBe(flags.Cancellation);
+        }
+    }
+
+    [Fact]
     public async Task Mobile_routes_limit_categories_station_and_overlap_without_narrowing_portal_reads()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();

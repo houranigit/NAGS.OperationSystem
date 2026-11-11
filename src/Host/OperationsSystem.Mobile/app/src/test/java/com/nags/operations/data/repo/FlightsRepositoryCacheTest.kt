@@ -783,6 +783,104 @@ class FlightsRepositoryCacheTest {
         assertEquals(original.arrivalSubmissions, cached.arrivalSubmissions)
     }
 
+    @Test fun acknowledgedReportsRemainOnOfflineCardsAndRevertsPreserveOtherCancellationReports() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        val planned = repository.flight("one")
+        val employee = com.nags.operations.data.AssignedEmployee("staff", "Employee", "E1")
+        val arrival = com.nags.operations.data.FlightArrivalSubmission("arrival", employee, clock, "actual-aircraft", "A320", "TAIL",
+            receivedByEmployee = employee, isAccepted = false, createdAtUtc = clock)
+        val departure = com.nags.operations.data.FlightDepartureSubmission("departure", employee, clock, employee,
+            isAccepted = false, createdAtUtc = clock)
+        val other = employee.copy(staffMemberId = "other")
+        val cancellation = com.nags.operations.data.FlightCancellationSubmission("cancel", other, clock,
+            isAccepted = false, createdAtUtc = clock)
+        repository.recordArrival("one", com.nags.operations.data.FlightArrivalSaved(arrival, "arrival-version"))
+        repository.recordDeparture("one", com.nags.operations.data.FlightDepartureSaved(departure, "departure-version"))
+        repository.recordCancellation("one", com.nags.operations.data.FlightCancellationSaved(cancellation, "cancel-version"))
+        online = false
+        val reads = detailReads.toList()
+        val reopened = repository().flights().items.first { it.id == "one" }
+        assertEquals(true, reopened.hasArrivalSubmission)
+        assertEquals(true, reopened.hasDepartureSubmission)
+        assertEquals(true, reopened.hasCancellationSubmission)
+        assertEquals(planned.scheduledArrivalUtc, reopened.scheduledArrivalUtc)
+        assertEquals(planned.scheduledDepartureUtc, reopened.scheduledDepartureUtc)
+        assertEquals(listOf("one", "two"), repository.flights().items.map { it.id })
+        assertNull(reopened.aircraftTypeModel) // Actual aircraft does not replace planning.
+
+        repository.recordCancellationReverted("one", com.nags.operations.data.FlightCancellationReverted(listOf(cancellation), "retained-version"))
+        assertEquals(true, repository.flights().items.first().hasCancellationSubmission)
+        repository.recordCancellationReverted("one", com.nags.operations.data.FlightCancellationReverted(emptyList(), "reverted-version"))
+        val reverted = repository().flights().items.first()
+        assertEquals(false, reverted.hasCancellationSubmission)
+        assertEquals(true, reverted.hasArrivalSubmission)
+        assertEquals(true, reverted.hasDepartureSubmission)
+        assertEquals(reads, detailReads)
+        assertEquals(2, repository.syncStatus.first().itemCount)
+    }
+
+    @Test fun legacyCardFlagsUseExistingScopedDetailWithoutOverridingANewerExplicitServerFalse() = runBlocking {
+        val employee = com.nags.operations.data.AssignedEmployee("staff", "Employee", "E1")
+        val arrival = com.nags.operations.data.FlightArrivalSubmission("arrival", employee, clock, "aircraft", "A320", "TAIL",
+            receivedByEmployee = employee, isAccepted = true, createdAtUtc = clock)
+        detailLoader = { id -> detail(id).copy(arrivalSubmissions = listOf(arrival)) }
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        val snapshot = dao.snapshot(owner.value!!)!!
+        val payload = Json.parseToJsonElement(snapshot.payloadJson).jsonObject
+        val oldRows = JsonArray(payload.getValue("items").jsonArray.map { row ->
+            JsonObject(row.jsonObject - setOf("hasArrivalSubmission", "hasDepartureSubmission", "hasCancellationSubmission"))
+        })
+        dao.putSnapshot(snapshot.copy(payloadJson = JsonObject(payload + ("items" to oldRows)).toString()))
+        online = false
+        val reads = detailReads.toList()
+        val legacy = repository.flights().items
+        assertEquals(true, legacy.first { it.id == "one" }.hasArrivalSubmission)
+        assertNull(legacy.first { it.id == "two" }.hasArrivalSubmission)
+        val knownRows = JsonArray(oldRows.map { row ->
+            JsonObject(row.jsonObject + mapOf("hasArrivalSubmission" to kotlinx.serialization.json.JsonPrimitive(false),
+                "hasDepartureSubmission" to kotlinx.serialization.json.JsonPrimitive(false),
+                "hasCancellationSubmission" to kotlinx.serialization.json.JsonPrimitive(false)))
+        })
+        dao.putSnapshot(snapshot.copy(payloadJson = JsonObject(payload + ("items" to knownRows)).toString()))
+        assertEquals(false, repository.flights().items.first().hasArrivalSubmission)
+        assertEquals(reads, detailReads)
+    }
+
+    @Test fun resolvingEmptyLegacyDetailMetadataDoesNotDiscardNewerPlanningListValues() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        val requested = CompletableDeferred<Unit>()
+        val response = CompletableDeferred<FlightPage>()
+        pageLoader = { _, _, _ -> requested.complete(Unit); response.await() }
+        val pending = async(start = CoroutineStart.UNDISPATCHED) { repository.flights(FlightCategory.MyFlights) }
+        requested.await()
+        repository.flight("one") // No reports: unknown legacy metadata becomes explicit false.
+        response.complete(FlightPage(listOf(item("one", "456")), 1, 20, 1, 1))
+        assertEquals("456", pending.await().items.single().flightNumber)
+    }
+
+    @Test fun aListReadStartedBeforeAnAcknowledgedReportCannotRestoreItsOldBadgeFlags() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        val requested = CompletableDeferred<Unit>()
+        val response = CompletableDeferred<FlightPage>()
+        pageLoader = { _, _, _ -> requested.complete(Unit); response.await() }
+        val pending = async(start = CoroutineStart.UNDISPATCHED) { repository.flights(FlightCategory.MyFlights) }
+        requested.await()
+        val employee = com.nags.operations.data.AssignedEmployee("staff", "Employee", "E1")
+        val arrival = com.nags.operations.data.FlightArrivalSubmission("arrival", employee, clock, "aircraft", "A320", "TAIL",
+            receivedByEmployee = employee, isAccepted = false, createdAtUtc = clock)
+        repository.recordArrival("one", com.nags.operations.data.FlightArrivalSaved(arrival, "saved-version"))
+        response.complete(FlightPage(listOf(item("one").copy(hasArrivalSubmission = false)), 1, 20, 1, 1))
+        assertEquals(true, pending.await().items.first().hasArrivalSubmission)
+        online = false
+        assertEquals(true, repository().flights().items.first().hasArrivalSubmission)
+    }
+
     private fun scoped(page: FlightPage): FlightPage {
         if (page.stationId != null) return page
         val at = Instant.parse(clock)

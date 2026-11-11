@@ -16,7 +16,10 @@ public sealed record MobileFlightListItemDto(
     Guid StationId,
     bool IsMyFlight,
     bool IsMyAdHocFlight,
-    string StationTimeZoneId);
+    string StationTimeZoneId,
+    bool HasArrivalSubmission = false,
+    bool HasDepartureSubmission = false,
+    bool HasCancellationSubmission = false);
 
 /// <summary>A page from the caller's station within the server's current rolling 24-hour window.</summary>
 public sealed record MobileFlightPageDto(

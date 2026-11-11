@@ -54,7 +54,10 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 ScheduledArrivalUtc = f.Schedule.Sta,
                 ScheduledDepartureUtc = f.Schedule.Std,
                 IsPerLanding = f.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
-                AircraftTypeModel = f.AircraftType == null ? null : f.AircraftType.Model
+                AircraftTypeModel = f.AircraftType == null ? null : f.AircraftType.Model,
+                HasArrivalSubmission = f.ArrivalSubmissions.Any(),
+                HasDepartureSubmission = f.DepartureSubmissions.Any(),
+                HasCancellationSubmission = f.CancellationSubmissions.Any()
             })
             .ToListAsync(cancellationToken);
         var customerIds = items.Select(item => item.CustomerId).Distinct().ToArray();
@@ -69,7 +72,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             item.OperationTypeName, item.ScheduledArrivalUtc, item.ScheduledDepartureUtc, item.IsPerLanding,
             stationTimeZones[item.StationId], item.AircraftTypeModel, item.CustomerId,
             versions.TryGetValue(item.CustomerId, out var version) ? version : CustomerLogoVersions.None,
-            item.StationId)).ToList();
+            item.StationId, item.HasArrivalSubmission, item.HasDepartureSubmission, item.HasCancellationSubmission)).ToList();
         return paging.ToResult(versionedItems, total);
     }
 }

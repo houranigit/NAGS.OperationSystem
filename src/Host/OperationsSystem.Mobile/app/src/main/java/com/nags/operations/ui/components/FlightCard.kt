@@ -8,13 +8,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -37,6 +35,8 @@ import com.nags.operations.R
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import com.nags.operations.data.FlightListItem
+import com.nags.operations.ui.flights.FlightCardReportStatus
+import com.nags.operations.ui.flights.cardReportStatus
 import com.nags.operations.ui.util.formatFlightDateRangeForDisplay
 import com.nags.operations.ui.util.stationTimeZone
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
@@ -49,6 +49,7 @@ fun FlightCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     loadCustomerLogo: (String) -> Flow<ByteArray?> = { flowOf(null) },
+    reportStatus: FlightCardReportStatus = flight.cardReportStatus(),
 ) {
     Card(
         onClick = onClick,
@@ -95,21 +96,7 @@ fun FlightCard(
                                 PerLandingBadge()
                             }
                         }
-                        Surface(
-                            modifier = Modifier.widthIn(max = 92.dp),
-                            shape = RoundedCornerShape(50),
-                            color = ScheduledBlue.copy(alpha = 0.11f),
-                        ) {
-                            Text(
-                                stringResource(R.string.flights_scheduled),
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.tertiary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
+                        FlightReportBadge(reportStatus)
                     }
                     Text(
                         flight.customerName,

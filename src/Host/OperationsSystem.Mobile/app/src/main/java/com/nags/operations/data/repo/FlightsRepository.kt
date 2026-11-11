@@ -147,6 +147,7 @@ class FlightsRepository internal constructor(
         if (!isOnline()) return cachedDetail(session, id)
         return refreshMutex.withLock {
             ensureCurrent(session)
+            var reportsChanged = false
             try {
                 val detail = fetchFlight(id)
                 mutationMutex.withLock {
@@ -159,8 +160,10 @@ class FlightsRepository internal constructor(
                     // Only the complete scoped manifest authorizes an offline detail.
                     if (saved?.second?.items?.any { it.id == id } == true) {
                         dao.putDetails(listOf(FlightDetailCacheEntity(session.owner, id, json.encodeToString(detail))))
+                        reportsChanged = updateSnapshotReportsLocked(session, id) { it.withReportFlags(detail) }
                     }
                 }
+                if (reportsChanged) _cacheChanges.tryEmit(Unit)
                 detail
             } catch (error: CancellationException) {
                 throw error
@@ -176,16 +179,16 @@ class FlightsRepository internal constructor(
     suspend fun cachedFlight(id: String): FlightDetail? = captureSession()?.let { cachedDetailOrNull(it, id) }
 
     suspend fun recordCancellation(id: String, saved: com.nags.operations.data.FlightCancellationSaved) {
-        updateCancellationCache(id, saved.rowVersion) { detail ->
+        updateCancellationCache(id, saved.rowVersion, hasCancellation = true) { detail ->
             detail.cancellationSubmissions.filterNot { it.id == saved.submission.id } + saved.submission
         }
     }
 
     suspend fun recordCancellationReverted(id: String, saved: com.nags.operations.data.FlightCancellationReverted) {
-        updateCancellationCache(id, saved.rowVersion) { saved.cancellationSubmissions }
+        updateCancellationCache(id, saved.rowVersion, saved.cancellationSubmissions.isNotEmpty()) { saved.cancellationSubmissions }
     }
 
-    private suspend fun updateCancellationCache(id: String, rowVersion: String,
+    private suspend fun updateCancellationCache(id: String, rowVersion: String, hasCancellation: Boolean,
         submissions: (FlightDetail) -> List<com.nags.operations.data.FlightCancellationSubmission>) {
         val session = requireSession()
         refreshMutex.withLock {
@@ -200,6 +203,7 @@ class FlightsRepository internal constructor(
                         dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
                     }
                 }
+                updateSnapshotReportsLocked(session, id) { it.copy(hasCancellationSubmission = hasCancellation) }
             }
         }
         _cacheChanges.tryEmit(Unit)
@@ -218,6 +222,7 @@ class FlightsRepository internal constructor(
                     } + saved.submission, rowVersion = saved.rowVersion)
                     dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
                 }
+                updateSnapshotReportsLocked(session, id) { it.copy(hasArrivalSubmission = true) }
             }
         }
         _cacheChanges.tryEmit(Unit)
@@ -238,9 +243,28 @@ class FlightsRepository internal constructor(
                         dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
                     }
                 }
+                updateSnapshotReportsLocked(session, id) { it.copy(hasDepartureSubmission = true) }
             }
         }
         _cacheChanges.tryEmit(Unit)
+    }
+
+    /** Only existing scoped rows receive acknowledged metadata; their planning, membership and versions stay intact. */
+    private suspend fun updateSnapshotReportsLocked(session: FlightCacheSession, id: String,
+        change: (FlightListItem) -> FlightListItem): Boolean {
+        val (snapshot, payload) = scopedSnapshotLocked(session) ?: return false
+        val original = payload.items.firstOrNull { it.id == id } ?: return false
+        val updated = change(original)
+        if (updated == original) return false
+        val items = payload.items.map { if (it.id == id) updated else it }
+        dao.putSnapshot(snapshot.copy(payloadJson = json.encodeToString(payload.copy(items = items))))
+        val presenceChanged = (original.hasArrivalSubmission == true) != (updated.hasArrivalSubmission == true) ||
+            (original.hasDepartureSubmission == true) != (updated.hasDepartureSubmission == true) ||
+            (original.hasCancellationSubmission == true) != (updated.hasCancellationSubmission == true)
+        // A list response started before a report change must not undo its flags. Filling only
+        // missing false metadata does not invalidate unrelated planning reads.
+        if (presenceChanged) listRevision++
+        return presenceChanged
     }
 
     fun customerLogo(customerId: String): Flow<ByteArray?> = logoStore?.observe(customerId) ?: flowOf(null)
@@ -448,7 +472,17 @@ class FlightsRepository internal constructor(
             val pageSize = size.coerceIn(1, SYNC_PAGE_SIZE)
             val totalPages = if (filtered.isEmpty()) 0 else ((filtered.size - 1) / pageSize) + 1
             val skip = (normalizedPage.toLong() - 1L) * pageSize
-            FlightPage(if (skip >= filtered.size) emptyList() else filtered.drop(skip.toInt()).take(pageSize),
+            val pageItems = if (skip >= filtered.size) emptyList() else filtered.drop(skip.toInt()).take(pageSize)
+            // Older snapshots lacked report flags. Reuse only already-cached, eligible detail evidence.
+            val missingIds = pageItems.filter { it.hasArrivalSubmission == null || it.hasDepartureSubmission == null ||
+                it.hasCancellationSubmission == null }.mapTo(mutableSetOf()) { it.id }
+            val knownDetails = if (missingIds.isEmpty()) emptyMap() else dao.details(session.owner)
+                .filter { it.flightId in missingIds }.mapNotNull { entity ->
+                    runCatching { json.decodeFromString<FlightDetail>(entity.payloadJson) }.getOrNull()
+                        ?.takeIf { it.id == entity.flightId && it.stationId == scope.stationId && it.isInFlightWindow(Instant.parse(now())) }
+                        ?.let { it.id to it }
+                }.toMap()
+            FlightPage(pageItems.map { item -> knownDetails[item.id]?.let { item.withMissingReportFlags(it) } ?: item },
                 normalizedPage, pageSize, filtered.size.toLong(), totalPages,
                 normalizedPage > 1, normalizedPage < totalPages, fromCache = true,
                 stationId = scope.stationId, asOfUtc = scope.asOfUtc,
@@ -615,3 +649,17 @@ private fun FlightListItem.matchesSearch(term: String): Boolean {
         flightNumber.lowercase(Locale.ROOT).contains(term) || customerName.lowercase(Locale.ROOT).contains(term) ||
         (iata != null && (iata + flightNumber.lowercase(Locale.ROOT)).replace("-", "").replace(" ", "").contains(compactTerm))
 }
+
+/** Fresh detail metadata is authoritative for all three presence flags. */
+private fun FlightListItem.withReportFlags(detail: FlightDetail) = copy(
+    hasArrivalSubmission = detail.arrivalSubmissions.isNotEmpty(),
+    hasDepartureSubmission = detail.departureSubmissions.isNotEmpty(),
+    hasCancellationSubmission = detail.hasCancellationSubmission || detail.cancellationSubmissions.isNotEmpty(),
+)
+
+/** A known server false must not be replaced by an older cached detail's positive report. */
+private fun FlightListItem.withMissingReportFlags(detail: FlightDetail) = copy(
+    hasArrivalSubmission = hasArrivalSubmission ?: detail.arrivalSubmissions.isNotEmpty(),
+    hasDepartureSubmission = hasDepartureSubmission ?: detail.departureSubmissions.isNotEmpty(),
+    hasCancellationSubmission = hasCancellationSubmission ?: (detail.hasCancellationSubmission || detail.cancellationSubmissions.isNotEmpty()),
+)

@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -13,7 +14,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -84,9 +84,12 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -132,7 +135,7 @@ internal fun FlightDetailsSheet(
         add(FlightRecordingAction.Send)
         if (showOperations) add(FlightRecordingAction.Operate)
     }
-    val toolbarWidth = 148.dp
+    val actionMetrics = flightActionMetrics()
     var expandedAction by rememberSaveable(state.selectedFlightId) { mutableStateOf<FlightRecordingAction?>(null) }
     androidx.compose.runtime.LaunchedEffect(availableActions) {
         if (expandedAction !in availableActions) expandedAction = null
@@ -158,7 +161,7 @@ internal fun FlightDetailsSheet(
             val isPerLanding = state.detail?.isPerLanding
                 ?: state.items.firstOrNull { it.id == state.selectedFlightId }?.isPerLanding ?: false
             val actions: @Composable (Boolean) -> Unit = { loading ->
-                FlightRecordingActions(loading = loading, availableActions = availableActions, expandedAction = expandedAction,
+                FlightRecordingActions(loading = loading, availableActions = availableActions, metrics = actionMetrics, expandedAction = expandedAction,
                     onExpandedActionChange = { expandedAction = it; expandedActionBounds = null },
                     onExpandedBoundsChange = { expandedActionBounds = it },
                     onOperations = onOperations, onCanceled = onCanceled, onRevertCancellation = onRevertCancellation)
@@ -186,7 +189,7 @@ internal fun FlightDetailsSheet(
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }
                     when {
-                        state.isLoadingDetail && state.detail == null -> FlightDetailsSkeleton(showPeople = !isPerLanding, toolbarWidth = toolbarWidth, actions = { actions(true) })
+                        state.isLoadingDetail && state.detail == null -> FlightDetailsSkeleton(showPeople = !isPerLanding, metrics = actionMetrics, actions = { actions(true) })
                         state.detailError != null && state.detail == null -> ErrorState(message = state.detailError, onRetry = onRetry)
                         state.detail != null -> {
                             val flight = state.detail
@@ -194,7 +197,7 @@ internal fun FlightDetailsSheet(
                                 Text(stringResource(R.string.flights_cached_detail), modifier = Modifier.padding(bottom = 8.dp),
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            FlightIdentity(flight, loadCustomerLogo, toolbarWidth = toolbarWidth, actions = { actions(false) })
+                            FlightIdentity(flight, loadCustomerLogo, metrics = actionMetrics, actions = { actions(false) })
                             Spacer(Modifier.height(8.dp))
                             FlightOperationStatusRow(flight.operationTypeName, progressStatus)
                             DetailDivider(Modifier.padding(vertical = 10.dp))
@@ -239,6 +242,29 @@ internal fun FlightDetailsSheet(
     }
 }
 
+private data class FlightActionMetrics(
+    val headingHeight: Dp,
+    val expandedFaceHeight: Dp,
+    val touchHeight: Dp,
+    val bottomInset: Dp,
+    val slotWidth: Dp = 48.dp,
+    val toolbarWidth: Dp = 144.dp,
+    val collapsedFaceSize: Dp = 44.dp,
+)
+
+@Composable
+private fun flightActionMetrics(): FlightActionMetrics {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val labelHeight = measurer.measure(stringResource(R.string.flights_operate),
+        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), maxLines = 1).size.height
+    val headingLayout = measurer.measure("0", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+    val heading = with(density) { headingLayout.size.height.toDp() }
+    val inset = with(density) { (headingLayout.size.height - headingLayout.lastBaseline).toDp() }.coerceAtLeast(0.dp)
+    val face = maxOf(44.dp, with(density) { labelHeight.toDp() } + 8.dp)
+    return FlightActionMetrics(heading, face, maxOf(48.dp, face + inset + 2.dp), inset)
+}
+
 private enum class FlightRecordingAction { Cancel, Review, Revert, Send, Operate }
 
 /** First tap reveals one action; a second tap opens its existing flow. */
@@ -246,6 +272,7 @@ private enum class FlightRecordingAction { Cancel, Review, Revert, Send, Operate
 private fun FlightRecordingActions(
     loading: Boolean,
     availableActions: List<FlightRecordingAction>,
+    metrics: FlightActionMetrics,
     expandedAction: FlightRecordingAction?,
     onExpandedActionChange: (FlightRecordingAction?) -> Unit,
     onExpandedBoundsChange: (Rect) -> Unit,
@@ -254,11 +281,10 @@ private fun FlightRecordingActions(
     onRevertCancellation: () -> Unit,
 ) {
     val style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
-    val actionWidth = 48.dp
-    val actionGap = 2.dp
-    val toolbarWidth = 148.dp
-    val collapsedWidth = actionWidth * availableActions.size + actionGap * (availableActions.size - 1)
-    // Keep the available slots alive while one action expands over its siblings.
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    val collapsedWidth = metrics.slotWidth * availableActions.size
+    // Slots stay mounted so each action expands continuously from its current position.
     val expansions = availableActions.map { action ->
         key(action) { animateFloatAsState(
             targetValue = if (expandedAction == action) 1f else 0f,
@@ -266,78 +292,71 @@ private fun FlightRecordingActions(
             label = "${action.name} expansion",
         ).value }
     }
-    // Physical Cancel / Send / Operate order is intentional, including in RTL locales.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-            Box(Modifier.width(toolbarWidth).height(48.dp)) {
-                availableActions.forEachIndexed { index, action ->
-                    key(action) {
-                        val expansion = expansions[index]
-                        val expanded = expandedAction == action
-                        val otherExpansion = expansions.filterIndexed { other, _ -> other != index }.maxOrNull() ?: 0f
-                        val opacity = (1f - otherExpansion * 3f).coerceIn(0f, 1f)
-                        val enabled = !loading && (expanded || expandedAction == null && opacity > 0.5f)
-                        val buttonWidth = actionWidth + (toolbarWidth - actionWidth) * expansion
-                        val labelWidth = (toolbarWidth - actionWidth) * expansion
-                        val accessibleLabel = stringResource(when (action) {
-                            FlightRecordingAction.Cancel -> R.string.flights_cancel_flight
-                            FlightRecordingAction.Review -> R.string.cancellation_review
-                            FlightRecordingAction.Revert -> R.string.cancellation_revert
-                            FlightRecordingAction.Send -> R.string.flights_send
-                            FlightRecordingAction.Operate -> R.string.flights_operate
-                        })
-                        val label = when (action) {
-                            FlightRecordingAction.Revert -> stringResource(R.string.cancellation_revert_short)
-                            FlightRecordingAction.Review -> stringResource(R.string.cancellation_review_short)
-                            else -> accessibleLabel
+        Box(Modifier.width(metrics.toolbarWidth).height(metrics.touchHeight)) {
+            availableActions.forEachIndexed { index, action ->
+                key(action) {
+                    val expansion = expansions[index]
+                    val expanded = expandedAction == action
+                    val otherExpansion = expansions.filterIndexed { other, _ -> other != index }.maxOrNull() ?: 0f
+                    val opacity = (1f - otherExpansion * 3f).coerceIn(0f, 1f)
+                    val enabled = !loading && (expanded || expandedAction == null && opacity > 0.5f)
+                    val buttonWidth = metrics.slotWidth + (metrics.toolbarWidth - metrics.slotWidth) * expansion
+                    val faceWidth = buttonWidth - (metrics.slotWidth - metrics.collapsedFaceSize)
+                    val faceHeight = metrics.collapsedFaceSize + (metrics.expandedFaceHeight - metrics.collapsedFaceSize) * expansion
+                    val accessibleLabel = stringResource(when (action) {
+                        FlightRecordingAction.Cancel -> R.string.flights_cancel_flight
+                        FlightRecordingAction.Review -> R.string.cancellation_review
+                        FlightRecordingAction.Revert -> R.string.cancellation_revert
+                        FlightRecordingAction.Send -> R.string.flights_send
+                        FlightRecordingAction.Operate -> R.string.flights_operate
+                    })
+                    val label = when (action) {
+                        FlightRecordingAction.Revert -> stringResource(R.string.cancellation_revert_short)
+                        FlightRecordingAction.Review -> stringResource(R.string.cancellation_review_short)
+                        else -> accessibleLabel
+                    }
+                    val icon = when (action) {
+                        FlightRecordingAction.Cancel -> Icons.Outlined.EventBusy
+                        FlightRecordingAction.Review -> Icons.Outlined.Edit
+                        FlightRecordingAction.Revert -> Icons.AutoMirrored.Outlined.Undo
+                        FlightRecordingAction.Send -> Icons.Outlined.Share
+                        FlightRecordingAction.Operate -> Icons.Outlined.Edit
+                    }
+                    val labelLimit = metrics.toolbarWidth - (metrics.slotWidth - metrics.collapsedFaceSize) - 16.dp - 16.dp - 6.dp
+                    val labelWidth = with(density) {
+                        measurer.measure(label, style = style, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                            constraints = Constraints(maxWidth = labelLimit.roundToPx().coerceAtLeast(0))).size.width.toDp()
+                    }
+                    val interactions = remember(action) { MutableInteractionSource() }
+                    Box(Modifier
+                        .offset { IntOffset(((metrics.toolbarWidth - collapsedWidth + metrics.slotWidth * index) * (1f - expansion)).roundToPx(), 0) }
+                        .width(buttonWidth).height(metrics.touchHeight)
+                        .zIndex(if (expanded) 2f else if (expansion > 0f) 1f else 0f)
+                        .graphicsLayer { alpha = opacity }
+                        .onGloballyPositioned { if (expanded) onExpandedBoundsChange(it.boundsInWindow()) }
+                        .clickable(enabled = enabled, role = Role.Button, interactionSource = interactions, indication = null) {
+                            if (expanded) {
+                                onExpandedActionChange(null)
+                                when (action) {
+                                    FlightRecordingAction.Cancel, FlightRecordingAction.Review -> onCanceled()
+                                    FlightRecordingAction.Revert -> onRevertCancellation()
+                                    FlightRecordingAction.Send -> Unit
+                                    FlightRecordingAction.Operate -> onOperations()
+                                }
+                            } else onExpandedActionChange(action)
                         }
-                        val icon = when (action) {
-                            FlightRecordingAction.Cancel -> Icons.Outlined.EventBusy
-                            FlightRecordingAction.Review -> Icons.Outlined.Edit
-                            FlightRecordingAction.Revert -> Icons.AutoMirrored.Outlined.Undo
-                            FlightRecordingAction.Send -> Icons.Outlined.Share
-                            FlightRecordingAction.Operate -> Icons.Outlined.Edit
-                        }
-                        Box(Modifier
-                            // Interpolate both edges from the original slot to the full toolbar.
-                            // Cancel anchors left, Operate anchors right, and Send grows both ways.
-                            .offset { IntOffset(((toolbarWidth - collapsedWidth + (actionWidth + actionGap) * index) * (1f - expansion)).roundToPx(), 0) }
-                            .width(buttonWidth).height(48.dp)
-                            .zIndex(if (expanded) 2f else if (expansion > 0f) 1f else 0f)
-                            .graphicsLayer { alpha = opacity }
-                            .then(if (!enabled) Modifier.clearAndSetSemantics { } else Modifier),
-                            contentAlignment = Alignment.Center) {
-                            if (loading) {
-                                Box(Modifier.size(32.dp).background(DetailFill, CircleShape))
-                            } else TextButton(onClick = {
-                                if (expanded) {
-                                    onExpandedActionChange(null)
-                                    when (action) {
-                                        FlightRecordingAction.Cancel -> onCanceled()
-                                        FlightRecordingAction.Review -> onCanceled()
-                                        FlightRecordingAction.Revert -> onRevertCancellation()
-                                        FlightRecordingAction.Send -> Unit // Sending is not implemented yet.
-                                        FlightRecordingAction.Operate -> onOperations()
-                                    }
-                                } else onExpandedActionChange(action)
-                            }, enabled = enabled,
-                                modifier = Modifier.fillMaxWidth().height(48.dp)
-                                    .onGloballyPositioned { if (expanded) onExpandedBoundsChange(it.boundsInWindow()) }
-                                    .semantics { contentDescription = accessibleLabel },
-                                shape = CircleShape, contentPadding = PaddingValues(horizontal = 8.dp),
-                                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface,
-                                    disabledContentColor = MaterialTheme.colorScheme.onSurface)) {
-                                Row(Modifier.fillMaxWidth().heightIn(min = 32.dp)
-                                    .background(DetailFill, CircleShape).clipToBounds()
-                                    .padding(horizontal = 8.dp, vertical = 8.dp).clearAndSetSemantics { },
-                                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                                    Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Box(Modifier.width(labelWidth).clipToBounds().graphicsLayer { alpha = expansion }) {
-                                        // Reveal a stable label instead of re-ellipsizing its text on every frame.
-                                        Text(label, Modifier.wrapContentWidth(Alignment.Start, unbounded = true)
-                                            .width(toolbarWidth - actionWidth).padding(start = 5.dp), style = style,
-                                            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                                    }
+                        .semantics { contentDescription = accessibleLabel }
+                        .then(if (!enabled) Modifier.clearAndSetSemantics { } else Modifier)) {
+                        Box(Modifier.width(faceWidth).height(faceHeight).align(Alignment.BottomCenter)
+                            .offset(y = -metrics.bottomInset).background(DetailFill, CircleShape), contentAlignment = Alignment.Center) {
+                            if (!loading) Row(Modifier.padding(horizontal = 8.dp).clearAndSetSemantics { },
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Icon(icon, null, Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp * expansion))
+                                Box(Modifier.width(labelWidth * expansion).clipToBounds().graphicsLayer { alpha = expansion }) {
+                                    Text(label, Modifier.wrapContentWidth(Alignment.Start, unbounded = true).width(labelWidth),
+                                        style = style, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                         }
@@ -349,22 +368,21 @@ private fun FlightRecordingActions(
 }
 
 @Composable
-private fun FlightIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>, toolbarWidth: androidx.compose.ui.unit.Dp, actions: @Composable () -> Unit) {
+private fun FlightIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>,
+    metrics: FlightActionMetrics, actions: @Composable () -> Unit) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(40.dp))
-            val numberStyle = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
-            val actionOffset = (with(LocalDensity.current) { numberStyle.lineHeight.toDp() } - 48.dp) / 2
-            Box(Modifier.weight(1f)) {
-                Column(Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Row(Modifier.fillMaxWidth().heightIn(min = metrics.touchHeight), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Bottom) {
                     Text(flight.flightNumber.ifBlank { flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—" },
-                        modifier = Modifier.fillMaxWidth().padding(end = toolbarWidth + 8.dp), style = numberStyle,
+                        Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
                         maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                    Text(flight.customerName, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                    actions()
                 }
-                // Keep the full touch target without making the flight-number text line 48dp tall.
-                Box(Modifier.width(toolbarWidth).align(Alignment.TopEnd).offset(y = actionOffset)) { actions() }
+                Text(flight.customerName, Modifier.fillMaxWidth(), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -400,8 +418,8 @@ private fun FlightScheduleAircraft(flight: FlightDetail, labelStyle: TextStyle, 
             style = valueStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.LocationOn, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-            Text(flight.stationIata.ifBlank { stringResource(R.string.flights_card_aircraft_unavailable) }, style = labelStyle,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(flight.stationName.ifBlank { stringResource(R.string.flights_card_aircraft_unavailable) }, Modifier.weight(1f), style = labelStyle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -505,16 +523,17 @@ private fun DetailPeopleRow(
 }
 
 @Composable
-private fun FlightDetailsSkeleton(showPeople: Boolean, toolbarWidth: androidx.compose.ui.unit.Dp, actions: @Composable () -> Unit) {
+private fun FlightDetailsSkeleton(showPeople: Boolean, metrics: FlightActionMetrics, actions: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().clearAndSetSemantics { progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate }) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             SkeletonBlock(Modifier.size(40.dp))
-            Box(Modifier.weight(1f)) {
-                Column(Modifier.fillMaxWidth()) {
-                    Box(Modifier.fillMaxWidth().padding(end = toolbarWidth + 8.dp)) { SkeletonBlock(Modifier.fillMaxWidth().height(30.dp)) }
-                    SkeletonBlock(Modifier.fillMaxWidth(0.75f).height(20.dp))
+            Column(Modifier.weight(1f)) {
+                Row(Modifier.fillMaxWidth().heightIn(min = metrics.touchHeight), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Bottom) {
+                    SkeletonBlock(Modifier.weight(1f).height(metrics.headingHeight))
+                    actions()
                 }
-                Box(Modifier.width(toolbarWidth).align(Alignment.TopEnd).offset(y = (-9).dp)) { actions() }
+                SkeletonBlock(Modifier.fillMaxWidth(0.75f).height(20.dp))
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -527,7 +546,7 @@ private fun FlightDetailsSkeleton(showPeople: Boolean, toolbarWidth: androidx.co
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 SkeletonBlock(Modifier.width(96.dp).height(12.dp))
                 SkeletonBlock(Modifier.fillMaxWidth(0.8f).height(22.dp))
-                SkeletonBlock(Modifier.width(44.dp).height(14.dp))
+                SkeletonBlock(Modifier.fillMaxWidth(0.8f).height(14.dp))
             }
             Column(Modifier.width(136.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 SkeletonBlock(Modifier.fillMaxWidth().height(12.dp))
