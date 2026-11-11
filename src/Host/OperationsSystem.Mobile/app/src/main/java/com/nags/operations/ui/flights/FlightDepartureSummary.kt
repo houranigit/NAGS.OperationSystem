@@ -8,12 +8,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Engineering
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -38,13 +36,11 @@ import com.nags.operations.ui.util.formatIsoDateForDisplay
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
 import java.time.ZoneId
 
-/** Another employee's saved departure follows saved arrival in the identity card. */
+/** Another employee's saved departure remains at the departure section in its own card. */
 @Composable
 internal fun FlightDepartureSummary(departure: FlightDepartureSubmission, zone: ZoneId, signaturePreview: ByteArray? = null) {
     val signature = rememberSignatureBitmap(signaturePreview)
     val signatureDescription = stringResource(R.string.operations_signature_title)
-    HorizontalDivider(Modifier.padding(vertical = 10.dp), thickness = 0.5.dp,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
     val labelStyle = MaterialTheme.typography.labelSmall
     val valueStyle = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 22.sp,
         fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")

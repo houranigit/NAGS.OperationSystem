@@ -28,6 +28,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
@@ -42,6 +43,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -55,6 +57,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.nags.operations.R
 import com.nags.operations.data.AircraftTypeCatalogItem
@@ -342,13 +345,13 @@ internal fun FlightOperationsForm(
     FlightRecordingFormScaffold(flight, stringResource(R.string.operations_title), stringResource(R.string.operations_save),
         loadCustomerLogo, requestClose,
         saveEnabled = !saving && (arrivalEnabled && (arrivalChanged || reviewedChangeId != null) || departureEnabled && (departureChanged || reviewedDepartureChangeId != null)),
-        saveLoading = saving, onSave = { saveChanges(false) }, progressStatus = progressStatus,
-        identityDetails = {
-            otherEmployeeArrival?.let { FlightArrivalSummary(it, entryZone) }
-            otherEmployeeDeparture?.let { FlightDepartureSummary(it, entryZone, savedSignaturePreview) }
-        }) {
+        saveLoading = saving, onSave = { saveChanges(false) }, progressStatus = progressStatus) {
         saveError?.let { ArrivalFormMessage(it, error = true) }
-        if (otherEmployeeArrival == null) {
+        if (otherEmployeeArrival != null) {
+            FlightSavedDetailsCard {
+                FlightArrivalSummary(otherEmployeeArrival, entryZone)
+            }
+        } else {
             FlightFormSectionTitle(stringResource(R.string.operations_arrival))
             if (pending != null && pending.status != "pending" && reviewedChangeId != pending.changeId) {
                 ArrivalFormMessage(stringResource(R.string.arrival_sync_review), error = true)
@@ -400,7 +403,11 @@ internal fun FlightOperationsForm(
             FlightTaskSection(workDrafts.tasks, catalogs, referenceYear, zone,
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(tasks = change(workDrafts.tasks))) })
         }
-        if (otherEmployeeDeparture == null) {
+        if (otherEmployeeDeparture != null) {
+            FlightSavedDetailsCard {
+                FlightDepartureSummary(otherEmployeeDeparture, entryZone, savedSignaturePreview)
+            }
+        } else {
             FlightFormSectionTitle(stringResource(R.string.operations_departure))
             if (pendingDeparture != null && pendingDeparture.status != "pending") {
                 ArrivalFormMessage(stringResource(if (departureNeedsReview) R.string.departure_sync_review else R.string.departure_review_before_save), error = true)
@@ -457,6 +464,16 @@ internal fun FlightOperationsForm(
         onDismiss = { confirmCanceledReport = false })
     if (confirmDiscard) FlightFormDiscardDialog(stringResource(R.string.operations_discard_title),
         onDismiss = { confirmDiscard = false }, onDiscard = closeForm)
+}
+
+/** Saved details retain the identity card's surface, insets, and physical column order. */
+@Composable
+private fun FlightSavedDetailsCard(content: @Composable () -> Unit) {
+    CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Surface(Modifier.fillMaxWidth(), color = Color.White, shape = RoundedCornerShape(28.dp)) {
+            Column(Modifier.padding(16.dp)) { content() }
+        }
+    }
 }
 
 @Composable

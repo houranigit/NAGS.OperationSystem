@@ -5,12 +5,10 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Engineering
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -34,11 +32,9 @@ import com.nags.operations.ui.util.formatIsoDateForDisplay
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
 import java.time.ZoneId
 
-/** Detailed saved arrival shown inside the recording form identity card. */
+/** Detailed saved arrival shown at the arrival section in its own card. */
 @Composable
 internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId, showRemarks: Boolean = true) {
-    HorizontalDivider(Modifier.padding(vertical = 10.dp), thickness = 0.5.dp,
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val stackColumns = maxWidth < 260.dp * LocalDensity.current.fontScale
