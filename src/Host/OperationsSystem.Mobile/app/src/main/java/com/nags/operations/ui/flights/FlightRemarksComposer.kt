@@ -112,6 +112,8 @@ internal fun FlightRemarksComposer(
     description: String,
     enabled: Boolean = true,
     errorMessage: String? = null,
+    label: String? = null,
+    required: Boolean = false,
 ) {
     val media = rememberFlightComposerMedia(attachments) { if (enabled) onAttachmentsChange(it) }
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -121,7 +123,8 @@ internal fun FlightRemarksComposer(
     fun prepareMedia(action: () -> Unit) { focus.clearFocus(); keyboard?.hide(); action() }
     FlightFormValidation(errorMessage ?: limitMessage) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.flight_form_remarks), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text(label ?: stringResource(R.string.flight_form_remarks), style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(FlightFormGround)) {
                 attachments.forEach { item -> key(item.id) {
                     if (composerAttachmentIsAudio(item)) ComposerAudioRow(item, media, enabled)
@@ -130,7 +133,8 @@ internal fun FlightRemarksComposer(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
                 } }
                 BasicTextField(remarks, onRemarksChange,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormEditableFocus().padding(horizontal = 12.dp, vertical = 10.dp)
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormValidationFocus(enabled)
+                        .flightFormEditableFocus().padding(horizontal = 12.dp, vertical = 10.dp)
                         .semantics { contentDescription = description; if (limitMessage != null) error(limitMessage) },
                     readOnly = media.isRecording || !enabled, enabled = enabled, minLines = 1, maxLines = 6,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface,
@@ -138,7 +142,7 @@ internal fun FlightRemarksComposer(
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
                     decorationBox = { inner -> Box(Modifier.fillMaxWidth(), contentAlignment = AbsoluteAlignment.TopLeft) {
-                        if (remarks.isEmpty()) Text(stringResource(R.string.composer_placeholder), Modifier.fillMaxWidth(),
+                        if (required && remarks.isEmpty()) Text(stringResource(R.string.flight_form_required_field), Modifier.fillMaxWidth(),
                             style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Left)
                         inner()

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Animation.OperationsFlightSheet" parent="@android:style/Animation.Dialog">
+        <item name="android:windowEnterAnimation">@anim/flight_sheet_enter</item>
+        <item name="android:windowExitAnimation">@anim/flight_sheet_exit</item>
+    </style>
+</resources>

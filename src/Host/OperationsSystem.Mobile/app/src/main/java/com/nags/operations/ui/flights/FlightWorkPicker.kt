@@ -37,6 +37,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -67,13 +69,19 @@ internal fun FlightWorkPicker(
     searchable: Boolean = true,
 ) {
     var search by rememberSaveable(title) { mutableStateOf("") }
-    val focus = LocalFocusManager.current
-    val keyboard = LocalSoftwareKeyboardController.current
+    val searchFocus = remember { FocusRequester() }
     val filtered = remember(options, search) {
         val query = search.trim()
         options.filter { it.title.contains(query, ignoreCase = true) || it.subtitle.contains(query, ignoreCase = true) }
     }
-    FlightFormModalSheet(title, onDismiss) { close ->
+    FlightFormModalSheet(title, onDismiss, onShown = { sheetKeyboard ->
+        if (searchable) {
+            searchFocus.requestFocus()
+            sheetKeyboard?.show()
+        }
+    }) { close ->
+        val focus = LocalFocusManager.current
+        val keyboard = LocalSoftwareKeyboardController.current
         val bodyModifier = if (searchable) Modifier.fillMaxWidth().heightIn(max = 600.dp).fillMaxHeight(0.85f)
             else Modifier.fillMaxWidth().heightIn(max = 600.dp)
         Column(bodyModifier) {
@@ -92,6 +100,7 @@ internal fun FlightWorkPicker(
                 Icon(Icons.Outlined.Search, null, Modifier.padding(start = 12.dp, end = 8.dp).size(20.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 BasicTextField(search, { search = it }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                    .focusRequester(searchFocus)
                     .semantics { contentDescription = searchLabel }, singleLine = true,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Medium), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),

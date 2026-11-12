@@ -35,28 +35,30 @@ internal fun FlightServiceSection(
     timeBounds: FlightWorkTimeBounds = FlightWorkTimeBounds(),
 ) {
     var selectingService by rememberSaveable { mutableStateOf<String?>(null) }
+    var addingService by rememberSaveable { mutableStateOf(false) }
+    var selectionHandled by rememberSaveable { mutableStateOf(false) }
     val title = stringResource(R.string.work_services)
     Column(Modifier.animateContentSize(animationSpec = tween(200)), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         FlightFormSectionTitle(stringResource(R.string.work_services_count, items.size))
-        items.forEachIndexed { index, item -> key(item.id) {
+        items.forEach { item -> key(item.id) {
             var initialStartStaffIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
             val fields = errors[item.id].orEmpty()
             val defaultStaffReady = item.plannedServiceId == null || item.period.start.isNotBlank() ||
                 item.employees.isNotEmpty() || defaultEmployee != null
             val editable = enabled && defaultStaffReady && canEdit(item.id)
             val endEditable = enabled && defaultStaffReady && canSetEnd(item.id)
-            FlightWorkEntryGroup {
+            FlightWorkEntryGroup(Modifier.flightFormNavigationTarget("service:${item.id}")) {
                 val description = item.serviceName.ifBlank { title }
                 fun update(change: (FlightServiceDraft) -> FlightServiceDraft) =
                     onChange { current -> current.map { if (it.id == item.id) change(it) else it } }
                 FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, description),
                     onRemove = { onChange { current -> current.filterNot { it.id == item.id } } }, compactDelete = true, enabled = enabled && canDelete(item.id)) {
-                    FlightWorkChoiceRow(stringResource(R.string.work_service, index + 1),
-                        item.serviceName.ifBlank { stringResource(R.string.work_select_service) },
+                    FlightWorkChoiceRow("",
+                        item.serviceName.ifBlank { stringResource(R.string.flight_form_required_field) },
                         stringResource(R.string.work_select_service), isPlaceholder = item.serviceId.isBlank(), leadingPadding = 0.dp,
                         enabled = editable && canChangeService(item.id),
                         errorMessage = fields["serviceId"]?.let { stringResource(it) },
-                        onClick = { selectingService = item.id })
+                        onClick = { selectingService = item.id; addingService = false; selectionHandled = false })
                 }
                 FlightFormDivider()
                 FlightWorkReferenceRow(item.reference, onChange = { reference -> update { it.copy(reference = reference) } },
@@ -67,6 +69,7 @@ internal fun FlightServiceSection(
                 }, startEnabled = editable, endEnabled = endEditable,
                     startError = fields["startUtc"]?.let { stringResource(it) },
                     endError = fields["endUtc"]?.let { stringResource(it) }, seedEndNow = true, timeBounds = timeBounds,
+                    endRequired = timeBounds.upperUtc != null,
                     onStartPickerSessionChanged = { initialBlank -> initialStartStaffIds =
                         if (initialBlank) item.employees.filter { it.period.start.isBlank() }.map { it.id } else emptyList() })
                 FlightFormDivider()
@@ -79,28 +82,37 @@ internal fun FlightServiceSection(
                     attachments = item.attachments,
                     onAttachmentsChange = { attachments -> update { it.copy(attachments = attachments) } },
                     description = stringResource(R.string.work_service_remarks), enabled = editable,
+                    label = stringResource(R.string.work_service_remarks_heading),
+                    required = item.serviceId.equals("40000000-0000-0000-0000-000000000003", ignoreCase = true),
                     errorMessage = (fields["notes"] ?: fields["attachments"])?.let { stringResource(it) })
             }
         } }
         FlightFormFieldGroup {
             FlightWorkAddRow(stringResource(R.string.work_add_service, items.size + 1),
                 enabled = enabled && defaultEmployee != null && catalogs.services.any { !it.isAircraftPerLanding }, onClick = {
-                val period = seedBlankWorkStart(FlightWorkPeriod(), zone, timeBounds)
-                val added = FlightServiceDraft(period = period,
-                    employees = listOfNotNull(defaultEmployee?.copy(id = UUID.randomUUID().toString(), period = period)))
-                onChange { current -> current + added }
+                selectingService = null
+                addingService = true
+                selectionHandled = false
             })
         }
     }
     val editing = items.firstOrNull { it.id == selectingService }
-    if (editing != null && enabled && canEdit(editing.id) && canChangeService(editing.id)) {
+    if (enabled && (addingService && defaultEmployee != null || editing != null && canEdit(editing.id) && canChangeService(editing.id))) {
         FlightWorkPicker(title = stringResource(R.string.work_select_service), searchLabel = stringResource(R.string.work_search_services),
             emptyLabel = stringResource(R.string.work_no_services),
-            options = catalogs.services.filterNot { it.isAircraftPerLanding }.map { FlightWorkChoice(it.id, it.name) }, selectedId = editing.serviceId,
+            options = catalogs.services.filterNot { it.isAircraftPerLanding }.map { FlightWorkChoice(it.id, it.name) }, selectedId = editing?.serviceId,
             onSelect = { id ->
-                catalogs.services.firstOrNull { it.id == id }?.let { choice ->
-                    onChange { current -> current.map { if (it.id == editing.id) it.copy(serviceId = choice.id, serviceName = choice.name) else it } }
+                if (!selectionHandled) catalogs.services.firstOrNull { it.id == id && !it.isAircraftPerLanding }?.let { choice ->
+                    selectionHandled = true
+                    if (addingService) {
+                        val period = seedBlankWorkStart(FlightWorkPeriod(), zone, timeBounds)
+                        val added = FlightServiceDraft(serviceId = choice.id, serviceName = choice.name, period = period,
+                            employees = listOfNotNull(defaultEmployee?.copy(id = UUID.randomUUID().toString(), period = period)))
+                        onChange { current -> current + added }
+                    } else if (editing != null) {
+                        onChange { current -> current.map { if (it.id == editing.id) it.copy(serviceId = choice.id, serviceName = choice.name) else it } }
+                    }
                 }
-            }, onDismiss = { selectingService = null })
+            }, onDismiss = { selectingService = null; addingService = false })
     }
 }

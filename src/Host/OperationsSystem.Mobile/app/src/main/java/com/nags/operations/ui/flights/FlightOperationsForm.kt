@@ -1,6 +1,8 @@
 package com.nags.operations.ui.flights
 
 import androidx.compose.foundation.background
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +40,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -62,6 +66,8 @@ import androidx.compose.ui.unit.dp
 import com.nags.operations.R
 import com.nags.operations.data.AircraftTypeCatalogItem
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.data.FlightListItem
+import com.nags.operations.ui.components.FlightCard
 import com.nags.operations.data.FlightArrivalSubmission
 import com.nags.operations.ui.util.operationLocalTime
 import com.nags.operations.ui.util.stationTimeZone
@@ -128,6 +134,7 @@ internal fun FlightOperationsForm(
     onReviewTasks: suspend () -> FlightDetail = { flight },
     loadTaskAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
     loadPendingTaskAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
+    listItem: FlightListItem? = null,
 ) {
     val entryTimeZoneId = rememberSaveable { flight.stationTimeZoneId }
     val entryZone = remember(entryTimeZoneId) { stationTimeZone(entryTimeZoneId) }
@@ -227,6 +234,14 @@ internal fun FlightOperationsForm(
     var saveError by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmCanceledReport by rememberSaveable { mutableStateOf(false) }
     val formScope = rememberCoroutineScope()
+    val validationState = rememberFlightFormValidationState()
+    var validationRequest by remember { mutableIntStateOf(0) }
+    LaunchedEffect(validationRequest) {
+        if (validationRequest > 0) {
+            withFrameNanos { }
+            if (!validationState.revealFirstError()) validationState.revealTarget("save-error")
+        }
+    }
     val aircraftAvailable = aircraftTypes.any { it.id.equals(aircraftId, ignoreCase = true) }
     val arrivalChanged = Json.encodeToString(input()) != arrivalBaseline
     val departureChanged = atd != departureBaselineAtd || departureRemarks.trim() != departureBaselineRemarks.trim() || signature.isNotBlank()
@@ -613,6 +628,9 @@ internal fun FlightOperationsForm(
                 finally { saving = false }
             }
         }
+        if (!arrivalValid || !departureValid || !servicesValid || !tasksValid || mediaSession.hasActiveRecording) {
+            validationRequest++
+        }
     }
     var picker by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(arrivalEnabled) {
@@ -652,14 +670,49 @@ internal fun FlightOperationsForm(
         }
         picker = kind
     }
+    val workTargets = workDrafts.navigationTargets()
+    val cardFlight = flight.formCardSummary(listItem, workTargets).copy(stationTimeZoneId = entryTimeZoneId)
+    var activeTargetIndex by remember { mutableIntStateOf(0) }
+    var completedTargetIndex by remember { mutableIntStateOf(0) }
+    fun navigateWork(completed: Boolean) {
+        val matches = workTargets.filter { it.completed == completed }
+        if (matches.isEmpty()) return
+        focus.clearFocus(); keyboard?.hide()
+        val index = if (completed) completedTargetIndex++ else activeTargetIndex++
+        formScope.launch { validationState.revealTarget(matches[index.mod(matches.size)].key) }
+    }
+    val needsReview = progressStatus in listOf(FlightProgressStatus.ArrivalNeedsReview,
+        FlightProgressStatus.DepartureNeedsReview, FlightProgressStatus.CancellationNeedsReview) ||
+        pendingServices.any { it.status != "pending" } || pendingTasks.any { it.status != "pending" }
+    val pendingLabel = when {
+        needsReview -> stringResource(R.string.flight_card_needs_review)
+        progressStatus == FlightProgressStatus.CancellationRevertPending -> stringResource(R.string.flight_card_revert_pending)
+        pending != null || pendingDeparture != null || pendingServices.isNotEmpty() || pendingTasks.isNotEmpty() ||
+            progressStatus == FlightProgressStatus.CancellationPendingSync -> stringResource(R.string.flight_card_pending_sync)
+        else -> null
+    }
     FlightRecordingFormScaffold(flight, stringResource(R.string.operations_title), stringResource(R.string.operations_save),
         loadCustomerLogo, requestClose,
         saveEnabled = !saving && (arrivalEnabled && (arrivalChanged || reviewedChangeId != null) ||
             departureEnabled && (departureChanged || reviewedDepartureChangeId != null) ||
             servicesEnabled && (servicesChanged || forcedServiceIds.isNotEmpty()) ||
             tasksEnabled && (tasksChanged || forcedTaskIds.isNotEmpty())),
-        saveLoading = saving, onSave = { saveChanges(false) }, progressStatus = progressStatus) {
-        saveError?.let { ArrivalFormMessage(it, error = true) }
+        saveLoading = saving, onSave = { saveChanges(false) }, progressStatus = progressStatus,
+        compact = true, validationState = validationState,
+        identityContent = { positioned ->
+            FlightCard(cardFlight, onClick = null, loadCustomerLogo = loadCustomerLogo,
+                reportStatus = cardFlight.cardReportStatus(localArrival = pending != null,
+                    localDeparture = pendingDeparture != null,
+                    localCancellation = progressStatus in listOf(FlightProgressStatus.CancellationPendingSync,
+                        FlightProgressStatus.CancellationNeedsReview, FlightProgressStatus.CancellationRevertPending)),
+                pendingSyncLabel = pendingLabel, hasSyncError = needsReview,
+                onActiveWorkClick = if (workTargets.any { !it.completed }) ({ navigateWork(false) }) else null,
+                onCompletedWorkClick = if (workTargets.any { it.completed }) ({ navigateWork(true) }) else null,
+                onFlightNumberPositioned = positioned)
+        }) {
+        saveError?.let {
+            FlightFormValidation(it, modifier = Modifier.flightFormNavigationTarget("save-error"), registerError = false) { }
+        }
         if (otherEmployeeArrival != null) {
             FlightSavedDetailsCard {
                 FlightArrivalSummary(otherEmployeeArrival, entryZone)
@@ -683,17 +736,20 @@ internal fun FlightOperationsForm(
                     }
                 }) { Text(stringResource(R.string.arrival_reload_review)) }
             } else if (pending != null && pending.status != "pending") ArrivalFormMessage(stringResource(R.string.arrival_review_before_save))
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                FlightFormFieldGroup {
-                    FlightFormDateTimeField(readOnlyArrival?.let { operationLocalTime(it.ata, entryZone) } ?: ata, stringResource(R.string.arrival_ata_short), stringResource(R.string.arrival_choose_ata),
-                        enabled = arrivalEnabled,
-                        errorMessage = if (ArrivalInputError.AtaRequired in errors) stringResource(R.string.arrival_ata_required) else null,
-                        onClick = { openPicker("ata") })
-                }
-            }
-            if (ArrivalInputError.VersionRequired in errors) ArrivalFormMessage(stringResource(R.string.arrival_reload_required), error = true)
-            FlightFormFieldGroup {
-                FlightFormChoiceRow(stringResource(R.string.arrival_aircraft), (readOnlyArrival?.aircraftTypeModel ?: selectedAircraft).ifBlank { stringResource(R.string.arrival_select_aircraft) },
+            FlightActualFormCard(
+                id = "actual-arrival", label = stringResource(R.string.operations_actual_arrival),
+                time = readOnlyArrival?.let { operationLocalTime(it.ata, entryZone) } ?: ata,
+                description = stringResource(R.string.arrival_choose_ata), enabled = arrivalEnabled,
+                removable = arrival == null && pending == null,
+                errorMessage = if (ArrivalInputError.AtaRequired in errors) stringResource(R.string.arrival_ata_required) else null,
+                onOpen = { openPicker("ata") }, onRemove = {
+                    val baseline = Json.decodeFromString<SaveFlightArrivalRequest>(arrivalBaseline)
+                    ata = ""; originalAta = null
+                    aircraftId = baseline.aircraftTypeId; tailNumber = baseline.aircraftTailNumber
+                    reference = baseline.customerWorkReferenceNumber.orEmpty(); arrivalRemarks = baseline.remarks.orEmpty()
+                },
+            ) {
+                FlightFormChoiceRow(stringResource(R.string.arrival_aircraft), (readOnlyArrival?.aircraftTypeModel ?: selectedAircraft).ifBlank { stringResource(R.string.flight_form_required_field) },
                     stringResource(R.string.arrival_aircraft_type), isPlaceholder = (readOnlyArrival?.aircraftTypeModel ?: selectedAircraft).isBlank(), enabled = arrivalEnabled,
                     errorMessage = when {
                         ArrivalInputError.AircraftRequired in errors -> stringResource(R.string.arrival_aircraft_required)
@@ -702,14 +758,17 @@ internal fun FlightOperationsForm(
                     }, onClick = { openPicker("aircraft") })
                 FlightFormDivider()
                 FlightFormTextRow(stringResource(R.string.arrival_tail_number), readOnlyArrival?.aircraftTailNumber ?: tailNumber, { tailNumber = it },
-                    stringResource(R.string.arrival_tail_hint), keyboardOptions = KeyboardOptions(
+                    stringResource(R.string.flight_form_required_field), keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Next), enabled = arrivalEnabled,
                     errorMessage = if (ArrivalInputError.TailRequired in errors) stringResource(R.string.arrival_tail_required) else null)
+                FlightFormDivider()
+                FlightFormTextRow(stringResource(R.string.arrival_reference), if (readOnlyArrival != null) readOnlyArrival.customerWorkReferenceNumber.orEmpty() else reference, { reference = it }, "", enabled = arrivalEnabled)
+                FlightFormDivider()
+                FlightFormRemarks(if (readOnlyArrival != null) readOnlyArrival.remarks.orEmpty() else arrivalRemarks, { arrivalRemarks = it },
+                    stringResource(R.string.operations_arrival_remarks), enabled = arrivalEnabled,
+                    heading = stringResource(R.string.operations_arrival_remarks_heading), inGroup = true)
             }
-            FlightFormFieldGroup {
-                FlightFormTextRow(stringResource(R.string.arrival_reference), if (readOnlyArrival != null) readOnlyArrival.customerWorkReferenceNumber.orEmpty() else reference, { reference = it }, stringResource(R.string.arrival_optional), enabled = arrivalEnabled)
-            }
-            FlightFormRemarks(if (readOnlyArrival != null) readOnlyArrival.remarks.orEmpty() else arrivalRemarks, { arrivalRemarks = it }, stringResource(R.string.operations_arrival_remarks), enabled = arrivalEnabled)
+            if (ArrivalInputError.VersionRequired in errors) FlightFormValidation(stringResource(R.string.arrival_reload_required)) { }
         }
         CompositionLocalProvider(LocalFlightMediaSession provides mediaSession) {
             if (servicesNeedReview) {
@@ -729,7 +788,7 @@ internal fun FlightOperationsForm(
                     }
                 }) { Text(stringResource(R.string.service_review)) }
             }
-            if (serviceErrors.values.any { "rowVersion" in it }) ArrivalFormMessage(stringResource(R.string.service_validation_version), error = true)
+            if (serviceErrors.values.any { "rowVersion" in it }) FlightFormValidation(stringResource(R.string.service_validation_version)) { }
             FlightServiceSection(workDrafts.services, catalogs, referenceYear, zone,
                 enabled = servicesEnabled,
                 canEdit = { id -> serviceReviewed.firstOrNull { it.id == id }?.canEdit ?: true },
@@ -755,7 +814,7 @@ internal fun FlightOperationsForm(
                     }
                 }) { Text(stringResource(R.string.task_review)) }
             }
-            if (taskErrors.values.any { "rowVersion" in it }) ArrivalFormMessage(stringResource(R.string.task_validation_version), error = true)
+            if (taskErrors.values.any { "rowVersion" in it }) FlightFormValidation(stringResource(R.string.task_validation_version)) { }
             FlightTaskSection(workDrafts.tasks, catalogs, referenceYear, zone,
                 enabled = tasksEnabled,
                 canEdit = { id -> taskReviewed.firstOrNull { it.id == id }?.canEdit ?: true },
@@ -794,20 +853,24 @@ internal fun FlightOperationsForm(
                     }
                 }) { Text(stringResource(R.string.departure_reload_review)) }
             }
-            FlightFormFieldGroup {
-                FlightFormDateTimeField(atd, stringResource(R.string.operations_atd_short), stringResource(R.string.operations_choose_atd),
-                    enabled = departureEnabled,
-                    errorMessage = if (validationAttempted && departureChanged && departureTime.isBlank()) stringResource(R.string.departure_atd_required) else null,
-                    onClear = if (atd.isNotBlank()) ({ atd = ""; originalAtd = null }) else null,
-                    clearDescription = stringResource(R.string.operations_clear_atd),
-                    onClick = { openPicker("atd") })
+            FlightActualFormCard(
+                id = "actual-departure", label = stringResource(R.string.operations_actual_departure), time = atd,
+                description = stringResource(R.string.operations_choose_atd), enabled = departureEnabled,
+                removable = departure == null && pendingDeparture == null,
+                errorMessage = if (validationAttempted && departureChanged && departureTime.isBlank()) stringResource(R.string.departure_atd_required) else null,
+                onOpen = { openPicker("atd") }, onRemove = {
+                    atd = ""; originalAtd = null; signature = ""; signatureSignedAtUtc = null
+                    departureRemarks = initialDepartureRemarks
+                },
+            ) {
+                FlightFormValidation(if (validationAttempted && departureChanged && signatureRequired) stringResource(R.string.departure_signature_required) else null) {
+                    FlightSignatureField(signature, hasSavedSignature = hasSavedSignature, savedPreview = savedSignaturePreview,
+                        loading = signaturePreviewLoading, enabled = departureEnabled, onOpen = { openPicker("signature") })
+                }
+                FlightFormDivider()
+                FlightFormRemarks(departureRemarks, { departureRemarks = it }, stringResource(R.string.operations_departure_remarks), enabled = departureEnabled,
+                    heading = stringResource(R.string.operations_departure_remarks_heading), inGroup = true)
             }
-            FlightFormFieldGroup {
-                FlightSignatureField(signature, hasSavedSignature = hasSavedSignature, savedPreview = savedSignaturePreview,
-                    loading = signaturePreviewLoading, enabled = departureEnabled, onOpen = { openPicker("signature") })
-            }
-            if (validationAttempted && departureChanged && signatureRequired) ArrivalFormMessage(stringResource(R.string.departure_signature_required), error = true)
-            FlightFormRemarks(departureRemarks, { departureRemarks = it }, stringResource(R.string.operations_departure_remarks), enabled = departureEnabled)
         }
     }
     if (picker == "ata" || picker == "atd") {
@@ -816,8 +879,10 @@ internal fun FlightOperationsForm(
             onValueChange = { if (isArrival) ata = it.toString() else atd = it.toString() }, onDismiss = { picker = null },
             title = stringResource(if (isArrival) R.string.arrival_ata else R.string.operations_atd), showTitle = false)
     }
-    if (picker == "aircraft") ArrivalAircraftPicker(title = stringResource(R.string.arrival_aircraft_type),
-        options = aircraftChoices, selectedId = aircraftId, onDismiss = { picker = null }, onSelect = { aircraftId = it })
+    if (picker == "aircraft") FlightWorkPicker(title = stringResource(R.string.arrival_aircraft_type),
+        searchLabel = stringResource(R.string.arrival_search_aircraft), emptyLabel = stringResource(R.string.arrival_no_aircraft),
+        options = aircraftChoices.map { FlightWorkChoice(it.id, it.title, it.subtitle) }, selectedId = aircraftId,
+        onDismiss = { picker = null }, onSelect = { aircraftId = it })
     if (picker == "signature") FlightSignatureSheet(signature, hasSavedSignature, savedSignaturePreview,
         signaturePreviewLoading, onRetry = { signaturePreviewRetry++ }, onValueChange = {
         signature = it
@@ -836,12 +901,44 @@ internal fun FlightOperationsForm(
         onDismiss = { confirmDiscard = false }, onDiscard = closeForm)
 }
 
-/** Saved details retain the identity card's surface, insets, and physical column order. */
+/** Removing a new actual clears its temporary fields; recorded submissions keep their correction rules. */
+@Composable
+private fun FlightActualFormCard(
+    id: String,
+    label: String,
+    time: String,
+    description: String,
+    enabled: Boolean,
+    removable: Boolean,
+    errorMessage: String?,
+    onOpen: () -> Unit,
+    onRemove: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    FlightFormFieldGroup {
+        Column(Modifier.animateContentSize(animationSpec = tween(200))) {
+            if (time.isBlank()) FlightFormValidation(errorMessage) {
+                FlightWorkAddRow(label, enabled = enabled, onClick = onOpen)
+            } else {
+                if (removable) FlightWorkRemovableEntry(id, stringResource(R.string.work_remove_item, label),
+                    onRemove = onRemove, compactDelete = true, enabled = enabled) {
+                    FlightFormDateTimeField(time, label, description, enabled = enabled, errorMessage = errorMessage,
+                        leadingPadding = 0.dp, displayPattern = "dd/MM/yy HH:mm", prominentLabel = true, onClick = onOpen)
+                } else FlightFormDateTimeField(time, label, description, enabled = enabled, errorMessage = errorMessage,
+                    displayPattern = "dd/MM/yy HH:mm", prominentLabel = true, onClick = onOpen)
+                FlightFormDivider()
+                content()
+            }
+        }
+    }
+}
+
+/** Saved details retain their existing summary and physical column order. */
 @Composable
 private fun FlightSavedDetailsCard(content: @Composable () -> Unit) {
     CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Surface(Modifier.fillMaxWidth(), color = Color.White, shape = RoundedCornerShape(28.dp)) {
-            Column(Modifier.padding(16.dp)) { content() }
+        Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(16.dp)) {
+            Column(Modifier.padding(12.dp)) { content() }
         }
     }
 }
@@ -853,67 +950,3 @@ private fun ArrivalFormMessage(message: String, error: Boolean = false) {
 }
 
 private data class ArrivalChoice(val id: String, val title: String, val subtitle: String)
-
-@Composable
-private fun ArrivalAircraftPicker(title: String, options: List<ArrivalChoice>, selectedId: String,
-    onDismiss: () -> Unit, onSelect: (String) -> Unit) {
-    var search by rememberSaveable { mutableStateOf("") }
-    val focus = LocalFocusManager.current
-    val keyboard = LocalSoftwareKeyboardController.current
-    val searchDescription = stringResource(R.string.arrival_search_aircraft)
-    val filtered = remember(options, search) {
-        options.filter { it.title.contains(search.trim(), ignoreCase = true) || it.subtitle.contains(search.trim(), ignoreCase = true) }
-    }
-    FlightFormModalSheet(title, onDismiss) { close ->
-        Column(Modifier.fillMaxWidth().heightIn(max = 600.dp).fillMaxHeight(0.85f)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.size(48.dp))
-                Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                IconButton(onClick = close, modifier = Modifier.size(48.dp)) {
-                    Box(Modifier.size(30.dp).background(FlightFormGround, CircleShape), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.Close, stringResource(R.string.flights_cancel), Modifier.size(18.dp))
-                    }
-                }
-            }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(12.dp))
-                .background(FlightFormGround), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Search, null, Modifier.padding(start = 12.dp, end = 8.dp).size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                BasicTextField(search, { search = it }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)
-                    .semantics { contentDescription = searchDescription }, singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { focus.clearFocus(); keyboard?.hide() }),
-                    decorationBox = { inner -> Box(contentAlignment = Alignment.CenterStart) {
-                        if (search.isEmpty()) Text(stringResource(R.string.arrival_search_aircraft), style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        inner()
-                    } })
-                if (search.isNotEmpty()) IconButton(onClick = { search = "" }, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Outlined.Close, stringResource(R.string.flights_search_clear), Modifier.size(18.dp))
-                } else Spacer(Modifier.size(12.dp))
-            }
-            if (filtered.isEmpty()) Text(if (options.isEmpty()) stringResource(R.string.arrival_no_aircraft) else stringResource(R.string.arrival_no_results),
-                Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-                itemsIndexed(filtered, key = { _, option -> option.id }) { index, option ->
-                    val selected = option.id == selectedId
-                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected = selected, role = Role.RadioButton,
-                        onClick = { onSelect(option.id); focus.clearFocus(); keyboard?.hide(); close() })
-                        .padding(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(option.title, style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            if (option.subtitle.isNotBlank()) Text(option.subtitle, style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        if (selected) Icon(Icons.Filled.Check, stringResource(R.string.arrival_aircraft_selected), Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-                        else Spacer(Modifier.size(20.dp))
-                    }
-                    if (index < filtered.lastIndex) HorizontalDivider(Modifier.padding(start = 20.dp), thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-                }
-            }
-        }
-    }
-}

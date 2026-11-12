@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="flight_sheet_expand">Expand flight details</string>
+    <string name="flight_sheet_collapse">Collapse flight details</string>
+    <string name="flight_sheet_close">Close flight details</string>
+</resources>
