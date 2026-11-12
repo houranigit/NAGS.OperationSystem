@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
@@ -201,17 +202,21 @@ internal fun FlightWorkNotes(
     onRemarksChange: (String) -> Unit,
     description: String,
     showReference: Boolean = true,
+    enabled: Boolean = true,
+    errorMessage: String? = null,
 ) {
     if (showReference) {
         FlightFormDivider()
-        FlightWorkReferenceRow(reference, onReferenceChange)
+        FlightWorkReferenceRow(reference, onReferenceChange, enabled = enabled)
     }
     FlightFormDivider()
-    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(R.string.flight_form_remarks), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-        FlightFormTextInput(remarks, onRemarksChange, stringResource(R.string.flight_form_remarks_hint), description,
-            multiline = true, textAlign = TextAlign.Left, keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done))
+    FlightFormValidation(errorMessage) {
+        Column(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f).padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(stringResource(R.string.flight_form_remarks), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            FlightFormTextInput(remarks, onRemarksChange, stringResource(R.string.flight_form_remarks_hint), description,
+                multiline = true, textAlign = TextAlign.Left, enabled = enabled, keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done))
+        }
     }
 }
 

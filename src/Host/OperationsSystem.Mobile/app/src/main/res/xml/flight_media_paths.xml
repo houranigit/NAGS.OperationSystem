@@ -3,4 +3,6 @@
     <cache-path name="flight_work_media" path="flight-work-media/" />
     <files-path name="service_pending" path="flight-service-attachments/" />
     <files-path name="service_previews" path="flight-service-attachment-previews/" />
+    <files-path name="task_pending" path="flight-task-attachments/" />
+    <files-path name="task_previews" path="flight-task-attachment-previews/" />
 </paths>

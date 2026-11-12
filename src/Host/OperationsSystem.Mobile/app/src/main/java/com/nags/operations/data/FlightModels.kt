@@ -101,6 +101,8 @@ data class FlightDetail(
     val services: List<FlightServiceRecord> = emptyList(),
     val canSaveServices: Boolean = false,
     val allowedServiceIds: List<String>? = null,
+    val tasks: List<FlightTaskRecord> = emptyList(),
+    val canSaveTasks: Boolean = false,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
 }

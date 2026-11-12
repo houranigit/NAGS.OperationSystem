@@ -21,6 +21,9 @@ import com.nags.operations.data.FlightCancellationReverted
 import com.nags.operations.data.SaveFlightCancellationRequest
 import io.ktor.client.request.delete
 import com.nags.operations.data.FlightArrivalSaved
+import com.nags.operations.data.FlightTaskSaved
+import com.nags.operations.data.FlightTaskDeleted
+import com.nags.operations.data.SaveFlightTaskRequest
 import com.nags.operations.data.FlightServiceSaved
 import com.nags.operations.data.FlightServiceDeleted
 import com.nags.operations.data.SaveFlightServiceRequest
@@ -119,6 +122,29 @@ class OperationsApi internal constructor(private val client: HttpClient) {
 
     suspend fun removeService(flightId: String, recordId: String, rowVersion: String): FlightServiceDeleted =
         client.delete(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(flightId)}/services/${UUID.fromString(recordId)}")) {
+            headers { append("If-Match", "\"$rowVersion\"") }
+        }.bodyOrThrow()
+
+    suspend fun taskAttachment(flightId: String, taskId: String, attachmentId: String, expectedUploadedAt: String): ByteArray? =
+        client.prepareGet(HttpClientFactory.url("api/v1/operations/flights/mobile/${UUID.fromString(flightId)}/tasks/${UUID.fromString(taskId)}/attachments/${UUID.fromString(attachmentId)}")) {
+            parameter("expectedUploadedAt", expectedUploadedAt)
+        }.execute { response ->
+            if (response.status == HttpStatusCode.NotFound) return@execute null
+            if (!response.status.isSuccess()) throw ApiException(response.status.value, "Could not load the task attachment.")
+            val bytes = response.bodyAsChannel().readBuffer(25 * 1024 * 1024 + 1L).readByteArray()
+            if (bytes.size > 25 * 1024 * 1024) throw IOException("Task attachment exceeds the size limit.")
+            bytes.takeIf { it.isNotEmpty() }
+        }
+
+    suspend fun saveTask(flightId: String, recordId: String, input: SaveFlightTaskRequest, rowVersion: String): FlightTaskSaved =
+        client.put(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(flightId)}/tasks/${UUID.fromString(recordId)}")) {
+            contentType(ContentType.Application.Json)
+            headers { append("If-Match", "\"$rowVersion\"") }
+            setBody(input)
+        }.bodyOrThrow()
+
+    suspend fun removeTask(flightId: String, recordId: String, rowVersion: String): FlightTaskDeleted =
+        client.delete(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(flightId)}/tasks/${UUID.fromString(recordId)}")) {
             headers { append("If-Match", "\"$rowVersion\"") }
         }.bodyOrThrow()
 

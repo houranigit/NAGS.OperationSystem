@@ -156,6 +156,9 @@ class FlightsViewModel internal constructor(
     private val loadServiceAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
     private val loadPendingServiceAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
     private val saveLocalBatch: suspend (suspend () -> Unit) -> Unit = { save -> save() },
+    val tasks: com.nags.operations.data.repo.FlightTasksRepository? = null,
+    private val loadTaskAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
+    private val loadPendingTaskAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
         sharedCatalogsRepository: SharedCatalogsRepository, arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository,
@@ -166,11 +169,17 @@ class FlightsViewModel internal constructor(
         serviceRepository: com.nags.operations.data.repo.FlightServicesRepository? = null,
         loadServiceAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
         loadPendingServiceAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
-        saveLocalBatch: suspend (suspend () -> Unit) -> Unit = { save -> save() }) : this(
+        saveLocalBatch: suspend (suspend () -> Unit) -> Unit = { save -> save() },
+        taskRepository: com.nags.operations.data.repo.FlightTasksRepository? = null,
+        loadTaskAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
+        loadPendingTaskAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null }) : this(
         arrivals = arrivalRepository,
         departures = departureRepository,
         cancellations = cancellationRepository,
         services = serviceRepository,
+        tasks = taskRepository,
+        loadTaskAttachment = loadTaskAttachment,
+        loadPendingTaskAttachment = loadPendingTaskAttachment,
         loadServiceAttachment = loadServiceAttachment,
         loadPendingServiceAttachment = loadPendingServiceAttachment,
         saveLocalBatch = saveLocalBatch,
@@ -215,6 +224,19 @@ class FlightsViewModel internal constructor(
     }
 
     suspend fun reviewServices(id: String): FlightDetail = reviewArrival(id)
+
+    suspend fun saveTasks(flight: FlightDetail, changes: List<com.nags.operations.data.FlightTaskChange>) {
+        checkNotNull(tasks) { "Task saving is unavailable." }.saveBatch(flight, changes)
+    }
+
+    suspend fun reviewTasks(id: String): FlightDetail = reviewArrival(id)
+
+    suspend fun taskAttachment(flightId: String, taskId: String, attachmentId: String, uploadedAtUtc: String): String? =
+        loadTaskAttachment(flightId, taskId, attachmentId, uploadedAtUtc)
+
+    suspend fun pendingTaskAttachment(flightId: String, taskId: String, attachmentId: String): String? =
+        loadPendingTaskAttachment(flightId, taskId, attachmentId)
+
 
     suspend fun serviceAttachment(flightId: String, serviceId: String, attachmentId: String, uploadedAtUtc: String): String? =
         loadServiceAttachment(flightId, serviceId, attachmentId, uploadedAtUtc)

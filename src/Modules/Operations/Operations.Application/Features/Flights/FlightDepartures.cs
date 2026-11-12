@@ -101,9 +101,13 @@ public sealed class SaveFlightDepartureCommandHandler(
         {
             var workBounds = FlightServiceBounds.ValidateExistingServices(flight, actor.StaffMemberId, departureOverride: input.Atd);
             if (workBounds.IsFailure) return workBounds.Error;
+            var taskBounds = FlightTaskBounds.ValidateExistingTasks(flight, actor.StaffMemberId, departureOverride: input.Atd);
+            if (taskBounds.IsFailure) return taskBounds.Error;
         }
         var completedWork = FlightServiceBounds.RequireCompletedForDeparture(flight);
         if (completedWork.IsFailure) return completedWork.Error;
+        var completedTasks = FlightTaskBounds.RequireCompletedForDeparture(flight);
+        if (completedTasks.IsFailure) return completedTasks.Error;
         var staff = await resolver.StaffMembersForStationAsync([actor.StaffMemberId], flight.Station.StationId, cancellationToken);
         if (staff.IsFailure)
             return staff.Error;

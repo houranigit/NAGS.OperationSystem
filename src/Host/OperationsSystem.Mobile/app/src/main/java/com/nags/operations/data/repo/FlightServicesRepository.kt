@@ -44,6 +44,7 @@ class FlightServicesRepository(
     private val submissionGate: Mutex = Mutex(),
     private val onAttachmentsAcknowledged: suspend (String, FlightServiceSaved, Map<String, ByteArray>) -> Unit = { _, _, _ -> },
     private val hasUnacknowledgedDepartureAttempt: suspend (String) -> Boolean = { false },
+    private val hasUnacknowledgedSiblingWork: suspend (String) -> Boolean = { false },
     private val effectiveLocalActuals: suspend (FlightDetail) -> FlightServiceActualBounds = {
         FlightServiceActualBounds(it.visibleArrival()?.ata, it.visibleDeparture()?.atd)
     },
@@ -70,15 +71,19 @@ class FlightServicesRepository(
     suspend fun saveBatch(flight: FlightDetail, changes: List<FlightServiceChange>, formDraft: FlightServiceFormDraft? = null): Unit = submissionGate.withLock {
         val owner = checkNotNull(currentOwner()) { "Sign in to save services." }
         val observed = generation
-        check(flight.canSaveServices && validArrivalId(flight.currentStaffMemberId)) { "You cannot save services on this flight." }
-        check(flight.allowedServiceIds != null) { "Connect to reload eligible services before saving this flight." }
+        val draftOnly = changes.isEmpty() && formDraft != null
+        val taskAuthorizedDraft = draftOnly && flight.canSaveTasks
+        check(validArrivalId(flight.currentStaffMemberId) && (flight.canSaveServices || taskAuthorizedDraft)) {
+            "You cannot save work on this flight."
+        }
+        check(taskAuthorizedDraft || flight.allowedServiceIds != null) { "Connect to reload eligible services before saving this flight." }
         check(!flight.hasCancellationSubmission && !hasSavedCancellation(flight.id)) { "Revert cancellation and wait for it to sync before saving services." }
         check(flight.isInFlightWindow(now())) { "This flight is outside your current flight window." }
         check(changes.map { it.serviceRecordId.lowercase() }.distinct().size == changes.size && changes.all { validArrivalId(it.serviceRecordId) }) {
             "Review the service identities before saving."
         }
         val predecessor = acknowledgedPredecessorVersion(flight.id, flight.rowVersion)
-        val eligible = flight.allowedServiceIds.toSet()
+        val eligible = flight.allowedServiceIds.orEmpty().toSet()
         // Causally prior local ATA/ATD relaxations are durable even before their HTTP ACK.
         // They affect local validation only; fresh uploads recheck saved server actuals.
         val localActuals = effectiveLocalActuals(flight)
@@ -187,7 +192,8 @@ class FlightServicesRepository(
             .sortedBy { if (it.attemptOperation != null) 0 else 1 } }) {
             if (!accepting || owner != currentOwner()) return@withLock false
             if (snapshot.flightId in unresolved) continue
-            if (snapshot.attemptOperation == null && (hasSavedArrival(snapshot.flightId) || hasUnacknowledgedDepartureAttempt(snapshot.flightId))) {
+            if (snapshot.attemptOperation == null && (hasSavedArrival(snapshot.flightId) ||
+                    hasUnacknowledgedDepartureAttempt(snapshot.flightId) || hasUnacknowledgedSiblingWork(snapshot.flightId))) {
                 blocked += snapshot.flightId
                 continue
             }

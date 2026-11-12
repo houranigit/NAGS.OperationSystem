@@ -91,6 +91,10 @@ import com.nags.operations.data.arrivalInputTime
 import com.nags.operations.data.parentTimeRelaxesBounds
 import com.nags.operations.data.FlightServiceChange
 import com.nags.operations.data.FlightServiceRecord
+import com.nags.operations.data.FlightTaskRecord
+import com.nags.operations.data.FlightTaskChange
+import com.nags.operations.data.SaveFlightTaskRequest
+import com.nags.operations.data.db.entities.FlightTaskPendingEntity
 import com.nags.operations.data.FlightServiceFormDraft
 import com.nags.operations.data.FlightServiceFormDraftAttachment
 import com.nags.operations.data.SaveFlightServiceRequest
@@ -119,6 +123,11 @@ internal fun FlightOperationsForm(
     loadServiceAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
     loadPendingServiceAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
     onSaveBatch: suspend (suspend () -> Unit) -> Unit = { save -> save() },
+    pendingTasks: List<FlightTaskPendingEntity> = emptyList(),
+    onSaveTasks: suspend (FlightDetail, List<FlightTaskChange>) -> Unit = { _, _ -> },
+    onReviewTasks: suspend () -> FlightDetail = { flight },
+    loadTaskAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
+    loadPendingTaskAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
 ) {
     val entryTimeZoneId = rememberSaveable { flight.stationTimeZoneId }
     val entryZone = remember(entryTimeZoneId) { stationTimeZone(entryTimeZoneId) }
@@ -171,12 +180,13 @@ internal fun FlightOperationsForm(
     var reviewedDepartureChangeId by rememberSaveable { mutableStateOf<String?>(null) }
     var queuedDepartureBaseline by rememberSaveable { mutableStateOf<String?>(pendingDeparture?.inputJson) }
     val initialServices = remember { initialServiceEditorDraft(flight, catalogs, pendingServices, serviceFormDraft?.formJson, entryZone) }
+    val initialTasks = remember { initialTaskEditorDraft(flight, catalogs, pendingTasks, serviceFormDraft?.formJson, entryZone) }
     var workDrafts by rememberSaveable(stateSaver = FlightWorkDraftsSaver) {
-        mutableStateOf(FlightWorkDrafts(initialServices.services, initialServices.tasks))
+        mutableStateOf(FlightWorkDrafts(initialServices.services, initialTasks))
     }
     var suppressedServiceIdsJson by rememberSaveable { mutableStateOf(Json.encodeToString(initialServices.suppressedPlannedServiceIds)) }
     val suppressedServiceIds = Json.decodeFromString<List<String>>(suppressedServiceIdsJson)
-    var serviceBaseline by rememberSaveable { mutableStateOf(serviceEditorFingerprint(initialServices.services, initialServices.tasks,
+    var serviceBaseline by rememberSaveable { mutableStateOf(serviceEditorFingerprint(initialServices.services, emptyList(),
         initialServices.suppressedPlannedServiceIds)) }
     var serviceBaselineInputs by rememberSaveable { mutableStateOf(Json.encodeToString(initialServices.services.associate {
         it.id to serviceInputFingerprint(it.serviceInput(entryZone)) })) }
@@ -185,12 +195,22 @@ internal fun FlightOperationsForm(
     var serviceVersion by rememberSaveable { mutableStateOf(flight.rowVersion) }
     var reviewedServiceChangesJson by rememberSaveable { mutableStateOf("[]") }
     val reviewedServiceChanges = Json.decodeFromString<List<String>>(reviewedServiceChangesJson)
-    val servicesChanged = serviceEditorFingerprint(workDrafts.services, workDrafts.tasks, suppressedServiceIds) != serviceBaseline
     val serviceBaselineDraft = checkNotNull(decodeServiceEditorDraft(serviceBaseline))
     val serviceRowsChanged = serviceEditorFingerprint(workDrafts.services, emptyList(), suppressedServiceIds) !=
         serviceEditorFingerprint(serviceBaselineDraft.services, emptyList(), serviceBaselineDraft.suppressedPlannedServiceIds)
-    val tasksChanged = serviceEditorFingerprint(emptyList(), workDrafts.tasks, emptyList()) !=
-        serviceEditorFingerprint(emptyList(), serviceBaselineDraft.tasks, emptyList())
+    var taskBaseline by rememberSaveable { mutableStateOf(taskEditorFingerprint(initialTasks)) }
+    var taskBaselineInputs by rememberSaveable { mutableStateOf(Json.encodeToString(initialTasks.associate {
+        it.id to taskInputFingerprint(it.taskInput(entryZone)) })) }
+    var knownTaskIdsJson by rememberSaveable { mutableStateOf(Json.encodeToString((flight.tasks.map { it.id } + pendingTasks.map { it.taskRecordId }).distinct())) }
+    var taskReviewedJson by rememberSaveable { mutableStateOf(Json.encodeToString(flight.tasks)) }
+    var taskVersion by rememberSaveable { mutableStateOf(flight.rowVersion) }
+    var reviewedTaskChangesJson by rememberSaveable { mutableStateOf("[]") }
+    val reviewedTaskChanges = Json.decodeFromString<List<String>>(reviewedTaskChangesJson)
+    val tasksChanged = taskEditorFingerprint(workDrafts.tasks) != taskBaseline
+    val servicesChanged = serviceRowsChanged
+    val tasksNeedReview = pendingTasks.any { it.status != "pending" && it.changeId !in reviewedTaskChanges }
+    val taskReviewed = Json.decodeFromString<List<FlightTaskRecord>>(taskReviewedJson)
+    var pendingTaskEndReviewJson by rememberSaveable { mutableStateOf<String?>(null) }
     val servicesNeedReview = pendingServices.any { it.status != "pending" && it.changeId !in reviewedServiceChanges }
     val serviceReviewed = Json.decodeFromString<List<FlightServiceRecord>>(serviceReviewedJson)
     var originalAta by rememberSaveable { mutableStateOf(pendingInput?.ata ?: arrival?.ata) }
@@ -320,17 +340,32 @@ internal fun FlightOperationsForm(
                     employees = value.employees.map { employee -> employee.copy(id = old?.employees
                         ?.firstOrNull { it.employeeId.equals(employee.employeeId, true) }?.id ?: employee.id) })
             }
-            val tasks = if (tasksChanged) workDrafts.tasks else next.tasks.map { value -> value.copy(attachments = media(value.attachments,
-                workDrafts.tasks.firstOrNull { it.id == value.id }?.attachments.orEmpty())) }
-            workDrafts = FlightWorkDrafts(services, tasks)
+            workDrafts = workDrafts.copy(services = services)
             suppressedServiceIdsJson = Json.encodeToString(next.suppressedPlannedServiceIds)
-            // Task-only edits must survive staff/catalog refresh and remain visibly unsaved.
-            serviceBaseline = serviceEditorFingerprint(services, if (tasksChanged) serviceBaselineDraft.tasks else tasks,
-                next.suppressedPlannedServiceIds)
+            serviceBaseline = serviceEditorFingerprint(services, emptyList(), next.suppressedPlannedServiceIds)
             serviceBaselineInputs = Json.encodeToString(services.associate { it.id to serviceInputFingerprint(it.serviceInput(entryZone)) })
             knownServiceIdsJson = Json.encodeToString((flight.services.map { it.id } + pendingServices.map { it.serviceRecordId }).distinct())
             serviceReviewedJson = Json.encodeToString(flight.services)
             serviceVersion = flight.rowVersion
+        }
+    }
+    LaunchedEffect(flight.tasks, flight.rowVersion, flight.currentStaffMemberId, catalogs.stationStaff,
+        catalogs.ataChapters, catalogs.tools, catalogs.materials, catalogs.generalSupports, pendingTasks, serviceFormDraft?.formJson) {
+        if (!tasksChanged && reviewedTaskChanges.isEmpty()) {
+            val next = initialTaskEditorDraft(flight, catalogs, pendingTasks, serviceFormDraft?.formJson, entryZone).map { task ->
+                val previous = workDrafts.tasks.firstOrNull { it.id == task.id }
+                task.copy(attachments = task.attachments.map { attachment ->
+                    previous?.attachments?.firstOrNull { it.id == attachment.id && it.uploadedAtUtc == attachment.uploadedAtUtc }?.let {
+                        attachment.copy(uri = it.uri, ownedCapture = it.ownedCapture)
+                    } ?: attachment
+                })
+            }
+            workDrafts = workDrafts.copy(tasks = next)
+            taskBaseline = taskEditorFingerprint(next)
+            taskBaselineInputs = Json.encodeToString(next.associate { it.id to taskInputFingerprint(it.taskInput(entryZone)) })
+            knownTaskIdsJson = Json.encodeToString((flight.tasks.map { it.id } + pendingTasks.map { it.taskRecordId }).distinct())
+            taskReviewedJson = Json.encodeToString(flight.tasks)
+            taskVersion = flight.rowVersion
         }
     }
     val storedServiceMedia = buildSet {
@@ -339,12 +374,10 @@ internal fun FlightOperationsForm(
         }
         addAll(runCatching { Json.decodeFromString<Map<String, String>>(serviceFormDraft?.attachmentFilesJson ?: "{}") }.getOrDefault(emptyMap()).keys)
     }
-    val serviceMediaKeys = workDrafts.services.flatMap { service -> service.attachments.map { Triple(service.id, it.id, it.uploadedAtUtc) } } +
-        workDrafts.tasks.flatMap { task -> task.attachments.map { Triple(task.id, it.id, it.uploadedAtUtc) } }
+    val serviceMediaKeys = workDrafts.services.flatMap { service -> service.attachments.map { Triple(service.id, it.id, it.uploadedAtUtc) } }
     LaunchedEffect(serviceMediaKeys, serviceFormDraft?.savedAtUtc, pendingServices.map { it.attachmentFilesJson }) {
         for ((recordId, attachmentId, uploadedAt) in serviceMediaKeys) {
-            val attachment = (workDrafts.services.firstOrNull { it.id == recordId }?.attachments ?:
-                workDrafts.tasks.firstOrNull { it.id == recordId }?.attachments).orEmpty().firstOrNull { it.id == attachmentId } ?: continue
+            val attachment = workDrafts.services.firstOrNull { it.id == recordId }?.attachments.orEmpty().firstOrNull { it.id == attachmentId } ?: continue
             val stored = "$recordId/$attachmentId" in storedServiceMedia
             if (!stored && (uploadedAt == null || attachment.uri.isNotBlank())) continue
             try {
@@ -352,14 +385,42 @@ internal fun FlightOperationsForm(
                     else loadServiceAttachment(flight.id, recordId, attachmentId, checkNotNull(uploadedAt))
                 if (uri != null) {
                     fun update(items: List<FlightAttachmentDraft>) = items.map { if (it.id == attachmentId) it.copy(uri = uri, ownedCapture = false) else it }
-                    workDrafts = workDrafts.copy(
-                        services = workDrafts.services.map { if (it.id == recordId) it.copy(attachments = update(it.attachments)) else it },
-                        tasks = workDrafts.tasks.map { if (it.id == recordId) it.copy(attachments = update(it.attachments)) else it })
+                    workDrafts = workDrafts.copy(services = workDrafts.services.map { if (it.id == recordId) it.copy(attachments = update(it.attachments)) else it })
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { /* Retained media stays saved when a preview is temporarily unavailable. */ }
         }
     }
+    val storedTaskMedia = buildSet {
+        pendingTasks.forEach { row ->
+            runCatching { Json.decodeFromString<Map<String, String>>(row.attachmentFilesJson) }.getOrDefault(emptyMap()).keys.forEach { add("${row.taskRecordId}/$it") }
+        }
+        addAll(runCatching { Json.decodeFromString<Map<String, String>>(serviceFormDraft?.attachmentFilesJson ?: "{}") }.getOrDefault(emptyMap()).keys)
+    }
+    val taskMediaKeys = workDrafts.tasks.flatMap { task -> task.attachments.map { Triple(task.id, it.id, it.uploadedAtUtc) } }
+    LaunchedEffect(taskMediaKeys, serviceFormDraft?.savedAtUtc, pendingTasks.map { it.attachmentFilesJson }) {
+        for ((recordId, attachmentId, uploadedAt) in taskMediaKeys) {
+            val attachment = workDrafts.tasks.firstOrNull { it.id == recordId }?.attachments.orEmpty().firstOrNull { it.id == attachmentId } ?: continue
+            val stored = "$recordId/$attachmentId" in storedTaskMedia
+            if (!stored && (uploadedAt == null || attachment.uri.isNotBlank())) continue
+            try {
+                val uri = if (stored) loadPendingTaskAttachment(flight.id, recordId, attachmentId)
+                    else loadTaskAttachment(flight.id, recordId, attachmentId, checkNotNull(uploadedAt))
+                if (uri != null) workDrafts = workDrafts.copy(tasks = workDrafts.tasks.map { task ->
+                    if (task.id == recordId) task.copy(attachments = task.attachments.map {
+                        if (it.id == attachmentId) it.copy(uri = uri, ownedCapture = false) else it
+                    }) else task
+                })
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Saved media remains retained while its preview is unavailable. */ }
+        }
+    }
+    val knownTaskIds = Json.decodeFromString<List<String>>(knownTaskIdsJson).toSet()
+    val baselineTasks = Json.decodeFromString<Map<String, String>>(taskBaselineInputs)
+    val forcedTaskIds = pendingTasks.filter { it.status != "pending" && it.changeId in reviewedTaskChanges }.map { it.taskRecordId }.toSet()
+    val taskChanges = taskEditorChanges(workDrafts.tasks, knownTaskIds, baselineTasks, pendingTasks,
+        forcedTaskIds, storedTaskMedia, entryZone)
+    val tasksEnabled = flight.canSaveTasks && !tasksNeedReview && !flight.hasCancellationSubmission && !saving
     val knownServiceIds = Json.decodeFromString<List<String>>(knownServiceIdsJson).toSet()
     val baselineServices = Json.decodeFromString<Map<String, String>>(serviceBaselineInputs)
     val forcedServiceIds = pendingServices.filter { it.status != "pending" && it.changeId in reviewedServiceChanges }.map { it.serviceRecordId }.toSet()
@@ -373,6 +434,10 @@ internal fun FlightOperationsForm(
     val serviceCompletionRequired = departureSaveRequested || actualDepartureForServices?.isNotBlank() == true && changedServiceSaves.isNotEmpty()
     val serviceCompletionErrors = if (serviceCompletionRequired) departureServiceCompletionValidation(workDrafts.services,
         flight.services, pendingServices, serviceChanges, entryZone, if (departureSaveRequested) null else changedServiceSaves) else emptyMap()
+    val changedTaskSaves = taskChanges.filter { it.input != null }.map { it.taskRecordId }.toSet()
+    val taskCompletionRequired = departureSaveRequested || actualDepartureForServices?.isNotBlank() == true && changedTaskSaves.isNotEmpty()
+    val taskCompletionErrors = if (taskCompletionRequired) departureTaskCompletionValidation(workDrafts.tasks,
+        flight.tasks, pendingTasks, taskChanges, entryZone, if (departureSaveRequested) null else changedTaskSaves) else emptyMap()
     val parentTimesChanged = arrivalEnabled && arrivalChanged || departureEnabled && departureChanged
     val parentBoundsErrors = if (parentTimesChanged) serviceActualBoundsValidation(workDrafts.services, entryZone,
         actualArrivalForServices, actualDepartureForServices) else emptyMap()
@@ -384,6 +449,19 @@ internal fun FlightOperationsForm(
     val serviceErrors = if (validationAttempted) (changedServiceErrors.keys + parentBoundsErrors.keys + serviceCompletionErrors.keys).associateWith { id ->
         changedServiceErrors[id].orEmpty() + parentBoundsErrors[id].orEmpty() + serviceCompletionErrors[id].orEmpty()
     } else emptyMap()
+    val taskParentBoundsErrors = if (parentTimesChanged) taskActualBoundsValidation(workDrafts.tasks, entryZone,
+        actualArrivalForServices, actualDepartureForServices) else emptyMap()
+    val changedTaskErrors = if (validationAttempted) taskChanges.mapNotNull { change -> change.input?.let { value ->
+        workDrafts.tasks.firstOrNull { it.id == change.taskRecordId }?.let { draft ->
+            draft.id to taskEditorValidation(draft, value, flight, catalogs, taskVersion, actualArrivalForServices, actualDepartureForServices)
+        }
+    } }.toMap() else emptyMap()
+    val taskErrors = if (validationAttempted) (changedTaskErrors.keys + taskParentBoundsErrors.keys + taskCompletionErrors.keys).associateWith { id ->
+        changedTaskErrors[id].orEmpty() + taskParentBoundsErrors[id].orEmpty() + taskCompletionErrors[id].orEmpty()
+    } else emptyMap()
+    val taskActualBoundsMessage = stringResource(R.string.actuals_task_bounds)
+    val taskReviewMessage = stringResource(R.string.task_sync_review)
+    val taskCompletionMessage = stringResource(if (departureSaveRequested) R.string.departure_tasks_incomplete else R.string.task_departed_periods_required)
     val actualBoundsMessage = stringResource(R.string.actuals_service_bounds)
     val finishRecordingMessage = stringResource(R.string.service_finish_recording)
     val serviceReviewMessage = stringResource(R.string.service_sync_review)
@@ -398,6 +476,23 @@ internal fun FlightOperationsForm(
         suppressedServiceIdsJson = Json.encodeToString(suppressed.distinct())
         workDrafts = next
     }
+    fun applyTaskReview(latest: FlightDetail, useRecordedEnds: Boolean = false) {
+        // The queue retains the server record originally reviewed before offline edits.
+        val previous = taskReviewed.associateBy { it.id }.toMutableMap()
+        pendingTasks.forEach { row -> row.reviewedTaskJson?.let { raw ->
+            runCatching { Json.decodeFromString<FlightTaskRecord>(raw) }.getOrNull()?.let { previous[it.id] = it }
+        } }
+        val review = reviewTaskEnds(workDrafts.tasks, previous.values.toList(), latest.tasks, entryZone, useRecordedEnds)
+        if (review.conflictedTaskIds.isNotEmpty()) {
+            pendingTaskEndReviewJson = Json.encodeToString(latest)
+        } else {
+            workDrafts = workDrafts.copy(tasks = review.items)
+            taskReviewedJson = Json.encodeToString(latest.tasks)
+            taskVersion = latest.rowVersion
+            reviewedTaskChangesJson = Json.encodeToString(pendingTasks.filter { it.status != "pending" }.map { it.changeId })
+            pendingTaskEndReviewJson = null
+        }
+    }
     val closeForm = { mediaSession.clear(); onClose() }
     val saveChanges: (Boolean) -> Unit = { acknowledgeConflict ->
         validationAttempted = true
@@ -405,30 +500,44 @@ internal fun FlightOperationsForm(
         val saveArrivalInput = arrivalEnabled && (arrivalChanged || reviewedChangeId != null)
         val saveDepartureInput = departureEnabled && (departureChanged || reviewedDepartureChangeId != null)
         val saveServiceInput = servicesChanged || forcedServiceIds.isNotEmpty()
-        val arrivalValid = !saveArrivalInput || aircraftAvailable && arrivalValue.validationErrors(arrivalVersion).isEmpty() && parentBoundsErrors.isEmpty()
+        val saveTaskInput = tasksChanged || forcedTaskIds.isNotEmpty()
+        val saveFormDraft = saveServiceInput || saveTaskInput
+        val arrivalValid = !saveArrivalInput || aircraftAvailable && arrivalValue.validationErrors(arrivalVersion).isEmpty() && parentBoundsErrors.isEmpty() && taskParentBoundsErrors.isEmpty()
         val departureValid = !saveDepartureInput || departureTime.isNotBlank() && !signatureRequired && !departureNeedsReview &&
-            parentBoundsErrors.isEmpty() && serviceCompletionErrors.isEmpty()
+            parentBoundsErrors.isEmpty() && taskParentBoundsErrors.isEmpty() && serviceCompletionErrors.isEmpty() && taskCompletionErrors.isEmpty()
         val checkedServices = serviceChanges.mapNotNull { change -> change.input?.let { value ->
             workDrafts.services.firstOrNull { it.id == change.serviceRecordId }?.let { draft ->
                 serviceEditorValidation(draft, value, flight, catalogs, serviceVersion, actualArrivalForServices, actualDepartureForServices)
             }
         } }
         val servicesValid = !saveServiceInput || servicesEnabled && checkedServices.all { it.isEmpty() } && serviceCompletionErrors.isEmpty()
-        val anyInput = saveArrivalInput || saveDepartureInput || saveServiceInput
+        val checkedTasks = taskChanges.mapNotNull { change -> change.input?.let { value ->
+            workDrafts.tasks.firstOrNull { it.id == change.taskRecordId }?.let { draft ->
+                taskEditorValidation(draft, value, flight, catalogs, taskVersion, actualArrivalForServices, actualDepartureForServices)
+            }
+        } }
+        val tasksValid = !saveTaskInput || tasksEnabled && checkedTasks.all { it.isEmpty() } && taskCompletionErrors.isEmpty()
+        val anyInput = saveArrivalInput || saveDepartureInput || saveServiceInput || saveTaskInput
         if (mediaSession.hasActiveRecording) {
             saveError = finishRecordingMessage
         } else if (parentBoundsErrors.isNotEmpty()) {
             saveError = actualBoundsMessage
+        } else if (taskParentBoundsErrors.isNotEmpty()) {
+            saveError = taskActualBoundsMessage
         } else if (serviceCompletionErrors.isNotEmpty()) {
             saveError = serviceCompletionMessage
+        } else if (taskCompletionErrors.isNotEmpty()) {
+            saveError = taskCompletionMessage
         } else if (saveServiceInput && !servicesValid && checkedServices.all { it.isEmpty() }) {
             saveError = serviceReviewMessage
-        } else if (anyInput && arrivalValid && departureValid && servicesValid &&
+        } else if (saveTaskInput && !tasksValid && checkedTasks.all { it.isEmpty() }) {
+            saveError = taskReviewMessage
+        } else if (anyInput && arrivalValid && departureValid && servicesValid && tasksValid &&
             (saveArrivalInput || saveDepartureInput) && flight.cancellationSubmissions.any {
                 !it.submittedByEmployee.staffMemberId.equals(flight.currentStaffMemberId, true)
             } && !acknowledgeConflict) {
             confirmCanceledReport = true
-        } else if (anyInput && arrivalValid && departureValid && servicesValid) {
+        } else if (anyInput && arrivalValid && departureValid && servicesValid && tasksValid) {
             saving = true; saveError = null
             val workSnapshot = workDrafts
             val workFingerprint = serviceEditorFingerprint(workSnapshot.services, workSnapshot.tasks, suppressedServiceIds)
@@ -439,9 +548,11 @@ internal fun FlightOperationsForm(
             val savedSuppressed = (suppressedServiceIds + workDrafts.services.filter { it.period.start.isNotBlank() }
                 .mapNotNull { it.plannedServiceId }).distinct()
             val localRows = workDrafts.services.filter { it.id !in knownServiceIds && it.period.start.isBlank() }
-            val draftValue = FlightServiceEditorDraft(entryZone.id, localRows, workDrafts.tasks, savedSuppressed)
+            val publishedOrQueuedTaskIds = knownTaskIds + taskChanges.filter { it.input != null }.map { it.taskRecordId }
+            val localTasks = workDrafts.tasks.filter { it.id !in publishedOrQueuedTaskIds }
+            val draftValue = FlightServiceEditorDraft(entryZone.id, localRows, localTasks, savedSuppressed)
             val localAttachments = localRows.flatMap { row -> row.attachments.map { row.id to it } } +
-                workDrafts.tasks.flatMap { row -> row.attachments.map { row.id to it } }
+                localTasks.flatMap { row -> row.attachments.map { row.id to it } }
             val durableDraft = FlightServiceFormDraft(Json.encodeToString(draftValue), localAttachments.map { (recordId, attachment) ->
                 FlightServiceFormDraftAttachment(recordId, attachment.serviceAttachmentInput("$recordId/${attachment.id}" in storedServiceMedia))
             })
@@ -470,10 +581,21 @@ internal fun FlightOperationsForm(
                         val relaxDeparture = parentTimeRelaxesBounds(previousDeparture, departureValue.atd, arrival = false)
                         if (saveArrivalInput && relaxArrival) saveArrival()
                         if (saveDepartureInput && relaxDeparture) saveDeparture()
-                        if (saveServiceInput) {
+                        // Import legacy Task draft files before replacing the combined local draft.
+                        if (saveTaskInput && taskChanges.isNotEmpty()) {
+                            onSaveTasks(flight.copy(rowVersion = taskVersion, tasks = taskReviewed), taskChanges)
+                        }
+                        if (saveFormDraft) {
                             onSaveServices(flight.copy(rowVersion = serviceVersion, services = serviceReviewed), serviceChanges, durableDraft)
+                            if (saveTaskInput) {
+                                taskBaseline = taskEditorFingerprint(workSnapshot.tasks)
+                                taskBaselineInputs = Json.encodeToString(workSnapshot.tasks.associate { it.id to taskInputFingerprint(it.taskInput(entryZone)) })
+                                knownTaskIdsJson = Json.encodeToString((knownTaskIds + taskChanges.filter { it.input != null }.map { it.taskRecordId } -
+                                    taskChanges.filter { it.input == null }.map { it.taskRecordId }.toSet()).toList())
+                                reviewedTaskChangesJson = "[]"
+                            }
                             suppressedServiceIdsJson = Json.encodeToString(savedSuppressed)
-                            serviceBaseline = serviceEditorFingerprint(workSnapshot.services, workSnapshot.tasks, savedSuppressed)
+                            serviceBaseline = serviceEditorFingerprint(workSnapshot.services, emptyList(), savedSuppressed)
                             serviceBaselineInputs = Json.encodeToString(workSnapshot.services.associate { it.id to serviceInputFingerprint(it.serviceInput(entryZone)) })
                             knownServiceIdsJson = Json.encodeToString((knownServiceIds + serviceChanges.filter { it.input != null }.map { it.serviceRecordId } -
                                 serviceChanges.filter { it.input == null }.map { it.serviceRecordId }.toSet()).toList())
@@ -482,7 +604,7 @@ internal fun FlightOperationsForm(
                         if (saveArrivalInput && !relaxArrival) saveArrival()
                         if (saveDepartureInput && !relaxDeparture) saveDeparture()
                     }
-                    // Task editors remain local. A later edit cannot be claimed by an earlier disk-save snapshot.
+                    // A later edit cannot be claimed by an earlier disk-save snapshot.
                     if (serviceEditorFingerprint(workDrafts.services, workDrafts.tasks, suppressedServiceIds) == workFingerprint) closeForm()
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (error: Exception) {
@@ -500,7 +622,7 @@ internal fun FlightOperationsForm(
         if (!departureEnabled && picker in listOf("atd", "signature")) picker = null
     }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
-    val hasChanges = arrivalChanged || departureChanged || servicesChanged
+    val hasChanges = arrivalChanged || departureChanged || servicesChanged || tasksChanged
     val requestClose = {
         if (saving) Unit else if (picker != null) picker = null else if (hasChanges) confirmDiscard = true else closeForm()
     }
@@ -534,7 +656,8 @@ internal fun FlightOperationsForm(
         loadCustomerLogo, requestClose,
         saveEnabled = !saving && (arrivalEnabled && (arrivalChanged || reviewedChangeId != null) ||
             departureEnabled && (departureChanged || reviewedDepartureChangeId != null) ||
-            servicesEnabled && (servicesChanged || forcedServiceIds.isNotEmpty())),
+            servicesEnabled && (servicesChanged || forcedServiceIds.isNotEmpty()) ||
+            tasksEnabled && (tasksChanged || forcedTaskIds.isNotEmpty())),
         saveLoading = saving, onSave = { saveChanges(false) }, progressStatus = progressStatus) {
         saveError?.let { ArrivalFormMessage(it, error = true) }
         if (otherEmployeeArrival != null) {
@@ -618,7 +741,31 @@ internal fun FlightOperationsForm(
                 errors = serviceErrors, defaultEmployee = defaultServiceEmployee(flight, catalogs),
                 timeBounds = flightWorkTimeBounds(actualArrivalForServices, actualDepartureForServices),
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(services = change(workDrafts.services))) })
+            if (tasksNeedReview) {
+                ArrivalFormMessage(stringResource(R.string.task_sync_review), error = true)
+                pendingTasks.filter { it.status != "pending" }.mapNotNull { it.error }.distinct().forEach { ArrivalFormMessage(it, error = true) }
+                TextButton(enabled = !saving, onClick = {
+                    saving = true; saveError = null
+                    formScope.launch {
+                        try {
+                            applyTaskReview(onReviewTasks())
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (error: Exception) { saveError = error.userMessage() }
+                        finally { saving = false }
+                    }
+                }) { Text(stringResource(R.string.task_review)) }
+            }
+            if (taskErrors.values.any { "rowVersion" in it }) ArrivalFormMessage(stringResource(R.string.task_validation_version), error = true)
             FlightTaskSection(workDrafts.tasks, catalogs, referenceYear, zone,
+                enabled = tasksEnabled,
+                canEdit = { id -> taskReviewed.firstOrNull { it.id == id }?.canEdit ?: true },
+                canSetEnd = { id -> taskReviewed.firstOrNull { it.id == id }?.canSetEnd ?: true },
+                canChangeType = { id -> taskReviewed.firstOrNull { it.id == id }?.canChangeType != false &&
+                    flight.tasks.firstOrNull { it.id == id }?.canChangeType != false },
+                canDelete = { id -> taskReviewed.firstOrNull { it.id == id }?.canDelete != false &&
+                    flight.tasks.firstOrNull { it.id == id }?.canDelete != false },
+                errors = taskErrors, defaultEmployee = defaultServiceEmployee(flight, catalogs),
+                timeBounds = flightWorkTimeBounds(actualArrivalForServices, actualDepartureForServices),
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(tasks = change(workDrafts.tasks))) })
         }
         if (otherEmployeeDeparture != null) {
@@ -680,6 +827,11 @@ internal fun FlightOperationsForm(
         stringResource(R.string.submission_canceled_warning_title), stringResource(R.string.submission_canceled_warning),
         stringResource(R.string.submission_save_anyway), onConfirm = { confirmCanceledReport = false; saveChanges(true) },
         onDismiss = { confirmCanceledReport = false })
+    if (pendingTaskEndReviewJson != null) FlightSubmissionConfirmation(
+        stringResource(R.string.task_review_end_title), stringResource(R.string.task_review_end_message),
+        stringResource(R.string.task_review_use_recorded_end), onConfirm = {
+            pendingTaskEndReviewJson?.let { applyTaskReview(Json.decodeFromString(it), useRecordedEnds = true) }
+        }, onDismiss = { pendingTaskEndReviewJson = null })
     if (confirmDiscard) FlightFormDiscardDialog(stringResource(R.string.operations_discard_title),
         onDismiss = { confirmDiscard = false }, onDiscard = closeForm)
 }

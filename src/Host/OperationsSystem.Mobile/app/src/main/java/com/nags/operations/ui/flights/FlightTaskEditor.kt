@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.time.ZoneId
+import java.util.UUID
 import com.nags.operations.R
 
 /** Repeatable task entries remain independent from scheduled services and from one another. */
@@ -33,6 +34,14 @@ internal fun FlightTaskSection(
     referenceYear: Int,
     zone: ZoneId,
     onChange: ((List<FlightTaskDraft>) -> List<FlightTaskDraft>) -> Unit,
+    enabled: Boolean = true,
+    canEdit: (String) -> Boolean = { true },
+    canSetEnd: (String) -> Boolean = { true },
+    canDelete: (String) -> Boolean = { true },
+    canChangeType: (String) -> Boolean = { true },
+    errors: Map<String, Map<String, Int>> = emptyMap(),
+    defaultEmployee: FlightEmployeeDraft? = null,
+    timeBounds: FlightWorkTimeBounds = FlightWorkTimeBounds(),
 ) {
     var pickerTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     var pickerKind by rememberSaveable { mutableStateOf<String?>(null) }
@@ -55,12 +64,17 @@ internal fun FlightTaskSection(
         FlightFormSectionTitle(stringResource(R.string.work_tasks_count, items.size))
         items.forEachIndexed { index, task ->
             key(task.id) {
+                var initialStartStaffIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+                val fields = errors[task.id].orEmpty()
+                val editable = enabled && canEdit(task.id)
+                val childBounds = timeBounds.within(task.period, zone)
                 FlightWorkEntryGroup {
                     FlightWorkRemovableEntry(
                         id = task.id,
                         removeDescription = stringResource(R.string.work_remove_item, "$taskLabel ${index + 1}"),
                         onRemove = { onChange { current -> current.filterNot { it.id == task.id } } },
                         compactDelete = true,
+                        enabled = enabled && canDelete(task.id),
                     ) {
                         FlightWorkChoiceRow(
                             label = stringResource(R.string.work_task_number, index + 1),
@@ -72,12 +86,15 @@ internal fun FlightTaskSection(
                             description = stringResource(R.string.work_task_type),
                             isPlaceholder = task.taskType.isBlank(),
                             leadingPadding = 0.dp,
+                            enabled = editable && canChangeType(task.id),
+                            errorMessage = fields["taskType"]?.let { stringResource(it) },
                             onClick = { openPicker(task.id, "type") },
                         )
                     }
                     FlightFormDivider()
                     FlightWorkReferenceRow(task.reference,
-                        onChange = { value -> updateTask(task.id) { it.copy(reference = value) } })
+                        onChange = { value -> updateTask(task.id) { it.copy(reference = value) } },
+                        enabled = editable, errorMessage = fields["customerReferenceNumber"]?.let { stringResource(it) })
                     FlightFormDivider()
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -87,50 +104,67 @@ internal fun FlightTaskSection(
                                     else "${task.ataChapterCode} · ${task.ataChapterTitle}",
                                 description = stringResource(R.string.work_ata_chapter),
                                 isPlaceholder = task.ataChapterId.isBlank(),
+                                enabled = editable,
+                                errorMessage = fields["ataChapterId"]?.let { stringResource(it) },
                                 onClick = { openPicker(task.id, "ata") },
                             )
                         }
                         if (task.ataChapterId.isNotBlank()) IconButton(
                             onClick = { updateTask(task.id) { it.copy(ataChapterId = "", ataChapterCode = "", ataChapterTitle = "") } },
                             modifier = Modifier.size(48.dp),
+                            enabled = editable,
                         ) {
                             Icon(Icons.Outlined.Close, stringResource(R.string.work_clear_ata), Modifier.size(18.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     FlightFormDivider()
-                    FlightWorkPeriodFields(task.period, referenceYear, zone) { period -> updateTask(task.id) { it.copy(period = period) } }
+                    FlightWorkPeriodFields(task.period, referenceYear, zone,
+                        onChange = { period -> updateTask(task.id) { taskPeriodWithInitialStaff(it, period, initialStartStaffIds.toSet()) } },
+                        startEnabled = editable, endEnabled = enabled && canSetEnd(task.id),
+                        startError = fields["startUtc"]?.let { stringResource(it) },
+                        endError = fields["endUtc"]?.let { stringResource(it) }, seedEndNow = true, timeBounds = timeBounds,
+                        onStartPickerSessionChanged = { initialBlank -> initialStartStaffIds =
+                            if (initialBlank) task.employees.filter { it.period.start.isBlank() }.map { it.id } else emptyList() })
                     FlightFormDivider()
                     FlightWorkEmployeeList(task.employees, catalogs.stationStaff, showRemarks = true, referenceYear = referenceYear, zone = zone,
-                        onChange = { employees -> updateTask(task.id) { it.copy(employees = employees) } })
+                        onChange = { employees -> updateTask(task.id) { it.copy(employees = employees) } }, enabled = editable,
+                        errorMessage = fields["performers"]?.let { stringResource(it) }, fieldErrors = fields, timeBounds = childBounds,
+                        defaultPeriod = task.period.copy(end = "", originalEndUtc = null))
                     FlightFormDivider()
                     FlightWorkResourceList(FlightWorkResourceKind.Tool, task.tools, catalogs.tools, referenceYear, zone,
-                        onChange = { tools -> updateTask(task.id) { it.copy(tools = tools) } })
+                        onChange = { tools -> updateTask(task.id) { it.copy(tools = tools) } }, enabled = editable,
+                        fieldErrors = fields, parentPeriod = task.period, timeBounds = childBounds)
                     FlightFormDivider()
                     FlightWorkResourceList(FlightWorkResourceKind.Material, task.materials, catalogs.materials, referenceYear, zone,
-                        onChange = { materials -> updateTask(task.id) { it.copy(materials = materials) } })
+                        onChange = { materials -> updateTask(task.id) { it.copy(materials = materials) } }, enabled = editable,
+                        fieldErrors = fields, parentPeriod = task.period, timeBounds = childBounds)
                     FlightFormDivider()
                     FlightWorkResourceList(FlightWorkResourceKind.GeneralSupport, task.generalSupports, catalogs.generalSupports, referenceYear, zone,
-                        onChange = { supports -> updateTask(task.id) { it.copy(generalSupports = supports) } })
+                        onChange = { supports -> updateTask(task.id) { it.copy(generalSupports = supports) } }, enabled = editable,
+                        fieldErrors = fields, parentPeriod = task.period, timeBounds = childBounds)
                     FlightFormDivider()
                     FlightRemarksComposer(task.remarks,
                         onRemarksChange = { value -> updateTask(task.id) { it.copy(remarks = value) } },
                         attachments = task.attachments,
                         onAttachmentsChange = { attachments -> updateTask(task.id) { it.copy(attachments = attachments) } },
-                        description = stringResource(R.string.work_task_remarks))
+                        description = stringResource(R.string.work_task_remarks), enabled = editable,
+                        errorMessage = (fields["notes"] ?: fields["attachments"])?.let { stringResource(it) })
                 }
             }
         }
         FlightFormFieldGroup {
-            FlightWorkAddRow(stringResource(R.string.work_add_task, items.size + 1)) {
-                val added = FlightTaskDraft(period = FlightWorkPeriod.now(zone))
+            FlightWorkAddRow(stringResource(R.string.work_add_task, items.size + 1), enabled = enabled && defaultEmployee != null) {
+                val period = seedBlankWorkStart(FlightWorkPeriod(), zone, timeBounds)
+                val added = FlightTaskDraft(taskType = "Major", period = period,
+                    employees = listOfNotNull(defaultEmployee?.copy(id = UUID.randomUUID().toString(), period = period)))
                 onChange { current -> current + added }
             }
         }
     }
 
     val activeTask = items.firstOrNull { it.id == pickerTaskId }
-    if (activeTask != null && pickerKind == "type") {
+    if (activeTask != null && pickerKind == "type" && enabled && canEdit(activeTask.id) && canChangeType(activeTask.id)) {
         FlightWorkPicker(
             title = stringResource(R.string.work_task_type),
             searchLabel = "",
@@ -142,11 +176,8 @@ internal fun FlightTaskSection(
             searchable = false,
         )
     }
-    if (activeTask != null && pickerKind == "ata") {
-        val choices = catalogs.ataChapters.map { FlightWorkChoice(it.id, "${it.code} · ${it.title}", it.categoryName) }.toMutableList()
-        if (activeTask.ataChapterId.isNotBlank() && choices.none { it.id == activeTask.ataChapterId }) {
-            choices += FlightWorkChoice(activeTask.ataChapterId, "${activeTask.ataChapterCode} · ${activeTask.ataChapterTitle}")
-        }
+    if (activeTask != null && pickerKind == "ata" && enabled && canEdit(activeTask.id)) {
+        val choices = catalogs.ataChapters.map { FlightWorkChoice(it.id, "${it.code} · ${it.title}", it.categoryName) }
         FlightWorkPicker(
             title = stringResource(R.string.work_ata_chapter),
             searchLabel = stringResource(R.string.work_search_ata),

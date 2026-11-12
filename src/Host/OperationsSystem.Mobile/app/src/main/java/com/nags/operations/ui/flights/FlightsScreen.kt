@@ -212,6 +212,8 @@ fun FlightsScreen(
             .collectAsStateWithLifecycle(initialValue = emptyList())
         val pendingServices by (viewModel.services?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
             .collectAsStateWithLifecycle(initialValue = emptyList())
+        val pendingTasks by (viewModel.tasks?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+            .collectAsStateWithLifecycle(initialValue = emptyList())
         val serviceFormDrafts by (viewModel.services?.drafts ?: kotlinx.coroutines.flow.flowOf(emptyList()))
             .collectAsStateWithLifecycle(initialValue = emptyList())
         val pendingCancellation = pendingCancellations.firstOrNull { it.flightId == state.selectedFlightId }
@@ -229,7 +231,8 @@ fun FlightsScreen(
             pendingCancellation = pendingCancellation) ?: FlightProgressStatus.Draft
         val ownsWork = state.detail?.hasOwnWork() == true || pendingArrivals.any { it.flightId == state.selectedFlightId } ||
             pendingDepartures.any { it.flightId == state.selectedFlightId } ||
-            pendingServices.any { it.flightId == state.selectedFlightId } || state.detail?.services?.isNotEmpty() == true
+            pendingServices.any { it.flightId == state.selectedFlightId } || pendingTasks.any { it.flightId == state.selectedFlightId } ||
+            state.detail?.services?.isNotEmpty() == true || state.detail?.tasks?.isNotEmpty() == true
         val ownsCancellation = state.detail?.hasOwnCancellation() == true || pendingCancellation != null
         var confirmRevert by rememberSaveable { mutableStateOf(false) }
         var revertError by rememberSaveable { mutableStateOf<String?>(null) }
@@ -300,6 +303,11 @@ fun FlightsScreen(
                         pendingServices = pendingServices.filter { it.flightId == flight.id },
                         serviceFormDraft = serviceFormDrafts.firstOrNull { it.flightId == flight.id },
                         onSaveServices = viewModel::saveServices,
+                        pendingTasks = pendingTasks.filter { it.flightId == flight.id },
+                        onSaveTasks = viewModel::saveTasks,
+                        onReviewTasks = { viewModel.reviewTasks(flight.id) },
+                        loadTaskAttachment = viewModel::taskAttachment,
+                        loadPendingTaskAttachment = viewModel::pendingTaskAttachment,
                         onSaveBatch = viewModel::saveOperationBatch,
                         onReviewServices = { viewModel.reviewServices(flight.id) },
                         loadServiceAttachment = viewModel::serviceAttachment,

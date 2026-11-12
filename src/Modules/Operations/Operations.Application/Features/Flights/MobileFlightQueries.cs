@@ -96,6 +96,11 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
             .Include(f => f.ArrivalSubmissions).Include(f => f.DepartureSubmissions).Include(f => f.CancellationSubmissions)
             .Include(f => f.ServiceRecords).ThenInclude(s => s.Performers)
             .Include(f => f.ServiceRecords).ThenInclude(s => s.Attachments)
+            .Include(f => f.TaskRecords).ThenInclude(t => t.Performers)
+            .Include(f => f.TaskRecords).ThenInclude(t => t.Tools)
+            .Include(f => f.TaskRecords).ThenInclude(t => t.Materials)
+            .Include(f => f.TaskRecords).ThenInclude(t => t.GeneralSupports)
+            .Include(f => f.TaskRecords).ThenInclude(t => t.Attachments)
             .FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
@@ -110,8 +115,8 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
         var allowed = await new MasterDataResolver(masterData).AllowedServiceIdsForStaffAsync(staffId, flight.Station.StationId, cancellationToken);
         var allowedIds = allowed.IsSuccess ? allowed.Value : [];
         return FlightDetails.Map(flight, station.TimeZoneId, staffId,
-            canOperate && !ownCancellation, canOperate && !ownCancellation, canOperate && !ownWork && flight.ServiceRecords.Count == 0,
-            canOperate && flight.CancellationSubmissions.Count == 0 && allowedIds.Count > 0, resolved.Value.UserId, allowedIds);
+            canOperate && !ownCancellation, canOperate && !ownCancellation, canOperate && !ownWork && flight.ServiceRecords.Count == 0 && flight.TaskRecords.Count == 0,
+            canOperate && flight.CancellationSubmissions.Count == 0 && allowedIds.Count > 0, resolved.Value.UserId, allowedIds, canOperate && flight.CancellationSubmissions.Count == 0);
     }
 }
 

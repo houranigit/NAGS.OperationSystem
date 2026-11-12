@@ -37,6 +37,7 @@ class SyncCenterViewModel internal constructor(
     private val departures: com.nags.operations.data.repo.FlightDeparturesRepository? = null,
     private val cancellations: com.nags.operations.data.repo.FlightCancellationsRepository? = null,
     private val services: com.nags.operations.data.repo.FlightServicesRepository? = null,
+    private val tasks: com.nags.operations.data.repo.FlightTasksRepository? = null,
 ) : ViewModel() {
     constructor(
         catalogs: SharedCatalogsRepository,
@@ -50,6 +51,7 @@ class SyncCenterViewModel internal constructor(
         departureRepository: com.nags.operations.data.repo.FlightDeparturesRepository,
         cancellationRepository: com.nags.operations.data.repo.FlightCancellationsRepository? = null,
         serviceRepository: com.nags.operations.data.repo.FlightServicesRepository? = null,
+        taskRepository: com.nags.operations.data.repo.FlightTasksRepository? = null,
     ) : this(
         statuses = catalogs.observeStatus(),
         isSyncing = syncing,
@@ -62,6 +64,7 @@ class SyncCenterViewModel internal constructor(
         departures = departureRepository,
         cancellations = cancellationRepository,
         services = serviceRepository,
+        tasks = taskRepository,
     )
 
     private val scope = coroutineScope ?: viewModelScope
@@ -91,6 +94,16 @@ class SyncCenterViewModel internal constructor(
         try { serviceActionFailed.value = false; action() }
         catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
         catch (_: Exception) { serviceActionFailed.value = true }
+    }
+    val pendingTasks = (tasks?.changes ?: flowOf(emptyList()))
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+    val taskActionFailed = kotlinx.coroutines.flow.MutableStateFlow(false)
+    fun retryTask(flightId: String, recordId: String) = taskAction { tasks?.retry(flightId, recordId) }
+    fun discardTask(flightId: String, recordId: String) = taskAction { tasks?.discard(flightId, recordId); requestRefresh() }
+    private fun taskAction(action: suspend () -> Unit) = scope.launch {
+        try { taskActionFailed.value = false; action() }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { taskActionFailed.value = true }
     }
     val cancellationActionFailed = kotlinx.coroutines.flow.MutableStateFlow(false)
     fun retryCancellation(id: String) = cancellationAction { cancellations?.retry(id) }

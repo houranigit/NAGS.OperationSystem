@@ -1,0 +1,725 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 10,
+    "identityHash": "30e93817cf2052227edb9ad6e23f11df",
+    "entities": [
+      {
+        "tableName": "shared_catalog_snapshots",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ownerSubject` TEXT NOT NULL, `catalog` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, `itemCount` INTEGER NOT NULL, `lastAttemptUtc` TEXT, `lastSuccessUtc` TEXT, `error` TEXT, `permissionDenied` INTEGER NOT NULL, `lastDurationMs` INTEGER, PRIMARY KEY(`ownerSubject`, `catalog`))",
+        "fields": [
+          {
+            "fieldPath": "ownerSubject",
+            "columnName": "ownerSubject",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "catalog",
+            "columnName": "catalog",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payloadJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemCount",
+            "columnName": "itemCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAttemptUtc",
+            "columnName": "lastAttemptUtc",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSuccessUtc",
+            "columnName": "lastSuccessUtc",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "permissionDenied",
+            "columnName": "permissionDenied",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastDurationMs",
+            "columnName": "lastDurationMs",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ownerSubject",
+            "catalog"
+          ]
+        }
+      },
+      {
+        "tableName": "flight_snapshots",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ownerSubject` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, `itemCount` INTEGER NOT NULL, `lastAttemptUtc` TEXT, `lastSuccessUtc` TEXT, `error` TEXT, `permissionDenied` INTEGER NOT NULL, `lastDurationMs` INTEGER, PRIMARY KEY(`ownerSubject`))",
+        "fields": [
+          {
+            "fieldPath": "ownerSubject",
+            "columnName": "ownerSubject",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payloadJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "itemCount",
+            "columnName": "itemCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAttemptUtc",
+            "columnName": "lastAttemptUtc",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSuccessUtc",
+            "columnName": "lastSuccessUtc",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "permissionDenied",
+            "columnName": "permissionDenied",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastDurationMs",
+            "columnName": "lastDurationMs",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ownerSubject"
+          ]
+        }
+      },
+      {
+        "tableName": "flight_detail_cache",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ownerSubject` TEXT NOT NULL, `flightId` TEXT NOT NULL, `payloadJson` TEXT NOT NULL, PRIMARY KEY(`ownerSubject`, `flightId`))",
+        "fields": [
+          {
+            "fieldPath": "ownerSubject",
+            "columnName": "ownerSubject",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightId",
+            "columnName": "flightId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payloadJson",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ownerSubject",
+            "flightId"
+          ]
+        }
+      },
+      {
+        "tableName": "flight_arrival_pending",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ownerSubject` TEXT NOT NULL, `flightId` TEXT NOT NULL, `flightNumber` TEXT NOT NULL, `changeId` TEXT NOT NULL, `inputJson` TEXT NOT NULL, `rowVersion` TEXT NOT NULL, `savedAtUtc` TEXT NOT NULL, `status` TEXT NOT NULL, `error` TEXT, `attemptInputJson` TEXT, `reviewedArrivalJson` TEXT, `needsArrivalComparison` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`ownerSubject`, `flightId`))",
+        "fields": [
+          {
+            "fieldPath": "ownerSubject",
+            "columnName": "ownerSubject",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightId",
+            "columnName": "flightId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightNumber",
+            "columnName": "flightNumber",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changeId",
+            "columnName": "changeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputJson",
+            "columnName": "inputJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rowVersion",
+            "columnName": "rowVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "savedAtUtc",
+            "columnName": "savedAtUtc",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptInputJson",
+            "columnName": "attemptInputJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "reviewedArrivalJson",
+            "columnName": "reviewedArrivalJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "needsArrivalComparison",
+            "columnName": "needsArrivalComparison",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ownerSubject",
+            "flightId"
+          ]
+        }
+      },
+      {
+        "tableName": "flight_departure_pending",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ownerSubject` TEXT NOT NULL, `flightId` TEXT NOT NULL, `flightNumber` TEXT NOT NULL, `staffMemberId` TEXT NOT NULL, `changeId` TEXT NOT NULL, `inputJson` TEXT NOT NULL, `rowVersion` TEXT NOT NULL, `reviewedDepartureJson` TEXT NOT NULL, `savedAtUtc` TEXT NOT NULL, `signatureFile` TEXT, `needsDepartureComparison` INTEGER NOT NULL, `status` TEXT NOT NULL, `error` TEXT, `attemptInputJson` TEXT, `attemptRowVersion` TEXT, `attemptSignatureFile` TEXT, PRIMARY KEY(`ownerSubject`, `flightId`))",
+        "fields": [
+          {
+            "fieldPath": "ownerSubject",
+            "columnName": "ownerSubject",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightId",
+            "columnName": "flightId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightNumber",
+            "columnName": "flightNumber",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "staffMemberId",
+            "columnName": "staffMemberId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changeId",
+            "columnName": "changeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputJson",
+            "columnName": "inputJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rowVersion",
+            "columnName": "rowVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reviewedDepartureJson",
+            "columnName": "reviewedDepartureJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "savedAtUtc",
+            "columnName": "savedAtUtc",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signatureFile",
+            "columnName": "signatureFile",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "needsDepartureComparison",
+            "columnName": "needsDepartureComparison",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptInputJson",
+            "columnName": "attemptInputJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptRowVersion",
+            "columnName": "attemptRowVersion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptSignatureFile",
+            "columnName": "attemptSignatureFile",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ownerSubject",
+            "flightId"
+          ]
+        }
+      },
+      {
+        "tableName": "flight_cancellation_pending",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ownerSubject` TEXT NOT NULL, `flightId` TEXT NOT NULL, `flightNumber` TEXT NOT NULL, `staffMemberId` TEXT NOT NULL, `changeId` TEXT NOT NULL, `operation` TEXT NOT NULL, `inputJson` TEXT, `submissionId` TEXT, `rowVersion` TEXT NOT NULL, `savedAtUtc` TEXT NOT NULL, `status` TEXT NOT NULL, `error` TEXT, `attemptOperation` TEXT, `attemptInputJson` TEXT, `attemptSubmissionId` TEXT, `attemptRowVersion` TEXT, PRIMARY KEY(`ownerSubject`, `flightId`))",
+        "fields": [
+          {
+            "fieldPath": "ownerSubject",
+            "columnName": "ownerSubject",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightId",
+            "columnName": "flightId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightNumber",
+            "columnName": "flightNumber",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "staffMemberId",
+            "columnName": "staffMemberId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changeId",
+            "columnName": "changeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operation",
+            "columnName": "operation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputJson",
+            "columnName": "inputJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "submissionId",
+            "columnName": "submissionId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rowVersion",
+            "columnName": "rowVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "savedAtUtc",
+            "columnName": "savedAtUtc",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptOperation",
+            "columnName": "attemptOperation",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptInputJson",
+            "columnName": "attemptInputJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptSubmissionId",
+            "columnName": "attemptSubmissionId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptRowVersion",
+            "columnName": "attemptRowVersion",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ownerSubject",
+            "flightId"
+          ]
+        }
+      },
+      {
+        "tableName": "flight_service_pending",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ownerSubject` TEXT NOT NULL, `flightId` TEXT NOT NULL, `serviceRecordId` TEXT NOT NULL, `flightNumber` TEXT NOT NULL, `changeId` TEXT NOT NULL, `operation` TEXT NOT NULL, `inputJson` TEXT, `rowVersion` TEXT NOT NULL, `reviewedServiceJson` TEXT, `savedAtUtc` TEXT NOT NULL, `needsServiceComparison` INTEGER NOT NULL, `status` TEXT NOT NULL, `error` TEXT, `attemptOperation` TEXT, `attemptInputJson` TEXT, `attemptRowVersion` TEXT, `attachmentFilesJson` TEXT NOT NULL, `attemptAttachmentFilesJson` TEXT, PRIMARY KEY(`ownerSubject`, `flightId`, `serviceRecordId`))",
+        "fields": [
+          {
+            "fieldPath": "ownerSubject",
+            "columnName": "ownerSubject",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightId",
+            "columnName": "flightId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serviceRecordId",
+            "columnName": "serviceRecordId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightNumber",
+            "columnName": "flightNumber",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changeId",
+            "columnName": "changeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operation",
+            "columnName": "operation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputJson",
+            "columnName": "inputJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rowVersion",
+            "columnName": "rowVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reviewedServiceJson",
+            "columnName": "reviewedServiceJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "savedAtUtc",
+            "columnName": "savedAtUtc",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "needsServiceComparison",
+            "columnName": "needsServiceComparison",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptOperation",
+            "columnName": "attemptOperation",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptInputJson",
+            "columnName": "attemptInputJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptRowVersion",
+            "columnName": "attemptRowVersion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attachmentFilesJson",
+            "columnName": "attachmentFilesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attemptAttachmentFilesJson",
+            "columnName": "attemptAttachmentFilesJson",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ownerSubject",
+            "flightId",
+            "serviceRecordId"
+          ]
+        }
+      },
+      {
+        "tableName": "flight_service_form_drafts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ownerSubject` TEXT NOT NULL, `flightId` TEXT NOT NULL, `formJson` TEXT NOT NULL, `attachmentFilesJson` TEXT NOT NULL, `savedAtUtc` TEXT NOT NULL, PRIMARY KEY(`ownerSubject`, `flightId`))",
+        "fields": [
+          {
+            "fieldPath": "ownerSubject",
+            "columnName": "ownerSubject",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightId",
+            "columnName": "flightId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formJson",
+            "columnName": "formJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attachmentFilesJson",
+            "columnName": "attachmentFilesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "savedAtUtc",
+            "columnName": "savedAtUtc",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ownerSubject",
+            "flightId"
+          ]
+        }
+      },
+      {
+        "tableName": "flight_task_pending",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`ownerSubject` TEXT NOT NULL, `flightId` TEXT NOT NULL, `taskRecordId` TEXT NOT NULL, `flightNumber` TEXT NOT NULL, `changeId` TEXT NOT NULL, `operation` TEXT NOT NULL, `inputJson` TEXT, `rowVersion` TEXT NOT NULL, `reviewedTaskJson` TEXT, `savedAtUtc` TEXT NOT NULL, `needsTaskComparison` INTEGER NOT NULL, `status` TEXT NOT NULL, `error` TEXT, `attemptOperation` TEXT, `attemptInputJson` TEXT, `attemptRowVersion` TEXT, `attachmentFilesJson` TEXT NOT NULL, `attemptAttachmentFilesJson` TEXT, PRIMARY KEY(`ownerSubject`, `flightId`, `taskRecordId`))",
+        "fields": [
+          {
+            "fieldPath": "ownerSubject",
+            "columnName": "ownerSubject",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightId",
+            "columnName": "flightId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "taskRecordId",
+            "columnName": "taskRecordId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "flightNumber",
+            "columnName": "flightNumber",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changeId",
+            "columnName": "changeId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operation",
+            "columnName": "operation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputJson",
+            "columnName": "inputJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rowVersion",
+            "columnName": "rowVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reviewedTaskJson",
+            "columnName": "reviewedTaskJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "savedAtUtc",
+            "columnName": "savedAtUtc",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "needsTaskComparison",
+            "columnName": "needsTaskComparison",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "error",
+            "columnName": "error",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptOperation",
+            "columnName": "attemptOperation",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptInputJson",
+            "columnName": "attemptInputJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attemptRowVersion",
+            "columnName": "attemptRowVersion",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "attachmentFilesJson",
+            "columnName": "attachmentFilesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attemptAttachmentFilesJson",
+            "columnName": "attemptAttachmentFilesJson",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "ownerSubject",
+            "flightId",
+            "taskRecordId"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '30e93817cf2052227edb9ad6e23f11df')"
+    ]
+  }
+}

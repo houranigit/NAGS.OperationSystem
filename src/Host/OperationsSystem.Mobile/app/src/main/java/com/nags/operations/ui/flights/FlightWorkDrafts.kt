@@ -7,7 +7,7 @@ import java.util.UUID
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** Local form-draft values; Services use a separate UTC API contract when started. */
+/** Local form-draft values; started work uses separate UTC API contracts. */
 @Serializable
 internal data class FlightWorkDrafts(
     val services: List<FlightServiceDraft> = emptyList(),
@@ -83,6 +83,8 @@ internal data class FlightResourceDraft(
     val resourceName: String = "",
     val period: FlightWorkPeriod = FlightWorkPeriod(),
     val remarks: String = "",
+    val calculationType: Int? = null,
+    val quantity: String = "",
 )
 
 /** Selected media, durable pending media, or a scoped preview of an uploaded attachment. */

@@ -8,6 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.nags.operations.data.db.dao.FlightCacheDao
 import com.nags.operations.data.db.dao.FlightCancellationDao
+import com.nags.operations.data.db.dao.FlightTaskDao
+import com.nags.operations.data.db.entities.FlightTaskPendingEntity
 import com.nags.operations.data.db.dao.FlightServiceDao
 import com.nags.operations.data.db.entities.FlightServicePendingEntity
 import com.nags.operations.data.db.entities.FlightServiceFormDraftEntity
@@ -22,8 +24,8 @@ import com.nags.operations.data.db.entities.FlightSnapshotEntity
 import com.nags.operations.data.db.entities.SharedCatalogSnapshotEntity
 
 /** Mobile caches and operational intent remain separate from notifications and the untouched legacy database. */
-@Database(version = 9, exportSchema = true, entities = [
-    SharedCatalogSnapshotEntity::class, FlightSnapshotEntity::class, FlightDetailCacheEntity::class, FlightArrivalPendingEntity::class, FlightDeparturePendingEntity::class, FlightCancellationPendingEntity::class, FlightServicePendingEntity::class, FlightServiceFormDraftEntity::class,
+@Database(version = 10, exportSchema = true, entities = [
+    SharedCatalogSnapshotEntity::class, FlightSnapshotEntity::class, FlightDetailCacheEntity::class, FlightArrivalPendingEntity::class, FlightDeparturePendingEntity::class, FlightCancellationPendingEntity::class, FlightServicePendingEntity::class, FlightServiceFormDraftEntity::class, FlightTaskPendingEntity::class,
 ])
 abstract class CatalogDatabase : RoomDatabase() {
     abstract fun sharedCatalogDao(): SharedCatalogDao
@@ -32,6 +34,7 @@ abstract class CatalogDatabase : RoomDatabase() {
     abstract fun flightDepartureDao(): FlightDepartureDao
     abstract fun flightCancellationDao(): FlightCancellationDao
     abstract fun flightServiceDao(): FlightServiceDao
+    abstract fun flightTaskDao(): FlightTaskDao
 
     companion object {
         @Volatile private var instance: CatalogDatabase? = null
@@ -111,12 +114,19 @@ abstract class CatalogDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Task intent is additive. Earlier queues, form drafts and their files remain owned and intact.
+                db.execSQL("CREATE TABLE IF NOT EXISTS flight_task_pending (ownerSubject TEXT NOT NULL, flightId TEXT NOT NULL, taskRecordId TEXT NOT NULL, flightNumber TEXT NOT NULL, changeId TEXT NOT NULL, operation TEXT NOT NULL, inputJson TEXT, rowVersion TEXT NOT NULL, reviewedTaskJson TEXT, savedAtUtc TEXT NOT NULL, needsTaskComparison INTEGER NOT NULL, status TEXT NOT NULL, error TEXT, attemptOperation TEXT, attemptInputJson TEXT, attemptRowVersion TEXT, attachmentFilesJson TEXT NOT NULL, attemptAttachmentFilesJson TEXT, PRIMARY KEY(ownerSubject, flightId, taskRecordId))")
+            }
+        }
+
         fun get(context: Context): CatalogDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 CatalogDatabase::class.java,
                 "shared-catalogs.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10).build().also { instance = it }
         }
     }
 }

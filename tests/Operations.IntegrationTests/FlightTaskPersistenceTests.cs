@@ -34,7 +34,7 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
             actor, Now.AddHours(2)).Value;
         var service = flight.AddService(new ServiceSnapshot(Guid.NewGuid(), "Actual service"), "SERVICE-REF",
             Window(Now.AddHours(1)), "Service notes", actor, Now.AddMinutes(2)).Value;
-        var servicePerformer = flight.AddServicePerformer(service.Id, employee, Window(), actor, Now.AddMinutes(2)).Value;
+        var servicePerformer = flight.AddServicePerformer(service.Id, employee, Window(Now.AddHours(1)), actor, Now.AddMinutes(2)).Value;
         var serviceAttachments = new[]
         {
             (Id: Guid.NewGuid(), Details: Attachment()),
@@ -279,6 +279,10 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
         var changedMaterial = new MaterialSnapshot(Guid.NewGuid(), "Approved lubricant");
         var changedSupport = new GeneralSupportSnapshot(Guid.NewGuid(), "External ground power");
         var changedEmployee = new StaffMemberSnapshot(Guid.NewGuid(), "Replacement employee", "E101");
+        // Complete existing periods before supplying the normal task End.
+        reloaded.UpdateTaskTool(task.Id, firstTool.Id, tool, closedUsage, "Tool notes", closer, Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
+        reloaded.UpdateTaskMaterial(task.Id, secondMaterial.Id, durationMaterial, closedUsage, null, closer, Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
+        reloaded.UpdateTaskPerformer(task.Id, firstPerformer.Id, employee, closedWindow, "Employee notes", closer, Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
         reloaded.UpdateTask(task.Id, FlightTaskType.Minor, chapter, "UPDATED-REF", closedWindow, "Updated task notes",
             closer, Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
         reloaded.UpdateTaskTool(task.Id, firstTool.Id, changedTool, closedUsage, "Updated tool notes", editor, Now.AddMinutes(5))
@@ -348,6 +352,7 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
         var actor = Guid.NewGuid();
         var flight = ScheduleFlight();
         var task = AddGraph(flight, actor, Now.AddMinutes(1));
+        CloseGraphPeriods(flight, task, actor, Window(Now.AddHours(1)), Now.AddMinutes(1));
         flight.UpdateTask(task.Id, task.TaskType, null, null, Window(Now.AddHours(1)), null, actor, Now.AddMinutes(1))
             .IsSuccess.ShouldBeTrue();
         db.Flights.Add(flight);
@@ -514,7 +519,9 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
         var actor = Guid.NewGuid();
         var flight = ScheduleFlight();
         var task = AddGraph(flight, actor, Now.AddMinutes(1));
-        flight.UpdateTask(task.Id, task.TaskType, task.AtaChapter, task.CustomerReferenceNumber, Window(Now.AddHours(1)),
+        var closed = Window(Now.AddHours(1));
+        CloseGraphPeriods(flight, task, actor, closed, Now.AddMinutes(1));
+        flight.UpdateTask(task.Id, task.TaskType, task.AtaChapter, task.CustomerReferenceNumber, closed,
             task.Notes, actor, Now.AddMinutes(1)).IsSuccess.ShouldBeTrue();
         db.Flights.Add(flight);
         await db.SaveChangesAsync();
@@ -869,6 +876,14 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
         flight.AddTaskPerformer(task.Id, Employee(), Window(), null, actor, now).IsSuccess.ShouldBeTrue();
         flight.AddTaskAttachment(task.Id, Attachment(), actor, now).IsSuccess.ShouldBeTrue();
         return task;
+    }
+
+    private static void CloseGraphPeriods(Flight flight, FlightTask task, Guid actor, TimeWindow closed, DateTimeOffset now)
+    {
+        foreach (var item in task.Tools) flight.UpdateTaskTool(task.Id, item.Id, item.Tool, Usage(closed.ToUtc), item.Notes, actor, now).IsSuccess.ShouldBeTrue();
+        foreach (var item in task.Materials) flight.UpdateTaskMaterial(task.Id, item.Id, item.Material, Usage(closed.ToUtc), item.Notes, actor, now).IsSuccess.ShouldBeTrue();
+        foreach (var item in task.GeneralSupports) flight.UpdateTaskGeneralSupport(task.Id, item.Id, item.GeneralSupport, Usage(closed.ToUtc), item.Notes, actor, now).IsSuccess.ShouldBeTrue();
+        foreach (var item in task.Performers) flight.UpdateTaskPerformer(task.Id, item.Id, item.Employee, closed, item.Notes, actor, now).IsSuccess.ShouldBeTrue();
     }
 
     private static async Task<int> SaveAsync(OperationsDbContext db, bool synchronousSave) =>

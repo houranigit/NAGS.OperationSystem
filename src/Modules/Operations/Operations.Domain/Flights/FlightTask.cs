@@ -36,17 +36,20 @@ public sealed class FlightTask : Entity<Guid>
     public IReadOnlyList<FlightTaskGeneralSupport> GeneralSupports => _generalSupports.AsReadOnly();
     public IReadOnlyList<FlightTaskPerformer> Performers => _performers.AsReadOnly();
     public IReadOnlyList<FlightTaskAttachment> Attachments => _attachments.AsReadOnly();
+    public bool HasOtherUserEnd => Window.ToUtc is not null && EndedByUserId is { } closer && closer != CreatedByUserId;
 
     internal static Result<FlightTask> Create(Guid flightId, FlightTaskType taskType, AtaChapterSnapshot? ataChapter,
-        string? customerReferenceNumber, TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
+        string? customerReferenceNumber, TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null, Guid? id = null)
     {
+        if (id == Guid.Empty)
+            return Error.Validation("Task record ID is required.", "Operations.FlightTask.IdRequired");
         var check = ValidateDetails(taskType, ataChapter, customerReferenceNumber, window, notes);
         if (check.IsFailure)
             return check.Error;
 
         return new FlightTask
         {
-            Id = Guid.NewGuid(),
+            Id = id ?? Guid.NewGuid(),
             FlightId = flightId,
             ReturnToRampId = returnToRampId,
             TaskType = taskType,
@@ -92,6 +95,12 @@ public sealed class FlightTask : Entity<Guid>
                 return period.Error;
         }
 
+        if (ReturnToRampId is null && window!.ToUtc is not null)
+        {
+            if (_performers.Any(item => item.Window.ToUtc is null)) return OpenPerformerPeriods();
+            if (_tools.Any(item => IsOpenDuration(item.Usage)) || _materials.Any(item => IsOpenDuration(item.Usage)) ||
+                _generalSupports.Any(item => IsOpenDuration(item.Usage))) return OpenResourcePeriods();
+        }
         var reference = NormalizeOptional(customerReferenceNumber);
         var normalizedNotes = NormalizeOptional(notes);
         if (TaskType == taskType && AtaChapter == ataChapter && Window == window
@@ -109,15 +118,19 @@ public sealed class FlightTask : Entity<Guid>
         return true;
     }
 
-    internal Result<FlightTaskTool> AddTool(ToolSnapshot? item, ResourceUsage? usage, string? notes)
+    internal Result<FlightTaskTool> AddTool(ToolSnapshot? item, ResourceUsage? usage, string? notes, Guid? id = null)
     {
+        if (id == Guid.Empty)
+            return Error.Validation("Tool record ID is required.", "Operations.FlightTask.ToolIdRequired");
+        if (id.HasValue && _tools.Any(record => record.Id == id.Value))
+            return Error.Conflict("Tool record ID is already in use.", "Operations.FlightTask.ToolIdConflict");
         var check = ValidateTool(item, usage, notes);
         if (check.IsFailure)
             return check.Error;
         if (_tools.Any(record => record.Tool.ToolId == item!.ToolId))
             return Error.Validation("Duplicate tool rows are not allowed within one task.", "Operations.ResourceUsage.ToolDuplicate");
 
-        var record = new FlightTaskTool(Guid.NewGuid(), Id, item!, usage!, notes);
+        var record = new FlightTaskTool(id ?? Guid.NewGuid(), Id, item!, usage!, notes);
         _tools.Add(record);
         return record;
     }
@@ -159,18 +172,25 @@ public sealed class FlightTask : Entity<Guid>
         var description = OperationalWorkValidation.Description(item.ToolId, WellKnownMasterDataIds.UnknownTool, notes, "Tool");
         if (description.IsFailure)
             return description;
-        return OperationalWorkValidation.ResourceWindow(usage, Window, "Tool");
+        var period = OperationalWorkValidation.ResourceWindow(usage, Window, "Tool");
+        if (period.IsFailure) return period;
+        if (ReturnToRampId is null && Window.ToUtc is not null && IsOpenDuration(usage)) return OpenResourcePeriods();
+        return Result.Success();
     }
 
-    internal Result<FlightTaskMaterial> AddMaterial(MaterialSnapshot? item, ResourceUsage? usage, string? notes)
+    internal Result<FlightTaskMaterial> AddMaterial(MaterialSnapshot? item, ResourceUsage? usage, string? notes, Guid? id = null)
     {
+        if (id == Guid.Empty)
+            return Error.Validation("Material record ID is required.", "Operations.FlightTask.MaterialIdRequired");
+        if (id.HasValue && _materials.Any(record => record.Id == id.Value))
+            return Error.Conflict("Material record ID is already in use.", "Operations.FlightTask.MaterialIdConflict");
         var check = ValidateMaterial(item, usage, notes);
         if (check.IsFailure)
             return check.Error;
         if (_materials.Any(record => record.Material.MaterialId == item!.MaterialId))
             return Error.Validation("Duplicate material rows are not allowed within one task.", "Operations.ResourceUsage.MaterialDuplicate");
 
-        var record = new FlightTaskMaterial(Guid.NewGuid(), Id, item!, usage!, notes);
+        var record = new FlightTaskMaterial(id ?? Guid.NewGuid(), Id, item!, usage!, notes);
         _materials.Add(record);
         return record;
     }
@@ -212,18 +232,25 @@ public sealed class FlightTask : Entity<Guid>
         var description = OperationalWorkValidation.Description(item.MaterialId, WellKnownMasterDataIds.UnknownMaterial, notes, "Material");
         if (description.IsFailure)
             return description;
-        return OperationalWorkValidation.ResourceWindow(usage, Window, "Material");
+        var period = OperationalWorkValidation.ResourceWindow(usage, Window, "Material");
+        if (period.IsFailure) return period;
+        if (ReturnToRampId is null && Window.ToUtc is not null && IsOpenDuration(usage)) return OpenResourcePeriods();
+        return Result.Success();
     }
 
-    internal Result<FlightTaskGeneralSupport> AddGeneralSupport(GeneralSupportSnapshot? item, ResourceUsage? usage, string? notes)
+    internal Result<FlightTaskGeneralSupport> AddGeneralSupport(GeneralSupportSnapshot? item, ResourceUsage? usage, string? notes, Guid? id = null)
     {
+        if (id == Guid.Empty)
+            return Error.Validation("GeneralSupport record ID is required.", "Operations.FlightTask.GeneralSupportIdRequired");
+        if (id.HasValue && _generalSupports.Any(record => record.Id == id.Value))
+            return Error.Conflict("GeneralSupport record ID is already in use.", "Operations.FlightTask.GeneralSupportIdConflict");
         var check = ValidateGeneralSupport(item, usage, notes);
         if (check.IsFailure)
             return check.Error;
         if (_generalSupports.Any(record => record.GeneralSupport.GeneralSupportId == item!.GeneralSupportId))
             return Error.Validation("Duplicate general support rows are not allowed within one task.", "Operations.ResourceUsage.GeneralSupportDuplicate");
 
-        var record = new FlightTaskGeneralSupport(Guid.NewGuid(), Id, item!, usage!, notes);
+        var record = new FlightTaskGeneralSupport(id ?? Guid.NewGuid(), Id, item!, usage!, notes);
         _generalSupports.Add(record);
         return record;
     }
@@ -265,11 +292,18 @@ public sealed class FlightTask : Entity<Guid>
         var description = OperationalWorkValidation.Description(item.GeneralSupportId, WellKnownMasterDataIds.UnknownGeneralSupport, notes, "General support");
         if (description.IsFailure)
             return description;
-        return OperationalWorkValidation.ResourceWindow(usage, Window, "GeneralSupport");
+        var period = OperationalWorkValidation.ResourceWindow(usage, Window, "GeneralSupport");
+        if (period.IsFailure) return period;
+        if (ReturnToRampId is null && Window.ToUtc is not null && IsOpenDuration(usage)) return OpenResourcePeriods();
+        return Result.Success();
     }
 
-    internal Result<FlightTaskPerformer> AddPerformer(StaffMemberSnapshot? item, TimeWindow? window, string? notes)
+    internal Result<FlightTaskPerformer> AddPerformer(StaffMemberSnapshot? item, TimeWindow? window, string? notes, Guid? id = null)
     {
+        if (id == Guid.Empty)
+            return Error.Validation("Performer record ID is required.", "Operations.FlightTask.PerformerIdRequired");
+        if (id.HasValue && _performers.Any(record => record.Id == id.Value))
+            return Error.Conflict("Performer record ID is already in use.", "Operations.FlightTask.PerformerIdConflict");
         var check = ValidatePerformer(item, window, notes);
         if (check.IsFailure)
             return check.Error;
@@ -277,7 +311,7 @@ public sealed class FlightTask : Entity<Guid>
         if (_performers.Any(record => record.Employee.StaffMemberId == item!.StaffMemberId))
             return OperationalWorkValidation.DuplicateEmployee();
 
-        var record = new FlightTaskPerformer(Guid.NewGuid(), Id, item!, window!, notes);
+        var record = new FlightTaskPerformer(id ?? Guid.NewGuid(), Id, item!, window!, notes);
         _performers.Add(record);
         return record;
     }
@@ -317,18 +351,25 @@ public sealed class FlightTask : Entity<Guid>
         var description = OperationalWorkValidation.Notes(notes);
         if (description.IsFailure)
             return description;
-        return OperationalWorkValidation.EmployeeWindow(window, Window);
+        var period = OperationalWorkValidation.EmployeeWindow(window, Window);
+        if (period.IsFailure) return period;
+        if (ReturnToRampId is null && Window.ToUtc is not null && window.ToUtc is null) return OpenPerformerPeriods();
+        return Result.Success();
     }
 
-    internal Result<FlightTaskAttachment> AddAttachment(AttachmentDetails? details, Guid userId, DateTimeOffset now)
+    internal Result<FlightTaskAttachment> AddAttachment(AttachmentDetails? details, Guid userId, DateTimeOffset now, Guid? id = null)
     {
+        if (id == Guid.Empty)
+            return Error.Validation("Attachment record ID is required.", "Operations.FlightTask.AttachmentIdRequired");
+        if (id.HasValue && _attachments.Any(record => record.Id == id.Value))
+            return Error.Conflict("Attachment record ID is already in use.", "Operations.FlightTask.AttachmentIdConflict");
         if (details is null)
             return Error.Validation("Attachment details are required.", "Operations.FlightTask.AttachmentRequired");
 
         if (_attachments.Count >= MaxAttachments)
             return Error.Validation("A task can have at most 10 attachments.", "Operations.WorkOrder.AttachmentLimitExceeded");
 
-        var attachment = new FlightTaskAttachment(Guid.NewGuid(), Id, details, userId, now);
+        var attachment = new FlightTaskAttachment(id ?? Guid.NewGuid(), Id, details, userId, now);
         _attachments.Add(attachment);
         return attachment;
     }
@@ -340,6 +381,64 @@ public sealed class FlightTask : Entity<Guid>
             return Error.NotFound("Task attachment was not found.", "Operations.FlightTask.AttachmentNotFound");
         _attachments.Remove(attachment);
         return attachment;
+    }
+
+    internal bool ReplaceDetailsAndChildren(FlightTask replacement, Guid userId)
+    {
+        var changed = TaskType != replacement.TaskType || AtaChapter != replacement.AtaChapter || Window != replacement.Window ||
+            CustomerReferenceNumber != replacement.CustomerReferenceNumber || Notes != replacement.Notes;
+        if (Window.ToUtc != replacement.Window.ToUtc)
+            EndedByUserId = replacement.Window.ToUtc.HasValue ? userId : null;
+        TaskType = replacement.TaskType;
+        AtaChapter = replacement.AtaChapter;
+        Window = replacement.Window;
+        CustomerReferenceNumber = replacement.CustomerReferenceNumber;
+        Notes = replacement.Notes;
+        changed |= _performers.RemoveAll(old => replacement._performers.All(item => item.Id != old.Id)) > 0;
+        foreach (var item in replacement._performers)
+        {
+            var old = _performers.SingleOrDefault(record => record.Id == item.Id);
+            if (old is null) { _performers.Add(item); changed = true; }
+            else if (old.Employee != item.Employee || old.Window != item.Window || old.Notes != item.Notes)
+            {
+                old.Update(item.Employee, item.Window, item.Notes);
+                changed = true;
+            }
+        }
+        changed |= _tools.RemoveAll(old => replacement._tools.All(item => item.Id != old.Id)) > 0;
+        foreach (var item in replacement._tools)
+        {
+            var old = _tools.SingleOrDefault(record => record.Id == item.Id);
+            if (old is null) { _tools.Add(item); changed = true; }
+            else if (old.Tool != item.Tool || old.Usage != item.Usage || old.Notes != item.Notes)
+            {
+                old.Update(item.Tool, item.Usage, item.Notes);
+                changed = true;
+            }
+        }
+        changed |= _materials.RemoveAll(old => replacement._materials.All(item => item.Id != old.Id)) > 0;
+        foreach (var item in replacement._materials)
+        {
+            var old = _materials.SingleOrDefault(record => record.Id == item.Id);
+            if (old is null) { _materials.Add(item); changed = true; }
+            else if (old.Material != item.Material || old.Usage != item.Usage || old.Notes != item.Notes)
+            {
+                old.Update(item.Material, item.Usage, item.Notes);
+                changed = true;
+            }
+        }
+        changed |= _generalSupports.RemoveAll(old => replacement._generalSupports.All(item => item.Id != old.Id)) > 0;
+        foreach (var item in replacement._generalSupports)
+        {
+            var old = _generalSupports.SingleOrDefault(record => record.Id == item.Id);
+            if (old is null) { _generalSupports.Add(item); changed = true; }
+            else if (old.GeneralSupport != item.GeneralSupport || old.Usage != item.Usage || old.Notes != item.Notes)
+            {
+                old.Update(item.GeneralSupport, item.Usage, item.Notes);
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     internal void MarkUpdated(Guid userId, DateTimeOffset now)
@@ -365,6 +464,10 @@ public sealed class FlightTask : Entity<Guid>
 
     private static AtaChapterSnapshot? CopyAtaChapter(AtaChapterSnapshot? chapter) =>
         chapter is null ? null : new AtaChapterSnapshot(chapter.AtaChapterId, chapter.Code, chapter.Title);
+
+    private static bool IsOpenDuration(ResourceUsage usage) => usage.CalculationType == MasterData.Contracts.Resources.ResourceCalculationType.Duration && usage.ToUtc is null;
+    internal static Error OpenPerformerPeriods() => Error.Validation("Close every employee work period before closing the task.", "Operations.FlightTask.OpenPerformerPeriods");
+    internal static Error OpenResourcePeriods() => Error.Validation("Close every duration resource period before closing the task.", "Operations.FlightTask.OpenResourcePeriods");
 
     private static string? NormalizeOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

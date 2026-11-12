@@ -76,6 +76,15 @@ internal static class FlightEndpoints
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.Flights.Invite);
 
+        mobile.MapGet("/{id:guid}/tasks/{recordId:guid}/attachments/{attachmentId:guid}", async (
+            Guid id, Guid recordId, Guid attachmentId, DateTimeOffset expectedUploadedAt, HttpResponse response, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetMobileFlightTaskAttachmentQuery(id, recordId, attachmentId, expectedUploadedAt), ct);
+            if (result.IsFailure) return ApiResults.Problem(result.Error);
+            response.Headers.CacheControl = "private, no-store";
+            return Results.File(result.Value.Content, result.Value.ContentType, fileDownloadName: result.Value.FileName, enableRangeProcessing: false);
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
         mobile.MapGet("/{id:guid}/services/{recordId:guid}/attachments/{attachmentId:guid}", async (
             Guid id, Guid recordId, Guid attachmentId, DateTimeOffset expectedUploadedAt, HttpResponse response, ISender sender, CancellationToken ct) =>
         {
@@ -118,6 +127,42 @@ internal static class FlightEndpoints
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
             var result = await sender.Send(new DeleteFlightServiceCommand(id, recordId, rowVersion), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Operate);
+
+        flights.MapPut("/{id:guid}/tasks/{recordId:guid}", async (Guid id, Guid recordId, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+            // Configure the server before JSON is read: one valid 25 MB voice file exceeds
+            // Kestrel's default body cap after base64 encoding. Keep the aggregate bounded.
+            var bodyLimit = http.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (bodyLimit is { IsReadOnly: false }) bodyLimit.MaxRequestBodySize = FlightServiceAttachmentPolicy.MaxJsonRequestBytes;
+            if (http.ContentLength > FlightServiceAttachmentPolicy.MaxJsonRequestBytes)
+                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+            if (!http.HasJsonContentType()) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+            SaveFlightTaskRequest? request;
+            try { request = await http.ReadFromJsonAsync<SaveFlightTaskRequest>(ct); }
+            catch (JsonException)
+            {
+                return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("The task input is invalid.", "Operations.FlightTask.RequestInvalid"));
+            }
+            catch (BadHttpRequestException error)
+            {
+                return Results.StatusCode(error.StatusCode);
+            }
+            if (request is null)
+                return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("Task input is required.", "Operations.FlightTask.RequestInvalid"));
+            var result = await sender.Send(new SaveFlightTaskCommand(id, recordId, request, rowVersion), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Operate)
+            .WithMetadata(new RequestSizeLimitAttribute(FlightServiceAttachmentPolicy.MaxJsonRequestBytes));
+
+        flights.MapDelete("/{id:guid}/tasks/{recordId:guid}", async (Guid id, Guid recordId, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+            var result = await sender.Send(new DeleteFlightTaskCommand(id, recordId, rowVersion), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.Operate);
 

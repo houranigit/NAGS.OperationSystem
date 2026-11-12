@@ -116,10 +116,10 @@ public sealed class FlightTaskTests
         flight.UpdateTask(task.Id, FlightTaskType.Minor, Chapter(), "REF",
             TimeWindow.Create(TestData.Now.AddMinutes(-5), closedWindow.ToUtc).Value, "Notes", editor,
             TestData.Now.AddHours(2)).IsSuccess.ShouldBeTrue();
-        var tool = flight.AddTaskTool(task.Id, Tool(), Duration(), "Tool note", editor, TestData.Now.AddHours(2)).Value;
+        var tool = flight.AddTaskTool(task.Id, Tool(), Duration(to: closedWindow.ToUtc), "Tool note", editor, TestData.Now.AddHours(2)).Value;
         var material = flight.AddTaskMaterial(task.Id, Material(), Quantity(), "Material note", editor, TestData.Now.AddHours(2)).Value;
         var support = flight.AddTaskGeneralSupport(task.Id, Support(), Quantity(), "Support note", editor, TestData.Now.AddHours(2)).Value;
-        var performer = flight.AddTaskPerformer(task.Id, TestData.Staff(), Window(), "Work note", editor, TestData.Now.AddHours(2)).Value;
+        var performer = flight.AddTaskPerformer(task.Id, TestData.Staff(), closedWindow, "Work note", editor, TestData.Now.AddHours(2)).Value;
         var attachment = flight.AddTaskAttachment(task.Id, Attachment(), editor, TestData.Now.AddHours(2)).Value;
         flight.RemoveTaskTool(task.Id, tool.Id, editor, TestData.Now.AddHours(2)).IsSuccess.ShouldBeTrue();
         flight.RemoveTaskMaterial(task.Id, material.Id, editor, TestData.Now.AddHours(2)).IsSuccess.ShouldBeTrue();
@@ -281,15 +281,15 @@ public sealed class FlightTaskTests
         var window = TimeWindow.Create(TestData.Now, TestData.Now.AddHours(1)).Value;
         var creator = Guid.NewGuid();
         var task = flight.AddTask(FlightTaskType.Major, chapter, null, window, null, creator, TestData.Now).Value;
-        var tool = flight.AddTaskTool(task.Id, Tool(), Duration(), null, creator, TestData.Now.AddMinutes(1)).Value;
+        var tool = flight.AddTaskTool(task.Id, Tool(), Duration(to: window.ToUtc), null, creator, TestData.Now.AddMinutes(1)).Value;
         var material = flight.AddTaskMaterial(task.Id, Material(), Quantity(), null, creator, TestData.Now.AddMinutes(1)).Value;
         var support = flight.AddTaskGeneralSupport(task.Id, Support(), Quantity(), null, creator, TestData.Now.AddMinutes(1)).Value;
-        var performer = flight.AddTaskPerformer(task.Id, TestData.Staff(), Window(), null, creator, TestData.Now.AddMinutes(1)).Value;
+        var performer = flight.AddTaskPerformer(task.Id, TestData.Staff(), window, null, creator, TestData.Now.AddMinutes(1)).Value;
         var attachment = flight.AddTaskAttachment(task.Id, Attachment(), creator, TestData.Now.AddMinutes(1)).Value;
         var previousTime = flight.UpdatedAtUtc;
         var editor = Guid.NewGuid();
         var now = TestData.Now.AddMinutes(2);
-        var equivalentWindow = TimeWindow.Create(TestData.Now.ToOffset(TimeSpan.FromHours(3)), null).Value;
+        var equivalentWindow = TimeWindow.Create(TestData.Now.ToOffset(TimeSpan.FromHours(3)), window.ToUtc!.Value.ToOffset(TimeSpan.FromHours(3))).Value;
 
         flight.UpdateTask(task.Id, task.TaskType, new AtaChapterSnapshot(chapter.AtaChapterId, chapter.Code, chapter.Title),
             " ", TimeWindow.Create(TestData.Now.ToOffset(TimeSpan.FromHours(3)),

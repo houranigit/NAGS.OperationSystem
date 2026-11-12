@@ -34,6 +34,7 @@ class FlightServicesRepositoryTest {
     private var fail: Exception? = null
     private var arrival = false
     private var departureAttempt = false
+    private var siblingAttempt = false
     private var cancellation = false
     private var predecessor: String? = null
     private var localBounds: FlightServiceActualBounds? = null
@@ -70,9 +71,37 @@ class FlightServicesRepositoryTest {
             if (reviewed == v1) predecessor ?: reviewed else reviewed
         }, fetchFlight = { live }, now = { now }, onAcknowledgedBeforeDelete = { a, b, c -> beforeDelete(a, b, c) },
         hasSavedCancellation = { cancellation }, onAttachmentsAcknowledged = { a, b, c -> cacheAcknowledged(a, b, c) },
-        hasUnacknowledgedDepartureAttempt = { departureAttempt }, effectiveLocalActuals = {
+        hasUnacknowledgedDepartureAttempt = { departureAttempt }, hasUnacknowledgedSiblingWork = { siblingAttempt }, effectiveLocalActuals = {
             localBounds ?: FlightServiceActualBounds(it.visibleArrival()?.ata, it.visibleDeparture()?.atd)
         })
+
+    @Test fun unknownTaskAttemptDefersFreshServiceWithoutFreezingOrChangingItsInput() = runBlocking {
+        val repo = repository()
+        repo.save(flight, record, input)
+        val queued = dao.rows(owner.value!!).single()
+        online = true; siblingAttempt = true
+        assertFalse(repo.syncPending())
+        assertTrue(sent.isEmpty())
+        assertEquals(queued, dao.rows(owner.value!!).single())
+        siblingAttempt = false
+        assertFalse(repo.syncPending())
+        assertEquals(Json.decodeFromString<SaveFlightServiceRequest>(queued.inputJson!!), sent.single().second)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun unknownTaskAttemptDoesNotPreventExactServiceAttemptReplay() = runBlocking {
+        val repo = repository()
+        repo.save(flight, record, input)
+        online = true; fail = IOException("Response unavailable")
+        assertTrue(repo.syncPending())
+        val frozen = dao.rows(owner.value!!).single().attemptInputJson
+        assertNotNull(frozen)
+        fail = null; siblingAttempt = true
+        assertFalse(repo.syncPending())
+        assertEquals(2, sent.size)
+        assertEquals(sent.first(), sent.last())
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
 
     @Test fun offlineBatchIsDurableAndOnlyLatestUnsentInputUploadsAfterRestart() = runBlocking {
         repository().saveBatch(flight, listOf(FlightServiceChange(record, input), FlightServiceChange(second, input)))
@@ -376,6 +405,19 @@ class FlightServicesRepositoryTest {
         assertTrue(live.services.isEmpty())
         assertEquals(1, dao.rows("api|account").size)
         assertTrue(repo.changes.first().isEmpty())
+    }
+
+    @Test fun taskPermissionRetainsSharedDraftWithoutGrantingServicePublication() = runBlocking {
+        val taskOnly = flight.copy(canSaveServices = false, allowedServiceIds = null, canSaveTasks = true)
+        val draft = FlightServiceFormDraft("""{"tasks":[{"id":"$record","reference":"keep"}]}""")
+        val repo = repository()
+        repo.saveBatch(taskOnly, emptyList(), draft)
+        assertEquals(draft.json, repository().formDraft(flight.id)!!.formJson)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+        try { repo.save(taskOnly, record, input); fail("Expected service access restriction") }
+        catch (_: IllegalStateException) { }
+        assertEquals(draft.json, repository().formDraft(flight.id)!!.formJson)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
     }
 
     @Test fun unstartedPlannedRowsAndExplicitRemovalsSurviveRestartWithoutPendingHttpWork() = runBlocking {

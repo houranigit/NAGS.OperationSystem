@@ -97,6 +97,21 @@ fun SyncCenterScreen(
         dismissButton = { TextButton(onClick = { discardServiceFlightId = null; discardServiceRecordId = null }) {
             Text(stringResource(R.string.flights_cancel))
         } })
+    val pendingTasks by viewModel.pendingTasks.collectAsStateWithLifecycle()
+    val taskActionFailed by viewModel.taskActionFailed.collectAsStateWithLifecycle()
+    var discardTaskFlightId by rememberSaveable { mutableStateOf<String?>(null) }
+    var discardTaskRecordId by rememberSaveable { mutableStateOf<String?>(null) }
+    if (discardTaskFlightId != null && discardTaskRecordId != null) AlertDialog(
+        onDismissRequest = { discardTaskFlightId = null; discardTaskRecordId = null },
+        title = { Text(stringResource(R.string.task_sync_discard)) },
+        text = { Text(stringResource(R.string.task_sync_discard_message)) },
+        confirmButton = { TextButton(onClick = {
+            viewModel.discardTask(checkNotNull(discardTaskFlightId), checkNotNull(discardTaskRecordId))
+            discardTaskFlightId = null; discardTaskRecordId = null
+        }) { Text(stringResource(R.string.task_sync_discard)) } },
+        dismissButton = { TextButton(onClick = { discardTaskFlightId = null; discardTaskRecordId = null }) {
+            Text(stringResource(R.string.flights_cancel))
+        } })
     val pendingDepartures by viewModel.pendingDepartures.collectAsStateWithLifecycle()
     val departureActionFailed by viewModel.departureActionFailed.collectAsStateWithLifecycle()
     var discardDepartureId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -193,6 +208,28 @@ fun SyncCenterScreen(
                 }
             }
             if (serviceActionFailed) item { Text(stringResource(R.string.service_sync_action_failed), color = MaterialTheme.colorScheme.error) }
+            if (pendingTasks.isNotEmpty()) {
+                item { Text(stringResource(R.string.task_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                items(pendingTasks, key = { "task:${it.flightId}:${it.taskRecordId}" }) { row ->
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
+                        Text(stringResource(if (row.status == "pending") R.string.task_pending else R.string.task_sync_review),
+                            style = MaterialTheme.typography.bodyMedium)
+                        row.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { viewModel.retryTask(row.flightId, row.taskRecordId) }, enabled = isOnline) {
+                                Text(stringResource(R.string.arrival_sync_retry))
+                            }
+                            TextButton(onClick = { discardTaskFlightId = row.flightId; discardTaskRecordId = row.taskRecordId },
+                                enabled = row.attemptOperation == null || row.status != "pending") {
+                                Text(stringResource(R.string.task_sync_discard))
+                            }
+                        }
+                    }
+                }
+            }
+            if (taskActionFailed) item { Text(stringResource(R.string.task_sync_action_failed), color = MaterialTheme.colorScheme.error) }
             if (pendingDepartures.isNotEmpty()) {
                 item { Text(stringResource(R.string.departure_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                 items(pendingDepartures, key = { "departure:${it.flightId}" }) { row ->

@@ -485,19 +485,23 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     /// <summary>Records a task. Existing tasks and cancellation submissions must be loaded.</summary>
     public Result<FlightTask> AddTask(FlightTaskType taskType, AtaChapterSnapshot? ataChapter,
         string? customerReferenceNumber, TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null,
-        IReadOnlyList<FlightTaskPerformerInput>? initialPerformers = null)
+        IReadOnlyList<FlightTaskPerformerInput>? initialPerformers = null, Guid? id = null)
     {
+        if (id.HasValue && _tasks.Any(item => item.Id == id.Value))
+            return Error.Conflict("Task record ID is already in use.", "Operations.FlightTask.IdConflict");
         var check = ValidateTaskWrite(userId, returnToRampId);
         if (check.IsFailure)
             return check.Error;
-        var created = FlightTask.Create(Id, taskType, ataChapter, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), returnToRampId);
+        var created = FlightTask.Create(Id, taskType, ataChapter, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), returnToRampId, id);
         if (created.IsFailure)
             return created.Error;
 
         var record = created.Value;
         foreach (var employee in initialPerformers ?? [])
         {
-            var added = record.AddPerformer(employee.Employee, employee.Window, employee.Notes);
+            if (employee.Id.HasValue && _tasks.Any(item => item.Performers.Any(performer => performer.Id == employee.Id.Value)))
+                return Error.Conflict("Performer record ID is already in use.", "Operations.FlightTask.PerformerIdConflict");
+            var added = record.AddPerformer(employee.Employee, employee.Window, employee.Notes, employee.Id);
             if (added.IsFailure)
                 return added.Error;
         }
@@ -513,6 +517,58 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         }
         UpdatedAtUtc = now.ToUniversalTime();
         return created.Value;
+    }
+
+    /// <summary>Atomically corrects normal task input while retaining stable child identities and file references.</summary>
+    public Result<FlightTask> SaveTask(Guid recordId, FlightTaskType taskType, AtaChapterSnapshot? ataChapter,
+        string? customerReferenceNumber, TimeWindow? window, string? notes, IReadOnlyList<FlightTaskPerformerInput> performers,
+        IReadOnlyList<FlightTaskToolInput> tools, IReadOnlyList<FlightTaskMaterialInput> materials,
+        IReadOnlyList<FlightTaskGeneralSupportInput> generalSupports, Guid userId, DateTimeOffset now)
+    {
+        var check = ValidateTaskWrite(userId, null);
+        if (check.IsFailure) return check.Error;
+        var existing = _tasks.SingleOrDefault(item => item.Id == recordId);
+        if (existing?.ReturnToRampId is not null)
+            return Error.NotFound("Task was not found on this flight.", "Operations.FlightTask.NotFound");
+        var created = FlightTask.Create(Id, taskType, ataChapter, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), id: recordId);
+        if (created.IsFailure) return created.Error;
+        var replacement = created.Value;
+        foreach (var item in performers)
+        {
+            if (item.Id.HasValue && _tasks.Any(task => task.Id != recordId && task.Performers.Any(child => child.Id == item.Id.Value)))
+                return Error.Conflict("Performer record ID is already in use.", "Operations.FlightTask.PerformerIdConflict");
+            var added = replacement.AddPerformer(item.Employee, item.Window, item.Notes, item.Id);
+            if (added.IsFailure) return added.Error;
+        }
+        foreach (var item in tools)
+        {
+            if (item.Id.HasValue && _tasks.Any(task => task.Id != recordId && task.Tools.Any(child => child.Id == item.Id.Value)))
+                return Error.Conflict("Tool record ID is already in use.", "Operations.FlightTask.ToolIdConflict");
+            var added = replacement.AddTool(item.Tool, item.Usage, item.Notes, item.Id);
+            if (added.IsFailure) return added.Error;
+        }
+        foreach (var item in materials)
+        {
+            if (item.Id.HasValue && _tasks.Any(task => task.Id != recordId && task.Materials.Any(child => child.Id == item.Id.Value)))
+                return Error.Conflict("Material record ID is already in use.", "Operations.FlightTask.MaterialIdConflict");
+            var added = replacement.AddMaterial(item.Material, item.Usage, item.Notes, item.Id);
+            if (added.IsFailure) return added.Error;
+        }
+        foreach (var item in generalSupports)
+        {
+            if (item.Id.HasValue && _tasks.Any(task => task.Id != recordId && task.GeneralSupports.Any(child => child.Id == item.Id.Value)))
+                return Error.Conflict("General support record ID is already in use.", "Operations.FlightTask.GeneralSupportIdConflict");
+            var added = replacement.AddGeneralSupport(item.GeneralSupport, item.Usage, item.Notes, item.Id);
+            if (added.IsFailure) return added.Error;
+        }
+        if (existing is null)
+        {
+            _tasks.Add(replacement);
+            UpdatedAtUtc = now.ToUniversalTime();
+            return replacement;
+        }
+        if (existing.ReplaceDetailsAndChildren(replacement, userId)) MarkTaskUpdated(existing, userId, now);
+        return existing;
     }
 
     public Result<FlightTask> UpdateTask(Guid taskId, FlightTaskType taskType, AtaChapterSnapshot? ataChapter,
@@ -709,12 +765,14 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTaskAttachment> AddTaskAttachment(Guid taskId, AttachmentDetails? details,
-        Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
+        Guid userId, DateTimeOffset now, Guid? returnToRampId = null, Guid? id = null)
     {
+        if (id.HasValue && _tasks.Any(item => item.Attachments.Any(attachment => attachment.Id == id.Value)))
+            return Error.Conflict("Attachment record ID is already in use.", "Operations.FlightTask.AttachmentIdConflict");
         var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
-        var added = found.Value.AddAttachment(details, userId, now.ToUniversalTime());
+        var added = found.Value.AddAttachment(details, userId, now.ToUniversalTime(), id);
         if (added.IsFailure)
             return added.Error;
 
@@ -863,6 +921,8 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
+        if (found.Value.ReturnToRampId is null && found.Value.HasOtherUserEnd)
+            return Error.Forbidden("A task with another employee's end time cannot be deleted.", "Operations.FlightTask.DeleteReadOnly");
         if (returnToRampId is { } occurrenceId)
         {
             var occurrence = _returnToRamps.Single(item => item.Id == occurrenceId);

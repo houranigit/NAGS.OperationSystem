@@ -2,6 +2,7 @@ package com.nags.operations.ui.flights
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,11 +19,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.time.ZoneId
 import com.nags.operations.R
 import com.nags.operations.data.ResourceCatalogItem
 import com.nags.operations.data.StaffCatalogItem
+import com.nags.operations.data.taskCalculationType
 
 /** Nested work choices keep each employee unique within the parent entry. */
 @Composable
@@ -37,6 +40,7 @@ internal fun FlightWorkEmployeeList(
     errorMessage: String? = null,
     fieldErrors: Map<String, Int> = emptyMap(),
     timeBounds: FlightWorkTimeBounds? = null,
+    defaultPeriod: FlightWorkPeriod? = null,
 ) {
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -75,7 +79,8 @@ internal fun FlightWorkEmployeeList(
                 endError = fieldErrors["performers.${item.id}.endUtc"]?.let { stringResource(it) }, timeBounds = timeBounds)
             if (showRemarks) FlightWorkNotes("", {}, item.remarks,
                 onRemarksChange = { remarks -> onChange(items.map { if (it.id == item.id) it.copy(remarks = remarks) else it }) },
-                description = stringResource(R.string.work_employee_remarks), showReference = false)
+                description = stringResource(R.string.work_employee_remarks), showReference = false, enabled = enabled,
+                errorMessage = fieldErrors["performers.${item.id}.notes"]?.let { stringResource(it) })
             FlightFormDivider()
         }
     }
@@ -91,7 +96,8 @@ internal fun FlightWorkEmployeeList(
                 selectionHandled = true
                 onChange(if (editingId == null) items + FlightEmployeeDraft(employeeId = selected.id,
                     employeeName = selected.fullName, employeeCode = selected.employeeId,
-                    period = if (timeBounds != null) seedBlankWorkStart(FlightWorkPeriod(), zone, timeBounds) else FlightWorkPeriod.now(zone))
+                    period = defaultPeriod?.takeIf { it.start.isNotBlank() } ?: if (timeBounds != null)
+                        seedBlankWorkStart(FlightWorkPeriod(), zone, timeBounds) else FlightWorkPeriod.now(zone))
                 else items.map { if (it.id == editingId) it.copy(employeeId = selected.id,
                     employeeName = selected.fullName, employeeCode = selected.employeeId) else it })
             }
@@ -114,9 +120,16 @@ internal enum class FlightWorkResourceKind(
         R.string.work_search_materials, R.string.work_no_materials),
     GeneralSupport(R.string.work_general_support, R.string.work_support, R.string.work_add_support, R.string.work_select_support,
         R.string.work_search_supports, R.string.work_no_supports),
+    ;
+
+    val fieldKey: String get() = when (this) {
+        Tool -> "tools"
+        Material -> "materials"
+        GeneralSupport -> "generalSupports"
+    }
 }
 
-/** Resources carry only their own work period and remarks; catalog calculation types are not inputs. */
+/** The selected catalog item determines whether its usage is quantity or duration. */
 @Composable
 internal fun FlightWorkResourceList(
     kind: FlightWorkResourceKind,
@@ -125,6 +138,10 @@ internal fun FlightWorkResourceList(
     referenceYear: Int,
     zone: ZoneId,
     onChange: (List<FlightResourceDraft>) -> Unit,
+    enabled: Boolean = true,
+    fieldErrors: Map<String, Int> = emptyMap(),
+    parentPeriod: FlightWorkPeriod = FlightWorkPeriod(),
+    timeBounds: FlightWorkTimeBounds = FlightWorkTimeBounds(),
 ) {
     var pickerOpen by rememberSaveable(kind) { mutableStateOf(false) }
     var editingId by rememberSaveable(kind) { mutableStateOf<String?>(null) }
@@ -140,35 +157,57 @@ internal fun FlightWorkResourceList(
         pickerOpen = true
     }
 
-    FlightWorkDetailsHeading(stringResource(kind.sectionLabel, items.size))
+    FlightFormValidation(fieldErrors[kind.fieldKey]?.let { stringResource(it) }) {
+        FlightWorkDetailsHeading(stringResource(kind.sectionLabel, items.size))
+    }
     items.forEachIndexed { index, item ->
         key(item.id) {
+            val prefix = "${kind.fieldKey}.${item.id}."
+            val catalog = options.firstOrNull { it.id.equals(item.resourceId, true) }
+            val calculationType = item.calculationType ?: catalog?.taskCalculationType()
+            val reviewQuantity = taskResourceQuantityReviewRequired(item, calculationType)
             FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, item.resourceName),
-                onRemove = { onChange(items.filterNot { it.id == item.id }) }, compactDelete = true) {
+                onRemove = { onChange(items.filterNot { it.id == item.id }) }, compactDelete = true, enabled = enabled) {
                 FlightWorkChoiceRow(stringResource(kind.itemLabel, index + 1), item.resourceName,
-                    stringResource(kind.selectLabel), leadingPadding = 0.dp, onClick = { openPicker(item.id) })
+                    stringResource(kind.selectLabel), leadingPadding = 0.dp, enabled = enabled,
+                    errorMessage = (fieldErrors[prefix + "resourceId"] ?: fieldErrors[prefix + "quantity"]?.takeIf { calculationType == 1 })
+                        ?.let { stringResource(it) }, onClick = { openPicker(item.id) })
             }
             FlightFormDivider()
-            FlightWorkPeriodFields(item.period, referenceYear, zone,
-                onChange = { period -> onChange(items.map { if (it.id == item.id) it.copy(period = period) else it }) })
+            if (calculationType == 0) {
+                FlightFormTextRow(stringResource(R.string.work_quantity), item.quantity,
+                    onChange = { quantity -> onChange(items.map { if (it.id == item.id) taskResourceQuantityEdited(it, quantity) else it }) },
+                    placeholder = stringResource(R.string.work_enter_quantity), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    enabled = enabled, errorMessage = if (reviewQuantity) stringResource(R.string.task_validation_quantity_review)
+                        else fieldErrors[prefix + "quantity"]?.let { stringResource(it) })
+                if (reviewQuantity) FlightWorkPeriodFields(item.period, referenceYear, zone, onChange = {},
+                    startEnabled = false, endEnabled = false)
+            } else {
+                FlightWorkPeriodFields(item.period, referenceYear, zone,
+                    onChange = { period -> onChange(items.map { if (it.id == item.id) it.copy(period = period) else it }) },
+                    startEnabled = enabled, endEnabled = enabled,
+                    startError = fieldErrors[prefix + "startUtc"]?.let { stringResource(it) },
+                    endError = fieldErrors[prefix + "endUtc"]?.let { stringResource(it) }, timeBounds = timeBounds)
+            }
             FlightWorkNotes("", {}, item.remarks,
                 onRemarksChange = { remarks -> onChange(items.map { if (it.id == item.id) it.copy(remarks = remarks) else it }) },
-                description = stringResource(R.string.work_resource_remarks), showReference = false)
+                description = stringResource(R.string.work_resource_remarks), showReference = false, enabled = enabled,
+                errorMessage = fieldErrors[prefix + "notes"]?.let { stringResource(it) })
             FlightFormDivider()
         }
     }
-    FlightWorkAddRow(stringResource(kind.addLabel, items.size + 1), onClick = { openPicker(null) })
-    if (pickerOpen) FlightWorkPicker(
+    FlightWorkAddRow(stringResource(kind.addLabel, items.size + 1), enabled = enabled, onClick = { openPicker(null) })
+    if (pickerOpen && enabled) FlightWorkPicker(
         title = stringResource(kind.selectLabel),
         searchLabel = stringResource(kind.searchLabel),
         emptyLabel = stringResource(kind.emptyLabel),
-        options = choices,
+        options = choices.filter { choice -> items.none { it.resourceId.equals(choice.id, true) && it.id != editingId } },
         selectedId = items.firstOrNull { it.id == editingId }?.resourceId,
         onSelect = { id ->
             if (!selectionHandled) options.firstOrNull { it.id == id }?.let { selected ->
                 selectionHandled = true
-                onChange(if (editingId == null) items + FlightResourceDraft(resourceId = selected.id, resourceName = selected.name, period = FlightWorkPeriod.now(zone))
-                else items.map { if (it.id == editingId) it.copy(resourceId = selected.id, resourceName = selected.name) else it })
+                onChange(if (editingId == null) items + taskResourceSelection(FlightResourceDraft(), selected, parentPeriod, zone, timeBounds)
+                else items.map { if (it.id == editingId) taskResourceSelection(it, selected, parentPeriod, zone, timeBounds) else it })
             }
         },
         onDismiss = { pickerOpen = false; editingId = null },

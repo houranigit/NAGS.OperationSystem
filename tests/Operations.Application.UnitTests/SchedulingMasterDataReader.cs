@@ -10,6 +10,10 @@ internal sealed class SchedulingMasterDataReader(string? customerIataCode = "SV"
     public Guid ServiceId { get; } = Guid.NewGuid();
     public IReadOnlySet<Guid>? AllowedServicesOverride { get; set; }
     public Dictionary<Guid, StaffMemberReadSnapshot> StaffMembers { get; } = [];
+    public Dictionary<Guid, AtaChapterReadSnapshot> AtaChapters { get; } = [];
+    public Dictionary<Guid, ToolReadSnapshot> Tools { get; } = [];
+    public Dictionary<Guid, MaterialReadSnapshot> Materials { get; } = [];
+    public Dictionary<Guid, GeneralSupportReadSnapshot> GeneralSupports { get; } = [];
 
     public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult<CustomerReadSnapshot?>(new(id, customerIataCode, null, "Saudia", true));
@@ -45,18 +49,18 @@ internal sealed class SchedulingMasterDataReader(string? customerIataCode = "SV"
     }
 
     public Task<AtaChapterReadSnapshot?> GetAtaChapterAsync(Guid id, CancellationToken cancellationToken) =>
-        Task.FromResult<AtaChapterReadSnapshot?>(null);
+        Task.FromResult(AtaChapters.GetValueOrDefault(id));
     public Task<IReadOnlyList<AtaChapterReadSnapshot>> GetActiveAtaChaptersAsync(CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<AtaChapterReadSnapshot>>([]);
 
     public Task<ToolReadSnapshot?> GetToolAsync(Guid id, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+        Task.FromResult(Tools.GetValueOrDefault(id));
 
     public Task<MaterialReadSnapshot?> GetMaterialAsync(Guid id, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+        Task.FromResult(Materials.GetValueOrDefault(id));
 
     public Task<GeneralSupportReadSnapshot?> GetGeneralSupportAsync(Guid id, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+        Task.FromResult(GeneralSupports.GetValueOrDefault(id));
 
     public Task<ManpowerTypeReadSnapshot?> GetManpowerTypeAsync(Guid id, CancellationToken cancellationToken) =>
         throw new NotImplementedException();

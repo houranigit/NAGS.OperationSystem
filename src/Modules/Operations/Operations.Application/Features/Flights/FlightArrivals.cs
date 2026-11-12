@@ -87,6 +87,8 @@ public sealed class SaveFlightArrivalCommandHandler(
         {
             var workBounds = FlightServiceBounds.ValidateExistingServices(flight, actor.StaffMemberId, arrivalOverride: input.Ata);
             if (workBounds.IsFailure) return workBounds.Error;
+            var taskBounds = FlightTaskBounds.ValidateExistingTasks(flight, actor.StaffMemberId, arrivalOverride: input.Ata);
+            if (taskBounds.IsFailure) return taskBounds.Error;
         }
         var aircraft = await resolver.AircraftTypeAsync(input.AircraftTypeId, cancellationToken);
         if (aircraft.IsFailure)

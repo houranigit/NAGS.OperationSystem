@@ -92,6 +92,11 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             .Include(f => f.CancellationSubmissions)
             .Include(f => f.ServiceRecords).ThenInclude(s => s.Performers)
             .Include(f => f.ServiceRecords).ThenInclude(s => s.Attachments)
+            .Include(f => f.TaskRecords).ThenInclude(t => t.Performers)
+            .Include(f => f.TaskRecords).ThenInclude(t => t.Tools)
+            .Include(f => f.TaskRecords).ThenInclude(t => t.Materials)
+            .Include(f => f.TaskRecords).ThenInclude(t => t.GeneralSupports)
+            .Include(f => f.TaskRecords).ThenInclude(t => t.Attachments)
             .FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
@@ -112,7 +117,7 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
 
 internal static class FlightDetails
 {
-    public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null) =>
+    public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null, bool canSaveTasks = false) =>
         new(flight.Id, flight.FlightNumber.Value,
             flight.Customer.CustomerId, flight.Customer.IataCode, flight.Customer.Name,
             flight.Station.StationId, flight.Station.IataCode, flight.Station.Name,
@@ -129,7 +134,7 @@ internal static class FlightDetails
             flight.DepartureSubmissions.OrderBy(d => d.CreatedAtUtc).ThenBy(d => d.Id).Select(FlightDepartureSubmissionDto.Map).ToList(), canSaveDeparture,
             flight.CancellationSubmissions.OrderBy(c => c.CreatedAtUtc).ThenBy(c => c.Id).Select(FlightCancellationSubmissionDto.Map).ToList(), canSaveCancellation,
             flight.Services.OrderBy(s => s.CreatedAtUtc).ThenBy(s => s.Id).Select(s => FlightServiceDto.Map(s, currentUserId, canSaveServices && allowedServiceIds?.Contains(s.Service.ServiceId) == true)).ToList(),
-            canSaveServices, allowedServiceIds);
+            canSaveServices, allowedServiceIds, flight.Tasks.OrderBy(t => t.CreatedAtUtc).ThenBy(t => t.Id).Select(t => FlightTaskDto.Map(t, currentUserId, canSaveTasks)).ToList(), canSaveTasks);
 }
 
 internal sealed record FlightListFilter(
