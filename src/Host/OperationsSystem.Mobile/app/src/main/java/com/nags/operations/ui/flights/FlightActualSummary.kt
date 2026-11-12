@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -21,7 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -44,11 +45,13 @@ internal fun FlightActualSummary(actuals: FlightActualDetails?, zone: ZoneId) {
         fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
     Column {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val timeGroupMaxWidth = maxWidth * .56f
             val aircraft: @Composable (Modifier) -> Unit = { modifier ->
                 Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(stringResource(R.string.flight_actual_details), style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.flight_actual_details), style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                     Text(actuals.tailNumber?.let { "${actuals.aircraftModel ?: stringResource(R.string.flights_card_aircraft_unavailable)} | $it" } ?: "—",
-                        style = valueStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        style = valueStyle, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Engineering, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(actuals.employeeNames.joinToString(" | "), Modifier.weight(1f), style = labelStyle,
@@ -84,14 +87,9 @@ internal fun FlightActualSummary(actuals: FlightActualDetails?, zone: ZoneId) {
                     }
                 }
             }
-            if (maxWidth < 320.dp * LocalDensity.current.fontScale) {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    aircraft(Modifier.fillMaxWidth())
-                    times(Modifier.align(Alignment.End))
-                }
-            } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
-                aircraft(Modifier.weight(1f))
-                times(Modifier)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                aircraft(Modifier.weight(1f).alignBy(FirstBaseline))
+                times(Modifier.widthIn(max = timeGroupMaxWidth).alignBy(FirstBaseline))
             }
         }
         if (actuals.savedLocally) Text(stringResource(R.string.flight_actuals_saved_locally),

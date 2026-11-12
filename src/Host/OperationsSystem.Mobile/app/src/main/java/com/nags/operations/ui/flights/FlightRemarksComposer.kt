@@ -124,7 +124,7 @@ internal fun FlightRemarksComposer(
     FlightFormValidation(errorMessage ?: limitMessage) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(label ?: stringResource(R.string.flight_form_remarks), style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(FlightFormGround)) {
                 attachments.forEach { item -> key(item.id) {
                     if (composerAttachmentIsAudio(item)) ComposerAudioRow(item, media, enabled)

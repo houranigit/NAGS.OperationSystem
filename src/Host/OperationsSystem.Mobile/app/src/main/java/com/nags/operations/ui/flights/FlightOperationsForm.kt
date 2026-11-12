@@ -24,6 +24,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.FlightLand
+import androidx.compose.material.icons.filled.FlightTakeoff
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.HorizontalDivider
@@ -48,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -738,6 +741,7 @@ internal fun FlightOperationsForm(
             } else if (pending != null && pending.status != "pending") ArrivalFormMessage(stringResource(R.string.arrival_review_before_save))
             FlightActualFormCard(
                 id = "actual-arrival", label = stringResource(R.string.operations_actual_arrival),
+                icon = Icons.Filled.FlightLand,
                 time = readOnlyArrival?.let { operationLocalTime(it.ata, entryZone) } ?: ata,
                 description = stringResource(R.string.arrival_choose_ata), enabled = arrivalEnabled,
                 removable = arrival == null && pending == null,
@@ -855,6 +859,7 @@ internal fun FlightOperationsForm(
             }
             FlightActualFormCard(
                 id = "actual-departure", label = stringResource(R.string.operations_actual_departure), time = atd,
+                icon = Icons.Filled.FlightTakeoff,
                 description = stringResource(R.string.operations_choose_atd), enabled = departureEnabled,
                 removable = departure == null && pendingDeparture == null,
                 errorMessage = if (validationAttempted && departureChanged && departureTime.isBlank()) stringResource(R.string.departure_atd_required) else null,
@@ -906,6 +911,7 @@ internal fun FlightOperationsForm(
 private fun FlightActualFormCard(
     id: String,
     label: String,
+    icon: ImageVector,
     time: String,
     description: String,
     enabled: Boolean,
@@ -925,7 +931,8 @@ private fun FlightActualFormCard(
                     FlightFormDateTimeField(time, label, description, enabled = enabled, errorMessage = errorMessage,
                         leadingPadding = 0.dp, displayPattern = "dd/MM/yy HH:mm", prominentLabel = true, onClick = onOpen)
                 } else FlightFormDateTimeField(time, label, description, enabled = enabled, errorMessage = errorMessage,
-                    displayPattern = "dd/MM/yy HH:mm", prominentLabel = true, onClick = onOpen)
+                    leadingPadding = 0.dp, displayPattern = "dd/MM/yy HH:mm", prominentLabel = true,
+                    leadingContent = { FlightActualTimeIcon(icon) }, onClick = onOpen)
                 FlightFormDivider()
                 content()
             }

@@ -203,19 +203,19 @@ private fun FlightTaskTypeRow(label: String, value: String, enabled: Boolean, er
     val density = LocalDensity.current
     val optionWidth = options.maxOf { measurer.measure(it.second, style.copy(fontWeight = FontWeight.SemiBold)).size.width }
     val desiredWidth = maxOf(128.dp, with(density) { optionWidth.toDp() } * 2 + 32.dp)
-    val labelWidth = with(density) { measurer.measure(label, style.copy(fontWeight = FontWeight.SemiBold)).size.width.toDp() }
+    val labelWidth = with(density) { measurer.measure(label, style.copy(fontWeight = FontWeight.Bold)).size.width.toDp() }
     FlightFormValidation(errorMessage, registerError = enabled) {
         BoxWithConstraints(Modifier.fillMaxWidth()
             .alpha(if (enabled) 1f else 0.45f).padding(end = 14.dp)) {
             val selectorWidth = minOf(desiredWidth, maxWidth)
             if (labelWidth + selectorWidth + 8.dp > maxWidth) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(label, style = style, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(label, style = style, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Box(Modifier.align(Alignment.End)) { FlightTaskTypeSelector(value, options, selectorWidth, enabled, onChange) }
                 }
             } else Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(label, Modifier.weight(1f), style = style, fontWeight = FontWeight.SemiBold,
+                Text(label, Modifier.weight(1f), style = style, fontWeight = FontWeight.Bold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 FlightTaskTypeSelector(value, options, selectorWidth, enabled, onChange)
             }

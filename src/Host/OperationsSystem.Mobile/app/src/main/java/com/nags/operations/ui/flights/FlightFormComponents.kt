@@ -386,7 +386,7 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
 internal fun FlightFormDateTimeField(value: String, label: String, description: String, enabled: Boolean = true,
     errorMessage: String? = null, onClear: (() -> Unit)? = null, clearDescription: String? = null,
     placeholder: String = "—", leadingPadding: Dp = 14.dp, displayPattern: String = "MMM d, yyyy · HH:mm",
-    prominentLabel: Boolean = false, onClick: () -> Unit) {
+    prominentLabel: Boolean = false, leadingContent: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
     val locale = LocalLocale.current.platformLocale
     val dateTime = value.takeIf { it.isNotBlank() }?.let(LocalDateTime::parse)
     val hasClear = onClear != null && dateTime != null
@@ -398,24 +398,27 @@ internal fun FlightFormDateTimeField(value: String, label: String, description: 
                 .semantics { contentDescription = description }) {
             // A trailing clear target owns the end inset; avoid adding the field's 14dp inset
             // and an extra row gap between the entered value and its close icon.
-            BoxWithConstraints(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f)
-                .padding(start = leadingPadding, end = if (hasClear) 0.dp else 14.dp,
-                    top = if (hasClear) 0.dp else 6.dp, bottom = if (hasClear) 0.dp else 6.dp),
-                contentAlignment = Alignment.Center) {
-                val labelMaxWidth = maxWidth * 0.45f
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(label, Modifier.padding(end = 8.dp).widthIn(max = labelMaxWidth),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (prominentLabel) FontWeight.Medium else if (LocalFlightFormCompact.current) FontWeight.SemiBold else FontWeight.Bold,
-                        color = if (LocalFlightFormCompact.current && !prominentLabel) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    FlightFormValueText(dateTime?.format(DateTimeFormatter.ofPattern(displayPattern, locale)) ?: placeholder,
-                        Modifier.weight(1f), isPlaceholder = dateTime == null && placeholder != "—")
-                    if (hasClear) IconButton(onClick = {
-                        focus.clearFocus(); keyboard?.hide(); onClear?.invoke()
-                    }, enabled = enabled, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Outlined.Close, clearDescription ?: description, Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                leadingContent?.invoke()
+                BoxWithConstraints(Modifier.weight(1f).alpha(if (enabled) 1f else 0.45f)
+                    .padding(start = leadingPadding, end = if (hasClear) 0.dp else 14.dp,
+                        top = if (hasClear) 0.dp else 6.dp, bottom = if (hasClear) 0.dp else 6.dp),
+                    contentAlignment = Alignment.Center) {
+                    val labelMaxWidth = maxWidth * 0.45f
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, Modifier.padding(end = 8.dp).widthIn(max = labelMaxWidth),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (LocalFlightFormCompact.current && !prominentLabel) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        FlightFormValueText(dateTime?.format(DateTimeFormatter.ofPattern(displayPattern, locale)) ?: placeholder,
+                            Modifier.weight(1f), isPlaceholder = dateTime == null && placeholder != "—")
+                        if (hasClear) IconButton(onClick = {
+                            focus.clearFocus(); keyboard?.hide(); onClear?.invoke()
+                        }, enabled = enabled, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Outlined.Close, clearDescription ?: description, Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
@@ -458,17 +461,19 @@ internal fun FlightFormChoiceRow(label: String, value: String, description: Stri
         Surface(onClick = { focus.clearFocus(); keyboard?.hide(); onClick() }, enabled = enabled, color = MaterialTheme.colorScheme.surface,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormValidationFocus(enabled)
                 .semantics { contentDescription = description }) {
-            BoxWithConstraints(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f).padding(start = leadingPadding, end = 14.dp, top = 6.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
+            // Selected names also identify the entry when their picker is read-only.
+            val contentAlpha = if (enabled || (label.isBlank() && !isPlaceholder)) 1f else 0.45f
+            BoxWithConstraints(Modifier.fillMaxWidth().alpha(contentAlpha).padding(start = leadingPadding, end = 14.dp, top = 6.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
                 val labelMaxWidth = maxWidth * 0.45f
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (label.isBlank()) Text(value, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (isPlaceholder) FontWeight.Normal else FontWeight.SemiBold,
+                        fontWeight = if (isPlaceholder) FontWeight.Normal else FontWeight.Bold,
                         fontStyle = if (isPlaceholder) FontStyle.Italic else FontStyle.Normal,
                         color = if (isPlaceholder) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                         maxLines = 3, overflow = TextOverflow.Ellipsis)
                     else {
                         Text(label, Modifier.widthIn(max = labelMaxWidth), style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = if (LocalFlightFormCompact.current) FontWeight.SemiBold else FontWeight.Bold,
+                            fontWeight = FontWeight.Bold,
                             color = if (LocalFlightFormCompact.current) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         FlightFormValueText(value, Modifier.weight(1f), isPlaceholder)
@@ -488,7 +493,7 @@ internal fun FlightFormTextRow(label: String, value: String, onChange: (String) 
             val labelMaxWidth = maxWidth * 0.45f
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(label, Modifier.widthIn(max = labelMaxWidth), style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (LocalFlightFormCompact.current) FontWeight.SemiBold else FontWeight.Bold,
+                    fontWeight = FontWeight.Bold,
                     color = if (LocalFlightFormCompact.current) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 FlightFormTextInput(value, onChange, placeholder, label, Modifier.weight(1f), keyboardOptions = keyboardOptions, enabled = enabled)
@@ -600,7 +605,7 @@ internal fun FlightFormRemarks(value: String, onValueChange: (String) -> Unit, d
     val remarks: @Composable () -> Unit = {
         Column(Modifier.alpha(if (enabled) 1f else 0.45f).padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(heading, style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (LocalFlightFormCompact.current) FontWeight.SemiBold else FontWeight.Bold,
+                fontWeight = FontWeight.Bold,
                 color = if (LocalFlightFormCompact.current) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
             FlightFormTextInput(value, onValueChange, if (LocalFlightFormCompact.current) "" else stringResource(R.string.flight_form_remarks_hint), description,
                 multiline = true, textAlign = TextAlign.Left, keyboardOptions = KeyboardOptions(

@@ -4,6 +4,8 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -50,6 +52,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
@@ -81,7 +86,11 @@ internal fun FlightDetailsSheetFrame(
     onBack: () -> Unit,
     content: @Composable (ScrollState) -> Unit,
 ) {
-    val sheetState = rememberStandardBottomSheetState(initialValue = SheetValue.PartiallyExpanded, skipHiddenState = false)
+    val headerDrag = remember { FlightSheetDragReversal() }
+    // Native settling favors total displacement; veto a lower anchor after a deliberate reversal.
+    val confirmSheetChange = remember(headerDrag) { { value: SheetValue -> headerDrag.allows(value) } }
+    val sheetState = rememberStandardBottomSheetState(initialValue = SheetValue.PartiallyExpanded,
+        confirmValueChange = confirmSheetChange, skipHiddenState = false)
     val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
@@ -115,6 +124,7 @@ internal fun FlightDetailsSheetFrame(
     val stateLabel = stringResource(if (expanded) R.string.flights_section_expanded else R.string.flights_section_collapsed)
     val closeLabel = stringResource(R.string.flight_sheet_close)
     val toggleSheet: () -> Unit = {
+        headerDrag.clear()
         scope.launch {
             if (sheetState.targetValue == SheetValue.Expanded) sheetState.partialExpand() else sheetState.expand()
         }
@@ -164,6 +174,27 @@ internal fun FlightDetailsSheetFrame(
                     Column(
                         Modifier.fillMaxWidth().height(expandedHeight)
                             .nestedScroll(contentFlingBoundary)
+                            .pointerInput(sheetState, headerDrag) {
+                                try {
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                        if (down.position.y in 0f..48.dp.toPx()) {
+                                            headerDrag.start(sheetState.currentValue == SheetValue.Expanded, viewConfiguration.touchSlop)
+                                        } else headerDrag.clear()
+                                        do {
+                                            // Observe without consuming: native drag/nested scroll still owns movement.
+                                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                                            if (event.changes.size != 1) headerDrag.clear()
+                                            else event.changes.firstOrNull { it.id == down.id }?.let {
+                                                headerDrag.move(it.positionChangeIgnoreConsumed().y)
+                                            }
+                                        } while (event.changes.any { it.pressed })
+                                        // Keep the release intent until native settling confirms its target.
+                                    }
+                                } finally {
+                                    headerDrag.clear()
+                                }
+                            }
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
                             .semantics { paneTitle = detailsTitle },
                     ) {
@@ -190,7 +221,11 @@ internal fun FlightDetailsSheetFrame(
                                             stateDescription = stateLabel
                                             if (expanded) collapse(toggleLabel) { toggleSheet(); true }
                                             else expand(toggleLabel) { toggleSheet(); true }
-                                            dismiss(closeLabel) { scope.launch { sheetState.hide() }; true }
+                                            dismiss(closeLabel) {
+                                                headerDrag.clear()
+                                                scope.launch { sheetState.hide() }
+                                                true
+                                            }
                                         },
                                     contentAlignment = Alignment.Center,
                                 ) {

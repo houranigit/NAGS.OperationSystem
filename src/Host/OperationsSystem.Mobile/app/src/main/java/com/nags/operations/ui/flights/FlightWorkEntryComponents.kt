@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.RemoveCircle
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Button
@@ -42,6 +43,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -108,8 +110,17 @@ internal fun FlightWorkAddRow(label: String, enabled: Boolean = true, onClick: (
                 Icon(Icons.Filled.AddCircle, null, Modifier.size(20.dp), tint = WorkAddGreen)
             }
             Text(label, Modifier.weight(1f).padding(end = 14.dp), style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
+    }
+}
+
+/** Recorded actuals retain the Add row's circular visual and leading alignment. */
+@Composable
+internal fun FlightActualTimeIcon(icon: ImageVector) {
+    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+        Icon(Icons.Filled.Circle, null, Modifier.size(20.dp), tint = WorkAddGreen)
+        Icon(icon, null, Modifier.size(12.dp), tint = Color.White)
     }
 }
 
@@ -231,7 +242,7 @@ internal fun FlightWorkNotes(
     FlightFormValidation(errorMessage) {
         Column(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f).padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(stringResource(R.string.flight_form_remarks), style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             FlightFormTextInput(remarks, onRemarksChange, if (required) stringResource(R.string.flight_form_required_field) else "", description,
                 multiline = true, textAlign = TextAlign.Left, enabled = enabled, keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done))

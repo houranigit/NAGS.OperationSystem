@@ -19,5 +19,5 @@ internal fun FlightFormSectionTitle(title: String, modifier: Modifier = Modifier
         style = MaterialTheme.typography.titleSmall.copy(
             fontSize = if (LocalFlightFormCompact.current) 12.sp else 15.sp,
             lineHeight = if (LocalFlightFormCompact.current) 16.sp else 20.sp),
-        fontWeight = FontWeight.SemiBold, color = Color(0xFF85858A))
+        fontWeight = FontWeight.Bold, color = Color(0xFF85858A))
 }

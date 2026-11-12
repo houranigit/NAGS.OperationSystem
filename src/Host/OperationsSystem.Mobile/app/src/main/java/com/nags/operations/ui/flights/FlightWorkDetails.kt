@@ -235,5 +235,5 @@ internal fun FlightWorkResourceList(
 @Composable
 private fun FlightWorkDetailsHeading(title: String) {
     Text(title, Modifier.fillMaxWidth().padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 4.dp).semantics { heading() },
-        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
