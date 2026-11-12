@@ -44,6 +44,19 @@ internal static class FlightServiceBounds
             "Operations.FlightService.EndRequiredAfterDeparture");
     }
 
+    internal static Result RequireClosedPerformers(SaveFlightServiceRequest input)
+    {
+        if (input.EndUtc is null) return Result.Success();
+        var failures = new Dictionary<string, string[]>();
+        for (var i = 0; i < input.Performers.Count; i++)
+            if (input.Performers[i].EndUtc is null)
+                failures[$"Performers[{i}].EndUtc"] = ["Enter the employee end before closing the service."];
+        if (failures.Count == 0) return Result.Success();
+        failures["EndUtc"] = ["Close every employee work period before closing the service."];
+        return Error.Validation(failures, "Close every employee work period before closing the service.",
+            "Operations.FlightService.OpenPerformerPeriods");
+    }
+
     internal static Result RequireCompletedForDeparture(Flight flight)
     {
         var failures = new Dictionary<string, string[]>();

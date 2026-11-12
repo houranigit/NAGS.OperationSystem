@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
@@ -162,7 +163,8 @@ class FlightServicesRepositoryTest {
     }
 
     @Test fun anotherOperatorsEndCannotBeChangedOrDeletedThroughCreatorPermission() = runBlocking {
-        val baseline = saved(record, input.copy(endUtc = now.plusSeconds(60).toString())).service.copy(canSetEnd = false)
+        val baseline = saved(record, input.copy(endUtc = now.plusSeconds(60).toString(),
+            performers = input.performers.map { it.copy(endUtc = now.toString()) })).service.copy(canSetEnd = false)
         val repo = repository()
         val reviewed = flight.copy(services = listOf(baseline))
         try { repo.save(reviewed, record, baseline.input().copy(endUtc = null)); fail("Expected protected end") } catch (_: IllegalStateException) { }
@@ -172,12 +174,113 @@ class FlightServicesRepositoryTest {
     }
 
     @Test fun noncreatorMayOnlySetAllowedEndWhileOtherInputIsUnchanged() = runBlocking {
-        val baseline = saved(record, input).service.copy(canEdit = false)
+        val baseline = saved(record, input.copy(performers = input.performers.map { it.copy(endUtc = now.toString()) })).service.copy(canEdit = false)
         val reviewed = flight.copy(services = listOf(baseline))
         val repo = repository()
         try { repo.save(reviewed, record, baseline.input().copy(notes = "forbidden")); fail("Expected core protection") } catch (_: IllegalStateException) { }
         repo.save(reviewed, record, baseline.input().copy(endUtc = now.plusSeconds(60).toString()))
         assertEquals(1, dao.rows(owner.value!!).size)
+    }
+
+    @Test fun serviceCannotCloseWhileAnyStaffPeriodIsOpenAndPendingInputSurvivesRejectedEdit() = runBlocking {
+        val repo = repository()
+        repo.save(flight, record, input)
+        val original = dao.rows(owner.value!!).single()
+        try {
+            repo.save(flight, record, input.copy(endUtc = now.plusSeconds(60).toString()))
+            fail("Expected open staff validation")
+        } catch (_: IllegalStateException) { }
+        assertEquals(original, dao.rows(owner.value!!).single())
+        val finishedStaff = input.copy(performers = input.performers.map { it.copy(endUtc = now.toString()) })
+        repo.save(flight, record, finishedStaff)
+        repo.save(flight, record, finishedStaff.copy(endUtc = now.plusSeconds(60).toString()))
+        assertEquals(original.changeId, dao.rows(owner.value!!).single().changeId)
+        online = true
+        assertFalse(repo.syncPending())
+        assertNotNull(sent.single().second!!.endUtc)
+        assertNotNull(sent.single().second!!.performers.single().endUtc)
+    }
+
+    @Test fun foreignServiceEndProtectsSelectionAndDeletionButNotCreatorsOtherFields() = runBlocking {
+        val baseline = saved(record, input.copy(endUtc = now.plusSeconds(60).toString(),
+            performers = input.performers.map { it.copy(endUtc = now.toString()) })).service.copy(
+            endedByUserId = "other-user", canSetEnd = false)
+        val reviewed = flight.copy(services = listOf(baseline), allowedServiceIds = listOf(input.serviceId, second))
+        val repo = repository()
+        try { repo.delete(reviewed, record); fail("Expected shared service protection") } catch (_: IllegalStateException) { }
+        try { repo.save(reviewed, record, baseline.input().copy(serviceId = second)); fail("Expected selected service protection") }
+        catch (_: IllegalStateException) { }
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+        repo.save(reviewed, record, baseline.input().copy(notes = "my correction"))
+        assertEquals("my correction", Json.decodeFromString<SaveFlightServiceRequest>(dao.rows(owner.value!!).single().inputJson!!).notes)
+    }
+
+    @Test fun pendingReviewedRightsCannotOverrideLatestForeignServiceEndProtection() = runBlocking {
+        val baseline = saved(record, input.copy(performers = input.performers.map { it.copy(endUtc = now.toString()) })).service
+        val reviewed = flight.copy(services = listOf(baseline), allowedServiceIds = listOf(input.serviceId, second))
+        val repo = repository()
+        repo.save(reviewed, record, baseline.input().copy(notes = "offline correction"))
+        val pending = dao.rows(owner.value!!).single()
+        val latest = reviewed.copy(services = listOf(baseline.copy(endUtc = now.plusSeconds(60).toString(),
+            endedByUserId = "other-user", canSetEnd = false, canChangeService = false, canDelete = false)))
+        try { repo.delete(latest, record); fail("Expected latest End protection") } catch (_: IllegalStateException) { }
+        try { repo.save(latest, record, baseline.input().copy(serviceId = second)); fail("Expected latest selection protection") }
+        catch (_: IllegalStateException) { }
+        assertEquals(pending, dao.rows(owner.value!!).single())
+    }
+
+    @Test fun locallyPendingOwnEntryMayStillChangeItsSelectedService() = runBlocking {
+        val eligible = flight.copy(allowedServiceIds = listOf(input.serviceId, second))
+        val repo = repository()
+        repo.save(eligible, record, input)
+        val changeId = dao.rows(owner.value!!).single().changeId
+        repo.save(eligible, record, input.copy(serviceId = second))
+        val pending = dao.rows(owner.value!!).single()
+        assertEquals(changeId, pending.changeId)
+        assertEquals(second, Json.decodeFromString<SaveFlightServiceRequest>(pending.inputJson!!).serviceId)
+    }
+
+    @Test fun legacyMissingCapabilitiesMatchFreshEquivalentFlagsWhenPendingWorkSynchronizes() = runBlocking {
+        val legacy = saved(record, input).service
+        assertNull(legacy.canDelete)
+        assertNull(legacy.canChangeService)
+        val reviewed = flight.copy(services = listOf(legacy))
+        val repo = repository()
+        repo.save(reviewed, record, legacy.input().copy(notes = "offline edit"))
+        live = reviewed.copy(services = listOf(legacy.copy(canDelete = true, canChangeService = true)))
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals("offline edit", sent.single().second!!.notes)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun frozenPreupgradeClosedServiceWithOpenStaffReachesServerForExactAcknowledgment() = runBlocking {
+        val oldAttempt = input.copy(endUtc = now.plusSeconds(60).toString()).normalized()
+        assertFalse(oldAttempt.validationErrors(v1).isEmpty())
+        val frozen = Json.encodeToString(oldAttempt)
+        dao.put(FlightServicePendingEntity(owner.value!!, flight.id, record, flight.flightNumber, "old-attempt", "save",
+            frozen, v1, null, now.toString(), attemptOperation = "save", attemptInputJson = frozen,
+            attemptRowVersion = v1, attemptAttachmentFilesJson = "{}"))
+        online = true
+        assertFalse(repository().syncPending())
+        assertEquals(oldAttempt, sent.single().second)
+        assertEquals(v1, sent.single().third)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun frozenPreupgradeSelectionCorrectionWithForeignEndReachesServerForExactAcknowledgment() = runBlocking {
+        val baseline = saved(record, input.copy(endUtc = now.plusSeconds(60).toString(),
+            performers = input.performers.map { it.copy(endUtc = now.toString()) })).service.copy(
+            endedByUserId = "other-user", canSetEnd = false)
+        val oldAttempt = baseline.input().copy(serviceId = second)
+        val frozen = Json.encodeToString(oldAttempt)
+        dao.put(FlightServicePendingEntity(owner.value!!, flight.id, record, flight.flightNumber, "old-attempt", "save",
+            frozen, v1, Json.encodeToString(baseline), now.toString(), attemptOperation = "save", attemptInputJson = frozen,
+            attemptRowVersion = v1, attemptAttachmentFilesJson = "{}"))
+        online = true
+        assertFalse(repository().syncPending())
+        assertEquals(oldAttempt, sent.single().second)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
     }
 
     @Test fun localUnsentCreateCanBeRemovedWithoutSendingAnyMutation() = runBlocking {
@@ -440,9 +543,9 @@ class FlightServicesRepositoryTest {
         val offset = "2026-11-10T12:00:00+00:00"
         val end = "2026-11-10T12:01:00+00:00"
         val baseline = saved(record, input.copy(startUtc = offset, endUtc = end,
-            performers = input.performers.map { it.copy(startUtc = offset) })).service.copy(canSetEnd = false)
+            performers = input.performers.map { it.copy(startUtc = offset, endUtc = offset) })).service.copy(canSetEnd = false)
         val repo = repository()
-        val editorPeriods = input.performers.map { it.copy(startUtc = now.toString()) }
+        val editorPeriods = input.performers.map { it.copy(startUtc = now.toString(), endUtc = now.toString()) }
         repo.save(flight.copy(services = listOf(baseline)), record, baseline.input().copy(startUtc = now.toString(),
             endUtc = now.plusSeconds(60).toString(), performers = editorPeriods, notes = "creator core correction"))
         repo.clear()
@@ -522,7 +625,8 @@ class FlightServicesRepositoryTest {
         live = flight.copy(departureSubmissions = listOf(departure))
         localBounds = FlightServiceActualBounds(null, now.plusSeconds(180).toString())
         val repo = repository()
-        repo.save(live, record, input.copy(endUtc = now.plusSeconds(120).toString()))
+        repo.save(live, record, input.copy(endUtc = now.plusSeconds(120).toString(),
+            performers = input.performers.map { it.copy(endUtc = now.plusSeconds(120).toString()) }))
         online = true; departureAttempt = true
         assertFalse(repo.syncPending())
         assertTrue(sent.isEmpty())

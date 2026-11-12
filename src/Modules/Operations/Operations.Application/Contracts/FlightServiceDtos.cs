@@ -25,7 +25,8 @@ public sealed record FlightServiceAttachmentDto(Guid Id, int Kind, string FileNa
 public sealed record FlightServiceDto(Guid Id, Guid ServiceId, string ServiceName, DateTimeOffset StartUtc, DateTimeOffset? EndUtc,
     string? CustomerReferenceNumber, string? Notes, IReadOnlyList<FlightServicePerformerDto> Performers,
     Guid CreatedByUserId, Guid? EndedByUserId, DateTimeOffset CreatedAtUtc, Guid? UpdatedByUserId, DateTimeOffset? UpdatedAtUtc,
-    bool CanEdit, bool CanSetEnd, IReadOnlyList<FlightServiceAttachmentDto> Attachments)
+    bool CanEdit, bool CanSetEnd, IReadOnlyList<FlightServiceAttachmentDto> Attachments,
+    bool CanChangeService = false, bool CanDelete = false)
 {
     public static FlightServiceDto Map(FlightService service, Guid? userId = null, bool canOperate = false) => new(
         service.Id, service.Service.ServiceId, service.Service.Name, service.Window.FromUtc, service.Window.ToUtc,
@@ -35,7 +36,9 @@ public sealed record FlightServiceDto(Guid Id, Guid ServiceId, string ServiceNam
         service.CreatedByUserId, service.EndedByUserId, service.CreatedAtUtc, service.UpdatedByUserId, service.UpdatedAtUtc,
         canOperate && userId == service.CreatedByUserId,
         canOperate && (service.Window.ToUtc is null || userId == service.EndedByUserId),
-        service.Attachments.OrderBy(a => a.UploadedAtUtc).ThenBy(a => a.Id).Select(FlightServiceAttachmentDto.Map).ToList());
+        service.Attachments.OrderBy(a => a.UploadedAtUtc).ThenBy(a => a.Id).Select(FlightServiceAttachmentDto.Map).ToList(),
+        canOperate && userId == service.CreatedByUserId && !service.HasOtherUserEnd,
+        canOperate && userId == service.CreatedByUserId && (service.Window.ToUtc is null || userId == service.EndedByUserId));
 }
 
 public sealed record FlightServiceSavedDto(FlightServiceDto Service, string RowVersion, int ActiveWorkCount, int CompletedWorkCount);

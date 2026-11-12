@@ -393,6 +393,8 @@
     <string name="service_validation_service">Select an available service.</string>
     <string name="service_validation_start">Enter a valid start time.</string>
     <string name="service_validation_end">End must be valid and cannot be before Start.</string>
+    <string name="service_validation_open_staff">Close all staff periods before ending the service.</string>
+    <string name="service_validation_staff_end_required">Enter an End time before closing the service.</string>
     <string name="service_validation_reference">Customer reference cannot exceed 200 characters.</string>
     <string name="service_validation_notes">Remarks cannot exceed 2,000 characters.</string>
     <string name="service_validation_performers">Add at least one staff performer. Each employee can appear only once.</string>

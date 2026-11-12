@@ -149,7 +149,7 @@ internal fun FlightOperationsForm(
     val initialAircraftId = rememberSaveable { pendingInput?.aircraftTypeId ?: arrival?.aircraftTypeId ?: flight.aircraftTypeId.orEmpty() }
     val initialAircraftModel = rememberSaveable { arrival?.aircraftTypeModel ?: flight.aircraftTypeModel.orEmpty() }
     val initialAta = rememberSaveable {
-        operationLocalTime(pendingInput?.ata ?: arrival?.ata ?: flight.scheduledArrivalUtc, entryZone)
+        (pendingInput?.ata ?: arrival?.ata)?.let { operationLocalTime(it, entryZone) }.orEmpty()
     }
     val initialAtd = rememberSaveable { (pendingDepartureInput?.atd ?: departure?.atd)?.let { operationLocalTime(it, entryZone) }.orEmpty() }
     val initialDepartureRemarks = rememberSaveable { pendingDepartureInput?.remarks ?: departure?.remarks.orEmpty() }
@@ -519,7 +519,11 @@ internal fun FlightOperationsForm(
         ?: arrival?.takeIf { it.aircraftTypeId == aircraftId }?.aircraftTypeModel.orEmpty()
     fun openPicker(kind: String) {
         focus.clearFocus(); keyboard?.hide()
-        if (kind == "ata" && ata.isBlank()) ata = LocalDateTime.now(zone).withSecond(0).withNano(0).toString()
+        if (kind == "ata" && ata.isBlank()) {
+            val now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
+            originalAta = now.toString()
+            ata = now.atZone(entryZone).toLocalDateTime().toString()
+        }
         if (kind == "atd" && atd.isBlank()) {
             atd = operationLocalTime(flight.scheduledDepartureUtc, entryZone)
             originalAtd = flight.scheduledDepartureUtc
@@ -607,7 +611,10 @@ internal fun FlightOperationsForm(
                 enabled = servicesEnabled,
                 canEdit = { id -> serviceReviewed.firstOrNull { it.id == id }?.canEdit ?: true },
                 canSetEnd = { id -> serviceReviewed.firstOrNull { it.id == id }?.canSetEnd ?: true },
-                canDelete = { id -> serviceReviewed.firstOrNull { it.id == id }?.let { it.canEdit && it.canSetEnd } ?: true },
+                canChangeService = { id -> serviceReviewed.firstOrNull { it.id == id }?.serviceSelectionEditable() != false &&
+                    flight.services.firstOrNull { it.id == id }?.serviceSelectionEditable() != false },
+                canDelete = { id -> serviceReviewed.firstOrNull { it.id == id }?.serviceDeletable() != false &&
+                    flight.services.firstOrNull { it.id == id }?.serviceDeletable() != false },
                 errors = serviceErrors, defaultEmployee = defaultServiceEmployee(flight, catalogs),
                 timeBounds = flightWorkTimeBounds(actualArrivalForServices, actualDepartureForServices),
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(services = change(workDrafts.services))) })

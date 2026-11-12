@@ -150,6 +150,8 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
         var changedCatalog = new ServiceSnapshot(Guid.NewGuid(), "Updated service selection");
         var closedWindow = TimeWindow.Create(Now, Now.AddHours(2)).Value;
         var closedPerformerWindow = TimeWindow.Create(Now, Now.AddHours(1)).Value;
+        reloaded.UpdateServicePerformer(service.Id, firstPerformer.Id, employee, closedPerformerWindow,
+            performerEditor, Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
         reloaded.UpdateService(service.Id, changedCatalog, "UPDATED-REF", closedWindow, "Updated notes",
             updatedBy, Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
         reloaded.UpdateServicePerformer(service.Id, firstPerformer.Id, replacementEmployee, closedPerformerWindow,
@@ -206,7 +208,7 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
         reloaded.UpdateService(service.Id, persisted.Service, null, correctedStart, "Corrected notes",
             editor, Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
         reloaded.AddServiceAttachment(service.Id, Attachment(), attachmentEditor, Now.AddMinutes(3)).IsSuccess.ShouldBeTrue();
-        reloaded.AddServicePerformer(service.Id, Employee("Performing engineer", "E250"), Window(),
+        reloaded.AddServicePerformer(service.Id, Employee("Performing engineer", "E250"), closedWindow,
             employeeEditor, Now.AddMinutes(4)).IsSuccess.ShouldBeTrue();
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();

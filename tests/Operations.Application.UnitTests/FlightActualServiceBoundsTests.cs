@@ -191,7 +191,7 @@ public sealed class FlightActualServiceBoundsTests
     }
 
     [Fact]
-    public async Task Closed_service_with_an_open_employee_period_cannot_be_departed()
+    public async Task Legacy_closed_service_with_an_open_employee_period_cannot_be_departed()
     {
         await using var fixture = await Fixture.CreateAsync(closedPerformer: false);
 
@@ -326,12 +326,20 @@ public sealed class FlightActualServiceBoundsTests
                     CustomerSignature.Create("signature.png", "seed/signature.png", "image/png", Png.Length, Now).Value,
                     employee, "Departure").Value, userId, Now).IsSuccess.ShouldBeTrue();
             if (work == Work.Normal)
-                flight.AddService(new ServiceSnapshot(inner.ServiceId, "Service"), null,
-                    TimeWindow.Create(Now, closedService ? Now.AddMinutes(30) : null).Value, null, userId, Now,
+            {
+                var window = TimeWindow.Create(Now, closedService ? Now.AddMinutes(30) : null).Value;
+                var service = flight.AddService(new ServiceSnapshot(inner.ServiceId, "Service"), null,
+                    closedService && !closedPerformer ? TimeWindow.Create(Now, null).Value : window, null, userId, Now,
                     initialPerformers: withPerformers
                         ? [new(employee, TimeWindow.Create(Now.AddMinutes(10), closedPerformer ? Now.AddMinutes(20) : null).Value)]
-                        : [])
-                    .IsSuccess.ShouldBeTrue();
+                        : []).Value;
+                if (closedService && !closedPerformer)
+                {
+                    // Import a pre-rule persisted graph; new domain writes cannot create this state.
+                    typeof(FlightService).GetProperty(nameof(FlightService.Window))!.SetValue(service, window);
+                    typeof(FlightService).GetProperty(nameof(FlightService.EndedByUserId))!.SetValue(service, userId);
+                }
+            }
             else if (work == Work.Rtr)
             {
                 var occurrence = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddHours(2), employee, null).Value, userId, Now).Value;

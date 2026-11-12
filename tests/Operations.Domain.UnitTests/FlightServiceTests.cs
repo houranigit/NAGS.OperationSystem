@@ -119,7 +119,7 @@ public sealed class FlightServiceTests
         var correctedStart = TimeWindow.Create(TestData.Now.AddMinutes(-5), closedWindow.ToUtc).Value;
         flight.UpdateService(service.Id, service.Service, "REF-42", correctedStart, "Corrected notes", editor,
             TestData.Now.AddHours(2)).IsSuccess.ShouldBeTrue();
-        var performer = flight.AddServicePerformer(service.Id, TestData.Staff(), Window(), editor,
+        var performer = flight.AddServicePerformer(service.Id, TestData.Staff(), closedWindow, editor,
             TestData.Now.AddHours(2).AddMinutes(1)).Value;
         flight.UpdateServicePerformer(service.Id, performer.Id, performer.Employee, closedWindow, editor,
             TestData.Now.AddHours(2).AddMinutes(2)).IsSuccess.ShouldBeTrue();
@@ -240,8 +240,9 @@ public sealed class FlightServiceTests
         var service = AddService(flight);
         var originalId = service.Id;
         var creator = service.CreatedByUserId;
-        var performer = flight.AddServicePerformer(service.Id, TestData.Staff(), Window(), Guid.NewGuid(), TestData.Now.AddMinutes(1)).Value;
-        var attachment = flight.AddServiceAttachment(service.Id, Attachment(), Guid.NewGuid(), TestData.Now.AddMinutes(2)).Value;
+        var performer = flight.AddServicePerformer(service.Id, TestData.Staff(),
+            TimeWindow.Create(TestData.Now, TestData.Now.AddHours(1)).Value, creator, TestData.Now.AddMinutes(1)).Value;
+        var attachment = flight.AddServiceAttachment(service.Id, Attachment(), creator, TestData.Now.AddMinutes(2)).Value;
         var changedService = TestData.Service();
         var changedWindow = TimeWindow.Create(TestData.Now.AddHours(-1), TestData.Now.AddHours(4)).Value;
         var editor = Guid.NewGuid();

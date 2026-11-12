@@ -220,6 +220,21 @@ class FlightServiceFormStateTest {
             "performers.$performerId.endUtc" to R.string.departure_staff_end_required), errors[recordId])
     }
 
+    @Test fun endingServiceFlagsItsEndAndOnlyStaffPeriodsStillOpen() {
+        val secondPerformer = "77777777-7777-7777-7777-777777777777"
+        val item = FlightServiceDraft(recordId, serviceId, "Service", period = FlightWorkPeriod("2026-11-11T11:00", "2026-11-11T14:00"),
+            employees = listOf(FlightEmployeeDraft(performerId, staffId, period = FlightWorkPeriod("2026-11-11T11:00")),
+                FlightEmployeeDraft(secondPerformer, otherStaffId, period = FlightWorkPeriod("2026-11-11T12:00", "2026-11-11T13:00"))))
+        val available = catalog.copy(stationStaff = catalog.stationStaff + StaffCatalogItem(otherStaffId, "Other employee", "E2", "station", "AAA", "Engineer"))
+        assertEquals(mapOf("endUtc" to R.string.service_validation_open_staff,
+            "performers.$performerId.endUtc" to R.string.service_validation_staff_end_required),
+            serviceEditorValidation(item, item.serviceInput(zone), flight, available, flight.rowVersion, null, null))
+        val closed = item.copy(employees = item.employees.map { it.copy(period = it.period.copy(end = "2026-11-11T13:00")) })
+        assertTrue(serviceEditorValidation(closed, closed.serviceInput(zone), flight, available, flight.rowVersion, null, null).isEmpty())
+        val reopened = item.copy(period = item.period.copy(end = ""))
+        assertTrue(serviceEditorValidation(reopened, reopened.serviceInput(zone), flight, available, flight.rowVersion, null, null).isEmpty())
+    }
+
     @Test fun departureUsesLatestQueuedAndUnsavedClosuresAndHonorsRemovals() {
         val open = record.copy(canEdit = true)
         val closed = open.input().copy(endUtc = "2026-11-11T14:00:00Z",
@@ -277,7 +292,8 @@ class FlightServiceFormStateTest {
     @Test fun unchangedHistoricalStaffCanRemainWhileNewOrReplacedSelectionsMustBeCurrent() {
         val reviewed = flight.copy(services = listOf(record))
         val item = initialServiceEditorDraft(reviewed, catalog, emptyList(), null, zone).services.first { it.id == recordId }
-        val closing = record.input().copy(endUtc = "2026-11-11T14:00:00Z")
+        val closing = record.input().copy(endUtc = "2026-11-11T14:00:00Z",
+            performers = record.input().performers.map { it.copy(endUtc = "2026-11-11T13:00:00Z") })
         assertTrue(catalog.stationStaff.none { it.id == otherStaffId })
         assertTrue(serviceEditorValidation(item, closing, reviewed, catalog, flight.rowVersion, null, null).isEmpty())
         val replacementId = "88888888-8888-8888-8888-888888888888"

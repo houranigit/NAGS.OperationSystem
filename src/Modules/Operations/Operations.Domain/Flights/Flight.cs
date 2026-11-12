@@ -331,6 +331,8 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         var existing = _services.SingleOrDefault(item => item.Id == recordId);
         if (existing?.ReturnToRampId is not null)
             return Error.NotFound("Performed service was not found on this flight.", "Operations.FlightService.NotFound");
+        if (existing is not null && service is not null && existing.Service.ServiceId != service.ServiceId && existing.HasOtherUserEnd)
+            return FlightService.SelectionReadOnly();
         var created = FlightService.Create(Id, service, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), id: recordId);
         if (created.IsFailure) return created.Error;
         var replacement = created.Value;
@@ -840,6 +842,8 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         var found = FindServiceForWrite(serviceId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
+        if (found.Value.HasOtherUserEnd)
+            return Error.Forbidden("A service with another employee's end time cannot be deleted.", "Operations.FlightService.DeleteReadOnly");
         if (returnToRampId is { } occurrenceId)
         {
             var occurrence = _returnToRamps.Single(item => item.Id == occurrenceId);

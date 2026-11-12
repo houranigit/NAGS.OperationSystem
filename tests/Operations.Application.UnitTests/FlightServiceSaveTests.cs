@@ -21,6 +21,132 @@ public sealed class FlightServiceSaveTests
     private static readonly byte[] Png = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=");
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Closing_with_an_open_employee_period_returns_field_errors_before_any_write_or_upload(bool existing)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var id = Guid.NewGuid();
+        if (existing) (await fixture.SaveAsync(id)).IsSuccess.ShouldBeTrue();
+        var writes = fixture.Writes.SaveCalls;
+        var input = fixture.Input with
+        {
+            EndUtc = Now.AddMinutes(30), Attachments = [NewImage()],
+            Performers = [fixture.ClosedPerformerInput.Performers.Single(),
+                new(Guid.NewGuid(), fixture.Other.StaffMemberId, Now)]
+        };
+
+        var result = await fixture.SaveAsync(id, input);
+
+        result.Error.Code.ShouldBe("Operations.FlightService.OpenPerformerPeriods");
+        result.Error.Failures!.Keys.ShouldContain("EndUtc");
+        result.Error.Failures.Keys.ShouldContain("Performers[1].EndUtc");
+        result.Error.Failures.Keys.ShouldNotContain("Performers[0].EndUtc");
+        fixture.Writes.SaveCalls.ShouldBe(writes);
+        fixture.Storage.SaveCalls.ShouldBe(0);
+        var records = (await fixture.ReadAsync()).Services;
+        records.Count.ShouldBe(existing ? 1 : 0);
+        if (existing) records.Single().Window.ToUtc.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Another_users_end_locks_selection_and_delete_without_locking_creator_core_corrections()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var id = Guid.NewGuid();
+        var input = fixture.ClosedPerformerInput;
+        (await fixture.SaveAsync(id, input)).IsSuccess.ShouldBeTrue();
+        input = input with { EndUtc = Now.AddMinutes(30) };
+        (await fixture.SaveAsync(id, input, fixture.Other)).IsSuccess.ShouldBeTrue();
+        var correction = await fixture.SaveAsync(id, input with { Notes = "Creator's correction preserves contributors" });
+        correction.IsSuccess.ShouldBeTrue();
+        correction.Value.Service.CanEdit.ShouldBeTrue();
+        correction.Value.Service.CanChangeService.ShouldBeFalse();
+        correction.Value.Service.CanDelete.ShouldBeFalse();
+        var nextServiceId = Guid.NewGuid();
+        fixture.Reader.AllowedServicesOverride = new HashSet<Guid> { input.ServiceId, nextServiceId };
+        var writes = fixture.Writes.SaveCalls;
+
+        var change = await fixture.SaveAsync(id, input with { ServiceId = nextServiceId });
+        var deletion = await fixture.DeleteAsync(id);
+
+        change.Error.Code.ShouldBe("Operations.FlightService.SelectionReadOnly");
+        deletion.Error.Code.ShouldBe("Operations.FlightService.DeleteReadOnly");
+        fixture.Writes.SaveCalls.ShouldBe(writes);
+        var retained = (await fixture.ReadAsync()).Services.ShouldHaveSingleItem();
+        retained.Service.ServiceId.ShouldBe(input.ServiceId);
+        retained.Notes.ShouldBe("Creator's correction preserves contributors");
+        retained.HasOtherUserEnd.ShouldBeTrue();
+        retained.UpdatedByUserId.ShouldBe(fixture.Owner.UserId); // Last-editor audit is not contribution ownership.
+    }
+
+    [Fact]
+    public async Task Own_only_contributions_allow_selection_changes_and_delete()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var id = Guid.NewGuid();
+        var input = fixture.ClosedPerformerInput with { EndUtc = Now.AddMinutes(30), Attachments = [NewImage()] };
+        var created = await fixture.SaveAsync(id, input);
+        created.IsSuccess.ShouldBeTrue();
+        created.Value.Service.CanChangeService.ShouldBeTrue();
+        created.Value.Service.CanDelete.ShouldBeTrue();
+        var nextServiceId = Guid.NewGuid();
+        fixture.Reader.AllowedServicesOverride = new HashSet<Guid> { input.ServiceId, nextServiceId };
+
+        var changed = await fixture.SaveAsync(id, input with { ServiceId = nextServiceId, Attachments = null });
+
+        changed.IsSuccess.ShouldBeTrue();
+        changed.Value.Service.ServiceId.ShouldBe(nextServiceId);
+        changed.Value.Service.CanDelete.ShouldBeTrue();
+        (await fixture.DeleteAsync(id)).IsSuccess.ShouldBeTrue();
+        fixture.Storage.Files.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Exact_retry_acknowledges_legacy_closed_work_with_open_staff_before_applying_the_new_rule()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var id = Guid.NewGuid();
+        (await fixture.SaveAsync(id)).IsSuccess.ShouldBeTrue();
+        var flight = await fixture.ReadAsync();
+        var service = flight.Services.Single();
+        var closed = TimeWindow.Create(fixture.Input.StartUtc, Now.AddMinutes(30)).Value;
+        typeof(FlightService).GetProperty(nameof(FlightService.Window))!.SetValue(service, closed);
+        typeof(FlightService).GetProperty(nameof(FlightService.EndedByUserId))!.SetValue(service, fixture.Owner.UserId);
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+        await fixture.ChangeVersionAsync();
+        var input = fixture.Input with { EndUtc = closed.ToUtc };
+        var writes = fixture.Writes.SaveCalls;
+
+        var acknowledged = await fixture.SaveAsync(id, input, version: InitialVersion);
+        var changed = await fixture.SaveAsync(id, input with { Notes = "A new invalid correction" });
+
+        acknowledged.IsSuccess.ShouldBeTrue();
+        acknowledged.Value.Service.Performers.Single().EndUtc.ShouldBeNull();
+        changed.Error.Code.ShouldBe("Operations.FlightService.OpenPerformerPeriods");
+        fixture.Writes.SaveCalls.ShouldBe(writes);
+    }
+
+    [Fact]
+    public async Task Legacy_end_without_known_attribution_keeps_existing_delete_protection()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var id = Guid.NewGuid();
+        (await fixture.SaveAsync(id, fixture.ClosedPerformerInput with { EndUtc = Now.AddMinutes(30) }))
+            .IsSuccess.ShouldBeTrue();
+        var flight = await fixture.ReadAsync();
+        var record = flight.Services.Single();
+        typeof(FlightService).GetProperty(nameof(FlightService.EndedByUserId))!.SetValue(record, null);
+        await fixture.Db.SaveChangesAsync();
+        fixture.Db.ChangeTracker.Clear();
+
+        FlightServiceDto.Map(record, fixture.Owner.UserId, true).CanDelete.ShouldBeFalse();
+        (await fixture.DeleteAsync(id)).Error.Code.ShouldBe("Operations.FlightService.DeleteReadOnly");
+        (await fixture.ReadAsync()).Services.ShouldHaveSingleItem().Id.ShouldBe(id);
+    }
+
     [Fact]
     public async Task Save_preserves_client_ids_and_distinct_ids_allow_repeated_catalog_services()
     {
@@ -49,16 +175,16 @@ public sealed class FlightServiceSaveTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var id = Guid.NewGuid();
-        (await fixture.SaveAsync(id)).IsSuccess.ShouldBeTrue();
+        (await fixture.SaveAsync(id, fixture.ClosedPerformerInput)).IsSuccess.ShouldBeTrue();
         var end = Now.AddMinutes(30);
 
-        var result = await fixture.SaveAsync(id, fixture.Input with { EndUtc = end }, fixture.Other);
+        var result = await fixture.SaveAsync(id, fixture.ClosedPerformerInput with { EndUtc = end }, fixture.Other);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.Service.CreatedByUserId.ShouldBe(fixture.Owner.UserId);
         result.Value.Service.EndedByUserId.ShouldBe(fixture.Other.UserId);
         result.Value.Service.EndUtc.ShouldBe(end);
-        result.Value.Service.Notes.ShouldBe(fixture.Input.Notes);
+        result.Value.Service.Notes.ShouldBe(fixture.ClosedPerformerInput.Notes);
         result.Value.Service.CanEdit.ShouldBeFalse();
         result.Value.Service.CanSetEnd.ShouldBeTrue();
     }
@@ -71,8 +197,8 @@ public sealed class FlightServiceSaveTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var id = Guid.NewGuid();
-        (await fixture.SaveAsync(id)).IsSuccess.ShouldBeTrue();
-        var input = fixture.Input with { EndUtc = Now.AddMinutes(30) };
+        (await fixture.SaveAsync(id, fixture.ClosedPerformerInput)).IsSuccess.ShouldBeTrue();
+        var input = fixture.ClosedPerformerInput with { EndUtc = Now.AddMinutes(30) };
         input = change switch
         {
             "notes" => input with { Notes = "Unauthorized correction" },
@@ -88,8 +214,8 @@ public sealed class FlightServiceSaveTests
         fixture.Storage.Files.ShouldBeEmpty();
         var service = (await fixture.ReadAsync()).Services.ShouldHaveSingleItem();
         service.Window.ToUtc.ShouldBeNull();
-        service.Notes.ShouldBe(fixture.Input.Notes);
-        service.Performers.ShouldHaveSingleItem().Window.FromUtc.ShouldBe(fixture.Input.Performers.Single().StartUtc);
+        service.Notes.ShouldBe(fixture.ClosedPerformerInput.Notes);
+        service.Performers.ShouldHaveSingleItem().Window.FromUtc.ShouldBe(fixture.ClosedPerformerInput.Performers.Single().StartUtc);
         service.Attachments.ShouldBeEmpty();
     }
 
@@ -101,11 +227,11 @@ public sealed class FlightServiceSaveTests
         await using var fixture = await Fixture.CreateAsync();
         var id = Guid.NewGuid();
         var end = Now.AddMinutes(30);
-        (await fixture.SaveAsync(id)).IsSuccess.ShouldBeTrue();
-        (await fixture.SaveAsync(id, fixture.Input with { EndUtc = end }, fixture.Other)).IsSuccess.ShouldBeTrue();
+        (await fixture.SaveAsync(id, fixture.ClosedPerformerInput)).IsSuccess.ShouldBeTrue();
+        (await fixture.SaveAsync(id, fixture.ClosedPerformerInput with { EndUtc = end }, fixture.Other)).IsSuccess.ShouldBeTrue();
         var writes = fixture.Writes.SaveCalls;
 
-        var result = await fixture.SaveAsync(id, fixture.Input with { EndUtc = clear ? null : end.AddMinutes(5) });
+        var result = await fixture.SaveAsync(id, fixture.ClosedPerformerInput with { EndUtc = clear ? null : end.AddMinutes(5) });
 
         result.IsFailure.ShouldBeTrue();
         fixture.Writes.SaveCalls.ShouldBe(writes);
@@ -120,10 +246,10 @@ public sealed class FlightServiceSaveTests
         await using var fixture = await Fixture.CreateAsync();
         var id = Guid.NewGuid();
         var end = Now.AddMinutes(30);
-        (await fixture.SaveAsync(id)).IsSuccess.ShouldBeTrue();
-        (await fixture.SaveAsync(id, fixture.Input with { EndUtc = end }, fixture.Other)).IsSuccess.ShouldBeTrue();
+        (await fixture.SaveAsync(id, fixture.ClosedPerformerInput)).IsSuccess.ShouldBeTrue();
+        (await fixture.SaveAsync(id, fixture.ClosedPerformerInput with { EndUtc = end }, fixture.Other)).IsSuccess.ShouldBeTrue();
 
-        var result = await fixture.SaveAsync(id, fixture.Input with
+        var result = await fixture.SaveAsync(id, fixture.ClosedPerformerInput with
         {
             EndUtc = end, Notes = "Corrected service notes", CustomerReferenceNumber = "REF-CORRECTED"
         });
@@ -144,17 +270,17 @@ public sealed class FlightServiceSaveTests
         await using var fixture = await Fixture.CreateAsync();
         var id = Guid.NewGuid();
         var end = Now.AddMinutes(30);
-        (await fixture.SaveAsync(id)).IsSuccess.ShouldBeTrue();
-        (await fixture.SaveAsync(id, fixture.Input with { EndUtc = end }, fixture.Other)).IsSuccess.ShouldBeTrue();
+        (await fixture.SaveAsync(id, fixture.ClosedPerformerInput)).IsSuccess.ShouldBeTrue();
+        (await fixture.SaveAsync(id, fixture.ClosedPerformerInput with { EndUtc = end }, fixture.Other)).IsSuccess.ShouldBeTrue();
         DateTimeOffset? corrected = clear ? null : end.AddMinutes(5);
 
-        var result = await fixture.SaveAsync(id, fixture.Input with { EndUtc = corrected }, fixture.Other);
+        var result = await fixture.SaveAsync(id, fixture.ClosedPerformerInput with { EndUtc = corrected }, fixture.Other);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.Service.EndUtc.ShouldBe(corrected);
         result.Value.Service.EndedByUserId.ShouldBe(clear ? null : fixture.Other.UserId);
         result.Value.Service.CreatedByUserId.ShouldBe(fixture.Owner.UserId);
-        result.Value.Service.Notes.ShouldBe(fixture.Input.Notes);
+        result.Value.Service.Notes.ShouldBe(fixture.ClosedPerformerInput.Notes);
     }
 
     [Fact]
@@ -162,8 +288,8 @@ public sealed class FlightServiceSaveTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var id = Guid.NewGuid();
-        (await fixture.SaveAsync(id)).IsSuccess.ShouldBeTrue();
-        (await fixture.SaveAsync(id, fixture.Input with { EndUtc = Now.AddMinutes(30) }, fixture.Other))
+        (await fixture.SaveAsync(id, fixture.ClosedPerformerInput)).IsSuccess.ShouldBeTrue();
+        (await fixture.SaveAsync(id, fixture.ClosedPerformerInput with { EndUtc = Now.AddMinutes(30) }, fixture.Other))
             .IsSuccess.ShouldBeTrue();
 
         var result = await fixture.DeleteAsync(id);
@@ -179,7 +305,8 @@ public sealed class FlightServiceSaveTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var id = Guid.NewGuid();
-        var input = fixture.Input with { EndUtc = closed ? Now.AddMinutes(30) : null };
+        var input = fixture.Input with { EndUtc = closed ? Now.AddMinutes(30) : null,
+            Performers = closed ? fixture.ClosedPerformerInput.Performers : fixture.Input.Performers };
         (await fixture.SaveAsync(id, input)).IsSuccess.ShouldBeTrue();
 
         var result = await fixture.DeleteAsync(id);
@@ -563,7 +690,7 @@ public sealed class FlightServiceSaveTests
     {
         await using var fixture = await Fixture.CreateAsync();
         var id = Guid.NewGuid();
-        var saved = await fixture.SaveAsync(id);
+        var saved = await fixture.SaveAsync(id, fixture.ClosedPerformerInput);
         saved.IsSuccess.ShouldBeTrue();
         var original = saved.Value.Service.Performers.Single();
         var staff = fixture.Reader.StaffMembers[original.StaffMemberId];
@@ -571,13 +698,13 @@ public sealed class FlightServiceSaveTests
             ? staff with { StationId = Guid.NewGuid(), FullName = "Moved employee" }
             : staff with { IsActive = false, FullName = "Inactive employee" };
 
-        var result = await fixture.SaveAsync(id, fixture.Input with { EndUtc = Now.AddMinutes(30) }, fixture.Other);
+        var result = await fixture.SaveAsync(id, fixture.ClosedPerformerInput with { EndUtc = Now.AddMinutes(30) }, fixture.Other);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.Service.CanEdit.ShouldBeFalse();
         result.Value.Service.EndedByUserId.ShouldBe(fixture.Other.UserId);
         result.Value.Service.Performers.ShouldHaveSingleItem().ShouldBe(original);
-        var replacement = fixture.Input with { Performers = [fixture.Input.Performers.Single() with { Id = Guid.NewGuid() }] };
+        var replacement = fixture.ClosedPerformerInput with { Performers = [fixture.ClosedPerformerInput.Performers.Single() with { Id = Guid.NewGuid() }] };
         var rejected = await fixture.SaveAsync(Guid.NewGuid(), replacement, fixture.Other);
         rejected.Error.Code.ShouldBe(relocated ? "Operations.Ref.StaffStationMismatch" : "Operations.Ref.StaffInactive");
     }
@@ -653,6 +780,10 @@ public sealed class FlightServiceSaveTests
         public required Actor Owner { get; init; }
         public required Actor Other { get; init; }
         public required SaveFlightServiceRequest Input { get; init; }
+        public SaveFlightServiceRequest ClosedPerformerInput => Input with
+        {
+            Performers = [Input.Performers.Single() with { EndUtc = Now.AddMinutes(20) }]
+        };
 
         public async Task<Result<FlightServiceSavedDto>> SaveAsync(Guid recordId, SaveFlightServiceRequest? input = null,
             Actor? actor = null, byte[]? version = null)

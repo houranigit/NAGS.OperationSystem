@@ -107,6 +107,8 @@ public sealed partial class FlightVisibilityScopeTests
         saved.Service.Notes.ShouldBe("Recorded service");
         saved.Service.CanEdit.ShouldBeTrue();
         saved.Service.CanSetEnd.ShouldBeTrue();
+        saved.Service.CanChangeService.ShouldBeTrue();
+        saved.Service.CanDelete.ShouldBeTrue();
         saved.RowVersion.ShouldNotBe(detail.RowVersion);
         saved.ActiveWorkCount.ShouldBe(1);
         saved.CompletedWorkCount.ShouldBe(0);
@@ -124,7 +126,7 @@ public sealed partial class FlightVisibilityScopeTests
         var repeatedInput = input with
         {
             EndUtc = input.StartUtc.AddMinutes(30),
-            Performers = [input.Performers.Single() with { Id = Guid.NewGuid() }],
+            Performers = [input.Performers.Single() with { Id = Guid.NewGuid(), EndUtc = input.StartUtc.AddMinutes(25) }],
             Attachments = []
         };
         using var repeated = await SendServiceAsync(client, flightId, repeatedId, repeatedInput, saved.RowVersion);
@@ -205,6 +207,8 @@ public sealed partial class FlightVisibilityScopeTests
         var serviceJson = json.GetProperty("services").EnumerateArray().Single();
         serviceJson.GetProperty("canEdit").GetBoolean().ShouldBeFalse();
         serviceJson.GetProperty("canSetEnd").GetBoolean().ShouldBeFalse();
+        serviceJson.GetProperty("canChangeService").GetBoolean().ShouldBeFalse();
+        serviceJson.GetProperty("canDelete").GetBoolean().ShouldBeFalse();
         var metadata = serviceJson.GetProperty("attachments").EnumerateArray().Single();
         metadata.TryGetProperty("storageKey", out _).ShouldBeFalse();
         metadata.TryGetProperty("storageReference", out _).ShouldBeFalse();
@@ -225,6 +229,7 @@ public sealed partial class FlightVisibilityScopeTests
         var flightId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8130", [creator.StaffId, closer.StaffId]);
         var recordId = Guid.NewGuid();
         var input = ServiceInput(refs.ServiceId, creator.StaffId);
+        input = input with { Performers = [input.Performers.Single() with { EndUtc = input.StartUtc.AddMinutes(20) }] };
         var detail = (await creatorClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{flightId}"))!;
         using var create = await SendServiceAsync(creatorClient, flightId, recordId, input, detail.RowVersion);
         create.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -244,6 +249,8 @@ public sealed partial class FlightVisibilityScopeTests
         var ownerView = (await creatorClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{flightId}"))!;
         ownerView.Services!.ShouldHaveSingleItem().CanEdit.ShouldBeTrue();
         ownerView.Services.Single().CanSetEnd.ShouldBeFalse();
+        ownerView.Services.Single().CanChangeService.ShouldBeFalse();
+        ownerView.Services.Single().CanDelete.ShouldBeFalse();
         using (var overwrite = await SendServiceAsync(creatorClient, flightId, recordId, input, closed.RowVersion))
             overwrite.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         using (var delete = await DeleteServiceAsync(creatorClient, flightId, recordId, closed.RowVersion))
@@ -305,18 +312,21 @@ public sealed partial class FlightVisibilityScopeTests
         }
         var serviceEnd = departure.Atd.AddMinutes(-1);
         var parentClosed = input with { EndUtc = serviceEnd };
-        using var closeService = await SendServiceAsync(client, flightId, recordId, parentClosed, open.RowVersion);
-        closeService.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var serviceClosed = (await closeService.Content.ReadFromJsonAsync<FlightServiceSavedDto>())!;
-        serviceClosed.Service.Performers.ShouldHaveSingleItem().EndUtc.ShouldBeNull();
-        using (var unfinishedEmployee = await Depart(serviceClosed.RowVersion))
+        using (var closeService = await SendServiceAsync(client, flightId, recordId, parentClosed, open.RowVersion))
+        {
+            closeService.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            var failure = await closeService.Content.ReadFromJsonAsync<JsonElement>();
+            failure.GetProperty("code").GetString().ShouldBe("Operations.FlightService.OpenPerformerPeriods");
+            failure.GetProperty("errors").TryGetProperty("Performers[0].EndUtc", out _).ShouldBeTrue();
+        }
+        using (var unfinishedEmployee = await Depart(open.RowVersion))
         {
             unfinishedEmployee.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
             (await unfinishedEmployee.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
                 .ShouldBe("Operations.Departure.ServiceWorkIncomplete");
         }
         var completed = parentClosed with { Performers = [input.Performers.Single() with { EndUtc = serviceEnd }] };
-        using var closeEmployee = await SendServiceAsync(client, flightId, recordId, completed, serviceClosed.RowVersion);
+        using var closeEmployee = await SendServiceAsync(client, flightId, recordId, completed, open.RowVersion);
         closeEmployee.StatusCode.ShouldBe(HttpStatusCode.OK);
         var allClosed = (await closeEmployee.Content.ReadFromJsonAsync<FlightServiceSavedDto>())!;
         using var acceptedDeparture = await Depart(allClosed.RowVersion);

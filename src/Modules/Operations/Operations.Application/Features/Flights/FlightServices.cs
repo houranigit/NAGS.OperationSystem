@@ -75,12 +75,16 @@ public sealed class SaveFlightServiceCommandHandler(IOperationsDbContext db, IMo
         if (bounds.IsFailure) return bounds.Error;
         var completed = FlightServiceBounds.RequireCompletedIfDeparted(flight, input, actor.StaffMemberId);
         if (completed.IsFailure) return completed.Error;
+        var closedPerformers = FlightServiceBounds.RequireClosedPerformers(input);
+        if (closedPerformers.IsFailure) return closedPerformers.Error;
         if (existing is not null)
         {
             if ((!coreMatches || !mediaMatches) && existing.CreatedByUserId != actor.UserId)
                 return Error.Forbidden("Only the employee who created this service can change its details.", "Operations.FlightService.ReadOnly");
             if (existing.Window.ToUtc != input.EndUtc && existing.Window.ToUtc is not null && existing.EndedByUserId != actor.UserId)
                 return Error.Forbidden("Only the employee who entered the end time can change or clear it.", "Operations.FlightService.EndReadOnly");
+            if (existing.Service.ServiceId != input.ServiceId && existing.HasOtherUserEnd)
+                return Error.Forbidden("The selected service cannot change after another employee has entered its end time.", "Operations.FlightService.SelectionReadOnly");
         }
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
         var performerIds = input.Performers.Select(p => p.Id).ToArray();

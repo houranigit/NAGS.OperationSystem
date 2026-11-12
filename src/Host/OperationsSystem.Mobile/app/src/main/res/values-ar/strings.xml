@@ -370,6 +370,8 @@
     <string name="service_validation_service">اختر خدمة متاحة.</string>
     <string name="service_validation_start">أدخل وقت بدء صالحًا.</string>
     <string name="service_validation_end">يجب أن يكون وقت الانتهاء صالحًا وألا يسبق وقت البدء.</string>
+    <string name="service_validation_open_staff">أغلق جميع فترات الموظفين قبل إنهاء الخدمة.</string>
+    <string name="service_validation_staff_end_required">أدخل وقت الانتهاء قبل إغلاق الخدمة.</string>
     <string name="service_validation_reference">يجب ألا يتجاوز مرجع العميل 200 حرف.</string>
     <string name="service_validation_notes">يجب ألا تتجاوز الملاحظات 2,000 حرف.</string>
     <string name="service_validation_performers">أضف موظفًا منفذًا واحدًا على الأقل، دون تكرار الموظف.</string>

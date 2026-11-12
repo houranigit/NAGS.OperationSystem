@@ -212,7 +212,11 @@ class FlightServicesRepository(
                             error = "The saved service attachment is unavailable. Reload the flight and review it.")) } }
                         continue
                     }
-                    validate(hydrated, version, row.reviewedServiceJson?.let { json.decodeFromString(it) })
+                    // Replay an immutable attempt from an older app even when a new closing
+                    // rule would now reject it. The server must see it to acknowledge an
+                    // already accepted write; fresh desired saves were checked before freezing.
+                    validate(hydrated, version, row.reviewedServiceJson?.let { json.decodeFromString(it) },
+                        replayingFrozenAttempt = true)
                     val result = sendSave(row.flightId, row.serviceRecordId, hydrated, version)
                     acknowledged = true
                     if (owner != currentOwner()) return@withLock false
@@ -281,7 +285,8 @@ class FlightServicesRepository(
             if (row.rowVersion != original.rowVersion || row.reviewedServiceJson != original.reviewedServiceJson) return@withLock null
             val reviewed = row.reviewedServiceJson?.let { json.decodeFromString<FlightServiceRecord>(it) }
             val current = live.services.firstOrNull { it.id == row.serviceRecordId }
-            fun comparable(service: FlightServiceRecord?) = service?.copy(performers = service.performers.sortedBy { it.id }, attachments = service.attachments.sortedBy { it.id })
+            fun comparable(service: FlightServiceRecord?) = service?.copy(performers = service.performers.sortedBy { it.id },
+                attachments = service.attachments.sortedBy { it.id }, canChangeService = service.serviceSelectionEditable(), canDelete = service.serviceDeletable())
             if (live.hasCancellationSubmission || live.rowVersion != row.rowVersion || comparable(current) != comparable(reviewed))
                 throw ApiException(409, "Service details changed. Reload the flight and review them before saving again.")
             check(live.canSaveServices && live.allowedServiceIds != null) { "Reload the flight to check service access and eligibility." }
@@ -292,19 +297,27 @@ class FlightServicesRepository(
     }
 
     private fun validate(input: SaveFlightServiceRequest?, version: String, baseline: FlightServiceRecord?,
-        flight: FlightDetail? = null, eligible: Set<String>? = null, localActuals: FlightServiceActualBounds? = null) {
+        flight: FlightDetail? = null, eligible: Set<String>? = null, localActuals: FlightServiceActualBounds? = null,
+        replayingFrozenAttempt: Boolean = false) {
         check(runCatching { Base64.getDecoder().decode(version).size == 8 }.getOrDefault(false)) { "Reload the flight before saving services." }
+        val current = baseline?.let { reviewed -> flight?.services?.firstOrNull { it.id == reviewed.id } }
         if (input == null) {
-            check(baseline == null || baseline.canEdit && baseline.canSetEnd) { "Only the service creator can remove it without clearing another employee's end." }
+            check((baseline == null || baseline.serviceDeletable()) && current?.serviceDeletable() != false) {
+                "A service ended by another employee cannot be removed."
+            }
             return
         }
         val arrival = if (localActuals == null) flight?.visibleArrival()?.ata else localActuals.arrivalUtc
         val departure = if (localActuals == null) flight?.visibleDeparture()?.atd else localActuals.departureUtc
-        check(input.validationErrors(version, arrival, departure, eligible).isEmpty()) {
+        check(input.validationErrors(version, arrival, departure, eligible, requireClosedPerformers = !replayingFrozenAttempt).isEmpty()) {
             "Complete the required service fields and review employee periods."
         }
         if (baseline != null) {
             val old = baseline.input()
+            if (!replayingFrozenAttempt && !input.serviceId.equals(old.serviceId, true)) check(
+                baseline.serviceSelectionEditable() && current?.serviceSelectionEditable() != false) {
+                "The selected service cannot change after another employee has entered its End time."
+            }
             if (input.endUtc != old.endUtc) check(baseline.canSetEnd) { "Only the employee who entered the service end can change it." }
             if (!baseline.canEdit) check(baseline.canSetEnd && input.withoutBytes().copy(endUtc = old.endUtc) == old) {
                 "Only the service creator can change its details. Other employees may record the end."

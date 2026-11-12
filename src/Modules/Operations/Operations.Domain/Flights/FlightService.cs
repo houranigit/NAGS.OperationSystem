@@ -29,6 +29,7 @@ public sealed class FlightService : Entity<Guid>
 
     public IReadOnlyList<FlightServicePerformer> Performers => _performers.AsReadOnly();
     public IReadOnlyList<FlightServiceAttachment> Attachments => _attachments.AsReadOnly();
+    public bool HasOtherUserEnd => Window.ToUtc is not null && EndedByUserId is { } closer && closer != CreatedByUserId;
 
     internal static Result<FlightService> Create(Guid flightId, ServiceSnapshot? service, string? customerReferenceNumber,
         TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null, Guid? id = null)
@@ -61,12 +62,16 @@ public sealed class FlightService : Entity<Guid>
         if (check.IsFailure)
             return check.Error;
 
+        if (Service.ServiceId != service!.ServiceId && HasOtherUserEnd)
+            return SelectionReadOnly();
         foreach (var performer in _performers)
         {
             var period = OperationalWorkValidation.EmployeeWindow(performer.Window, window!);
             if (period.IsFailure)
                 return period.Error;
         }
+        if (window!.ToUtc is not null && _performers.Any(performer => performer.Window.ToUtc is null))
+            return OpenPerformerPeriods();
 
         var reference = NormalizeOptional(customerReferenceNumber);
         var normalizedNotes = NormalizeOptional(notes);
@@ -204,8 +209,19 @@ public sealed class FlightService : Entity<Guid>
             return Error.Validation("Performing employee is required.", "Operations.FlightService.EmployeeRequired");
         if (window is null)
             return Error.Validation("Employee time window is required.", "Operations.FlightService.WindowRequired");
-        return OperationalWorkValidation.EmployeeWindow(window, Window);
+        var period = OperationalWorkValidation.EmployeeWindow(window, Window);
+        if (period.IsFailure)
+            return period;
+        if (Window.ToUtc is not null && window.ToUtc is null)
+            return OpenPerformerPeriods();
+        return Result.Success();
     }
+
+    internal static Error SelectionReadOnly() => Error.Forbidden(
+        "The selected service cannot change after another employee has entered its end time.", "Operations.FlightService.SelectionReadOnly");
+
+    internal static Error OpenPerformerPeriods() => Error.Validation(
+        "Close every employee work period before closing the service.", "Operations.FlightService.OpenPerformerPeriods");
 
     private static string? NormalizeOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

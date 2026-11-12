@@ -29,6 +29,7 @@ internal fun FlightServiceSection(
     canEdit: (String) -> Boolean = { true },
     canSetEnd: (String) -> Boolean = { true },
     canDelete: (String) -> Boolean = { true },
+    canChangeService: (String) -> Boolean = { true },
     errors: Map<String, Map<String, Int>> = emptyMap(),
     defaultEmployee: FlightEmployeeDraft? = null,
     timeBounds: FlightWorkTimeBounds = FlightWorkTimeBounds(),
@@ -52,7 +53,8 @@ internal fun FlightServiceSection(
                     onRemove = { onChange { current -> current.filterNot { it.id == item.id } } }, compactDelete = true, enabled = enabled && canDelete(item.id)) {
                     FlightWorkChoiceRow(stringResource(R.string.work_service, index + 1),
                         item.serviceName.ifBlank { stringResource(R.string.work_select_service) },
-                        stringResource(R.string.work_select_service), isPlaceholder = item.serviceId.isBlank(), leadingPadding = 0.dp, enabled = editable,
+                        stringResource(R.string.work_select_service), isPlaceholder = item.serviceId.isBlank(), leadingPadding = 0.dp,
+                        enabled = editable && canChangeService(item.id),
                         errorMessage = fields["serviceId"]?.let { stringResource(it) },
                         onClick = { selectingService = item.id })
                 }
@@ -91,7 +93,7 @@ internal fun FlightServiceSection(
         }
     }
     val editing = items.firstOrNull { it.id == selectingService }
-    if (editing != null && enabled && canEdit(editing.id)) {
+    if (editing != null && enabled && canEdit(editing.id) && canChangeService(editing.id)) {
         FlightWorkPicker(title = stringResource(R.string.work_select_service), searchLabel = stringResource(R.string.work_search_services),
             emptyLabel = stringResource(R.string.work_no_services),
             options = catalogs.services.filterNot { it.isAircraftPerLanding }.map { FlightWorkChoice(it.id, it.name) }, selectedId = editing.serviceId,

@@ -149,6 +149,12 @@ internal fun serviceEditorValidation(item: FlightServiceDraft, request: SaveFlig
     if ("performers" in errors) put("performers", R.string.service_validation_performers)
     if ("attachments" in errors) put("attachments", R.string.service_validation_attachments)
     if ("rowVersion" in errors) put("rowVersion", R.string.service_validation_version)
+    if (request.endUtc != null && request.performers.any { it.endUtc == null }) {
+        put("endUtc", R.string.service_validation_open_staff)
+        request.performers.filter { it.endUtc == null }.forEach {
+            put("performers.${it.id}.endUtc", R.string.service_validation_staff_end_required)
+        }
+    }
     fun instant(raw: String?) = raw?.let { runCatching { OffsetDateTime.parse(it).toInstant() }.getOrNull() }
     val from = instant(request.startUtc); val to = instant(request.endUtc)
     val ata = instant(actualArrival); val atd = instant(actualDeparture)
@@ -166,7 +172,7 @@ internal fun serviceEditorValidation(item: FlightServiceDraft, request: SaveFlig
         val start = instant(value?.startUtc); val end = instant(value?.endUtc)
         if (value == null || prefix + "startUtc" in errors)
             put(prefix + "startUtc", R.string.service_validation_staff_period)
-        if (prefix + "endUtc" in errors)
+        if (prefix + "endUtc" in errors && value?.endUtc != null)
             put(prefix + "endUtc", R.string.service_validation_staff_period)
         serviceActualTimeError(start, ata, atd)?.let { put(prefix + "startUtc", it) }
         serviceActualTimeError(end, ata, atd)?.let { put(prefix + "endUtc", it) }

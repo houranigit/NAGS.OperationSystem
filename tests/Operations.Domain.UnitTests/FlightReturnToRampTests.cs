@@ -361,12 +361,17 @@ public sealed class FlightReturnToRampTests
         if (incomplete.StartsWith("service", StringComparison.Ordinal))
         {
             var service = flight.AddService(TestData.Service(), null,
-                incomplete == "service-window" ? TimeWindow.Create(closedWindow.FromUtc, null).Value : closedWindow,
+                incomplete is "service-window" or "service-employee-window" ? TimeWindow.Create(closedWindow.FromUtc, null).Value : closedWindow,
                 null, user, TestData.Now, rtr.Id).Value;
             if (incomplete != "service-employee")
                 flight.AddServicePerformer(service.Id, TestData.Staff(),
                     incomplete == "service-employee-window" ? TimeWindow.Create(closedWindow.FromUtc, null).Value : closedWindow,
                     user, TestData.Now, rtr.Id).IsSuccess.ShouldBeTrue();
+            if (incomplete == "service-employee-window")
+            {
+                // Imported legacy work must still block RTR closure, even though new writes reject this state.
+                typeof(FlightService).GetProperty(nameof(FlightService.Window))!.SetValue(service, closedWindow);
+            }
         }
         if (incomplete.StartsWith("task", StringComparison.Ordinal))
         {

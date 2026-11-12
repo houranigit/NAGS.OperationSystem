@@ -35,7 +35,7 @@ data class SaveFlightServiceRequest(
             contentType = canonicalServiceMime(it.contentType)) }?.sortedBy { it.id })
 
     fun validationErrors(rowVersion: String, actualArrivalUtc: String? = null, actualDepartureUtc: String? = null,
-        allowedServiceIds: Set<String>? = null): Set<String> = buildSet {
+        allowedServiceIds: Set<String>? = null, requireClosedPerformers: Boolean = true): Set<String> = buildSet {
         if (!validArrivalId(serviceId)) add("serviceId")
         if (allowedServiceIds != null && allowedServiceIds.none { it.equals(serviceId, true) }) add("serviceId")
         if (serviceId.equals("40000000-0000-0000-0000-000000000003", true) && notes.isNullOrBlank()) add("notes")
@@ -52,6 +52,7 @@ data class SaveFlightServiceRequest(
         if (end != null && (arrival != null && end < arrival || departure != null && end > departure)) add("endUtc")
         if (performers.map { it.id.lowercase() }.distinct().size != performers.size ||
             performers.map { it.staffMemberId.lowercase() }.distinct().size != performers.size || performers.isEmpty()) add("performers")
+        if (requireClosedPerformers && endUtc != null && performers.any { it.endUtc == null }) add("endUtc")
         performers.forEach { performer ->
             val prefix = "performers.${performer.id}."
             val from = serviceInstant(performer.startUtc)
@@ -64,6 +65,7 @@ data class SaveFlightServiceRequest(
             if (performer.endUtc != null && (to == null || from != null && to < from ||
                     end != null && to > end || arrival != null && to < arrival || departure != null && to > departure))
                 add(prefix + "endUtc")
+            if (requireClosedPerformers && endUtc != null && performer.endUtc == null) add(prefix + "endUtc")
         }
         if (attachments != null && (attachments.size > 10 || attachments.map { it.id.lowercase() }.distinct().size != attachments.size ||
             attachments.any { !validArrivalId(it.id) || it.kind !in 0..2 || it.fileName.isBlank() || it.contentType.isBlank() || it.contentType.length > 100 }))
@@ -89,7 +91,15 @@ data class FlightServiceRecord(
     val updatedAtUtc: String? = null, val updatedByUserId: String? = null,
     val performers: List<FlightServicePerformerRecord> = emptyList(), val canEdit: Boolean = false,
     val canSetEnd: Boolean = false, val attachments: List<FlightServiceAttachmentRecord> = emptyList(),
+    val canChangeService: Boolean? = null, val canDelete: Boolean? = null,
 ) {
+    private fun hasOtherUserEnd() =
+        endUtc != null && endedByUserId != null && !endedByUserId.equals(createdByUserId, true)
+
+    /** Older cached records derive the same protection until refreshed capabilities arrive. */
+    fun serviceSelectionEditable() = canEdit && canChangeService != false && !hasOtherUserEnd()
+    fun serviceDeletable() = canEdit && canSetEnd && canDelete != false && !hasOtherUserEnd()
+
     fun input() = SaveFlightServiceRequest(serviceId, startUtc, endUtc, customerReferenceNumber, notes,
         performers.map { SaveFlightServicePerformerRequest(it.id, it.staffMemberId, it.startUtc, it.endUtc) },
         attachments.map { FlightServiceAttachmentInput(it.id, it.kind, it.fileName, it.contentType) }).normalized()
