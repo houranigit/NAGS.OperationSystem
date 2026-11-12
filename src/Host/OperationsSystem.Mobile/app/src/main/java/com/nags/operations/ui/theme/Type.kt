@@ -1,12 +1,14 @@
 package com.nags.operations.ui.theme
 
+import android.os.Build
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import java.io.File
 
-private val Sans = FontFamily.SansSerif
+private val Sans = operationsSansFontFamily(Build.MANUFACTURER, Build.VERSION.SDK_INT,
+    File("/system/fonts/HarmonyOS.ttf").isFile)
 
 // Slightly tighter line-heights and a bolder display style than Material's
 // default — operations users glance at this app one-handed on the ramp.
