@@ -64,9 +64,9 @@ private val WorkRemoveRed = Color(0xFFD92D3F)
 
 /** The same quiet physical-left rule binds each service or task's full-width fields. */
 @Composable
-internal fun FlightWorkEntryGroup(content: @Composable () -> Unit) {
+internal fun FlightWorkEntryGroup(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val border = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
-    Box(Modifier.fillMaxWidth().drawWithContent {
+    Box(modifier.fillMaxWidth().drawWithContent {
         drawContent()
         val stroke = 0.75.dp.toPx()
         val inset = 14.dp.toPx()
@@ -77,12 +77,26 @@ internal fun FlightWorkEntryGroup(content: @Composable () -> Unit) {
     }
 }
 
+/** Nested employees and resources share a physical-left rule without another card surface. */
+@Composable
+internal fun FlightWorkNestedEntry(content: @Composable ColumnScope.() -> Unit) {
+    val border = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+    Column(Modifier.fillMaxWidth().drawWithContent {
+        drawContent()
+        val stroke = 0.75.dp.toPx()
+        val inset = 8.dp.toPx()
+        drawLine(border, Offset(stroke / 2, inset), Offset(stroke / 2, size.height - inset),
+            strokeWidth = stroke, cap = StrokeCap.Round)
+    }, content = content)
+}
+
 /** Intrinsic labels leave the remaining row width to the selected value. */
 @Composable
 internal fun FlightWorkChoiceRow(label: String, value: String, description: String,
     isPlaceholder: Boolean = false, leadingPadding: Dp = 14.dp, enabled: Boolean = true,
     errorMessage: String? = null, onClick: () -> Unit) {
-    FlightFormChoiceRow(label, value, description, isPlaceholder, leadingPadding, enabled, errorMessage, onClick)
+    FlightFormChoiceRow(label = label, value = value, description = description, isPlaceholder = isPlaceholder,
+        leadingPadding = leadingPadding, enabled = enabled, errorMessage = errorMessage, onClick = onClick)
 }
 
 @Composable
@@ -145,6 +159,8 @@ internal fun FlightWorkPeriodFields(
     endError: String? = null,
     seedEndNow: Boolean = false,
     timeBounds: FlightWorkTimeBounds? = null,
+    startRequired: Boolean = true,
+    endRequired: Boolean = false,
     onStartPickerSessionChanged: (Boolean) -> Unit = {},
     onChange: (FlightWorkPeriod) -> Unit,
 ) {
@@ -152,6 +168,7 @@ internal fun FlightWorkPeriodFields(
     val startLabel = stringResource(R.string.work_start)
     val endLabel = stringResource(R.string.work_end)
     FlightFormDateTimeField(period.start, startLabel, startLabel, enabled = startEnabled, errorMessage = startError,
+        placeholder = if (startRequired) stringResource(R.string.flight_form_required_field) else "",
         onClick = {
             onStartPickerSessionChanged(period.start.isBlank())
             if (period.start.isBlank()) onChange(if (timeBounds != null) seedBlankWorkStart(period, zone, timeBounds)
@@ -165,7 +182,7 @@ internal fun FlightWorkPeriodFields(
     FlightFormValidation(endError ?: if (endBeforeStart) stringResource(R.string.work_end_before_start) else null) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
-                if (period.end.isBlank()) FlightFormChoiceRow(endLabel, stringResource(R.string.work_add_end), endLabel,
+                if (period.end.isBlank()) FlightFormChoiceRow(endLabel, if (endRequired) stringResource(R.string.flight_form_required_field) else "", endLabel,
                     isPlaceholder = true, enabled = endEnabled, onClick = {
                         val now = LocalDateTime.now(zone).withSecond(0).withNano(0)
                         val from = runCatching { LocalDateTime.parse(period.start) }.getOrNull()
@@ -204,6 +221,7 @@ internal fun FlightWorkNotes(
     showReference: Boolean = true,
     enabled: Boolean = true,
     errorMessage: String? = null,
+    required: Boolean = false,
 ) {
     if (showReference) {
         FlightFormDivider()
@@ -212,8 +230,9 @@ internal fun FlightWorkNotes(
     FlightFormDivider()
     FlightFormValidation(errorMessage) {
         Column(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f).padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.flight_form_remarks), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-            FlightFormTextInput(remarks, onRemarksChange, stringResource(R.string.flight_form_remarks_hint), description,
+            Text(stringResource(R.string.flight_form_remarks), style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlightFormTextInput(remarks, onRemarksChange, if (required) stringResource(R.string.flight_form_required_field) else "", description,
                 multiline = true, textAlign = TextAlign.Left, enabled = enabled, keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done))
         }
@@ -224,5 +243,5 @@ internal fun FlightWorkNotes(
 internal fun FlightWorkReferenceRow(reference: String, onChange: (String) -> Unit,
     enabled: Boolean = true, errorMessage: String? = null) {
     FlightFormTextRow(stringResource(R.string.work_customer_reference), reference, onChange,
-        stringResource(R.string.arrival_optional), enabled = enabled, errorMessage = errorMessage)
+        "", enabled = enabled, errorMessage = errorMessage)
 }

@@ -51,6 +51,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,6 +59,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.derivedStateOf
@@ -66,6 +68,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.AbsoluteAlignment
@@ -100,6 +103,7 @@ import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -130,9 +134,11 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 internal val FlightFormGround = Color(0xFFF2F2F7)
 internal val FlightFormGreen = Color(0xFF34C759)
+internal val LocalFlightFormCompact = staticCompositionLocalOf { false }
 
 /** Used only while work is in progress; honor the system animation setting. */
 @Composable
@@ -158,6 +164,9 @@ internal fun FlightRecordingFormScaffold(
     onSave: () -> Unit = {},
     identityDetails: @Composable () -> Unit = {},
     progressStatus: FlightProgressStatus? = null,
+    identityContent: @Composable ((onTitlePositioned: (Float, Int) -> Unit) -> Unit)? = null,
+    compact: Boolean = false,
+    validationState: FlightFormValidationState? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(onDismissRequest = onRequestClose,
@@ -188,7 +197,28 @@ internal fun FlightRecordingFormScaffold(
             derivedStateOf { ((scroll.value - titleTop + headerHeight) / titleHeight.coerceAtLeast(1)).coerceIn(0f, 1f) }
         }
         val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-        CompositionLocalProvider(LocalFlightFormFocusedEditor provides editor) {
+        DisposableEffect(validationState, scroll, density) {
+            val navigate: suspend (Float) -> Unit = { targetTop ->
+                val gap = with(density) { 12.dp.toPx() }
+                val destination = scroll.value + targetTop - viewportTop - headerHeight - gap
+                scroll.animateScrollTo(destination.roundToInt().coerceIn(0, scroll.maxValue))
+            }
+            validationState?.navigateToWindowTop = navigate
+            onDispose {
+                validationState?.let { if (it.navigateToWindowTop === navigate) it.navigateToWindowTop = null }
+            }
+        }
+        SideEffect {
+            validationState?.topInsetPx = headerHeight.toFloat()
+            validationState?.navigationHeadPx = with(density) { 48.dp.toPx() }
+        }
+        val typography = if (compact) MaterialTheme.typography.copy(
+            bodyMedium = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            bodySmall = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
+        ) else MaterialTheme.typography
+        MaterialTheme(typography = typography) {
+        CompositionLocalProvider(LocalFlightFormFocusedEditor provides editor, LocalFlightFormCompact provides compact,
+            LocalFlightFormValidationState provides validationState) {
             Surface(Modifier.fillMaxSize().onGloballyPositioned { editor.origin = it.positionInWindow() }
                 .pointerInput(editor, focus, keyboard) {
                     // Observe the release after child controls process it, without consuming their input.
@@ -223,10 +253,13 @@ internal fun FlightRecordingFormScaffold(
                         Column(Modifier.widthIn(max = 600.dp).fillMaxWidth()
                             .padding(start = 16.dp, end = 16.dp, top = with(density) { headerHeight.toDp() } + 16.dp, bottom = 24.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            FlightRecordingIdentity(flight, loadCustomerLogo, progressStatus ?: flight.progressStatus(), onTitlePositioned = { top, height ->
+                            val onTitlePositioned: (Float, Int) -> Unit = { top, height ->
                                 titleTop = top - viewportTop + scroll.value
                                 titleHeight = height
-                            }, details = identityDetails)
+                            }
+                            if (identityContent != null) identityContent(onTitlePositioned)
+                            else FlightRecordingIdentity(flight, loadCustomerLogo, progressStatus ?: flight.progressStatus(),
+                                onTitlePositioned = onTitlePositioned, details = identityDetails)
                             content()
                         }
                     }
@@ -259,6 +292,7 @@ internal fun FlightRecordingFormScaffold(
                     }
                 }
             }
+        }
         }
     }
 }
@@ -350,28 +384,33 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
 
 @Composable
 internal fun FlightFormDateTimeField(value: String, label: String, description: String, enabled: Boolean = true,
-    errorMessage: String? = null, onClear: (() -> Unit)? = null, clearDescription: String? = null, onClick: () -> Unit) {
+    errorMessage: String? = null, onClear: (() -> Unit)? = null, clearDescription: String? = null,
+    placeholder: String = "—", leadingPadding: Dp = 14.dp, displayPattern: String = "MMM d, yyyy · HH:mm",
+    prominentLabel: Boolean = false, onClick: () -> Unit) {
     val locale = LocalLocale.current.platformLocale
     val dateTime = value.takeIf { it.isNotBlank() }?.let(LocalDateTime::parse)
     val hasClear = onClear != null && dateTime != null
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    FlightFormValidation(errorMessage) {
+    FlightFormValidation(errorMessage, registerError = enabled) {
         Surface(onClick = { focus.clearFocus(); keyboard?.hide(); onClick() }, enabled = enabled, color = MaterialTheme.colorScheme.surface,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = description }) {
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormValidationFocus(enabled)
+                .semantics { contentDescription = description }) {
             // A trailing clear target owns the end inset; avoid adding the field's 14dp inset
             // and an extra row gap between the entered value and its close icon.
             BoxWithConstraints(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f)
-                .padding(start = 14.dp, end = if (hasClear) 0.dp else 14.dp,
+                .padding(start = leadingPadding, end = if (hasClear) 0.dp else 14.dp,
                     top = if (hasClear) 0.dp else 6.dp, bottom = if (hasClear) 0.dp else 6.dp),
                 contentAlignment = Alignment.Center) {
                 val labelMaxWidth = maxWidth * 0.45f
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(label, Modifier.padding(end = 8.dp).widthIn(max = labelMaxWidth),
-                        style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (prominentLabel) FontWeight.Medium else if (LocalFlightFormCompact.current) FontWeight.SemiBold else FontWeight.Bold,
+                        color = if (LocalFlightFormCompact.current && !prominentLabel) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    FlightFormValueText(dateTime?.format(DateTimeFormatter.ofPattern("MMM d, yyyy · HH:mm", locale)) ?: "—",
-                        Modifier.weight(1f))
+                    FlightFormValueText(dateTime?.format(DateTimeFormatter.ofPattern(displayPattern, locale)) ?: placeholder,
+                        Modifier.weight(1f), isPlaceholder = dateTime == null && placeholder != "—")
                     if (hasClear) IconButton(onClick = {
                         focus.clearFocus(); keyboard?.hide(); onClear?.invoke()
                     }, enabled = enabled, modifier = Modifier.size(48.dp)) {
@@ -400,7 +439,8 @@ internal fun FlightFormValueText(value: String, modifier: Modifier = Modifier, i
 internal fun FlightFormFieldGroup(content: @Composable () -> Unit) {
     // Keep labels on the left and entered values on the physical right in both locales.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)) { content() }
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(if (LocalFlightFormCompact.current) 16.dp else 14.dp))
+            .background(MaterialTheme.colorScheme.surface)) { content() }
     }
 }
 
@@ -414,15 +454,25 @@ internal fun FlightFormChoiceRow(label: String, value: String, description: Stri
     leadingPadding: Dp = 14.dp, enabled: Boolean = true, errorMessage: String? = null, onClick: () -> Unit) {
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    FlightFormValidation(errorMessage) {
+    FlightFormValidation(errorMessage, registerError = enabled) {
         Surface(onClick = { focus.clearFocus(); keyboard?.hide(); onClick() }, enabled = enabled, color = MaterialTheme.colorScheme.surface,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = description }) {
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormValidationFocus(enabled)
+                .semantics { contentDescription = description }) {
             BoxWithConstraints(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f).padding(start = leadingPadding, end = 14.dp, top = 6.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
                 val labelMaxWidth = maxWidth * 0.45f
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(label, Modifier.widthIn(max = labelMaxWidth), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    FlightFormValueText(value, Modifier.weight(1f), isPlaceholder)
+                    if (label.isBlank()) Text(value, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (isPlaceholder) FontWeight.Normal else FontWeight.SemiBold,
+                        fontStyle = if (isPlaceholder) FontStyle.Italic else FontStyle.Normal,
+                        color = if (isPlaceholder) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    else {
+                        Text(label, Modifier.widthIn(max = labelMaxWidth), style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (LocalFlightFormCompact.current) FontWeight.SemiBold else FontWeight.Bold,
+                            color = if (LocalFlightFormCompact.current) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        FlightFormValueText(value, Modifier.weight(1f), isPlaceholder)
+                    }
                     if (enabled) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -433,11 +483,13 @@ internal fun FlightFormChoiceRow(label: String, value: String, description: Stri
 @Composable
 internal fun FlightFormTextRow(label: String, value: String, onChange: (String) -> Unit, placeholder: String,
     keyboardOptions: KeyboardOptions = KeyboardOptions(imeAction = ImeAction.Next), enabled: Boolean = true, errorMessage: String? = null) {
-    FlightFormValidation(errorMessage) {
+    FlightFormValidation(errorMessage, registerError = enabled) {
         BoxWithConstraints(Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.45f).heightIn(min = 48.dp).padding(horizontal = 14.dp)) {
             val labelMaxWidth = maxWidth * 0.45f
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(label, Modifier.widthIn(max = labelMaxWidth), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                Text(label, Modifier.widthIn(max = labelMaxWidth), style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (LocalFlightFormCompact.current) FontWeight.SemiBold else FontWeight.Bold,
+                    color = if (LocalFlightFormCompact.current) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 FlightFormTextInput(value, onChange, placeholder, label, Modifier.weight(1f), keyboardOptions = keyboardOptions, enabled = enabled)
             }
@@ -447,14 +499,17 @@ internal fun FlightFormTextRow(label: String, value: String, onChange: (String) 
 
 /** Keep each failure attached to its own row, including rows inside a shared group. */
 @Composable
-internal fun FlightFormValidation(message: String?, content: @Composable () -> Unit) {
-    Column(Modifier.fillMaxWidth()) {
-        val outline = if (message == null) Modifier else Modifier
-            .border(0.75.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
-            .semantics { error(message) }
-        Box(Modifier.fillMaxWidth().then(outline)) { content() }
-        if (message != null) Text(message, Modifier.padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 6.dp),
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+internal fun FlightFormValidation(message: String?, modifier: Modifier = Modifier, registerError: Boolean = true,
+    content: @Composable () -> Unit) {
+    FlightFormValidationTarget(message, registerError, modifier) { targetModifier ->
+        Column(targetModifier.fillMaxWidth()) {
+            val outline = if (message == null) Modifier else Modifier
+                .border(0.75.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                .semantics { error(message) }
+            Box(Modifier.fillMaxWidth().then(outline)) { content() }
+            if (message != null) Text(message, Modifier.padding(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 6.dp),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
     }
 }
 
@@ -469,7 +524,8 @@ internal fun FlightFormTextInput(value: String, onChange: (String) -> Unit, plac
     }
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    BasicTextField(value, onChange, enabled = enabled, modifier = modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormEditableFocus()
+    BasicTextField(value, onChange, enabled = enabled, modifier = modifier.fillMaxWidth().heightIn(min = 48.dp)
+        .flightFormValidationFocus(enabled).flightFormEditableFocus()
         .semantics { contentDescription = label },
         textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface, textAlign = textAlign, fontWeight = FontWeight.Medium),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), singleLine = !multiline,
@@ -516,14 +572,21 @@ internal fun Modifier.flightFormEditableFocus(): Modifier {
 /** Both input pickers use the same rounded, dimming sheet behavior as flight details. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun FlightFormModalSheet(title: String, onDismiss: () -> Unit, content: @Composable (close: () -> Unit) -> Unit) {
+internal fun FlightFormModalSheet(title: String, onDismiss: () -> Unit,
+    onShown: (SoftwareKeyboardController?) -> Unit = {},
+    content: @Composable (close: () -> Unit) -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
+    val shown by rememberUpdatedState(onShown)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), containerColor = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp, scrimColor = Color.Black.copy(alpha = 0.28f),
         dragHandle = { Box(Modifier.padding(top = 8.dp, bottom = 4.dp).size(width = 32.dp, height = 4.dp)
             .background(MaterialTheme.colorScheme.outlineVariant, CircleShape)) }) {
+        val keyboard = LocalSoftwareKeyboardController.current
+        LaunchedEffect(state.currentValue, state.targetValue) {
+            if (state.currentValue == SheetValue.Expanded && state.targetValue == SheetValue.Expanded) shown(keyboard)
+        }
         Column(Modifier.fillMaxWidth().semantics { paneTitle = title }) {
             content { scope.launch { state.hide(); onDismiss() } }
         }
@@ -532,15 +595,19 @@ internal fun FlightFormModalSheet(title: String, onDismiss: () -> Unit, content:
 
 
 @Composable
-internal fun FlightFormRemarks(value: String, onValueChange: (String) -> Unit, description: String, enabled: Boolean = true) {
-    FlightFormFieldGroup {
+internal fun FlightFormRemarks(value: String, onValueChange: (String) -> Unit, description: String, enabled: Boolean = true,
+    heading: String = stringResource(R.string.flight_form_remarks), inGroup: Boolean = false) {
+    val remarks: @Composable () -> Unit = {
         Column(Modifier.alpha(if (enabled) 1f else 0.45f).padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.flight_form_remarks), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-            FlightFormTextInput(value, onValueChange, stringResource(R.string.flight_form_remarks_hint), description,
+            Text(heading, style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (LocalFlightFormCompact.current) FontWeight.SemiBold else FontWeight.Bold,
+                color = if (LocalFlightFormCompact.current) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+            FlightFormTextInput(value, onValueChange, if (LocalFlightFormCompact.current) "" else stringResource(R.string.flight_form_remarks_hint), description,
                 multiline = true, textAlign = TextAlign.Left, keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done), enabled = enabled)
         }
     }
+    if (inGroup) remarks() else FlightFormFieldGroup(remarks)
 }
 
 @Composable

@@ -2,6 +2,8 @@ package com.nags.operations.ui.flights
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.Saver
@@ -21,7 +23,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,10 +38,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.Redo
+import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,10 +70,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -90,7 +98,7 @@ internal fun FlightSignatureField(value: String, hasSavedSignature: Boolean = fa
     val state = stringResource(if (hasSignature) R.string.operations_signature_captured else R.string.operations_signature_add)
     val inkColor = MaterialTheme.colorScheme.onSurface
     Surface(onClick = onOpen, enabled = enabled, color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics {
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormValidationFocus(enabled).semantics {
             contentDescription = description
             stateDescription = state
         }) {
@@ -99,7 +107,8 @@ internal fun FlightSignatureField(value: String, hasSavedSignature: Boolean = fa
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Text(title, Modifier.widthIn(max = labelMaxWidth), style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                     if (ink.strokes.isNotEmpty()) {
                         Canvas(Modifier.weight(1f, fill = false).width(88.dp).height(32.dp).clearAndSetSemantics {}) {
@@ -110,7 +119,7 @@ internal fun FlightSignatureField(value: String, hasSavedSignature: Boolean = fa
                     } else if (loading) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
-                        FlightFormValueText(stringResource(if (hasSavedSignature) R.string.operations_signature_captured else R.string.operations_signature_add),
+                        FlightFormValueText(stringResource(if (hasSavedSignature) R.string.operations_signature_captured else R.string.flight_form_required_field),
                             Modifier.weight(1f), isPlaceholder = !hasSavedSignature)
                     }
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.padding(start = 4.dp).size(18.dp),
@@ -141,7 +150,7 @@ internal fun rememberSignatureBitmap(bytes: ByteArray?): ImageBitmap? = remember
 @Composable
 internal fun FlightSignatureSheet(value: String, hasSavedSignature: Boolean, savedPreview: ByteArray?, loading: Boolean,
     onRetry: () -> Unit, onValueChange: (String) -> Unit, onDismiss: () -> Unit) {
-    // Pin the original and keep all replacement strokes local until Use. Late image loading must
+    // Pin the original and keep all replacement strokes local until Save. Late image loading must
     // never replace the user's draft or reset Undo history.
     var session by rememberSaveable(stateSaver = SignatureSessionSaver) {
         mutableStateOf(SignatureEditSession(value, value.isNotBlank() || hasSavedSignature))
@@ -154,13 +163,15 @@ internal fun FlightSignatureSheet(value: String, hasSavedSignature: Boolean, sav
     val latestDraw by rememberUpdatedState<(String) -> Unit>({ session = session.draw(it) })
     var activeStroke by remember { mutableStateOf<List<Offset>>(emptyList()) }
     var activeAspect by remember { mutableFloatStateOf(2f) }
+    var committing by remember { mutableStateOf(false) }
     val title = stringResource(R.string.operations_signature_title)
     val drawDescription = stringResource(R.string.operations_signature_draw)
     val capturedDescription = stringResource(R.string.operations_signature_captured)
     val addDescription = stringResource(R.string.operations_signature_add)
     val inkColor = MaterialTheme.colorScheme.onSurface
+    val baselineColor = MaterialTheme.colorScheme.outlineVariant
     FlightFormModalSheet(title, onDismiss) { close ->
-        Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.size(48.dp))
                 Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
@@ -172,11 +183,20 @@ internal fun FlightSignatureSheet(value: String, hasSavedSignature: Boolean, sav
                     }
                 }
             }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 36.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(if (session.viewingOriginal) R.string.operations_signature_saved else R.string.operations_signature_instructions),
+                    Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (session.viewingOriginal) TextButton(onClick = { session = session.replace() }, enabled = !committing,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)) {
+                    Text(stringResource(R.string.operations_signature_replace), style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium)
+                }
+            }
             BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-                val footerHeight = maxOf(48.dp, with(LocalDensity.current) { MaterialTheme.typography.bodyMedium.lineHeight.toDp() } + 16.dp)
                 val canvasHeight = (maxWidth * 0.55f).coerceIn(160.dp, 200.dp)
-                    .coerceAtMost((maxHeight - footerHeight).coerceAtLeast(64.dp))
-                val shape = RoundedCornerShape(12.dp)
+                val shape = RoundedCornerShape(16.dp)
                 Box(Modifier.fillMaxWidth().height(canvasHeight).clip(shape)
                     .background(MaterialTheme.colorScheme.surface)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape), contentAlignment = Alignment.Center) {
@@ -195,8 +215,8 @@ internal fun FlightSignatureSheet(value: String, hasSavedSignature: Boolean, sav
                         Canvas(Modifier.fillMaxSize().semantics {
                             contentDescription = if (session.viewingOriginal) capturedDescription else drawDescription
                             stateDescription = if (ink.strokes.isNotEmpty()) capturedDescription else addDescription
-                        }.pointerInput(session.viewingOriginal) {
-                            if (session.viewingOriginal) return@pointerInput
+                        }.pointerInput(session.viewingOriginal, committing) {
+                            if (session.viewingOriginal || committing) return@pointerInput
                             awaitEachGesture {
                                 // Take the gesture on touch-down so writing vertically never drags the sheet.
                                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -241,6 +261,8 @@ internal fun FlightSignatureSheet(value: String, hasSavedSignature: Boolean, sav
                                 }
                             }
                         }) {
+                            drawLine(baselineColor, Offset(16.dp.toPx(), size.height - 28.dp.toPx()),
+                                Offset(size.width - 16.dp.toPx(), size.height - 28.dp.toPx()), strokeWidth = 1.dp.toPx())
                             drawSignature(ink.strokes, ink.aspectRatio, inkColor, 2.5.dp.toPx())
                             if (activeStroke.isNotEmpty()) drawSignature(listOf(activeStroke), activeAspect, inkColor, 2.5.dp.toPx())
                         }
@@ -252,23 +274,49 @@ internal fun FlightSignatureSheet(value: String, hasSavedSignature: Boolean, sav
                     }
                 }
             }
-            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
-                if (session.viewingOriginal) {
-                    TextButton(onClick = close) { Text(stringResource(R.string.operations_signature_keep)) }
-                    TextButton(onClick = { session = session.replace() }) { Text(stringResource(R.string.operations_signature_replace)) }
-                } else {
-                    TextButton(onClick = { session = session.undo() }, enabled = session.history.isNotEmpty() && activeStroke.isEmpty()) {
-                        Text(stringResource(R.string.operations_signature_undo))
-                    }
-                    TextButton(onClick = { session = session.clear() }, enabled = ink.strokes.isNotEmpty() && activeStroke.isEmpty()) {
-                        Text(stringResource(R.string.operations_signature_clear))
-                    }
-                    TextButton(onClick = { onValueChange(session.draft); close() }, enabled = ink.strokes.isNotEmpty() && activeStroke.isEmpty()) {
-                        Text(stringResource(R.string.operations_signature_use), fontWeight = FontWeight.SemiBold)
-                    }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SignatureToolbarButton(Icons.AutoMirrored.Outlined.Undo, stringResource(R.string.operations_signature_undo),
+                    enabled = session.history.isNotEmpty() && activeStroke.isEmpty() && !committing,
+                    modifier = Modifier.weight(1f), onClick = { session = session.undo() })
+                SignatureToolbarButton(Icons.AutoMirrored.Outlined.Redo, stringResource(R.string.operations_signature_redo),
+                    enabled = session.redoHistory.isNotEmpty() && activeStroke.isEmpty() && !committing,
+                    modifier = Modifier.weight(1f), onClick = { session = session.redo() })
+                SignatureToolbarButton(Icons.Outlined.DeleteOutline, stringResource(R.string.operations_signature_clear_action),
+                    enabled = !session.viewingOriginal && ink.strokes.isNotEmpty() && activeStroke.isEmpty() && !committing,
+                    modifier = Modifier.weight(1f), onClick = { session = session.clear() })
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = close, modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    shape = RoundedCornerShape(12.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                    Text(stringResource(R.string.flights_cancel), style = MaterialTheme.typography.labelLarge,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                Button(onClick = {
+                    committing = true
+                    onValueChange(session.draft)
+                    close()
+                }, modifier = Modifier.weight(1.4f).heightIn(min = 48.dp), shape = RoundedCornerShape(12.dp),
+                    enabled = session.hasChanges && ink.strokes.isNotEmpty() && activeStroke.isEmpty() && !committing,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+                    Text(stringResource(R.string.operations_signature_save), style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SignatureToolbarButton(icon: ImageVector, label: String, enabled: Boolean,
+    modifier: Modifier = Modifier, onClick: () -> Unit) {
+    TextButton(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 48.dp),
+        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)) {
+        Icon(icon, null, Modifier.size(16.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

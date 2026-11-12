@@ -1,8 +1,10 @@
 package com.nags.operations.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +39,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -44,6 +48,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -64,7 +69,7 @@ import java.time.Instant
 @Composable
 fun FlightCard(
     flight: FlightListItem,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     loadCustomerLogo: (String) -> Flow<ByteArray?> = { flowOf(null) },
     now: Instant = Instant.now(),
@@ -72,16 +77,12 @@ fun FlightCard(
     pendingSyncLabel: String? = null,
     hasSyncError: Boolean = false,
     cancellationAtUtc: String? = flight.latestCancellationAtUtc,
+    onActiveWorkClick: (() -> Unit)? = null,
+    onCompletedWorkClick: (() -> Unit)? = null,
+    onFlightNumberPositioned: ((Float, Int) -> Unit)? = null,
 ) {
     val statusColors = flightStatusColors(reportStatus)
-    Card(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, statusColors.border),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp, pressedElevation = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
+    val content: @Composable ColumnScope.() -> Unit = {
         Column(
             modifier = Modifier.fillMaxWidth()
                 .drawBehind {
@@ -109,7 +110,9 @@ fun FlightCard(
                                 flight.flightNumber.ifBlank {
                                     flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—"
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).onGloballyPositioned {
+                                    onFlightNumberPositioned?.invoke(it.positionInWindow().y, it.size.height)
+                                },
                                 style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
@@ -130,11 +133,23 @@ fun FlightCard(
             }
             FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName,
                 flight.isPerLanding, flight.latestReturnToRampSequence, flight.hasOpenReturnToRamp == true)
-            FlightCardSummaryRow(flight, reportStatus, now, pendingSyncLabel, hasSyncError, cancellationAtUtc)
+            FlightCardSummaryRow(flight, reportStatus, now, pendingSyncLabel, hasSyncError, cancellationAtUtc,
+                onActiveWorkClick, onCompletedWorkClick)
             HorizontalDivider(color = flightCardDividerColor())
             FlightCardScheduleFooter(flight)
         }
     }
+    if (onClick == null) Card(
+        modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, statusColors.border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), content = content,
+    ) else Card(
+        onClick = onClick, modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, statusColors.border),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp, pressedElevation = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), content = content,
+    )
 }
 
 @Composable
@@ -250,7 +265,8 @@ private fun FlightCardField(label: String, value: String, modifier: Modifier = M
 
 @Composable
 private fun FlightCardSummaryRow(flight: FlightListItem, status: FlightCardReportStatus, now: Instant,
-    pendingSyncLabel: String?, hasSyncError: Boolean, cancellationAtUtc: String?) {
+    pendingSyncLabel: String?, hasSyncError: Boolean, cancellationAtUtc: String?,
+    onActiveWorkClick: (() -> Unit)?, onCompletedWorkClick: (() -> Unit)?) {
     val active = flight.activeWorkCount?.takeIf { it >= 0 }
     val done = flight.completedWorkCount?.takeIf { it >= 0 }
     val minutes = flight.cardStaMinutes(now)
@@ -299,8 +315,18 @@ private fun FlightCardSummaryRow(flight: FlightListItem, status: FlightCardRepor
                 horizontalArrangement = Arrangement.spacedBy(4.dp, if (staTiming) AbsoluteAlignment.Left else Alignment.Start),
                 verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, null, Modifier.size(if (staTiming) 12.dp else 13.dp), tint = color)
-                Text(text, style = summaryStyle, color = color,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (workVisible && (onActiveWorkClick != null || onCompletedWorkClick != null) &&
+                    ((active ?: 0) > 0 || (done ?: 0) > 0)) {
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if ((active ?: 0) > 0) Text(stringResource(R.string.flight_card_work_active, active!!),
+                            Modifier.weight(1f, fill = false).then(if (onActiveWorkClick != null) Modifier.clickable(role = Role.Button, onClick = onActiveWorkClick) else Modifier),
+                            style = summaryStyle, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if ((active ?: 0) > 0 && (done ?: 0) > 0) Text("·", style = summaryStyle, color = color)
+                        if ((done ?: 0) > 0) Text(stringResource(R.string.flight_card_work_done, done!!),
+                            Modifier.weight(1f, fill = false).then(if (onCompletedWorkClick != null) Modifier.clickable(role = Role.Button, onClick = onCompletedWorkClick) else Modifier),
+                            style = summaryStyle, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                } else Text(text, style = summaryStyle, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
             } else Spacer(Modifier.weight(1f))
             if (pendingSyncLabel != null) {
                 val syncColor = if (hasSyncError) MaterialTheme.colorScheme.error

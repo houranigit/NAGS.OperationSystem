@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.sp
 @Composable
 internal fun FlightFormSectionTitle(title: String, modifier: Modifier = Modifier) {
     Text(title, modifier.padding(start = 16.dp, end = 16.dp).semantics { heading() },
-        style = MaterialTheme.typography.titleSmall.copy(fontSize = 15.sp, lineHeight = 20.sp),
+        style = MaterialTheme.typography.titleSmall.copy(
+            fontSize = if (LocalFlightFormCompact.current) 12.sp else 15.sp,
+            lineHeight = if (LocalFlightFormCompact.current) 16.sp else 20.sp),
         fontWeight = FontWeight.SemiBold, color = Color(0xFF85858A))
 }

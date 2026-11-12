@@ -1,0 +1,21 @@
+<resources>
+    <string name="sheet_work_title">الأعمال</string>
+    <string name="sheet_work_summary">%1$d نشطة · %2$d مغلقة</string>
+    <string name="sheet_work_active">نشطة · %1$d</string>
+    <string name="sheet_work_closed">مغلقة · %1$d</string>
+    <string name="sheet_work_no_active">لا توجد أعمال نشطة</string>
+    <string name="sheet_work_ongoing">جارٍ</string>
+    <string name="sheet_work_service">خدمة</string>
+    <string name="sheet_work_major_task">مهمة كبرى</string>
+    <string name="sheet_work_minor_task">مهمة صغرى</string>
+    <string name="sheet_work_ata">ATA %1$s · %2$s</string>
+    <string name="sheet_work_ata_code">ATA %1$s</string>
+    <plurals name="sheet_work_employees">
+        <item quantity="zero">%1$d موظف</item>
+        <item quantity="one">%1$d موظف</item>
+        <item quantity="two">%1$d موظفان</item>
+        <item quantity="few">%1$d موظفين</item>
+        <item quantity="many">%1$d موظفًا</item>
+        <item quantity="other">%1$d موظف</item>
+    </plurals>
+</resources>

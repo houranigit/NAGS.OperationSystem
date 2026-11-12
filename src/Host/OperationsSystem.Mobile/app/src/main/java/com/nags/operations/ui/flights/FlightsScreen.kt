@@ -203,6 +203,16 @@ fun FlightsScreen(
         }
     }
     if (state.selectedFlightId != null) key(state.selectedFlightId) {
+        var sheetNow by remember { mutableStateOf(Instant.now()) }
+        val sheetLifecycleOwner = LocalLifecycleOwner.current
+        LaunchedEffect(sheetLifecycleOwner) {
+            sheetLifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (true) {
+                    sheetNow = Instant.now()
+                    delay(60_000L - sheetNow.toEpochMilli() % 60_000L)
+                }
+            }
+        }
         // These subscriptions outlive the editor so a completed disk save updates the sheet immediately.
         val pendingArrivals by (viewModel.arrivals?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
             .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -218,6 +228,7 @@ fun FlightsScreen(
             .collectAsStateWithLifecycle(initialValue = emptyList())
         val pendingCancellation = pendingCancellations.firstOrNull { it.flightId == state.selectedFlightId }
         val aircraftTypes by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
+        val sheetCatalogs by viewModel.operationsCatalogs.collectAsStateWithLifecycle(initialValue = FlightOperationsCatalogs())
         val actualsStaff by viewModel.actualsStaff.collectAsStateWithLifecycle(initialValue = emptyList())
         val currentUserName by viewModel.currentUserDisplayName.collectAsStateWithLifecycle(initialValue = null)
         val actuals = state.detail?.actualDetails(
@@ -271,7 +282,19 @@ fun FlightsScreen(
             recordingFormSessionId = UUID.randomUUID().toString()
             recordingForm = kind
         }
-        FlightDetailsSheet(state = state, actuals = actuals, progressStatus = progressStatus,
+        val sheetListItem = state.items.firstOrNull { it.id == state.selectedFlightId }
+        val sheetWork = remember(state.detail, pendingServices, pendingTasks, sheetCatalogs) {
+            state.detail?.let { detail ->
+                flightSheetWorkItems(detail, pendingServices, pendingTasks, sheetCatalogs.forStation(detail.stationId))
+            }.orEmpty()
+        }
+        val sheetReportStatus = state.detail?.formCardSummary(sheetListItem, emptyList())?.cardReportStatus(
+            localArrival = pendingArrivals.any { it.flightId == state.selectedFlightId },
+            localDeparture = pendingDepartures.any { it.flightId == state.selectedFlightId },
+            localCancellation = pendingCancellation?.keepsCancellationOnCard() == true,
+            now = sheetNow,
+        ) ?: FlightCardReportStatus.Scheduled
+        FlightDetailsSheet(state = state, actuals = actuals, reportStatus = sheetReportStatus, listItem = sheetListItem, workItems = sheetWork,
             showCancellation = !ownsWork && !ownsCancellation && state.detail?.cancellationEditable() == true,
             showOperations = !ownsCancellation,
             showRevertCancellation = !reverting && state.detail?.canSaveCancellation == true &&
@@ -298,6 +321,7 @@ fun FlightsScreen(
                 if (activeForm == "operations") {
                     val catalogs by viewModel.operationsCatalogs.collectAsStateWithLifecycle(initialValue = FlightOperationsCatalogs())
                     FlightOperationsForm(state.detail ?: flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm, catalogs = catalogs.forStation(flight.stationId),
+                        listItem = state.items.firstOrNull { it.id == flight.id },
                         pending = pendingArrivals.firstOrNull { it.flightId == flight.id },
                         pendingDeparture = pendingDepartures.firstOrNull { it.flightId == flight.id },
                         pendingServices = pendingServices.filter { it.flightId == flight.id },

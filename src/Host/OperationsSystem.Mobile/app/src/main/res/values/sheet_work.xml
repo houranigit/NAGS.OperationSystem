@@ -1,0 +1,17 @@
+<resources>
+    <string name="sheet_work_title">Work</string>
+    <string name="sheet_work_summary">%1$d active · %2$d closed</string>
+    <string name="sheet_work_active">Active · %1$d</string>
+    <string name="sheet_work_closed">Closed · %1$d</string>
+    <string name="sheet_work_no_active">No active work</string>
+    <string name="sheet_work_ongoing">Ongoing</string>
+    <string name="sheet_work_service">Service</string>
+    <string name="sheet_work_major_task">Major task</string>
+    <string name="sheet_work_minor_task">Minor task</string>
+    <string name="sheet_work_ata">ATA %1$s · %2$s</string>
+    <string name="sheet_work_ata_code">ATA %1$s</string>
+    <plurals name="sheet_work_employees">
+        <item quantity="one">%1$d employee</item>
+        <item quantity="other">%1$d employees</item>
+    </plurals>
+</resources>

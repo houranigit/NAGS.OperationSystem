@@ -1,17 +1,32 @@
 package com.nags.operations.ui.flights
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -20,7 +35,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.time.ZoneId
 import java.util.UUID
@@ -44,20 +67,15 @@ internal fun FlightTaskSection(
     timeBounds: FlightWorkTimeBounds = FlightWorkTimeBounds(),
 ) {
     var pickerTaskId by rememberSaveable { mutableStateOf<String?>(null) }
-    var pickerKind by rememberSaveable { mutableStateOf<String?>(null) }
     val taskLabel = stringResource(R.string.work_task)
-    val major = stringResource(R.string.work_major)
-    val minor = stringResource(R.string.work_minor)
     fun updateTask(id: String, change: (FlightTaskDraft) -> FlightTaskDraft) {
         onChange { current -> current.map { if (it.id == id) change(it) else it } }
     }
-    fun openPicker(id: String, kind: String) {
+    fun openPicker(id: String) {
         pickerTaskId = id
-        pickerKind = kind
     }
     fun closePicker() {
         pickerTaskId = null
-        pickerKind = null
     }
 
     Column(Modifier.animateContentSize(animationSpec = tween(200)), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -68,7 +86,7 @@ internal fun FlightTaskSection(
                 val fields = errors[task.id].orEmpty()
                 val editable = enabled && canEdit(task.id)
                 val childBounds = timeBounds.within(task.period, zone)
-                FlightWorkEntryGroup {
+                FlightWorkEntryGroup(Modifier.flightFormNavigationTarget("task:${task.id}")) {
                     FlightWorkRemovableEntry(
                         id = task.id,
                         removeDescription = stringResource(R.string.work_remove_item, "$taskLabel ${index + 1}"),
@@ -76,19 +94,12 @@ internal fun FlightTaskSection(
                         compactDelete = true,
                         enabled = enabled && canDelete(task.id),
                     ) {
-                        FlightWorkChoiceRow(
+                        FlightTaskTypeRow(
                             label = stringResource(R.string.work_task_number, index + 1),
-                            value = when (task.taskType) {
-                                "Major" -> major
-                                "Minor" -> minor
-                                else -> stringResource(R.string.work_select_task_type)
-                            },
-                            description = stringResource(R.string.work_task_type),
-                            isPlaceholder = task.taskType.isBlank(),
-                            leadingPadding = 0.dp,
+                            value = task.taskType,
                             enabled = editable && canChangeType(task.id),
                             errorMessage = fields["taskType"]?.let { stringResource(it) },
-                            onClick = { openPicker(task.id, "type") },
+                            onChange = { type -> updateTask(task.id) { it.copy(taskType = type) } },
                         )
                     }
                     FlightFormDivider()
@@ -100,13 +111,13 @@ internal fun FlightTaskSection(
                         Column(Modifier.weight(1f)) {
                             FlightWorkChoiceRow(
                                 label = stringResource(R.string.work_ata_chapter),
-                                value = if (task.ataChapterId.isBlank()) stringResource(R.string.work_select_ata)
+                                value = if (task.ataChapterId.isBlank()) ""
                                     else "${task.ataChapterCode} · ${task.ataChapterTitle}",
                                 description = stringResource(R.string.work_ata_chapter),
                                 isPlaceholder = task.ataChapterId.isBlank(),
                                 enabled = editable,
                                 errorMessage = fields["ataChapterId"]?.let { stringResource(it) },
-                                onClick = { openPicker(task.id, "ata") },
+                                onClick = { openPicker(task.id) },
                             )
                         }
                         if (task.ataChapterId.isNotBlank()) IconButton(
@@ -124,6 +135,7 @@ internal fun FlightTaskSection(
                         startEnabled = editable, endEnabled = enabled && canSetEnd(task.id),
                         startError = fields["startUtc"]?.let { stringResource(it) },
                         endError = fields["endUtc"]?.let { stringResource(it) }, seedEndNow = true, timeBounds = timeBounds,
+                        endRequired = timeBounds.upperUtc != null,
                         onStartPickerSessionChanged = { initialBlank -> initialStartStaffIds =
                             if (initialBlank) task.employees.filter { it.period.start.isBlank() }.map { it.id } else emptyList() })
                     FlightFormDivider()
@@ -149,6 +161,7 @@ internal fun FlightTaskSection(
                         attachments = task.attachments,
                         onAttachmentsChange = { attachments -> updateTask(task.id) { it.copy(attachments = attachments) } },
                         description = stringResource(R.string.work_task_remarks), enabled = editable,
+                        label = stringResource(R.string.work_task_remarks_heading),
                         errorMessage = (fields["notes"] ?: fields["attachments"])?.let { stringResource(it) })
                 }
             }
@@ -164,19 +177,7 @@ internal fun FlightTaskSection(
     }
 
     val activeTask = items.firstOrNull { it.id == pickerTaskId }
-    if (activeTask != null && pickerKind == "type" && enabled && canEdit(activeTask.id) && canChangeType(activeTask.id)) {
-        FlightWorkPicker(
-            title = stringResource(R.string.work_task_type),
-            searchLabel = "",
-            emptyLabel = "",
-            options = listOf(FlightWorkChoice("Major", major), FlightWorkChoice("Minor", minor)),
-            selectedId = activeTask.taskType,
-            onSelect = { type -> updateTask(activeTask.id) { it.copy(taskType = type) } },
-            onDismiss = ::closePicker,
-            searchable = false,
-        )
-    }
-    if (activeTask != null && pickerKind == "ata" && enabled && canEdit(activeTask.id)) {
+    if (activeTask != null && enabled && canEdit(activeTask.id)) {
         val choices = catalogs.ataChapters.map { FlightWorkChoice(it.id, "${it.code} · ${it.title}", it.categoryName) }
         FlightWorkPicker(
             title = stringResource(R.string.work_ata_chapter),
@@ -191,5 +192,61 @@ internal fun FlightTaskSection(
             },
             onDismiss = ::closePicker,
         )
+    }
+}
+
+@Composable
+private fun FlightTaskTypeRow(label: String, value: String, enabled: Boolean, errorMessage: String?, onChange: (String) -> Unit) {
+    val style = MaterialTheme.typography.bodyMedium
+    val options = listOf("Major" to stringResource(R.string.work_major), "Minor" to stringResource(R.string.work_minor))
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val optionWidth = options.maxOf { measurer.measure(it.second, style.copy(fontWeight = FontWeight.SemiBold)).size.width }
+    val desiredWidth = maxOf(128.dp, with(density) { optionWidth.toDp() } * 2 + 32.dp)
+    val labelWidth = with(density) { measurer.measure(label, style.copy(fontWeight = FontWeight.SemiBold)).size.width.toDp() }
+    FlightFormValidation(errorMessage, registerError = enabled) {
+        BoxWithConstraints(Modifier.fillMaxWidth()
+            .alpha(if (enabled) 1f else 0.45f).padding(end = 14.dp)) {
+            val selectorWidth = minOf(desiredWidth, maxWidth)
+            if (labelWidth + selectorWidth + 8.dp > maxWidth) {
+                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(label, style = style, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Box(Modifier.align(Alignment.End)) { FlightTaskTypeSelector(value, options, selectorWidth, enabled, onChange) }
+                }
+            } else Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(label, Modifier.weight(1f), style = style, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                FlightTaskTypeSelector(value, options, selectorWidth, enabled, onChange)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FlightTaskTypeSelector(value: String, options: List<Pair<String, String>>, width: Dp, enabled: Boolean, onChange: (String) -> Unit) {
+    val style = MaterialTheme.typography.bodyMedium
+    val faceHeight = maxOf(32.dp, with(LocalDensity.current) { style.lineHeight.toDp() } + 8.dp)
+    BoxWithConstraints(Modifier.width(width).height(maxOf(48.dp, faceHeight))) {
+        val segmentWidth = (maxWidth - 4.dp) / 2
+        val selected = options.indexOfFirst { it.first == value }
+        val slide by animateDpAsState(if (selected == 1) segmentWidth else 0.dp,
+            animationSpec = tween(180), label = "taskTypeSelection")
+        Box(Modifier.fillMaxWidth().height(faceHeight).align(Alignment.Center)
+            .background(FlightFormGround, RoundedCornerShape(8.dp)).padding(2.dp)) {
+            if (selected >= 0) Box(Modifier.offset(x = slide).width(segmentWidth).fillMaxHeight()
+                .shadow(1.dp, RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface, RoundedCornerShape(6.dp)))
+        }
+        Row(Modifier.fillMaxSize().padding(horizontal = 2.dp).selectableGroup()) {
+            options.forEachIndexed { index, (type, title) ->
+                Box(Modifier.weight(1f).fillMaxHeight().flightFormValidationFocus(enabled && index == 0)
+                    .selectable(selected = type == value, enabled = enabled,
+                    role = Role.RadioButton, onClick = { if (type != value) onChange(type) }), contentAlignment = Alignment.Center) {
+                    Text(title, style = style, fontWeight = if (type == value) FontWeight.SemiBold else FontWeight.Medium,
+                        color = if (type == value) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
     }
 }

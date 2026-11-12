@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,8 +27,28 @@ import com.nags.operations.R
 import com.nags.operations.ui.flights.FlightCardReportStatus
 
 @Composable
-internal fun FlightReportBadge(status: FlightCardReportStatus, modifier: Modifier = Modifier) {
-    val label = stringResource(when (status) {
+internal fun FlightReportBadge(status: FlightCardReportStatus, modifier: Modifier = Modifier, compact: Boolean = false) {
+    val label = flightReportLabel(status)
+    val colors = flightStatusColors(status)
+    Surface(modifier, shape = RoundedCornerShape(50), color = colors.background, contentColor = colors.foreground) {
+        Row(Modifier.padding(horizontal = if (compact) 6.dp else 7.dp, vertical = if (compact) 2.dp else 3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            if (status == FlightCardReportStatus.Conflict) Icon(Icons.Outlined.WarningAmber, null, Modifier.size(if (compact) 10.dp else 11.dp))
+            if (status == FlightCardReportStatus.ReturnedToRamp) Icon(Icons.AutoMirrored.Outlined.Undo, null, Modifier.size(if (compact) 10.dp else 11.dp))
+            Text(label, Modifier.weight(1f, fill = false), style = flightReportBadgeTextStyle(compact),
+                maxLines = if (compact) 1 else 2, softWrap = !compact, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+internal fun flightReportBadgeTextStyle(compact: Boolean = false): TextStyle =
+    MaterialTheme.typography.labelSmall.copy(fontSize = if (compact) 10.sp else 11.sp,
+        lineHeight = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp)
+
+@Composable
+internal fun flightReportLabel(status: FlightCardReportStatus): String =
+    stringResource(when (status) {
         FlightCardReportStatus.Scheduled -> R.string.flights_scheduled
         FlightCardReportStatus.Canceled -> R.string.flight_card_canceled
         FlightCardReportStatus.DueSoon -> R.string.flight_card_due_soon
@@ -37,17 +58,6 @@ internal fun FlightReportBadge(status: FlightCardReportStatus, modifier: Modifie
         FlightCardReportStatus.Departed -> R.string.flight_card_departed
         FlightCardReportStatus.Conflict -> R.string.flight_card_conflict
     })
-    val colors = flightStatusColors(status)
-    Surface(modifier, shape = RoundedCornerShape(50), color = colors.background, contentColor = colors.foreground) {
-        Row(Modifier.padding(horizontal = 7.dp, vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            if (status == FlightCardReportStatus.Conflict) Icon(Icons.Outlined.WarningAmber, null, Modifier.size(11.dp))
-            if (status == FlightCardReportStatus.ReturnedToRamp) Icon(Icons.AutoMirrored.Outlined.Undo, null, Modifier.size(11.dp))
-            Text(label, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 13.sp),
-                fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
 
 internal data class FlightStatusColors(val background: Color, val foreground: Color, val stripe: Color, val border: Color)
 

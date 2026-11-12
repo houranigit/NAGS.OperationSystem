@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="flight_sheet_expand">توسيع تفاصيل الرحلة</string>
+    <string name="flight_sheet_collapse">طي تفاصيل الرحلة</string>
+    <string name="flight_sheet_close">إغلاق تفاصيل الرحلة</string>
+</resources>
