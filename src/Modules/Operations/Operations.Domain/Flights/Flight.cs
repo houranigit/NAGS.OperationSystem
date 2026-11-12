@@ -286,19 +286,25 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     /// <summary>Records a performed service. Existing services and cancellation submissions must be loaded.</summary>
     public Result<FlightService> AddService(ServiceSnapshot? service, string? customerReferenceNumber,
         TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null,
-        IReadOnlyList<FlightServicePerformerInput>? initialPerformers = null)
+        IReadOnlyList<FlightServicePerformerInput>? initialPerformers = null, Guid? id = null)
     {
+        if (id == Guid.Empty)
+            return Error.Validation("Service record ID is required.", "Operations.FlightService.IdRequired");
+        if (id.HasValue && _services.Any(item => item.Id == id.Value))
+            return Error.Conflict("Service record ID is already in use.", "Operations.FlightService.IdConflict");
         var check = ValidateServiceWrite(userId, returnToRampId);
         if (check.IsFailure)
             return check.Error;
-        var created = FlightService.Create(Id, service, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), returnToRampId);
+        var created = FlightService.Create(Id, service, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), returnToRampId, id);
         if (created.IsFailure)
             return created.Error;
 
         var record = created.Value;
         foreach (var employee in initialPerformers ?? [])
         {
-            var added = record.AddPerformer(employee.Employee, employee.Window);
+            if (employee.Id.HasValue && _services.Any(item => item.Performers.Any(performer => performer.Id == employee.Id.Value)))
+                return Error.Conflict("Performer record ID is already in use.", "Operations.FlightService.PerformerIdConflict");
+            var added = record.AddPerformer(employee.Employee, employee.Window, employee.Id);
             if (added.IsFailure)
                 return added.Error;
         }
@@ -314,6 +320,35 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         }
         UpdatedAtUtc = now.ToUniversalTime();
         return created.Value;
+    }
+
+    /// <summary>Atomically saves one normal service and its complete performer list under stable client IDs.</summary>
+    public Result<FlightService> SaveService(Guid recordId, ServiceSnapshot? service, string? customerReferenceNumber,
+        TimeWindow? window, string? notes, IReadOnlyList<FlightServicePerformerInput> performers, Guid userId, DateTimeOffset now)
+    {
+        var check = ValidateServiceWrite(userId, null);
+        if (check.IsFailure) return check.Error;
+        var existing = _services.SingleOrDefault(item => item.Id == recordId);
+        if (existing?.ReturnToRampId is not null)
+            return Error.NotFound("Performed service was not found on this flight.", "Operations.FlightService.NotFound");
+        var created = FlightService.Create(Id, service, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), id: recordId);
+        if (created.IsFailure) return created.Error;
+        var replacement = created.Value;
+        foreach (var performer in performers)
+        {
+            if (performer.Id.HasValue && _services.Any(item => item.Id != recordId && item.Performers.Any(child => child.Id == performer.Id.Value)))
+                return Error.Conflict("Performer record ID is already in use.", "Operations.FlightService.PerformerIdConflict");
+            var added = replacement.AddPerformer(performer.Employee, performer.Window, performer.Id);
+            if (added.IsFailure) return added.Error;
+        }
+        if (existing is null)
+        {
+            _services.Add(replacement);
+            UpdatedAtUtc = now.ToUniversalTime();
+            return replacement;
+        }
+        if (existing.ReplaceDetailsAndPerformers(replacement, userId)) MarkServiceUpdated(existing, userId, now);
+        return existing;
     }
 
     public Result<FlightService> UpdateService(Guid serviceId, ServiceSnapshot? service, string? customerReferenceNumber,
@@ -334,15 +369,17 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightServicePerformer> AddServicePerformer(Guid serviceId, StaffMemberSnapshot? employee,
-        TimeWindow? window, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
+        TimeWindow? window, Guid userId, DateTimeOffset now, Guid? returnToRampId = null, Guid? id = null)
     {
+        if (id.HasValue && _services.Any(item => item.Performers.Any(performer => performer.Id == id.Value)))
+            return Error.Conflict("Performer record ID is already in use.", "Operations.FlightService.PerformerIdConflict");
         var found = FindServiceForWrite(serviceId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         var periodCheck = ValidateReturnToRampEmployee(returnToRampId, window);
         if (periodCheck.IsFailure)
             return periodCheck.Error;
-        var added = found.Value.AddPerformer(employee, window);
+        var added = found.Value.AddPerformer(employee, window, id);
         if (added.IsFailure)
             return added.Error;
 
@@ -387,12 +424,14 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightServiceAttachment> AddServiceAttachment(Guid serviceId, AttachmentDetails? details,
-        Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
+        Guid userId, DateTimeOffset now, Guid? returnToRampId = null, Guid? id = null)
     {
+        if (id.HasValue && _services.Any(item => item.Attachments.Any(attachment => attachment.Id == id.Value)))
+            return Error.Conflict("Attachment record ID is already in use.", "Operations.FlightService.AttachmentIdConflict");
         var found = FindServiceForWrite(serviceId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
-        var added = found.Value.AddAttachment(details, userId, now.ToUniversalTime());
+        var added = found.Value.AddAttachment(details, userId, now.ToUniversalTime(), id);
         if (added.IsFailure)
             return added.Error;
 

@@ -98,6 +98,9 @@ data class FlightDetail(
     @kotlinx.serialization.Transient val fromCache: Boolean = false,
     val cancellationSubmissions: List<FlightCancellationSubmission> = emptyList(),
     val canSaveCancellation: Boolean = false,
+    val services: List<FlightServiceRecord> = emptyList(),
+    val canSaveServices: Boolean = false,
+    val allowedServiceIds: List<String>? = null,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
 }

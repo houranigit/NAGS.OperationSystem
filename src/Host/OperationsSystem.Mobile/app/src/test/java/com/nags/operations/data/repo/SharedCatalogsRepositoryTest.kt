@@ -2,6 +2,11 @@ package com.nags.operations.data.repo
 
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.SharedCatalog
+import com.nags.operations.data.StaffCatalogItem
+import com.nags.operations.data.StationStaffCatalogSnapshot
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import com.nags.operations.data.db.dao.SharedCatalogDao
 import com.nags.operations.data.db.entities.SharedCatalogSnapshotEntity
 import java.io.IOException
@@ -25,6 +30,43 @@ class SharedCatalogsRepositoryTest {
     private var clock = "2026-11-03T10:00:00Z"
     private var elapsedNanos = 0L
     private var durationMs = 25L
+
+    @Test
+    fun legacyUnscopedStaffCacheIsHiddenUntilFreshScopedSyncAndThenSurvivesRestart() = runBlocking {
+        val oldRows = Json.parseToJsonElement(payload(SharedCatalog.StationStaff)).jsonObject.getValue("items").toString()
+        dao.put(SharedCatalogSnapshotEntity("account-a", "staff-members", oldRows, 1,
+            lastSuccessUtc = clock, lastDurationMs = 25))
+        val repo = repository()
+        assertTrue(repo.stationStaffFlow().first().isEmpty())
+        val stale = repo.observeStatus().first().single { it.kind == SharedCatalog.StationStaff }
+        assertEquals(0, stale.itemCount)
+        assertNull(stale.lastSuccessUtc)
+        repo.refresh(setOf(SharedCatalog.StationStaff))
+        assertEquals("station", repo.stationStaffFlow().first().single().stationId)
+        val restarted = repository { throw IOException("Offline") }
+        assertEquals("staff", restarted.stationStaffFlow().first().single().id)
+        owner.value = "another-account"
+        assertTrue(restarted.stationStaffFlow().first().isEmpty())
+    }
+
+    @Test
+    fun crossStationRowsCannotReplaceTheLastAuthoritativelyScopedStaffSnapshot() = runBlocking {
+        var malformed = false
+        val repo = repository { kind ->
+            if (kind == SharedCatalog.StationStaff && malformed) Json.encodeToString(StationStaffCatalogSnapshot(
+                "current-station", "station", listOf(StaffCatalogItem("foreign", "Foreign", "E2", "other-station", "BBB", "Engineer"))))
+            else payload(kind)
+        }
+        repo.refresh(setOf(SharedCatalog.StationStaff))
+        val original = dao.snapshot("account-a", "staff-members")!!
+        malformed = true
+        repo.refresh(setOf(SharedCatalog.StationStaff))
+        val retained = dao.snapshot("account-a", "staff-members")!!
+        assertEquals(original.payloadJson, retained.payloadJson)
+        assertFalse(retained.payloadJson.contains("other-station"))
+        assertNotNull(retained.error)
+        assertEquals(listOf("staff"), repo.stationStaffFlow().first().map { it.id })
+    }
 
     @Test
     fun customerMetadataUpdatesOnlyChangedImagesAndCatalogDenialKeepsFlightAuthorizedFiles() = runBlocking {
@@ -387,7 +429,7 @@ class SharedCatalogsRepositoryTest {
         SharedCatalog.Materials -> """[{"id":"material","name":"Material","calculationType":"Quantity"}]"""
         SharedCatalog.GeneralSupports -> """[{"id":"support","name":"Support","calculationType":"Quantity"}]"""
         SharedCatalog.AtaChapters -> """[{"id":"chapter","categoryId":"category","categoryName":"General","code":"05","title":"Time limits","isActive":true,"categoryIsActive":true,"rowVersion":"ignored"}]"""
-        SharedCatalog.StationStaff -> """[{"id":"staff","fullName":"Employee","employeeId":"EMP-1","stationId":"station","stationCode":"AAA","manpowerTypeName":"Technician","email":"ignored@example.test"}]"""
+        SharedCatalog.StationStaff -> """{"scope":"current-station","stationId":"station","items":[{"id":"staff","fullName":"Employee","employeeId":"EMP-1","stationId":"station","stationCode":"AAA","manpowerTypeName":"Technician","email":"ignored@example.test"}]}"""
     }
 }
 

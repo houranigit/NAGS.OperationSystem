@@ -8,6 +8,7 @@ internal sealed class SchedulingMasterDataReader(string? customerIataCode = "SV"
     public string? StationTimeZoneId { get; set; } = "Asia/Riyadh";
     public Guid StationId { get; } = Guid.NewGuid();
     public Guid ServiceId { get; } = Guid.NewGuid();
+    public IReadOnlySet<Guid>? AllowedServicesOverride { get; set; }
     public Dictionary<Guid, StaffMemberReadSnapshot> StaffMembers { get; } = [];
 
     public Task<CustomerReadSnapshot?> GetCustomerAsync(Guid id, CancellationToken cancellationToken) =>
@@ -61,7 +62,7 @@ internal sealed class SchedulingMasterDataReader(string? customerIataCode = "SV"
         throw new NotImplementedException();
 
     public Task<IReadOnlySet<Guid>> GetAllowedActiveServiceIdsAsync(Guid manpowerTypeId, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlySet<Guid>>(new HashSet<Guid>());
+        Task.FromResult(AllowedServicesOverride ?? new HashSet<Guid> { ServiceId });
 
     public Task<IReadOnlyList<ServiceReadSnapshot>> GetActiveServicesAsync(CancellationToken cancellationToken) =>
         throw new NotImplementedException();

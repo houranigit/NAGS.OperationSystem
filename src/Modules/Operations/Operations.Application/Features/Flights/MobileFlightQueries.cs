@@ -7,6 +7,7 @@ using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
+using Operations.Application.Common;
 using Operations.Application.Contracts;
 using Operations.Domain.Authorization;
 using Operations.Domain.Flights;
@@ -93,6 +94,8 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
         var flight = await MobileFlightQuery.ApplyScope(db.Flights.AsNoTracking(), resolved.Value)
             .AsSplitQuery().Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
             .Include(f => f.ArrivalSubmissions).Include(f => f.DepartureSubmissions).Include(f => f.CancellationSubmissions)
+            .Include(f => f.ServiceRecords).ThenInclude(s => s.Performers)
+            .Include(f => f.ServiceRecords).ThenInclude(s => s.Attachments)
             .FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
@@ -104,8 +107,11 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
         var ownCancellation = flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee.StaffMemberId == staffId);
         var ownWork = flight.ArrivalSubmissions.Any(a => a.SubmittedByEmployee.StaffMemberId == staffId) ||
             flight.DepartureSubmissions.Any(d => d.SubmittedByEmployee.StaffMemberId == staffId);
+        var allowed = await new MasterDataResolver(masterData).AllowedServiceIdsForStaffAsync(staffId, flight.Station.StationId, cancellationToken);
+        var allowedIds = allowed.IsSuccess ? allowed.Value : [];
         return FlightDetails.Map(flight, station.TimeZoneId, staffId,
-            canOperate && !ownCancellation, canOperate && !ownCancellation, canOperate && !ownWork);
+            canOperate && !ownCancellation, canOperate && !ownCancellation, canOperate && !ownWork && flight.ServiceRecords.Count == 0,
+            canOperate && flight.CancellationSubmissions.Count == 0 && allowedIds.Count > 0, resolved.Value.UserId, allowedIds);
     }
 }
 

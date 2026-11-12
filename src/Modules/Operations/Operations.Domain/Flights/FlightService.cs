@@ -31,15 +31,17 @@ public sealed class FlightService : Entity<Guid>
     public IReadOnlyList<FlightServiceAttachment> Attachments => _attachments.AsReadOnly();
 
     internal static Result<FlightService> Create(Guid flightId, ServiceSnapshot? service, string? customerReferenceNumber,
-        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null)
+        TimeWindow? window, string? notes, Guid userId, DateTimeOffset now, Guid? returnToRampId = null, Guid? id = null)
     {
+        if (id == Guid.Empty)
+            return Error.Validation("Service record ID is required.", "Operations.FlightService.IdRequired");
         var check = ValidateDetails(service, customerReferenceNumber, window, notes);
         if (check.IsFailure)
             return check.Error;
 
         return new FlightService
         {
-            Id = Guid.NewGuid(),
+            Id = id ?? Guid.NewGuid(),
             FlightId = flightId,
             ReturnToRampId = returnToRampId,
             Service = new ServiceSnapshot(service!.ServiceId, service.Name),
@@ -81,8 +83,37 @@ public sealed class FlightService : Entity<Guid>
         return true;
     }
 
-    internal Result<FlightServicePerformer> AddPerformer(StaffMemberSnapshot? employee, TimeWindow? window)
+    // The replacement has already been validated independently, including every child.
+    // Reconcile tracked children by stable ID so corrections preserve their identities and attachments.
+    internal bool ReplaceDetailsAndPerformers(FlightService replacement, Guid userId)
     {
+        var samePerformers = _performers.Count == replacement._performers.Count && _performers.All(existing =>
+            replacement._performers.Any(item => item.Id == existing.Id && item.Employee == existing.Employee && item.Window == existing.Window));
+        if (Service == replacement.Service && Window == replacement.Window && CustomerReferenceNumber == replacement.CustomerReferenceNumber &&
+            Notes == replacement.Notes && samePerformers)
+            return false;
+        if (Window.ToUtc != replacement.Window.ToUtc)
+            EndedByUserId = replacement.Window.ToUtc.HasValue ? userId : null;
+        Service = replacement.Service;
+        Window = replacement.Window;
+        CustomerReferenceNumber = replacement.CustomerReferenceNumber;
+        Notes = replacement.Notes;
+        _performers.RemoveAll(existing => replacement._performers.All(item => item.Id != existing.Id));
+        foreach (var item in replacement._performers)
+        {
+            var existing = _performers.SingleOrDefault(record => record.Id == item.Id);
+            if (existing is null) _performers.Add(item);
+            else if (existing.Employee != item.Employee || existing.Window != item.Window) existing.Update(item.Employee, item.Window);
+        }
+        return true;
+    }
+
+    internal Result<FlightServicePerformer> AddPerformer(StaffMemberSnapshot? employee, TimeWindow? window, Guid? id = null)
+    {
+        if (id == Guid.Empty)
+            return Error.Validation("Performer record ID is required.", "Operations.FlightService.PerformerIdRequired");
+        if (id.HasValue && _performers.Any(item => item.Id == id.Value))
+            return Error.Conflict("Performer record ID is already in use.", "Operations.FlightService.PerformerIdConflict");
         var check = ValidatePerformer(employee, window);
         if (check.IsFailure)
             return check.Error;
@@ -90,7 +121,7 @@ public sealed class FlightService : Entity<Guid>
         if (_performers.Any(item => item.Employee.StaffMemberId == employee!.StaffMemberId))
             return OperationalWorkValidation.DuplicateEmployee();
 
-        var performer = new FlightServicePerformer(Guid.NewGuid(), Id, employee!, window!);
+        var performer = new FlightServicePerformer(id ?? Guid.NewGuid(), Id, employee!, window!);
         _performers.Add(performer);
         return performer;
     }
@@ -121,15 +152,19 @@ public sealed class FlightService : Entity<Guid>
         return Result.Success();
     }
 
-    internal Result<FlightServiceAttachment> AddAttachment(AttachmentDetails? details, Guid userId, DateTimeOffset now)
+    internal Result<FlightServiceAttachment> AddAttachment(AttachmentDetails? details, Guid userId, DateTimeOffset now, Guid? id = null)
     {
+        if (id == Guid.Empty)
+            return Error.Validation("Attachment record ID is required.", "Operations.FlightService.AttachmentIdRequired");
+        if (id.HasValue && _attachments.Any(item => item.Id == id.Value))
+            return Error.Conflict("Attachment record ID is already in use.", "Operations.FlightService.AttachmentIdConflict");
         if (details is null)
             return Error.Validation("Attachment details are required.", "Operations.FlightService.AttachmentRequired");
 
         if (_attachments.Count >= MaxAttachments)
             return Error.Validation("A service can have at most 10 attachments.", "Operations.WorkOrder.AttachmentLimitExceeded");
 
-        var attachment = new FlightServiceAttachment(Guid.NewGuid(), Id, details, userId, now);
+        var attachment = new FlightServiceAttachment(id ?? Guid.NewGuid(), Id, details, userId, now);
         _attachments.Add(attachment);
         return attachment;
     }

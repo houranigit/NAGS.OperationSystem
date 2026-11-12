@@ -75,6 +75,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import java.util.UUID
 import com.nags.operations.data.hasOwnCancellation
 import com.nags.operations.data.hasOwnWork
 import com.nags.operations.data.ownCancellation
@@ -209,6 +210,10 @@ fun FlightsScreen(
             .collectAsStateWithLifecycle(initialValue = emptyList())
         val pendingCancellations by (viewModel.cancellations?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
             .collectAsStateWithLifecycle(initialValue = emptyList())
+        val pendingServices by (viewModel.services?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+            .collectAsStateWithLifecycle(initialValue = emptyList())
+        val serviceFormDrafts by (viewModel.services?.drafts ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+            .collectAsStateWithLifecycle(initialValue = emptyList())
         val pendingCancellation = pendingCancellations.firstOrNull { it.flightId == state.selectedFlightId }
         val aircraftTypes by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
         val actualsStaff by viewModel.actualsStaff.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -223,7 +228,8 @@ fun FlightsScreen(
             pendingDeparture = pendingDepartures.firstOrNull { it.flightId == state.selectedFlightId },
             pendingCancellation = pendingCancellation) ?: FlightProgressStatus.Draft
         val ownsWork = state.detail?.hasOwnWork() == true || pendingArrivals.any { it.flightId == state.selectedFlightId } ||
-            pendingDepartures.any { it.flightId == state.selectedFlightId }
+            pendingDepartures.any { it.flightId == state.selectedFlightId } ||
+            pendingServices.any { it.flightId == state.selectedFlightId } || state.detail?.services?.isNotEmpty() == true
         val ownsCancellation = state.detail?.hasOwnCancellation() == true || pendingCancellation != null
         var confirmRevert by rememberSaveable { mutableStateOf(false) }
         var revertError by rememberSaveable { mutableStateOf<String?>(null) }
@@ -248,6 +254,8 @@ fun FlightsScreen(
             title = { Text(stringResource(R.string.cancellation_revert_failed)) }, text = { Text(revertError.orEmpty()) },
             confirmButton = { TextButton(onClick = { revertError = null }) { Text(stringResource(R.string.flights_cancel)) } })
         var recordingForm by rememberSaveable { mutableStateOf<String?>(null) }
+        // A reopened form starts from durable data; only rotation restores the same editor session.
+        var recordingFormSessionId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
         // The open form owns a stable snapshot, including across activity recreation.
         // Background detail updates must not replace the form's original snapshot.
         var recordingFlightSnapshot by rememberSaveable { mutableStateOf<String?>(null) }
@@ -255,6 +263,11 @@ fun FlightsScreen(
             recordingFlightSnapshot?.let { Json.decodeFromString<FlightDetail>(it) }
         }
         val recordingFormState = rememberSaveableStateHolder()
+        fun openRecordingForm(kind: String) {
+            recordingFlightSnapshot = state.detail?.let { Json.encodeToString(it) }
+            recordingFormSessionId = UUID.randomUUID().toString()
+            recordingForm = kind
+        }
         FlightDetailsSheet(state = state, actuals = actuals, progressStatus = progressStatus,
             showCancellation = !ownsWork && !ownsCancellation && state.detail?.cancellationEditable() == true,
             showOperations = !ownsCancellation,
@@ -265,24 +278,32 @@ fun FlightsScreen(
             onRevertCancellation = { confirmRevert = true }, onClose = ::closeFlight,
             onRetry = { state.selectedFlightId?.let(viewModel::openFlight) },
             onInvite = viewModel::openInvitations,
-            onOperations = { recordingFlightSnapshot = state.detail?.let { Json.encodeToString(it) }; recordingForm = "operations" },
-            onCanceled = { recordingFlightSnapshot = state.detail?.let { Json.encodeToString(it) }; recordingForm = "cancellation" },
+            onOperations = { openRecordingForm("operations") },
+            onCanceled = { openRecordingForm("cancellation") },
             loadCustomerLogo = viewModel::customerLogo)
         // An ordinary silent detail refresh must not replace an open form or discard its edits.
         val flight = recordingFlight ?: state.detail
         val activeForm = recordingForm
         if (activeForm != null && flight != null) {
-            recordingFormState.SaveableStateProvider(activeForm) {
+            val activeFormKey = "$activeForm:$recordingFormSessionId"
+            recordingFormState.SaveableStateProvider(activeFormKey) {
                 val closeForm = {
                     recordingForm = null
                     recordingFlightSnapshot = null
-                    recordingFormState.removeState(activeForm)
+                    recordingFormState.removeState(activeFormKey)
                 }
                 if (activeForm == "operations") {
                     val catalogs by viewModel.operationsCatalogs.collectAsStateWithLifecycle(initialValue = FlightOperationsCatalogs())
-                    FlightOperationsForm(state.detail ?: flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm, catalogs = catalogs,
+                    FlightOperationsForm(state.detail ?: flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm, catalogs = catalogs.forStation(flight.stationId),
                         pending = pendingArrivals.firstOrNull { it.flightId == flight.id },
                         pendingDeparture = pendingDepartures.firstOrNull { it.flightId == flight.id },
+                        pendingServices = pendingServices.filter { it.flightId == flight.id },
+                        serviceFormDraft = serviceFormDrafts.firstOrNull { it.flightId == flight.id },
+                        onSaveServices = viewModel::saveServices,
+                        onSaveBatch = viewModel::saveOperationBatch,
+                        onReviewServices = { viewModel.reviewServices(flight.id) },
+                        loadServiceAttachment = viewModel::serviceAttachment,
+                        loadPendingServiceAttachment = viewModel::pendingServiceAttachment,
                         progressStatus = progressStatus,
                         loadSignature = viewModel::departureSignature,
                         onSaveArrival = { detail, input -> checkNotNull(viewModel.arrivals).save(detail, input) },

@@ -83,6 +83,11 @@ public sealed class SaveFlightArrivalCommandHandler(
             !input.AcknowledgeConflictingSubmission)
             return Error.Conflict("Another employee reported this flight as canceled. Confirm before saving work details.",
                 "Operations.Flight.CancellationConfirmationRequired");
+        if (own is null || own.Details.Ata != input.Ata)
+        {
+            var workBounds = FlightServiceBounds.ValidateExistingServices(flight, actor.StaffMemberId, arrivalOverride: input.Ata);
+            if (workBounds.IsFailure) return workBounds.Error;
+        }
         var aircraft = await resolver.AircraftTypeAsync(input.AircraftTypeId, cancellationToken);
         if (aircraft.IsFailure)
             return aircraft.Error;

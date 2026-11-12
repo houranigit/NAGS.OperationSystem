@@ -16,11 +16,13 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
         FlightsViewModel::class.java -> FlightsViewModel(
             graph.flightsRepository, graph.authRepository, graph.networkMonitor, graph.sharedCatalogsRepository, graph.flightArrivals, graph.flightDepartures,
             graph.tokenStore.displayNameFlow, graph.departureSignaturePreviews::load, graph.flightCancellations,
+            graph.flightServices, graph::loadServiceAttachment, graph::loadPendingServiceAttachment, graph::saveFlightOperationBatch,
         )
         AccountViewModel::class.java -> AccountViewModel(graph.authRepository, graph.networkMonitor)
         SyncCenterViewModel::class.java -> SyncCenterViewModel(
             graph.sharedCatalogsRepository, graph.flightsRepository, graph.networkMonitor, graph.catalogConnectionState,
             graph.lastCatalogEventAt, graph::refreshCatalogs, graph.isSyncing, graph.flightArrivals, graph.flightDepartures, graph.flightCancellations,
+            graph.flightServices,
         )
         NotificationsViewModel::class.java -> NotificationsViewModel(graph.notificationsRepository, graph.flightsRepository)
         else -> throw IllegalArgumentException("Unknown ViewModel ${modelClass.name}")

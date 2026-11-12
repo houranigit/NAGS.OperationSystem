@@ -110,86 +110,87 @@ internal fun FlightRemarksComposer(
     attachments: List<FlightAttachmentDraft>,
     onAttachmentsChange: (List<FlightAttachmentDraft>) -> Unit,
     description: String,
+    enabled: Boolean = true,
+    errorMessage: String? = null,
 ) {
-    val media = rememberFlightComposerMedia(attachments, onAttachmentsChange)
+    val media = rememberFlightComposerMedia(attachments) { if (enabled) onAttachmentsChange(it) }
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val limitMessage = if (remarks.length > 2000) stringResource(R.string.composer_remarks_too_long, remarks.length) else null
     fun prepareMedia(action: () -> Unit) { focus.clearFocus(); keyboard?.hide(); action() }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(R.string.flight_form_remarks), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(FlightFormGround)) {
-            attachments.forEach { item -> key(item.id) {
-                if (composerAttachmentIsAudio(item)) ComposerAudioRow(item, media)
-                else ComposerFileRow(item, media)
+    FlightFormValidation(errorMessage ?: limitMessage) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.flight_form_remarks), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(FlightFormGround)) {
+                attachments.forEach { item -> key(item.id) {
+                    if (composerAttachmentIsAudio(item)) ComposerAudioRow(item, media, enabled)
+                    else ComposerFileRow(item, media, enabled)
+                    HorizontalDivider(Modifier.padding(horizontal = 12.dp), thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                } }
+                BasicTextField(remarks, onRemarksChange,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormEditableFocus().padding(horizontal = 12.dp, vertical = 10.dp)
+                        .semantics { contentDescription = description; if (limitMessage != null) error(limitMessage) },
+                    readOnly = media.isRecording || !enabled, enabled = enabled, minLines = 1, maxLines = 6,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium, textAlign = TextAlign.Left),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
+                    decorationBox = { inner -> Box(Modifier.fillMaxWidth(), contentAlignment = AbsoluteAlignment.TopLeft) {
+                        if (remarks.isEmpty()) Text(stringResource(R.string.composer_placeholder), Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Left)
+                        inner()
+                    } })
                 HorizontalDivider(Modifier.padding(horizontal = 12.dp), thickness = 0.5.dp,
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-            } }
-            BasicTextField(remarks, onRemarksChange,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormEditableFocus().padding(horizontal = 12.dp, vertical = 10.dp)
-                    .semantics { contentDescription = description; if (limitMessage != null) error(limitMessage) },
-                readOnly = media.isRecording, minLines = 1, maxLines = 6,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Medium, textAlign = TextAlign.Left),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Default),
-                decorationBox = { inner -> Box(Modifier.fillMaxWidth(), contentAlignment = AbsoluteAlignment.TopLeft) {
-                    if (remarks.isEmpty()) Text(stringResource(R.string.composer_placeholder), Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Left)
-                    inner()
-                } })
-            HorizontalDivider(Modifier.padding(horizontal = 12.dp), thickness = 0.5.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-            if (media.isRecording) ComposerRecordingToolbar(media)
-            else Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { prepareMedia { menuOpen = true } }, enabled = media.canAdd, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Outlined.Add, stringResource(R.string.composer_add_attachment), Modifier.size(24.dp),
-                        tint = if (media.canAdd) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
-                }
-                Spacer(Modifier.weight(1f))
-                if (attachments.isNotEmpty()) Text(stringResource(R.string.composer_attachment_count, attachments.size),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                IconButton(onClick = { prepareMedia(media::takePhoto) }, enabled = media.canAdd, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Outlined.PhotoCamera, stringResource(R.string.composer_camera), Modifier.size(22.dp))
-                }
-                IconButton(onClick = { prepareMedia(media::startRecording) }, enabled = media.canAdd, modifier = Modifier.size(48.dp)) {
-                    Box(Modifier.size(28.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = if (media.canAdd) 1f else 0.35f), CircleShape),
-                        contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.Mic, stringResource(R.string.composer_record_voice), Modifier.size(17.dp),
-                            tint = MaterialTheme.colorScheme.onPrimary)
+                if (media.isRecording) ComposerRecordingToolbar(media)
+                else Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { prepareMedia { menuOpen = true } }, enabled = enabled && media.canAdd, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Outlined.Add, stringResource(R.string.composer_add_attachment), Modifier.size(24.dp),
+                            tint = if (enabled && media.canAdd) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f))
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (attachments.isNotEmpty()) Text(stringResource(R.string.composer_attachment_count, attachments.size),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    IconButton(onClick = { prepareMedia(media::takePhoto) }, enabled = enabled && media.canAdd, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Outlined.PhotoCamera, stringResource(R.string.composer_camera), Modifier.size(22.dp))
+                    }
+                    IconButton(onClick = { prepareMedia(media::startRecording) }, enabled = enabled && media.canAdd, modifier = Modifier.size(48.dp)) {
+                        Box(Modifier.size(28.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = if (enabled && media.canAdd) 1f else 0.35f), CircleShape),
+                            contentAlignment = Alignment.Center) {
+                            Icon(Icons.Outlined.Mic, stringResource(R.string.composer_record_voice), Modifier.size(17.dp),
+                                tint = MaterialTheme.colorScheme.onPrimary)
+                        }
                     }
                 }
-            }
-            if (limitMessage != null) Text(limitMessage,
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).semantics { liveRegion = LiveRegionMode.Polite },
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            media.error?.let { message ->
-                Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(message, Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                    IconButton(onClick = media::dismissError, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Outlined.Close, stringResource(R.string.composer_dismiss_error), Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                media.error?.let { message ->
+                    Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(message, Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        IconButton(onClick = media::dismissError, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Outlined.Close, stringResource(R.string.composer_dismiss_error), Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
         }
-    }
-    if (menuOpen) FlightFormModalSheet(stringResource(R.string.composer_add_attachment), onDismiss = { menuOpen = false }) { close ->
-        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.composer_add_attachment), Modifier.weight(1f).padding(start = 8.dp),
-                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                IconButton(onClick = close, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Outlined.Close, stringResource(R.string.flights_cancel), Modifier.size(20.dp))
+        if (menuOpen) FlightFormModalSheet(stringResource(R.string.composer_add_attachment), onDismiss = { menuOpen = false }) { close ->
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.composer_add_attachment), Modifier.weight(1f).padding(start = 8.dp),
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    IconButton(onClick = close, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Outlined.Close, stringResource(R.string.flights_cancel), Modifier.size(20.dp))
+                    }
                 }
-            }
-            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ComposerMenuItem(Icons.Outlined.PhotoLibrary, stringResource(R.string.composer_photos), Modifier.weight(1f)) { close(); media.pickImages() }
-                ComposerMenuItem(Icons.Outlined.PhotoCamera, stringResource(R.string.composer_camera), Modifier.weight(1f)) { close(); media.takePhoto() }
-                ComposerMenuItem(Icons.Outlined.InsertDriveFile, stringResource(R.string.composer_document), Modifier.weight(1f)) { close(); media.pickFiles() }
+                Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ComposerMenuItem(Icons.Outlined.PhotoLibrary, stringResource(R.string.composer_photos), Modifier.weight(1f)) { close(); media.pickImages() }
+                    ComposerMenuItem(Icons.Outlined.PhotoCamera, stringResource(R.string.composer_camera), Modifier.weight(1f)) { close(); media.takePhoto() }
+                    ComposerMenuItem(Icons.Outlined.InsertDriveFile, stringResource(R.string.composer_document), Modifier.weight(1f)) { close(); media.pickFiles() }
+                }
             }
         }
     }
@@ -220,12 +221,12 @@ private fun ComposerRecordingToolbar(media: FlightComposerMedia) {
 }
 
 @Composable
-private fun ComposerFileRow(item: FlightAttachmentDraft, media: FlightComposerMedia) {
+private fun ComposerFileRow(item: FlightAttachmentDraft, media: FlightComposerMedia, enabled: Boolean) {
     val image = item.mimeType.startsWith("image/") || (item.mimeType.isBlank() &&
         item.name.substringAfterLast('.', "").lowercase(Locale.ROOT) in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp"))
     Row(Modifier.fillMaxWidth().padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.weight(1f).heightIn(min = 60.dp).clip(RoundedCornerShape(10.dp))
-            .clickable(enabled = !media.isRecording, onClick = { media.open(item) }).padding(6.dp),
+            .clickable(enabled = !media.isRecording && item.uri.isNotBlank(), onClick = { media.open(item) }).padding(6.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             if (image) ComposerThumbnail(item.uri)
             else Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
@@ -240,19 +241,19 @@ private fun ComposerFileRow(item: FlightAttachmentDraft, media: FlightComposerMe
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        ComposerRemove(item, media)
+        ComposerRemove(item, media, enabled)
     }
 }
 
 @Composable
-private fun ComposerAudioRow(item: FlightAttachmentDraft, media: FlightComposerMedia) {
+private fun ComposerAudioRow(item: FlightAttachmentDraft, media: FlightComposerMedia, enabled: Boolean) {
     val selected = media.playingAttachmentId == item.id
     val playing = selected && media.isPlaying
     val duration = if (selected && media.playbackDurationMillis > 0) media.playbackDurationMillis else item.durationMillis
     val position = if (selected) media.playbackPositionMillis.coerceIn(0, duration.coerceAtLeast(0)) else 0L
     val progress = if (duration > 0) position.toFloat() / duration else 0f
     Row(Modifier.fillMaxWidth().padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { media.togglePlayback(item) }, enabled = !media.isRecording, modifier = Modifier.size(48.dp)) {
+        IconButton(onClick = { media.togglePlayback(item) }, enabled = !media.isRecording && item.uri.isNotBlank(), modifier = Modifier.size(48.dp)) {
             Icon(if (playing) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
                 stringResource(if (playing) R.string.composer_pause else R.string.composer_play), Modifier.size(24.dp),
                 tint = MaterialTheme.colorScheme.primary)
@@ -266,13 +267,13 @@ private fun ComposerAudioRow(item: FlightAttachmentDraft, media: FlightComposerM
             Text(if (timing.isEmpty()) stringResource(R.string.composer_audio) else "${stringResource(R.string.composer_audio)} · $timing",
                 style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        ComposerRemove(item, media)
+        ComposerRemove(item, media, enabled)
     }
 }
 
 @Composable
-private fun ComposerRemove(item: FlightAttachmentDraft, media: FlightComposerMedia) {
-    IconButton(onClick = { media.remove(item) }, enabled = !media.isRecording, modifier = Modifier.size(48.dp)) {
+private fun ComposerRemove(item: FlightAttachmentDraft, media: FlightComposerMedia, enabled: Boolean) {
+    IconButton(onClick = { media.remove(item) }, enabled = enabled && !media.isRecording, modifier = Modifier.size(48.dp)) {
         Icon(Icons.Outlined.Close, stringResource(R.string.composer_remove_attachment, item.name), Modifier.size(18.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }

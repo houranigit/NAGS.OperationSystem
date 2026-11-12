@@ -766,6 +766,40 @@ class FlightsRepositoryCacheTest {
         observer.cancel()
     }
 
+    @Test fun repeatedServiceAcknowledgmentsRetainWorkAndAuthoritativeCountsOffline() = runBlocking {
+        serverItems = listOf(item("one").copy(activeWorkCount = 0, completedWorkCount = 2))
+        val repository = repository()
+        repository.refreshCache()
+        val original = repository.flight("one")
+        val service = com.nags.operations.data.FlightServiceRecord("service", "catalog-service", "Maintenance", clock,
+            createdByUserId = "actor", createdAtUtc = clock, canEdit = true)
+        val saved = com.nags.operations.data.FlightServiceSaved(service, "saved-version", activeWorkCount = 1, completedWorkCount = 2)
+        repeat(2) { repository.recordService("one", saved) }
+        online = false
+        val restarted = repository()
+        val cached = restarted.flight("one")
+        assertEquals(listOf(service), cached.services)
+        assertEquals("saved-version", cached.rowVersion)
+        assertEquals(original.scheduledArrivalUtc, cached.scheduledArrivalUtc)
+        assertEquals(1, restarted.flights().items.single().activeWorkCount)
+        assertEquals(2, restarted.flights().items.single().completedWorkCount)
+    }
+
+    @Test fun serviceRemovalAcknowledgmentPreservesOtherRecordsAndReplacesCountsIdempotently() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        repository.flight("one")
+        val first = com.nags.operations.data.FlightServiceRecord("first", "catalog", "Maintenance", clock,
+            createdByUserId = "actor", createdAtUtc = clock)
+        val second = first.copy(id = "second")
+        repository.recordService("one", com.nags.operations.data.FlightServiceSaved(first, "first-version", 1, 0))
+        repository.recordService("one", com.nags.operations.data.FlightServiceSaved(second, "second-version", 2, 0))
+        repeat(2) { repository.recordServiceDeleted("one", com.nags.operations.data.FlightServiceDeleted(first.id, "deleted-version", 1, 0)) }
+        online = false
+        assertEquals(listOf(second), repository().flight("one").services)
+        assertEquals(1, repository().flights().items.first { it.id == "one" }.activeWorkCount)
+    }
+
     @Test fun acknowledgedDepartureIsAvailableOfflineWithoutReplacingPlanningDetails() = runBlocking {
         val repository = repository()
         repository.refreshCache()

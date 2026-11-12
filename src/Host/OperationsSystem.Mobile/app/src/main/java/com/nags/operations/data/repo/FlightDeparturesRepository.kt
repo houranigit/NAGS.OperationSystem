@@ -47,6 +47,8 @@ class FlightDeparturesRepository(
     private val onSignatureAcknowledged: suspend (String, FlightDepartureSaved, ByteArray) -> Unit = { _, _, _ -> },
     private val hasSavedCancellation: suspend (String) -> Boolean = { false },
     private val submissionGate: Mutex = Mutex(),
+    private val onAcknowledgedBeforeDelete: suspend (String, String, String) -> Unit = { _, _, _ -> },
+    private val hasSavedServices: suspend (String) -> Boolean = { false },
 ) {
     private val gate = Mutex()
     private val localWrites = Mutex()
@@ -112,8 +114,12 @@ class FlightDeparturesRepository(
         runCatching { schedule() }
     }
 
-    /** Called after an arrival HTTP acknowledgment and before its durable intent is removed. */
-    suspend fun onArrivalAcknowledged(flightId: String, requestVersion: String, responseVersion: String) = localWrites.withLock {
+    /** Existing arrival callers retain their exact acknowledgment boundary. */
+    suspend fun onArrivalAcknowledged(flightId: String, requestVersion: String, responseVersion: String) =
+        onPriorWriteAcknowledged(flightId, requestVersion, responseVersion)
+
+    /** Only an acknowledged local predecessor can advance queued input, followed by a comparison. */
+    suspend fun onPriorWriteAcknowledged(flightId: String, requestVersion: String, responseVersion: String) = localWrites.withLock {
         val owner = currentOwner() ?: return@withLock
         val row = dao.rows(owner).firstOrNull { it.flightId == flightId && it.status == "pending" } ?: return@withLock
         if (row.rowVersion == requestVersion && responseVersion != requestVersion) {
@@ -123,7 +129,7 @@ class FlightDeparturesRepository(
     }
 
     /** Arrival synchronization runs first; unresolved arrival intent blocks only that flight. */
-    suspend fun syncPending(): Boolean = gate.withLock {
+    suspend fun syncPending(priorToServices: Boolean = false): Boolean = gate.withLock {
         if (!accepting) return@withLock false
         val owner = currentOwner() ?: return@withLock false
         if (!online()) return@withLock dao.rows(owner).any { it.status == "pending" }
@@ -132,7 +138,11 @@ class FlightDeparturesRepository(
         val blockedByArrival = mutableSetOf<String>()
         for (snapshot in localWrites.withLock { dao.rows(owner).filter { it.status == "pending" } }) {
             if (!accepting || owner != currentOwner()) return@withLock false
-            if (hasSavedArrival(snapshot.flightId)) { blockedByArrival += snapshot.flightId; continue }
+            if (snapshot.attemptInputJson == null && (hasSavedArrival(snapshot.flightId) ||
+                priorToServices && !relaxesDeparture(snapshot) || !priorToServices && hasSavedServices(snapshot.flightId))) {
+                blockedByArrival += snapshot.flightId
+                continue
+            }
             try {
                 val prepared = prepare(snapshot) ?: continue
                 val input = runCatching { json.decodeFromString<SaveFlightDepartureRequest>(checkNotNull(prepared.attemptInputJson)) }.getOrNull()
@@ -165,6 +175,10 @@ class FlightDeparturesRepository(
                     while (chain.size > 64) chain.remove(chain.keys.first())
                     ownAcknowledgments[prepared.flightId] = chain
                     while (ownAcknowledgments.size > 64) ownAcknowledgments.remove(ownAcknowledgments.keys.first())
+                }
+                // Dependent services retain this exact acknowledgment before its durable intent is removed.
+                onAcknowledgedBeforeDelete(prepared.flightId, checkNotNull(prepared.attemptRowVersion), result.rowVersion)
+                localWrites.withLock {
                     pendingRow(prepared)?.let { latest ->
                         if (sameInput(latest.inputJson, prepared.attemptInputJson) && latest.signatureFile == prepared.attemptSignatureFile) {
                             dao.delete(owner, latest.flightId, latest.changeId)
@@ -241,6 +255,29 @@ class FlightDeparturesRepository(
         dao.rows(owner).any { it.flightId == flightId }
     }
 
+    suspend fun hasUnacknowledgedAttempt(flightId: String): Boolean = localWrites.withLock {
+        val owner = currentOwner() ?: return@withLock false
+        dao.rows(owner).any { it.flightId == flightId && it.status == "pending" && it.attemptInputJson != null }
+    }
+
+    private fun relaxesDeparture(row: FlightDeparturePendingEntity): Boolean = runCatching {
+        val previous = json.decodeFromString<List<FlightDepartureSubmission>>(row.reviewedDepartureJson)
+            .firstOrNull { it.submittedByEmployee.staffMemberId.equals(row.staffMemberId, true) } ?: return@runCatching false
+        val desired = json.decodeFromString<SaveFlightDepartureRequest>(row.inputJson)
+        !OffsetDateTime.parse(desired.atd).toInstant().isBefore(OffsetDateTime.parse(previous.atd).toInstant())
+    }.getOrDefault(false)
+
+    suspend fun mustSyncBeforeServices(flightId: String): Boolean = localWrites.withLock {
+        val owner = currentOwner() ?: return@withLock false
+        dao.rows(owner).any { it.flightId == flightId && (it.status != "pending" || it.attemptInputJson != null || relaxesDeparture(it)) }
+    }
+
+    suspend fun pendingInput(flightId: String): SaveFlightDepartureRequest? = localWrites.withLock {
+        val owner = currentOwner() ?: return@withLock null
+        dao.rows(owner).firstOrNull { it.flightId == flightId && it.status == "pending" }
+            ?.let { runCatching { json.decodeFromString<SaveFlightDepartureRequest>(it.inputJson) }.getOrNull() }
+    }
+
     suspend fun retry(flightId: String) = localWrites.withLock {
         val owner = currentOwner() ?: return@withLock
         check(accepting) { "Your session changed. Reopen Sync Center." }
@@ -287,6 +324,19 @@ class FlightDeparturesRepository(
             version = result.rowVersion
         }
         return version to reviewed
+    }
+
+    /** Follow only rowversions returned by this account's own acknowledged departures. */
+    suspend fun acknowledgedVersion(flightId: String, reviewedVersion: String): String = localWrites.withLock {
+        resetAcknowledgments(currentOwner())
+        var version = reviewedVersion
+        val visited = mutableSetOf<String>()
+        while (visited.add(version)) {
+            val result = ownAcknowledgments[flightId]?.get(version) ?: break
+            if (result.rowVersion == version) break
+            version = result.rowVersion
+        }
+        version
     }
 
     private fun resetAcknowledgments(owner: String?) {

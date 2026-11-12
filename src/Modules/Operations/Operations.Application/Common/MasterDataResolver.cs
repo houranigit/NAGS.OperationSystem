@@ -10,6 +10,23 @@ namespace Operations.Application.Common;
 /// </summary>
 public sealed class MasterDataResolver(IMasterDataReader reader)
 {
+    public async Task<Result<IReadOnlyList<Guid>>> AllowedServiceIdsForStaffAsync(Guid staffId, Guid stationId, CancellationToken ct)
+    {
+        var staff = await reader.GetStaffMemberAsync(staffId, ct);
+        if (staff is null || !staff.IsActive || staff.StationId != stationId)
+            return Error.Forbidden("Your linked staff record is missing, inactive, or outside this station.", "Operations.Scope.Denied");
+        var allowed = await reader.GetAllowedActiveServiceIdsAsync(staff.ManpowerTypeId, ct);
+        return allowed.Order().ToList();
+    }
+
+    public async Task<Result> EnsurePerformedServiceAllowedAsync(Guid serviceId, Guid staffId, Guid stationId, CancellationToken ct)
+    {
+        var allowed = await AllowedServiceIdsForStaffAsync(staffId, stationId, ct);
+        if (allowed.IsFailure) return allowed.Error;
+        return allowed.Value.Contains(serviceId) ? Result.Success() :
+            Error.Validation("This service is not allowed for your manpower type.", "Operations.WorkOrder.ServiceNotAllowed");
+    }
+
     public async Task<Result<CustomerSnapshot>> CustomerAsync(Guid id, CancellationToken ct)
     {
         var c = await reader.GetCustomerAsync(id, ct);

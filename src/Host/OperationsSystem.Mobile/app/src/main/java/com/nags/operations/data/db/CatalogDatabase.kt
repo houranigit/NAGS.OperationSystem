@@ -8,6 +8,9 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.nags.operations.data.db.dao.FlightCacheDao
 import com.nags.operations.data.db.dao.FlightCancellationDao
+import com.nags.operations.data.db.dao.FlightServiceDao
+import com.nags.operations.data.db.entities.FlightServicePendingEntity
+import com.nags.operations.data.db.entities.FlightServiceFormDraftEntity
 import com.nags.operations.data.db.entities.FlightCancellationPendingEntity
 import com.nags.operations.data.db.dao.FlightDepartureDao
 import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
@@ -19,8 +22,8 @@ import com.nags.operations.data.db.entities.FlightSnapshotEntity
 import com.nags.operations.data.db.entities.SharedCatalogSnapshotEntity
 
 /** Mobile caches and operational intent remain separate from notifications and the untouched legacy database. */
-@Database(version = 7, exportSchema = true, entities = [
-    SharedCatalogSnapshotEntity::class, FlightSnapshotEntity::class, FlightDetailCacheEntity::class, FlightArrivalPendingEntity::class, FlightDeparturePendingEntity::class, FlightCancellationPendingEntity::class,
+@Database(version = 9, exportSchema = true, entities = [
+    SharedCatalogSnapshotEntity::class, FlightSnapshotEntity::class, FlightDetailCacheEntity::class, FlightArrivalPendingEntity::class, FlightDeparturePendingEntity::class, FlightCancellationPendingEntity::class, FlightServicePendingEntity::class, FlightServiceFormDraftEntity::class,
 ])
 abstract class CatalogDatabase : RoomDatabase() {
     abstract fun sharedCatalogDao(): SharedCatalogDao
@@ -28,6 +31,7 @@ abstract class CatalogDatabase : RoomDatabase() {
     abstract fun flightArrivalDao(): FlightArrivalDao
     abstract fun flightDepartureDao(): FlightDepartureDao
     abstract fun flightCancellationDao(): FlightCancellationDao
+    abstract fun flightServiceDao(): FlightServiceDao
 
     companion object {
         @Volatile private var instance: CatalogDatabase? = null
@@ -74,12 +78,45 @@ abstract class CatalogDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Preserve all earlier submission intent, caches, and private-file references.
+                db.execSQL("ALTER TABLE flight_arrival_pending ADD COLUMN reviewedArrivalJson TEXT")
+                db.execSQL("ALTER TABLE flight_arrival_pending ADD COLUMN needsArrivalComparison INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("CREATE TABLE IF NOT EXISTS flight_service_pending (ownerSubject TEXT NOT NULL, flightId TEXT NOT NULL, serviceRecordId TEXT NOT NULL, flightNumber TEXT NOT NULL, changeId TEXT NOT NULL, operation TEXT NOT NULL, inputJson TEXT, rowVersion TEXT NOT NULL, reviewedServiceJson TEXT, savedAtUtc TEXT NOT NULL, needsServiceComparison INTEGER NOT NULL, status TEXT NOT NULL, error TEXT, attemptOperation TEXT, attemptInputJson TEXT, attemptRowVersion TEXT, attachmentFilesJson TEXT NOT NULL, attemptAttachmentFilesJson TEXT, PRIMARY KEY(ownerSubject, flightId, serviceRecordId))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS flight_service_form_drafts (ownerSubject TEXT NOT NULL, flightId TEXT NOT NULL, formJson TEXT NOT NULL, attachmentFilesJson TEXT NOT NULL, savedAtUtc TEXT NOT NULL, PRIMARY KEY(ownerSubject, flightId))")
+            }
+        }
+
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // An installed intermediate v8 predates these fields and the draft table.
+                // Final v8 already has them. Upgrade both without replacing any saved intent.
+                val arrivalColumns = db.query("PRAGMA table_info(flight_arrival_pending)").use { cursor ->
+                    val name = cursor.getColumnIndexOrThrow("name")
+                    buildSet {
+                        while (cursor.moveToNext()) add(cursor.getString(name))
+                    }
+                }
+                if ("reviewedArrivalJson" !in arrivalColumns) {
+                    db.execSQL("ALTER TABLE flight_arrival_pending ADD COLUMN reviewedArrivalJson TEXT")
+                }
+                if ("needsArrivalComparison" !in arrivalColumns) {
+                    db.execSQL("ALTER TABLE flight_arrival_pending ADD COLUMN needsArrivalComparison INTEGER NOT NULL DEFAULT 0")
+                }
+                val hasFormDrafts = db.query("PRAGMA table_info(flight_service_form_drafts)").use { it.count > 0 }
+                if (!hasFormDrafts) {
+                    db.execSQL("CREATE TABLE IF NOT EXISTS flight_service_form_drafts (ownerSubject TEXT NOT NULL, flightId TEXT NOT NULL, formJson TEXT NOT NULL, attachmentFilesJson TEXT NOT NULL, savedAtUtc TEXT NOT NULL, PRIMARY KEY(ownerSubject, flightId))")
+                }
+            }
+        }
+
         fun get(context: Context): CatalogDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 CatalogDatabase::class.java,
                 "shared-catalogs.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9).build().also { instance = it }
         }
     }
 }

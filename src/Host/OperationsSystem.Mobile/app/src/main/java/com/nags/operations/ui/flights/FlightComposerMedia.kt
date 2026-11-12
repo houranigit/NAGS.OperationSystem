@@ -135,8 +135,8 @@ internal fun rememberFlightComposerMedia(
         session.releaseAudio(audioOwner)
     }
 
-    fun claimAudio() {
-        session.claimAudio(audioOwner) {
+    fun claimAudio(isRecording: Boolean = false) {
+        session.claimAudio(audioOwner, recording = isRecording) {
             recorder.cancel()
             recording = false
             elapsed = 0
@@ -161,7 +161,7 @@ internal fun rememberFlightComposerMedia(
         if (recording || importing || currentItems.size >= 10 || !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
         session.stopAudio()
         releasePlayer()
-        claimAudio()
+        claimAudio(isRecording = true)
         message = null
         try {
             recorder.start()

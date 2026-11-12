@@ -1,9 +1,13 @@
 package com.nags.operations
 
 import com.nags.operations.data.hasOwnCancellation
+import com.nags.operations.data.visibleArrival
+import com.nags.operations.data.visibleDeparture
 import com.nags.operations.data.hasOwnWork
 
 import android.content.Context
+import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.work.WorkManager
 import androidx.work.await
 import com.nags.operations.data.TokenStore
@@ -20,6 +24,9 @@ import com.nags.operations.data.repo.AuthRepository
 import com.nags.operations.data.repo.FlightsRepository
 import com.nags.operations.data.repo.FlightArrivalsRepository
 import com.nags.operations.data.repo.FlightDeparturesRepository
+import com.nags.operations.data.repo.FlightServicesRepository
+import com.nags.operations.data.repo.DiskServiceAttachmentStore
+import com.nags.operations.data.repo.ServiceAttachmentPreviews
 import com.nags.operations.data.repo.DiskDepartureSignatureStore
 import com.nags.operations.data.repo.DepartureSignaturePreviews
 import com.nags.operations.data.outbox.FlightArrivalSyncWorker
@@ -45,6 +52,8 @@ import kotlinx.coroutines.sync.withLock
 import com.nags.operations.data.repo.CustomerLogoStore
 import com.nags.operations.data.repo.sharedCatalogOwnerKey
 import java.io.File
+import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.withContext
 
 /** Process-scoped dependencies for flights, shared catalogs, identity, and notifications. */
 class AppGraph private constructor(context: Context) {
@@ -76,7 +85,8 @@ class AppGraph private constructor(context: Context) {
     val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline, customerLogos)
     private val flightOperationsSyncMutex = Mutex()
     private val flightSubmissionGate = Mutex()
-    val flightArrivals = FlightArrivalsRepository(
+    private var flightWriteAcknowledgments = 0L
+    val flightArrivals: FlightArrivalsRepository = FlightArrivalsRepository(
         catalogDatabase.flightArrivalDao(), logoOwners,
         currentOwner = {
             if (tokenStore.getAccessToken().isNullOrBlank()) null
@@ -89,12 +99,56 @@ class AppGraph private constructor(context: Context) {
             appScope.launch { syncFlightOperations() }
         },
         json = HttpClientFactory.json,
+        fetchFlight = flightsRepository::flight,
+        hasUnacknowledgedOtherWork = { id -> flightServices.hasUnacknowledgedAttempt(id) || flightDepartures.hasUnacknowledgedAttempt(id) },
+        hasSavedServices = { id -> flightServices.hasSavedInput(id) },
         hasSavedCancellation = { id -> hasCancellationIntent(id) }, submissionGate = flightSubmissionGate,
         onAcknowledgedBeforeDelete = { id, requestVersion, acknowledgedVersion ->
+            flightWriteAcknowledgments++
             persistArrivalAcknowledgment(id, requestVersion, acknowledgedVersion)
         },
     )
-    val flightDepartures = FlightDeparturesRepository(
+    val serviceAttachmentPreviews = ServiceAttachmentPreviews(
+        directory = File(appContext.filesDir, "flight-service-attachment-previews"),
+        currentOwner = {
+            if (tokenStore.getAccessToken().isNullOrBlank()) null
+            else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
+        },
+        online = { networkMonitor.isOnline.value }, fetch = operationsApi::serviceAttachment,
+    )
+    val flightServices: FlightServicesRepository = FlightServicesRepository(
+        dao = catalogDatabase.flightServiceDao(),
+        attachmentStore = DiskServiceAttachmentStore(File(appContext.filesDir, "flight-service-attachments"), ::readServiceAttachment),
+        ownerFlow = logoOwners,
+        currentOwner = {
+            if (tokenStore.getAccessToken().isNullOrBlank()) null
+            else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
+        },
+        online = { networkMonitor.isOnline.value },
+        sendSave = { id, recordId, input, version -> flightArrivals.withCurrentSession { operationsApi.saveService(id, recordId, input, version) } },
+        sendDelete = { id, recordId, version -> flightArrivals.withCurrentSession { operationsApi.removeService(id, recordId, version) } },
+        acceptedSave = flightsRepository::recordService, acceptedDelete = flightsRepository::recordServiceDeleted,
+        schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } },
+        json = HttpClientFactory.json,
+        hasSavedArrival = { id -> flightArrivals.mustSyncBeforeServices(id) },
+        hasUnacknowledgedDepartureAttempt = { id -> flightDepartures.mustSyncBeforeServices(id) },
+        effectiveLocalActuals = { flight ->
+            com.nags.operations.data.FlightServiceActualBounds(
+                flightArrivals.pendingInput(flight.id)?.ata ?: flight.visibleArrival()?.ata,
+                flightDepartures.pendingInput(flight.id)?.atd ?: flight.visibleDeparture()?.atd,
+            )
+        },
+        acknowledgedPredecessorVersion = ::acknowledgedBeforeServices,
+        fetchFlight = flightsRepository::flight,
+        hasSavedCancellation = { id -> hasCancellationIntent(id) }, submissionGate = flightSubmissionGate,
+        onAcknowledgedBeforeDelete = { id, before, after ->
+            flightWriteAcknowledgments++
+            flightArrivals.onPriorWriteAcknowledged(id, before, after)
+            flightDepartures.onPriorWriteAcknowledged(id, before, after)
+        },
+        onAttachmentsAcknowledged = serviceAttachmentPreviews::recordAcknowledged,
+    )
+    val flightDepartures: FlightDeparturesRepository = FlightDeparturesRepository(
         dao = catalogDatabase.flightDepartureDao(), ownerFlow = logoOwners,
         currentOwner = {
             if (tokenStore.getAccessToken().isNullOrBlank()) null
@@ -108,13 +162,19 @@ class AppGraph private constructor(context: Context) {
         },
         json = HttpClientFactory.json,
         signatureStore = DiskDepartureSignatureStore(File(appContext.noBackupFilesDir, "flight-departure-signatures")),
-        hasSavedArrival = flightArrivals::hasSavedInput,
-        acknowledgedArrivalVersion = flightArrivals::acknowledgedVersion,
+        hasSavedArrival = { id -> flightArrivals.mustSyncBeforeServices(id) },
+        hasSavedServices = { id -> flightServices.hasSavedInput(id) },
+        acknowledgedArrivalVersion = ::acknowledgedBeforeDeparture,
         fetchFlight = flightsRepository::flight,
         onSignatureAcknowledged = { id, saved, bytes -> cacheAcknowledgedSignature(id, saved, bytes) },
+        onAcknowledgedBeforeDelete = { id, before, after ->
+            flightWriteAcknowledgments++
+            flightArrivals.onPriorWriteAcknowledged(id, before, after)
+            flightServices.onPriorWriteAcknowledged(id, before, after)
+        },
         hasSavedCancellation = { id -> hasCancellationIntent(id) }, submissionGate = flightSubmissionGate,
     )
-    val flightCancellations = com.nags.operations.data.repo.FlightCancellationsRepository(
+    val flightCancellations: com.nags.operations.data.repo.FlightCancellationsRepository = com.nags.operations.data.repo.FlightCancellationsRepository(
         dao = catalogDatabase.flightCancellationDao(), ownerFlow = logoOwners,
         currentOwner = {
             if (tokenStore.getAccessToken().isNullOrBlank()) null
@@ -124,7 +184,8 @@ class AppGraph private constructor(context: Context) {
         accepted = flightsRepository::recordCancellation, onReverted = flightsRepository::recordCancellationReverted,
         schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } },
         json = HttpClientFactory.json, submissionGate = flightSubmissionGate,
-        hasSavedWork = { id -> flightArrivals.hasSavedInput(id) || flightDepartures.hasSavedInput(id) || flightsRepository.cachedFlight(id)?.hasOwnWork() == true },
+        hasSavedWork = { id -> flightArrivals.hasSavedInput(id) || flightServices.hasSavedInput(id) || flightDepartures.hasSavedInput(id) ||
+            flightsRepository.cachedFlight(id)?.let { it.hasOwnWork() || it.services.isNotEmpty() } == true },
     )
     val departureSignaturePreviews = DepartureSignaturePreviews(
         directory = File(appContext.noBackupFilesDir, "departure-signature-previews"),
@@ -224,9 +285,11 @@ class AppGraph private constructor(context: Context) {
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
             flightArrivals.clear()
+            flightServices.clear()
             flightDepartures.clear()
             flightCancellations.clear()
             departureSignaturePreviews.clear()
+            serviceAttachmentPreviews.clear()
         }
     }
 
@@ -238,17 +301,78 @@ class AppGraph private constructor(context: Context) {
     }
 
     private suspend fun persistArrivalAcknowledgment(id: String, before: String, after: String) {
+        flightServices.onPriorWriteAcknowledged(id, before, after)
         flightDepartures.onArrivalAcknowledged(id, before, after)
     }
 
-    /** Retain one background drain for both queues, always acknowledging arrival dependencies first. */
+    /** Keep a multi-section local save together while each repository commits its durable intent. */
+    suspend fun saveFlightOperationBatch(save: suspend () -> Unit) = flightOperationsSyncMutex.withLock { save() }
+
+    /** Relax actual bounds before work, then synchronize work before tightening actual bounds. */
     suspend fun syncFlightOperations(): Boolean {
         if (!secureStorageReady) return true
         return flightOperationsSyncMutex.withLock {
-            val arrivalsPending = flightArrivals.syncPending()
-            val departuresPending = flightDepartures.syncPending()
-            val cancellationsPending = flightCancellations.syncPending()
-            arrivalsPending || departuresPending || cancellationsPending
+            // A late parent ACK can unblock a service skipped earlier in this pass. Continue
+            // only after acknowledged progress; transient failures use the worker's backoff.
+            var previousAcknowledgments: Long
+            do {
+                previousAcknowledgments = flightWriteAcknowledgments
+                flightArrivals.syncPending(priorToServices = true)
+                flightDepartures.syncPending(priorToServices = true)
+                val servicesPending = flightServices.syncPending()
+                val arrivalsPending = flightArrivals.syncPending()
+                val departuresPending = flightDepartures.syncPending()
+                val cancellationsPending = flightCancellations.syncPending()
+                if (arrivalsPending || servicesPending || departuresPending || cancellationsPending) return@withLock true
+            } while (previousAcknowledgments != flightWriteAcknowledgments)
+            false
+        }
+    }
+
+    private suspend fun acknowledgedBeforeServices(flightId: String, original: String): String {
+        var version = original
+        repeat(64) {
+            val next = flightDepartures.acknowledgedVersion(flightId, flightArrivals.acknowledgedVersion(flightId, version))
+            if (next == version) return version
+            version = next
+        }
+        return version
+    }
+
+    private suspend fun acknowledgedBeforeDeparture(flightId: String, original: String): String {
+        var version = original
+        repeat(64) {
+            val next = flightServices.acknowledgedVersion(flightId, flightArrivals.acknowledgedVersion(flightId, version))
+            if (next == version) return version
+            version = next
+        }
+        return version
+    }
+
+    suspend fun loadServiceAttachment(flightId: String, serviceId: String, attachmentId: String, uploadedAtUtc: String): String? =
+        serviceAttachmentPreviews.load(flightId, serviceId, attachmentId, uploadedAtUtc)?.let {
+            FileProvider.getUriForFile(appContext, "${appContext.packageName}.flightmedia", it).toString()
+        }
+
+    suspend fun loadPendingServiceAttachment(flightId: String, serviceId: String, attachmentId: String): String? =
+        flightServices.attachmentPreview(flightId, serviceId, attachmentId)?.let {
+            FileProvider.getUriForFile(appContext, "${appContext.packageName}.flightmedia", it).toString()
+        }
+
+    private suspend fun readServiceAttachment(source: String): ByteArray = withContext(Dispatchers.IO) {
+        val uri = Uri.parse(source)
+        check(uri.scheme == "content") { "Select the service attachment again before saving." }
+        val input = checkNotNull(appContext.contentResolver.openInputStream(uri)) { "The service attachment is unavailable." }
+        input.use { stream ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                check(output.size() + count <= 25 * 1024 * 1024) { "Service attachments cannot exceed 25 MiB." }
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
         }
     }
 
@@ -286,9 +410,11 @@ class AppGraph private constructor(context: Context) {
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
             flightArrivals.clear()
+            flightServices.clear()
             flightDepartures.clear()
             flightCancellations.clear()
             departureSignaturePreviews.clear()
+            serviceAttachmentPreviews.clear()
             tokenStore.clearAll()
         }
     }
@@ -297,6 +423,7 @@ class AppGraph private constructor(context: Context) {
         legacyWorkCancellation.join()
         sessionTransitionMutex.withLock {
             flightArrivals.resume()
+            flightServices.resume()
             flightDepartures.resume()
             flightCancellations.resume()
             catalogSyncScheduler.start()
@@ -314,6 +441,7 @@ class AppGraph private constructor(context: Context) {
 
     private suspend fun pauseCatalogSync() {
         flightArrivals.pause()
+        flightServices.pause()
         flightDepartures.pause()
         flightCancellations.pause()
         catalogRealtimeChannel.stop()

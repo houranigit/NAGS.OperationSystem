@@ -26,10 +26,15 @@ internal static class StaffMemberEndpoints
             return result.ToOk();
         }).RequirePermission(MasterDataPermissions.StaffMembers.View);
 
-        staff.MapGet("/options", async (ISender sender, CancellationToken ct, Guid? stationId = null) =>
+        staff.MapGet("/options", async (ISender sender, HttpResponse response, CancellationToken ct,
+            Guid? stationId = null, bool currentStationOnly = false) =>
         {
-            var result = await sender.Send(new GetActiveStaffMemberOptionsQuery(stationId), ct);
-            return result.ToOk();
+            var result = await sender.Send(new GetActiveStaffMemberOptionsQuery(stationId, currentStationOnly), ct);
+            if (result.IsFailure) return ApiResults.Problem(result.Error);
+            if (currentStationOnly && result.Value.StationId is { } currentStation)
+                response.Headers["X-Staff-Station-Id"] = currentStation.ToString();
+            // Keep the existing List body for portal callers and installed clients.
+            return Results.Ok(result.Value.Items);
         }).RequireAnyPermission(MasterDataPermissions.Reference.ViewOptions, MasterDataPermissions.StaffMembers.View);
 
         staff.MapGet("/allocation", async (ISender sender, CancellationToken ct) =>

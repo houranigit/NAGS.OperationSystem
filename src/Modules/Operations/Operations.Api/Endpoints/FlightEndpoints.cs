@@ -6,6 +6,9 @@ using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http.Features;
+using System.Text.Json;
 using Microsoft.Net.Http.Headers;
 using Operations.Application.Contracts;
 using Operations.Application.Features.Flights;
@@ -72,6 +75,51 @@ internal static class FlightEndpoints
             var result = await sender.Send(new InviteEmployeesToFlightCommand(id, request.StaffMemberIds ?? [], rowVersion, MobileOnly: true), ct);
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.Flights.Invite);
+
+        mobile.MapGet("/{id:guid}/services/{recordId:guid}/attachments/{attachmentId:guid}", async (
+            Guid id, Guid recordId, Guid attachmentId, DateTimeOffset expectedUploadedAt, HttpResponse response, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetMobileFlightServiceAttachmentQuery(id, recordId, attachmentId, expectedUploadedAt), ct);
+            if (result.IsFailure) return ApiResults.Problem(result.Error);
+            response.Headers.CacheControl = "private, no-store";
+            return Results.File(result.Value.Content, result.Value.ContentType, fileDownloadName: result.Value.FileName, enableRangeProcessing: false);
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
+        flights.MapPut("/{id:guid}/services/{recordId:guid}", async (Guid id, Guid recordId, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+            // Configure the server before JSON is read: one valid 25 MB voice file exceeds
+            // Kestrel's default body cap after base64 encoding. Keep the aggregate bounded.
+            var bodyLimit = http.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (bodyLimit is { IsReadOnly: false }) bodyLimit.MaxRequestBodySize = FlightServiceAttachmentPolicy.MaxJsonRequestBytes;
+            if (http.ContentLength > FlightServiceAttachmentPolicy.MaxJsonRequestBytes)
+                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+            if (!http.HasJsonContentType()) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+            SaveFlightServiceRequest? request;
+            try { request = await http.ReadFromJsonAsync<SaveFlightServiceRequest>(ct); }
+            catch (JsonException)
+            {
+                return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("The service input is invalid.", "Operations.FlightService.RequestInvalid"));
+            }
+            catch (BadHttpRequestException error)
+            {
+                return Results.StatusCode(error.StatusCode);
+            }
+            if (request is null)
+                return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("Service input is required.", "Operations.FlightService.RequestInvalid"));
+            var result = await sender.Send(new SaveFlightServiceCommand(id, recordId, request, rowVersion), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Operate)
+            .WithMetadata(new RequestSizeLimitAttribute(FlightServiceAttachmentPolicy.MaxJsonRequestBytes));
+
+        flights.MapDelete("/{id:guid}/services/{recordId:guid}", async (Guid id, Guid recordId, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+            var result = await sender.Send(new DeleteFlightServiceCommand(id, recordId, rowVersion), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Operate);
 
         flights.MapPut("/{id:guid}/arrival", async (Guid id, SaveFlightArrivalRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
         {

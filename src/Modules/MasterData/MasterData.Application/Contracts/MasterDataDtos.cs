@@ -314,6 +314,9 @@ public sealed record StaffMemberListItemDto(
 /// email, portal state, licenses, and row version so it can be exposed under the
 /// reference view-options permission without leaking staff management data.
 /// </summary>
+/// <summary>Query metadata is kept outside the existing staff-options wire list.</summary>
+public sealed record StaffMemberOptionsResult(IReadOnlyList<StaffMemberOptionDto> Items, Guid? StationId = null);
+
 public sealed record StaffMemberOptionDto(
     Guid Id,
     string FullName,

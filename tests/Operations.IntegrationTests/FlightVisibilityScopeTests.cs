@@ -19,7 +19,7 @@ namespace Operations.IntegrationTests;
 /// the assigned-employee roster while staying blind to other stations. Regular station staff keep
 /// the default Per-Landing-plus-assigned visibility.
 /// </summary>
-public sealed class FlightVisibilityScopeTests(OperationsApiFactory factory) : IClassFixture<OperationsApiFactory>
+public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory factory) : IClassFixture<OperationsApiFactory>
 {
     private const string Base = OperationsApiFactory.Base;
     private const string MasterDataBase = OperationsApiFactory.MasterDataBase;

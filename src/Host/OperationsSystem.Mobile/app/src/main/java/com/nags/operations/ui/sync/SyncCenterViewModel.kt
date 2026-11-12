@@ -36,6 +36,7 @@ class SyncCenterViewModel internal constructor(
     private val arrivals: com.nags.operations.data.repo.FlightArrivalsRepository? = null,
     private val departures: com.nags.operations.data.repo.FlightDeparturesRepository? = null,
     private val cancellations: com.nags.operations.data.repo.FlightCancellationsRepository? = null,
+    private val services: com.nags.operations.data.repo.FlightServicesRepository? = null,
 ) : ViewModel() {
     constructor(
         catalogs: SharedCatalogsRepository,
@@ -48,6 +49,7 @@ class SyncCenterViewModel internal constructor(
         arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository,
         departureRepository: com.nags.operations.data.repo.FlightDeparturesRepository,
         cancellationRepository: com.nags.operations.data.repo.FlightCancellationsRepository? = null,
+        serviceRepository: com.nags.operations.data.repo.FlightServicesRepository? = null,
     ) : this(
         statuses = catalogs.observeStatus(),
         isSyncing = syncing,
@@ -59,6 +61,7 @@ class SyncCenterViewModel internal constructor(
         arrivals = arrivalRepository,
         departures = departureRepository,
         cancellations = cancellationRepository,
+        services = serviceRepository,
     )
 
     private val scope = coroutineScope ?: viewModelScope
@@ -79,9 +82,19 @@ class SyncCenterViewModel internal constructor(
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), emptyList())
     val pendingCancellations = (cancellations?.changes ?: flowOf(emptyList()))
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+    val pendingServices = (services?.changes ?: flowOf(emptyList()))
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+    val serviceActionFailed = kotlinx.coroutines.flow.MutableStateFlow(false)
+    fun retryService(flightId: String, recordId: String) = serviceAction { services?.retry(flightId, recordId) }
+    fun discardService(flightId: String, recordId: String) = serviceAction { services?.discard(flightId, recordId); requestRefresh() }
+    private fun serviceAction(action: suspend () -> Unit) = scope.launch {
+        try { serviceActionFailed.value = false; action() }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { serviceActionFailed.value = true }
+    }
     val cancellationActionFailed = kotlinx.coroutines.flow.MutableStateFlow(false)
     fun retryCancellation(id: String) = cancellationAction { cancellations?.retry(id) }
-    fun discardCancellation(id: String) = cancellationAction { cancellations?.discard(id) }
+    fun discardCancellation(id: String) = cancellationAction { cancellations?.discard(id); requestRefresh() }
     private fun cancellationAction(action: suspend () -> Unit) = scope.launch {
         try { cancellationActionFailed.value = false; action() }
         catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
@@ -90,7 +103,7 @@ class SyncCenterViewModel internal constructor(
     val departureActionFailed = kotlinx.coroutines.flow.MutableStateFlow(false)
 
     fun retryDeparture(id: String) = departureAction { departures?.retry(id) }
-    fun discardDeparture(id: String) = departureAction { departures?.discard(id) }
+    fun discardDeparture(id: String) = departureAction { departures?.discard(id); requestRefresh() }
     private fun departureAction(action: suspend () -> Unit) = scope.launch {
         try { departureActionFailed.value = false; action() }
         catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
@@ -98,7 +111,7 @@ class SyncCenterViewModel internal constructor(
     }
 
     fun retryArrival(id: String) = arrivalAction { arrivals?.retry(id) }
-    fun discardArrival(id: String) = arrivalAction { arrivals?.discard(id) }
+    fun discardArrival(id: String) = arrivalAction { arrivals?.discard(id); requestRefresh() }
     private fun arrivalAction(action: suspend () -> Unit) = scope.launch {
         try { arrivalActionError.value = null; action() }
         catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }

@@ -31,6 +31,8 @@ internal class FlightMediaSession(context: Context, val id: String) {
     private val directory = File(mediaRoot, id).canonicalFile
     private var audioOwner: Any? = null
     private var stopActiveAudio: (() -> Unit)? = null
+    var hasActiveRecording: Boolean = false
+        private set
 
     init {
         require(mediaRoot.canonicalFile == mediaRoot) { "Temporary media root must be within the app cache." }
@@ -58,15 +60,17 @@ internal class FlightMediaSession(context: Context, val id: String) {
     }
 
     /** A form has several composers, but only one active recording or preview at a time. */
-    fun claimAudio(owner: Any, stop: () -> Unit) {
+    fun claimAudio(owner: Any, recording: Boolean = false, stop: () -> Unit) {
         if (audioOwner !== owner) stopAudio()
         audioOwner = owner
+        hasActiveRecording = recording
         stopActiveAudio = stop
     }
 
     fun releaseAudio(owner: Any) {
         if (audioOwner === owner) {
             audioOwner = null
+            hasActiveRecording = false
             stopActiveAudio = null
         }
     }
@@ -74,6 +78,7 @@ internal class FlightMediaSession(context: Context, val id: String) {
     fun stopAudio() {
         val stop = stopActiveAudio
         audioOwner = null
+        hasActiveRecording = false
         stopActiveAudio = null
         stop?.invoke()
     }

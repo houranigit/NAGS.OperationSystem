@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import com.nags.operations.R
 import com.nags.operations.data.AircraftTypeCatalogItem
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.data.FlightArrivalSubmission
 import com.nags.operations.ui.util.operationLocalTime
 import com.nags.operations.ui.util.stationTimeZone
 import java.time.OffsetDateTime
@@ -87,6 +88,14 @@ import com.nags.operations.data.userMessage
 import com.nags.operations.data.db.entities.FlightArrivalPendingEntity
 import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
 import com.nags.operations.data.arrivalInputTime
+import com.nags.operations.data.parentTimeRelaxesBounds
+import com.nags.operations.data.FlightServiceChange
+import com.nags.operations.data.FlightServiceRecord
+import com.nags.operations.data.FlightServiceFormDraft
+import com.nags.operations.data.FlightServiceFormDraftAttachment
+import com.nags.operations.data.SaveFlightServiceRequest
+import com.nags.operations.data.db.entities.FlightServiceFormDraftEntity
+import com.nags.operations.data.db.entities.FlightServicePendingEntity
 
 /** Arrival and departure close only after their input is saved on this device. */
 @Composable
@@ -103,6 +112,13 @@ internal fun FlightOperationsForm(
     onSaveArrival: suspend (FlightDetail, SaveFlightArrivalRequest) -> Unit,
     onReviewArrival: suspend () -> FlightDetail,
     onSaveDeparture: suspend (FlightDetail, SaveFlightDepartureRequest) -> Unit,
+    pendingServices: List<FlightServicePendingEntity> = emptyList(),
+    onSaveServices: suspend (FlightDetail, List<FlightServiceChange>, FlightServiceFormDraft?) -> Unit = { _, _, _ -> },
+    serviceFormDraft: FlightServiceFormDraftEntity? = null,
+    onReviewServices: suspend () -> FlightDetail = { flight },
+    loadServiceAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
+    loadPendingServiceAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
+    onSaveBatch: suspend (suspend () -> Unit) -> Unit = { save -> save() },
 ) {
     val entryTimeZoneId = rememberSaveable { flight.stationTimeZoneId }
     val entryZone = remember(entryTimeZoneId) { stationTimeZone(entryTimeZoneId) }
@@ -154,9 +170,32 @@ internal fun FlightOperationsForm(
     var departureReviewedSnapshot by rememberSaveable { mutableStateOf(pendingDeparture?.reviewedDepartureJson ?: Json.encodeToString(flight.departureSubmissions)) }
     var reviewedDepartureChangeId by rememberSaveable { mutableStateOf<String?>(null) }
     var queuedDepartureBaseline by rememberSaveable { mutableStateOf<String?>(pendingDeparture?.inputJson) }
-    var workDrafts by rememberSaveable(stateSaver = FlightWorkDraftsSaver) { mutableStateOf(FlightWorkDrafts()) }
+    val initialServices = remember { initialServiceEditorDraft(flight, catalogs, pendingServices, serviceFormDraft?.formJson, entryZone) }
+    var workDrafts by rememberSaveable(stateSaver = FlightWorkDraftsSaver) {
+        mutableStateOf(FlightWorkDrafts(initialServices.services, initialServices.tasks))
+    }
+    var suppressedServiceIdsJson by rememberSaveable { mutableStateOf(Json.encodeToString(initialServices.suppressedPlannedServiceIds)) }
+    val suppressedServiceIds = Json.decodeFromString<List<String>>(suppressedServiceIdsJson)
+    var serviceBaseline by rememberSaveable { mutableStateOf(serviceEditorFingerprint(initialServices.services, initialServices.tasks,
+        initialServices.suppressedPlannedServiceIds)) }
+    var serviceBaselineInputs by rememberSaveable { mutableStateOf(Json.encodeToString(initialServices.services.associate {
+        it.id to serviceInputFingerprint(it.serviceInput(entryZone)) })) }
+    var knownServiceIdsJson by rememberSaveable { mutableStateOf(Json.encodeToString((flight.services.map { it.id } + pendingServices.map { it.serviceRecordId }).distinct())) }
+    var serviceReviewedJson by rememberSaveable { mutableStateOf(Json.encodeToString(flight.services)) }
+    var serviceVersion by rememberSaveable { mutableStateOf(flight.rowVersion) }
+    var reviewedServiceChangesJson by rememberSaveable { mutableStateOf("[]") }
+    val reviewedServiceChanges = Json.decodeFromString<List<String>>(reviewedServiceChangesJson)
+    val servicesChanged = serviceEditorFingerprint(workDrafts.services, workDrafts.tasks, suppressedServiceIds) != serviceBaseline
+    val serviceBaselineDraft = checkNotNull(decodeServiceEditorDraft(serviceBaseline))
+    val serviceRowsChanged = serviceEditorFingerprint(workDrafts.services, emptyList(), suppressedServiceIds) !=
+        serviceEditorFingerprint(serviceBaselineDraft.services, emptyList(), serviceBaselineDraft.suppressedPlannedServiceIds)
+    val tasksChanged = serviceEditorFingerprint(emptyList(), workDrafts.tasks, emptyList()) !=
+        serviceEditorFingerprint(emptyList(), serviceBaselineDraft.tasks, emptyList())
+    val servicesNeedReview = pendingServices.any { it.status != "pending" && it.changeId !in reviewedServiceChanges }
+    val serviceReviewed = Json.decodeFromString<List<FlightServiceRecord>>(serviceReviewedJson)
     var originalAta by rememberSaveable { mutableStateOf(pendingInput?.ata ?: arrival?.ata) }
     var arrivalVersion by rememberSaveable { mutableStateOf(pending?.rowVersion ?: flight.rowVersion) }
+    var arrivalReviewedSnapshot by rememberSaveable { mutableStateOf(Json.encodeToString(flight.arrivalSubmissions)) }
     fun input() = SaveFlightArrivalRequest(
         arrivalInputTime(ata, originalAta, entryZone),
         aircraftId, tailNumber, reference, arrivalRemarks).normalized()
@@ -206,7 +245,10 @@ internal fun FlightOperationsForm(
             if (acknowledged != null && Json.encodeToString(acknowledged) == queuedBaseline) {
                 // Our queued save was acknowledged while this form was open. Keep any
                 // newer edits and advance only to that acknowledged input/version.
-                arrivalVersion = flight.rowVersion
+                if (!arrivalChanged) {
+                    arrivalVersion = flight.rowVersion
+                    arrivalReviewedSnapshot = Json.encodeToString(flight.arrivalSubmissions)
+                }
                 arrivalBaseline = checkNotNull(queuedBaseline)
                 queuedBaseline = null
             }
@@ -221,6 +263,7 @@ internal fun FlightOperationsForm(
                 arrivalBaseline = Json.encodeToString(input())
             }
             arrivalVersion = flight.rowVersion
+            arrivalReviewedSnapshot = Json.encodeToString(flight.arrivalSubmissions)
         }
     }
     LaunchedEffect(departure, flight.rowVersion, pendingDeparture?.changeId, pendingDeparture?.inputJson, pendingDeparture?.rowVersion) {
@@ -259,11 +302,100 @@ internal fun FlightOperationsForm(
             departureReviewedSnapshot = Json.encodeToString(flight.departureSubmissions)
         }
     }
+    // Untouched editors follow refreshed data; a dirty editor keeps its reviewed records and rowversion.
+    LaunchedEffect(flight.services, flight.rowVersion, flight.allowedServiceIds, flight.currentStaffMemberId, flight.assignedEmployees, catalogs.services, catalogs.stationStaff,
+        pendingServices, serviceFormDraft?.formJson) {
+        if (!serviceRowsChanged && reviewedServiceChanges.isEmpty()) {
+            val next = initialServiceEditorDraft(flight, catalogs, pendingServices, serviceFormDraft?.formJson, entryZone)
+            fun media(nextItems: List<FlightAttachmentDraft>, oldItems: List<FlightAttachmentDraft>) = nextItems.map { attachment ->
+                oldItems.firstOrNull { it.id == attachment.id && it.uploadedAtUtc == attachment.uploadedAtUtc }?.let {
+                    attachment.copy(uri = it.uri, ownedCapture = it.ownedCapture)
+                } ?: attachment
+            }
+            val services = next.services.map { value ->
+                val old = workDrafts.services.firstOrNull { it.id == value.id } ?: value.plannedServiceId?.let { plannedId ->
+                    workDrafts.services.firstOrNull { it.plannedServiceId.equals(plannedId, true) && it.period.start.isBlank() }
+                }
+                value.copy(id = old?.id ?: value.id, attachments = media(value.attachments, old?.attachments.orEmpty()),
+                    employees = value.employees.map { employee -> employee.copy(id = old?.employees
+                        ?.firstOrNull { it.employeeId.equals(employee.employeeId, true) }?.id ?: employee.id) })
+            }
+            val tasks = if (tasksChanged) workDrafts.tasks else next.tasks.map { value -> value.copy(attachments = media(value.attachments,
+                workDrafts.tasks.firstOrNull { it.id == value.id }?.attachments.orEmpty())) }
+            workDrafts = FlightWorkDrafts(services, tasks)
+            suppressedServiceIdsJson = Json.encodeToString(next.suppressedPlannedServiceIds)
+            // Task-only edits must survive staff/catalog refresh and remain visibly unsaved.
+            serviceBaseline = serviceEditorFingerprint(services, if (tasksChanged) serviceBaselineDraft.tasks else tasks,
+                next.suppressedPlannedServiceIds)
+            serviceBaselineInputs = Json.encodeToString(services.associate { it.id to serviceInputFingerprint(it.serviceInput(entryZone)) })
+            knownServiceIdsJson = Json.encodeToString((flight.services.map { it.id } + pendingServices.map { it.serviceRecordId }).distinct())
+            serviceReviewedJson = Json.encodeToString(flight.services)
+            serviceVersion = flight.rowVersion
+        }
+    }
+    val storedServiceMedia = buildSet {
+        pendingServices.forEach { row ->
+            runCatching { Json.decodeFromString<Map<String, String>>(row.attachmentFilesJson) }.getOrDefault(emptyMap()).keys.forEach { add("${row.serviceRecordId}/$it") }
+        }
+        addAll(runCatching { Json.decodeFromString<Map<String, String>>(serviceFormDraft?.attachmentFilesJson ?: "{}") }.getOrDefault(emptyMap()).keys)
+    }
+    val serviceMediaKeys = workDrafts.services.flatMap { service -> service.attachments.map { Triple(service.id, it.id, it.uploadedAtUtc) } } +
+        workDrafts.tasks.flatMap { task -> task.attachments.map { Triple(task.id, it.id, it.uploadedAtUtc) } }
+    LaunchedEffect(serviceMediaKeys, serviceFormDraft?.savedAtUtc, pendingServices.map { it.attachmentFilesJson }) {
+        for ((recordId, attachmentId, uploadedAt) in serviceMediaKeys) {
+            val attachment = (workDrafts.services.firstOrNull { it.id == recordId }?.attachments ?:
+                workDrafts.tasks.firstOrNull { it.id == recordId }?.attachments).orEmpty().firstOrNull { it.id == attachmentId } ?: continue
+            val stored = "$recordId/$attachmentId" in storedServiceMedia
+            if (!stored && (uploadedAt == null || attachment.uri.isNotBlank())) continue
+            try {
+                val uri = if (stored) loadPendingServiceAttachment(flight.id, recordId, attachmentId)
+                    else loadServiceAttachment(flight.id, recordId, attachmentId, checkNotNull(uploadedAt))
+                if (uri != null) {
+                    fun update(items: List<FlightAttachmentDraft>) = items.map { if (it.id == attachmentId) it.copy(uri = uri, ownedCapture = false) else it }
+                    workDrafts = workDrafts.copy(
+                        services = workDrafts.services.map { if (it.id == recordId) it.copy(attachments = update(it.attachments)) else it },
+                        tasks = workDrafts.tasks.map { if (it.id == recordId) it.copy(attachments = update(it.attachments)) else it })
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* Retained media stays saved when a preview is temporarily unavailable. */ }
+        }
+    }
+    val knownServiceIds = Json.decodeFromString<List<String>>(knownServiceIdsJson).toSet()
+    val baselineServices = Json.decodeFromString<Map<String, String>>(serviceBaselineInputs)
+    val forcedServiceIds = pendingServices.filter { it.status != "pending" && it.changeId in reviewedServiceChanges }.map { it.serviceRecordId }.toSet()
+    val serviceChanges = serviceEditorChanges(workDrafts.services, knownServiceIds, baselineServices, pendingServices,
+        forcedServiceIds, storedServiceMedia, entryZone)
+    val servicesEnabled = flight.canSaveServices && !servicesNeedReview && !flight.hasCancellationSubmission && !saving
+    val actualArrivalForServices = if (arrivalEnabled && arrivalChanged) input().ata else pendingInput?.ata ?: arrival?.ata
+    val actualDepartureForServices = if (departureEnabled && departureChanged) departureTime else pendingDepartureInput?.atd ?: departure?.atd
+    val departureSaveRequested = departureEnabled && (departureChanged || reviewedDepartureChangeId != null)
+    val changedServiceSaves = serviceChanges.filter { it.input != null }.map { it.serviceRecordId }.toSet()
+    val serviceCompletionRequired = departureSaveRequested || actualDepartureForServices?.isNotBlank() == true && changedServiceSaves.isNotEmpty()
+    val serviceCompletionErrors = if (serviceCompletionRequired) departureServiceCompletionValidation(workDrafts.services,
+        flight.services, pendingServices, serviceChanges, entryZone, if (departureSaveRequested) null else changedServiceSaves) else emptyMap()
+    val parentTimesChanged = arrivalEnabled && arrivalChanged || departureEnabled && departureChanged
+    val parentBoundsErrors = if (parentTimesChanged) serviceActualBoundsValidation(workDrafts.services, entryZone,
+        actualArrivalForServices, actualDepartureForServices) else emptyMap()
+    val changedServiceErrors = if (validationAttempted) serviceChanges.mapNotNull { change -> change.input?.let { value ->
+        workDrafts.services.firstOrNull { it.id == change.serviceRecordId }?.let { draft ->
+            draft.id to serviceEditorValidation(draft, value, flight, catalogs, serviceVersion, actualArrivalForServices, actualDepartureForServices)
+        }
+    } }.toMap() else emptyMap()
+    val serviceErrors = if (validationAttempted) (changedServiceErrors.keys + parentBoundsErrors.keys + serviceCompletionErrors.keys).associateWith { id ->
+        changedServiceErrors[id].orEmpty() + parentBoundsErrors[id].orEmpty() + serviceCompletionErrors[id].orEmpty()
+    } else emptyMap()
+    val actualBoundsMessage = stringResource(R.string.actuals_service_bounds)
+    val finishRecordingMessage = stringResource(R.string.service_finish_recording)
+    val serviceReviewMessage = stringResource(R.string.service_sync_review)
+    val serviceCompletionMessage = stringResource(if (departureSaveRequested) R.string.departure_services_incomplete else R.string.service_departed_periods_required)
     val mediaSession = rememberFlightMediaSession()
     fun updateWorkDrafts(next: FlightWorkDrafts) {
         val retained = (next.services.flatMap { it.attachments } + next.tasks.flatMap { it.attachments }).map { it.uri }.toSet()
         (workDrafts.services.flatMap { it.attachments } + workDrafts.tasks.flatMap { it.attachments })
             .filter { it.ownedCapture && it.uri !in retained }.forEach { mediaSession.delete(it.uri) }
+        val removed = workDrafts.services.filter { old -> next.services.none { it.id == old.id } }
+        val suppressed = suppressedServiceIds + removed.mapNotNull { it.plannedServiceId ?: it.serviceId.takeIf { id -> flight.plannedServices.any { planned -> planned.serviceId.equals(id, true) } } }
+        suppressedServiceIdsJson = Json.encodeToString(suppressed.distinct())
         workDrafts = next
     }
     val closeForm = { mediaSession.clear(); onClose() }
@@ -272,33 +404,86 @@ internal fun FlightOperationsForm(
         val arrivalValue = input()
         val saveArrivalInput = arrivalEnabled && (arrivalChanged || reviewedChangeId != null)
         val saveDepartureInput = departureEnabled && (departureChanged || reviewedDepartureChangeId != null)
-        val arrivalValid = !saveArrivalInput || aircraftAvailable && arrivalValue.validationErrors(arrivalVersion).isEmpty()
-        val departureValid = !saveDepartureInput || departureTime.isNotBlank() && !signatureRequired && !departureNeedsReview
-        if ((saveArrivalInput || saveDepartureInput) && arrivalValid && departureValid &&
-            flight.cancellationSubmissions.any { !it.submittedByEmployee.staffMemberId.equals(flight.currentStaffMemberId, true) } && !acknowledgeConflict) {
+        val saveServiceInput = servicesChanged || forcedServiceIds.isNotEmpty()
+        val arrivalValid = !saveArrivalInput || aircraftAvailable && arrivalValue.validationErrors(arrivalVersion).isEmpty() && parentBoundsErrors.isEmpty()
+        val departureValid = !saveDepartureInput || departureTime.isNotBlank() && !signatureRequired && !departureNeedsReview &&
+            parentBoundsErrors.isEmpty() && serviceCompletionErrors.isEmpty()
+        val checkedServices = serviceChanges.mapNotNull { change -> change.input?.let { value ->
+            workDrafts.services.firstOrNull { it.id == change.serviceRecordId }?.let { draft ->
+                serviceEditorValidation(draft, value, flight, catalogs, serviceVersion, actualArrivalForServices, actualDepartureForServices)
+            }
+        } }
+        val servicesValid = !saveServiceInput || servicesEnabled && checkedServices.all { it.isEmpty() } && serviceCompletionErrors.isEmpty()
+        val anyInput = saveArrivalInput || saveDepartureInput || saveServiceInput
+        if (mediaSession.hasActiveRecording) {
+            saveError = finishRecordingMessage
+        } else if (parentBoundsErrors.isNotEmpty()) {
+            saveError = actualBoundsMessage
+        } else if (serviceCompletionErrors.isNotEmpty()) {
+            saveError = serviceCompletionMessage
+        } else if (saveServiceInput && !servicesValid && checkedServices.all { it.isEmpty() }) {
+            saveError = serviceReviewMessage
+        } else if (anyInput && arrivalValid && departureValid && servicesValid &&
+            (saveArrivalInput || saveDepartureInput) && flight.cancellationSubmissions.any {
+                !it.submittedByEmployee.staffMemberId.equals(flight.currentStaffMemberId, true)
+            } && !acknowledgeConflict) {
             confirmCanceledReport = true
-        } else if ((saveArrivalInput || saveDepartureInput) && arrivalValid && departureValid) {
+        } else if (anyInput && arrivalValid && departureValid && servicesValid) {
             saving = true; saveError = null
+            val workSnapshot = workDrafts
+            val workFingerprint = serviceEditorFingerprint(workSnapshot.services, workSnapshot.tasks, suppressedServiceIds)
             val ink = signature
             val signedAt = if (signature.isNotBlank()) signatureSignedAtUtc else null
             val departureValue = SaveFlightDepartureRequest(departureTime, signatureSignedAtUtc = signedAt,
                 remarks = departureRemarks).normalized()
+            val savedSuppressed = (suppressedServiceIds + workDrafts.services.filter { it.period.start.isNotBlank() }
+                .mapNotNull { it.plannedServiceId }).distinct()
+            val localRows = workDrafts.services.filter { it.id !in knownServiceIds && it.period.start.isBlank() }
+            val draftValue = FlightServiceEditorDraft(entryZone.id, localRows, workDrafts.tasks, savedSuppressed)
+            val localAttachments = localRows.flatMap { row -> row.attachments.map { row.id to it } } +
+                workDrafts.tasks.flatMap { row -> row.attachments.map { row.id to it } }
+            val durableDraft = FlightServiceFormDraft(Json.encodeToString(draftValue), localAttachments.map { (recordId, attachment) ->
+                FlightServiceFormDraftAttachment(recordId, attachment.serviceAttachmentInput("$recordId/${attachment.id}" in storedServiceMedia))
+            })
             formScope.launch {
                 try {
-                    // Validate both sections before starting; a completed arrival disk save survives a departure disk failure.
-                    if (saveArrivalInput) {
-                        onSaveArrival(flight.copy(rowVersion = arrivalVersion), arrivalValue.copy(acknowledgeConflictingSubmission = acknowledgeConflict))
-                        arrivalBaseline = Json.encodeToString(arrivalValue)
-                        queuedBaseline = Json.encodeToString(arrivalValue)
-                        reviewedChangeId = null
+                    // The worker cannot drain a partially enqueued form between these durable local writes.
+                    onSaveBatch {
+                        suspend fun saveArrival() {
+                            onSaveArrival(flight.copy(rowVersion = arrivalVersion,
+                                arrivalSubmissions = Json.decodeFromString<List<FlightArrivalSubmission>>(arrivalReviewedSnapshot)),
+                                arrivalValue.copy(acknowledgeConflictingSubmission = acknowledgeConflict))
+                            arrivalBaseline = Json.encodeToString(arrivalValue)
+                            queuedBaseline = Json.encodeToString(arrivalValue)
+                            reviewedChangeId = null
+                        }
+                        suspend fun saveDeparture() {
+                            val content = if (ink.isNotBlank()) withContext(Dispatchers.Default) { signaturePngContent(ink) } else null
+                            onSaveDeparture(flight.copy(rowVersion = departureVersion,
+                                departureSubmissions = Json.decodeFromString(departureReviewedSnapshot)),
+                                departureValue.copy(signatureContent = content, acknowledgeConflictingSubmission = acknowledgeConflict))
+                        }
+                        val previousArrival = Json.decodeFromString<List<FlightArrivalSubmission>>(arrivalReviewedSnapshot)
+                            .firstOrNull { it.submittedByEmployee.staffMemberId.equals(flight.currentStaffMemberId, true) }?.ata
+                        val previousDeparture = flight.copy(departureSubmissions = Json.decodeFromString(departureReviewedSnapshot)).visibleDeparture()?.atd
+                        val relaxArrival = parentTimeRelaxesBounds(previousArrival, arrivalValue.ata, arrival = true)
+                        val relaxDeparture = parentTimeRelaxesBounds(previousDeparture, departureValue.atd, arrival = false)
+                        if (saveArrivalInput && relaxArrival) saveArrival()
+                        if (saveDepartureInput && relaxDeparture) saveDeparture()
+                        if (saveServiceInput) {
+                            onSaveServices(flight.copy(rowVersion = serviceVersion, services = serviceReviewed), serviceChanges, durableDraft)
+                            suppressedServiceIdsJson = Json.encodeToString(savedSuppressed)
+                            serviceBaseline = serviceEditorFingerprint(workSnapshot.services, workSnapshot.tasks, savedSuppressed)
+                            serviceBaselineInputs = Json.encodeToString(workSnapshot.services.associate { it.id to serviceInputFingerprint(it.serviceInput(entryZone)) })
+                            knownServiceIdsJson = Json.encodeToString((knownServiceIds + serviceChanges.filter { it.input != null }.map { it.serviceRecordId } -
+                                serviceChanges.filter { it.input == null }.map { it.serviceRecordId }.toSet()).toList())
+                            reviewedServiceChangesJson = "[]"
+                        }
+                        if (saveArrivalInput && !relaxArrival) saveArrival()
+                        if (saveDepartureInput && !relaxDeparture) saveDeparture()
                     }
-                    if (saveDepartureInput) {
-                        val content = if (ink.isNotBlank()) withContext(Dispatchers.Default) { signaturePngContent(ink) }
-                            else null
-                        onSaveDeparture(flight.copy(rowVersion = departureVersion,
-                            departureSubmissions = Json.decodeFromString(departureReviewedSnapshot)), departureValue.copy(signatureContent = content, acknowledgeConflictingSubmission = acknowledgeConflict))
-                    }
-                    closeForm()
+                    // Task editors remain local. A later edit cannot be claimed by an earlier disk-save snapshot.
+                    if (serviceEditorFingerprint(workDrafts.services, workDrafts.tasks, suppressedServiceIds) == workFingerprint) closeForm()
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (error: Exception) {
                     saveError = error.userMessage()
@@ -315,8 +500,7 @@ internal fun FlightOperationsForm(
         if (!departureEnabled && picker in listOf("atd", "signature")) picker = null
     }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
-    val hasChanges = arrivalChanged || departureChanged ||
-        workDrafts.services.isNotEmpty() || workDrafts.tasks.isNotEmpty()
+    val hasChanges = arrivalChanged || departureChanged || servicesChanged
     val requestClose = {
         if (saving) Unit else if (picker != null) picker = null else if (hasChanges) confirmDiscard = true else closeForm()
     }
@@ -344,7 +528,9 @@ internal fun FlightOperationsForm(
     }
     FlightRecordingFormScaffold(flight, stringResource(R.string.operations_title), stringResource(R.string.operations_save),
         loadCustomerLogo, requestClose,
-        saveEnabled = !saving && (arrivalEnabled && (arrivalChanged || reviewedChangeId != null) || departureEnabled && (departureChanged || reviewedDepartureChangeId != null)),
+        saveEnabled = !saving && (arrivalEnabled && (arrivalChanged || reviewedChangeId != null) ||
+            departureEnabled && (departureChanged || reviewedDepartureChangeId != null) ||
+            servicesEnabled && (servicesChanged || forcedServiceIds.isNotEmpty())),
         saveLoading = saving, onSave = { saveChanges(false) }, progressStatus = progressStatus) {
         saveError?.let { ArrivalFormMessage(it, error = true) }
         if (otherEmployeeArrival != null) {
@@ -362,6 +548,7 @@ internal fun FlightOperationsForm(
                         try {
                             val latest = onReviewArrival()
                             arrivalVersion = latest.rowVersion
+                            arrivalReviewedSnapshot = Json.encodeToString(latest.arrivalSubmissions)
                             reviewedChangeId = pending.changeId
                         } catch (cancelled: CancellationException) { throw cancelled }
                         catch (error: Exception) { saveError = error.userMessage() }
@@ -398,7 +585,31 @@ internal fun FlightOperationsForm(
             FlightFormRemarks(if (readOnlyArrival != null) readOnlyArrival.remarks.orEmpty() else arrivalRemarks, { arrivalRemarks = it }, stringResource(R.string.operations_arrival_remarks), enabled = arrivalEnabled)
         }
         CompositionLocalProvider(LocalFlightMediaSession provides mediaSession) {
+            if (servicesNeedReview) {
+                ArrivalFormMessage(stringResource(R.string.service_sync_review), error = true)
+                pendingServices.filter { it.status != "pending" }.mapNotNull { it.error }.distinct().forEach { ArrivalFormMessage(it, error = true) }
+                TextButton(enabled = !saving, onClick = {
+                    saving = true; saveError = null
+                    formScope.launch {
+                        try {
+                            val latest = onReviewServices()
+                            serviceReviewedJson = Json.encodeToString(latest.services)
+                            serviceVersion = latest.rowVersion
+                            reviewedServiceChangesJson = Json.encodeToString(pendingServices.filter { it.status != "pending" }.map { it.changeId })
+                        } catch (cancelled: CancellationException) { throw cancelled }
+                        catch (error: Exception) { saveError = error.userMessage() }
+                        finally { saving = false }
+                    }
+                }) { Text(stringResource(R.string.service_review)) }
+            }
+            if (serviceErrors.values.any { "rowVersion" in it }) ArrivalFormMessage(stringResource(R.string.service_validation_version), error = true)
             FlightServiceSection(workDrafts.services, catalogs, referenceYear, zone,
+                enabled = servicesEnabled,
+                canEdit = { id -> serviceReviewed.firstOrNull { it.id == id }?.canEdit ?: true },
+                canSetEnd = { id -> serviceReviewed.firstOrNull { it.id == id }?.canSetEnd ?: true },
+                canDelete = { id -> serviceReviewed.firstOrNull { it.id == id }?.let { it.canEdit && it.canSetEnd } ?: true },
+                errors = serviceErrors, defaultEmployee = defaultServiceEmployee(flight, catalogs),
+                timeBounds = flightWorkTimeBounds(actualArrivalForServices, actualDepartureForServices),
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(services = change(workDrafts.services))) })
             FlightTaskSection(workDrafts.tasks, catalogs, referenceYear, zone,
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(tasks = change(workDrafts.tasks))) })

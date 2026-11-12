@@ -862,8 +862,23 @@ public sealed class OperationsWorkflowTests(OperationsApiFactory factory) : ICla
             var crossStation = await client.GetFromJsonAsync<JsonElement>(
                 $"{MasterDataBase}/staff-members/options?stationId={second.StationId}");
             crossStation.EnumerateArray().ShouldBeEmpty();
+            using var scopedResponse = await client.GetAsync($"{MasterDataBase}/staff-members/options?currentStationOnly=true");
+            scopedResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+            scopedResponse.Headers.GetValues("X-Staff-Station-Id").ShouldHaveSingleItem().ShouldBe(first.StationId.ToString());
+            var scoped = await scopedResponse.Content.ReadFromJsonAsync<JsonElement>();
+            scoped.ValueKind.ShouldBe(JsonValueKind.Array);
+            scoped.EnumerateArray().ShouldNotBeEmpty();
+            scoped.EnumerateArray().ShouldAllBe(option => option.GetProperty("stationId").GetGuid() == first.StationId);
+            scoped.EnumerateArray().ShouldNotContain(option => option.GetProperty("id").GetGuid() == first.StaffMemberId);
+
         }
 
+        using (var unlinked = await admin.GetAsync($"{MasterDataBase}/staff-members/options?currentStationOnly=true"))
+        {
+            unlinked.StatusCode.ShouldBe(HttpStatusCode.OK);
+            unlinked.Headers.Contains("X-Staff-Station-Id").ShouldBeFalse();
+            (await unlinked.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray().ShouldBeEmpty();
+        }
         var global = await CatalogOptionsAsync(admin, "staff-members");
         FindOption(global, ownStaffId).GetProperty("stationId").GetGuid().ShouldBe(first.StationId);
         FindOption(global, second.StaffMemberId).GetProperty("stationId").GetGuid().ShouldBe(second.StationId);

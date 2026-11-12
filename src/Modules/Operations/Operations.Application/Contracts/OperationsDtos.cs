@@ -51,4 +51,7 @@ public sealed record FlightDetailDto(
     IReadOnlyList<FlightDepartureSubmissionDto>? DepartureSubmissions = null,
     bool CanSaveDeparture = false,
     IReadOnlyList<FlightCancellationSubmissionDto>? CancellationSubmissions = null,
-    bool CanSaveCancellation = false);
+    bool CanSaveCancellation = false,
+    IReadOnlyList<FlightServiceDto>? Services = null,
+    bool CanSaveServices = false,
+    IReadOnlyList<Guid>? AllowedServiceIds = null);

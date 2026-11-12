@@ -447,7 +447,7 @@ internal fun FlightFormTextRow(label: String, value: String, onChange: (String) 
 
 /** Keep each failure attached to its own row, including rows inside a shared group. */
 @Composable
-private fun FlightFormValidation(message: String?, content: @Composable () -> Unit) {
+internal fun FlightFormValidation(message: String?, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         val outline = if (message == null) Modifier else Modifier
             .border(0.75.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.2f), RoundedCornerShape(10.dp))

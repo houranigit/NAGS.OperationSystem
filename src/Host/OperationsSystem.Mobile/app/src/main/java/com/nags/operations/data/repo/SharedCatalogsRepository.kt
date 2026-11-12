@@ -9,6 +9,7 @@ import com.nags.operations.data.ResourceCatalogItem
 import com.nags.operations.data.ServiceCatalogItem
 import com.nags.operations.data.SharedCatalog
 import com.nags.operations.data.StaffCatalogItem
+import com.nags.operations.data.StationStaffCatalogSnapshot
 import com.nags.operations.data.TokenStore
 import com.nags.operations.data.api.HttpClientFactory
 import com.nags.operations.data.api.SharedCatalogsApi
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.time.Instant
 
@@ -71,9 +73,10 @@ class SharedCatalogsRepository internal constructor(
         val byCatalog = snapshots.associateBy { it.catalog }
         SharedCatalog.entries.map { kind ->
             val snapshot = byCatalog[kind.storageKey]
-            CatalogSyncStatus(kind, snapshot?.itemCount ?: 0, snapshot?.lastAttemptUtc,
-                snapshot?.lastSuccessUtc, snapshot?.error, snapshot?.permissionDenied ?: false,
-                snapshot?.lastDurationMs)
+            val usable = kind != SharedCatalog.StationStaff || decodeStationStaff(snapshot?.payloadJson) != null
+            CatalogSyncStatus(kind, if (usable) snapshot?.itemCount ?: 0 else 0, snapshot?.lastAttemptUtc,
+                snapshot?.lastSuccessUtc?.takeIf { usable }, snapshot?.error, snapshot?.permissionDenied ?: false,
+                snapshot?.lastDurationMs?.takeIf { usable })
         }
     }
 
@@ -84,7 +87,10 @@ class SharedCatalogsRepository internal constructor(
     fun materialsFlow(): Flow<List<ResourceCatalogItem>> = catalogFlow(SharedCatalog.Materials)
     fun generalSupportsFlow(): Flow<List<ResourceCatalogItem>> = catalogFlow(SharedCatalog.GeneralSupports)
     fun ataChaptersFlow(): Flow<List<AtaChapterCatalogItem>> = catalogFlow(SharedCatalog.AtaChapters)
-    fun stationStaffFlow(): Flow<List<StaffCatalogItem>> = catalogFlow(SharedCatalog.StationStaff)
+    fun stationStaffFlow(): Flow<List<StaffCatalogItem>> = observeSnapshots().map { snapshots ->
+        snapshots.firstOrNull { it.catalog == SharedCatalog.StationStaff.storageKey && !it.permissionDenied }
+            ?.let { decodeStationStaff(it.payloadJson)?.items }.orEmpty()
+    }
 
     private inline fun <reified T> catalogFlow(kind: SharedCatalog): Flow<List<T>> = observeSnapshots().map { snapshots ->
         snapshots.firstOrNull { it.catalog == kind.storageKey && !it.permissionDenied }
@@ -174,8 +180,18 @@ class SharedCatalogsRepository internal constructor(
             json.decodeFromString<List<ResourceCatalogItem>>(payload).let { json.encodeToString(it) to it.size }
         SharedCatalog.AtaChapters -> json.decodeFromString<List<AtaChapterCatalogItem>>(payload)
             .let { json.encodeToString(it) to it.size }
-        SharedCatalog.StationStaff -> json.decodeFromString<List<StaffCatalogItem>>(payload)
-            .let { json.encodeToString(it) to it.size }
+        SharedCatalog.StationStaff -> (decodeStationStaff(payload)
+            ?: throw SerializationException("Station staff response has no authenticated station scope.")).let { snapshot ->
+            json.encodeToString(snapshot) to snapshot.items.size
+        }
+    }
+
+    private fun decodeStationStaff(payload: String?): StationStaffCatalogSnapshot? = payload?.let { raw ->
+        runCatching { json.decodeFromString<StationStaffCatalogSnapshot>(raw) }.getOrNull()?.takeIf { snapshot ->
+            snapshot.scope == "current-station" &&
+                (snapshot.items.isEmpty() || !snapshot.stationId.isNullOrBlank()) &&
+                snapshot.items.all { it.stationId.equals(snapshot.stationId, true) }
+        }
     }
 }
 

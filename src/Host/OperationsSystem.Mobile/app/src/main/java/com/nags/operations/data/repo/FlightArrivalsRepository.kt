@@ -2,6 +2,7 @@ package com.nags.operations.data.repo
 
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.FlightArrivalSaved
+import com.nags.operations.data.FlightArrivalSubmission
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.SaveFlightArrivalRequest
 import com.nags.operations.data.arrivalEditable
@@ -13,6 +14,7 @@ import com.nags.operations.data.userMessage
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import java.io.IOException
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -40,6 +42,9 @@ class FlightArrivalsRepository(
     private val onAcknowledgedBeforeDelete: suspend (String, String, String) -> Unit = { _, _, _ -> },
     private val hasSavedCancellation: suspend (String) -> Boolean = { false },
     private val submissionGate: Mutex = Mutex(),
+    private val fetchFlight: suspend (String) -> FlightDetail = { error("Reload the flight before synchronizing arrival.") },
+    private val hasUnacknowledgedOtherWork: suspend (String) -> Boolean = { false },
+    private val hasSavedServices: suspend (String) -> Boolean = { false },
 ) {
     // Network sends and session transitions share this gate. A new bearer cannot be
     // published while an old account's request is still using the HTTP client.
@@ -47,10 +52,10 @@ class FlightArrivalsRepository(
     private val localWrites = Mutex()
     @Volatile private var accepting = true
     @Volatile private var generation = 0L
-    // Only our own acknowledged arrival writes may advance an open departure form's reviewed version.
-    // This covers a background worker acknowledging a queued arrival before the form starts its save.
+    // Only exact acknowledgments of this session's writes can advance a reviewed version.
+    private data class Acknowledgment(val version: String, val arrival: FlightArrivalSubmission? = null)
     private var acknowledgedOwner: String? = null
-    private val acknowledgedVersions = linkedMapOf<String, LinkedHashMap<String, String>>()
+    private val acknowledgedVersions = linkedMapOf<String, LinkedHashMap<String, Acknowledgment>>()
     val changes: Flow<List<FlightArrivalPendingEntity>> = ownerFlow.flatMapLatest { owner ->
         if (owner == null) flowOf(emptyList()) else dao.observe(owner)
     }
@@ -71,9 +76,11 @@ class FlightArrivalsRepository(
                 check(accepting && generation == observed && owner == currentOwner()) { "Your session changed. Reopen the flight." }
                 val existing = dao.rows(owner).firstOrNull { it.flightId == flight.id && it.status == "pending" }
                 // Editing changes the desired input, never the request whose outcome is unknown.
-                dao.put(existing?.copy(inputJson = json.encodeToString(normalized), savedAtUtc = now().toString(), error = null)
+                val desired = existing?.copy(inputJson = json.encodeToString(normalized), savedAtUtc = now().toString(), error = null)
                     ?: FlightArrivalPendingEntity(owner, flight.id, flight.flightNumber, UUID.randomUUID().toString(),
-                        json.encodeToString(normalized), flight.rowVersion, now().toString()))
+                        json.encodeToString(normalized), flight.rowVersion, now().toString(),
+                        reviewedArrivalJson = json.encodeToString(ownArrival(flight)))
+                dao.put(advanceAcknowledged(desired))
             }
         }
         // WorkManager scheduling failure must not turn a completed disk save into a
@@ -82,29 +89,38 @@ class FlightArrivalsRepository(
     }
 
     /** True means transient work remains; terminal rows stay available for review. */
-    suspend fun syncPending(onAcknowledged: (String, String) -> Unit = { _, _ -> }): Boolean = gate.withLock {
+    suspend fun syncPending(priorToServices: Boolean = false, onAcknowledged: (String, String) -> Unit = { _, _ -> }): Boolean = gate.withLock {
         if (!accepting) return@withLock false
         val owner = currentOwner() ?: return@withLock false
         if (!online()) return@withLock dao.rows(owner).any { it.status == "pending" }
         var retry = false
+        val blocked = mutableSetOf<String>()
         for (snapshot in localWrites.withLock { dao.rows(owner).filter { it.status == "pending" } }) {
             if (!accepting || owner != currentOwner()) return@withLock false
-            val row = localWrites.withLock {
-                val current = pendingRow(snapshot) ?: return@withLock null
-                current.copy(attemptInputJson = current.attemptInputJson ?: current.inputJson).also { dao.put(it) }
-            } ?: continue
-            val input = runCatching { json.decodeFromString<SaveFlightArrivalRequest>(checkNotNull(row.attemptInputJson)) }.getOrNull()
-            if (input == null || input.validationErrors(row.rowVersion).isNotEmpty()) {
-                updateIfPending(row, row.copy(status = "failed", error = "The saved arrival is incomplete. Reload the flight and review it."))
+            if (snapshot.attemptInputJson == null && !relaxesArrival(snapshot) &&
+                (priorToServices || hasSavedServices(snapshot.flightId))) {
+                blocked += snapshot.flightId
+                continue
+            }
+            // Resolve an unknown older work request before transmitting a new arrival version.
+            // An already frozen arrival always replays its original request, avoiding a dependency cycle.
+            if (snapshot.attemptInputJson == null && hasUnacknowledgedOtherWork(snapshot.flightId)) {
+                blocked += snapshot.flightId
                 continue
             }
             try {
+                val row = prepare(snapshot) ?: continue
+                val input = runCatching { json.decodeFromString<SaveFlightArrivalRequest>(checkNotNull(row.attemptInputJson)) }.getOrNull()
+                if (input == null || input.validationErrors(row.rowVersion).isNotEmpty()) {
+                    updateIfPending(row, row.copy(status = "failed", error = "The saved arrival is incomplete. Reload the flight and review it."))
+                    continue
+                }
                 val result = send(row.flightId, input, row.rowVersion)
                 if (owner != currentOwner()) return@withLock false
                 accepted(row.flightId, result)
                 // Publish our exact ACK before the dependent-queue callback. Departure saves
                 // recheck this lineage after persistence, closing the concurrent-save gap.
-                localWrites.withLock { rememberAcknowledgment(owner, row.flightId, row.rowVersion, result.rowVersion) }
+                localWrites.withLock { rememberAcknowledgment(owner, row.flightId, row.rowVersion, result.rowVersion, result.submission) }
                 // Persist dependent departure intent before deleting arrival intent. Replaying this
                 // exact arrival after a crash can safely repeat the dependency acknowledgement.
                 onAcknowledgedBeforeDelete(row.flightId, row.rowVersion, result.rowVersion)
@@ -114,7 +130,8 @@ class FlightArrivalsRepository(
                         else {
                             // Only acknowledgment of our exact earlier request advances a correction.
                             // External conflicts still require explicit review; they are never rebased.
-                            dao.put(latest.copy(rowVersion = result.rowVersion, attemptInputJson = null, error = null))
+                            dao.put(latest.copy(rowVersion = result.rowVersion, attemptInputJson = null, error = null,
+                                reviewedArrivalJson = json.encodeToString<FlightArrivalSubmission?>(result.submission), needsArrivalComparison = false))
                         }
                     }
                 }
@@ -133,12 +150,63 @@ class FlightArrivalsRepository(
                     else -> if (error is ApiException) error.userMessage()
                         else "Arrival was not accepted. Reload the flight to check access and arrival details."
                 }
-                updateIfPending(row, row.copy(status = status, error = message))
+                updateIfPending(snapshot, snapshot.copy(status = status, error = message))
                 retry = retry || transient
                 if (error is ApiException && error.statusCode == 401) return@withLock false
             }
         }
-        retry || localWrites.withLock { dao.rows(owner).any { it.status == "pending" } }
+        retry || localWrites.withLock { dao.rows(owner).any { it.status == "pending" && it.flightId !in blocked } }
+    }
+
+    private fun ownArrival(flight: FlightDetail): FlightArrivalSubmission? = flight.arrivalSubmissions.firstOrNull {
+        it.submittedByEmployee.staffMemberId.equals(flight.currentStaffMemberId, true)
+    }
+
+    /** Advance only known, unsent intent; a request with an unknown result retains its exact version. */
+    private fun advanceAcknowledged(row: FlightArrivalPendingEntity): FlightArrivalPendingEntity {
+        resetAcknowledgmentsForOwner(row.ownerSubject)
+        if (row.attemptInputJson != null || row.reviewedArrivalJson == null) return row
+        val chain = acknowledgedVersions[row.flightId] ?: return row
+        var version = row.rowVersion
+        var reviewed = row.reviewedArrivalJson
+        val visited = mutableSetOf<String>()
+        while (visited.add(version)) {
+            val next = chain[version] ?: break
+            if (next.version == version) break
+            next.arrival?.let { reviewed = json.encodeToString<FlightArrivalSubmission?>(it) }
+            version = next.version
+        }
+        return if (version == row.rowVersion) row else row.copy(rowVersion = version,
+            reviewedArrivalJson = reviewed, needsArrivalComparison = true)
+    }
+
+    suspend fun onPriorWriteAcknowledged(flightId: String, requestVersion: String, responseVersion: String) = localWrites.withLock {
+        val owner = currentOwner() ?: return@withLock
+        rememberAcknowledgment(owner, flightId, requestVersion, responseVersion)
+        dao.rows(owner).firstOrNull { it.flightId == flightId && it.status == "pending" }?.let { row ->
+            val advanced = advanceAcknowledged(row)
+            if (advanced != row) dao.put(advanced)
+        }
+    }
+
+    private suspend fun prepare(snapshot: FlightArrivalPendingEntity): FlightArrivalPendingEntity? {
+        val original = localWrites.withLock { pendingRow(snapshot) } ?: return null
+        if (original.attemptInputJson != null) return original
+        if (original.needsArrivalComparison) {
+            val current = fetchFlight(original.flightId)
+            if (current.fromCache) throw IOException("Connect to reload the latest flight before synchronizing arrival.")
+            val reviewed = original.reviewedArrivalJson?.let { json.decodeFromString<FlightArrivalSubmission?>(it) }
+            val acknowledgesCancellation = json.decodeFromString<SaveFlightArrivalRequest>(original.inputJson).acknowledgeConflictingSubmission
+            if (original.reviewedArrivalJson == null || !current.arrivalEditable() ||
+                current.hasCancellationSubmission && !acknowledgesCancellation || ownArrival(current) != reviewed)
+                throw ApiException(409, "Arrival details changed. Reload the flight and review them before saving again.")
+            // This read proves only the reviewed arrival is unchanged. Its rowversion is never adopted.
+        }
+        return localWrites.withLock {
+            val latest = pendingRow(original) ?: return@withLock null
+            if (latest.rowVersion != original.rowVersion || latest.reviewedArrivalJson != original.reviewedArrivalJson) return@withLock null
+            latest.copy(attemptInputJson = latest.inputJson).also { dao.put(it) }
+        }
     }
 
     /** Follow only exact versions returned by this session's own arrival HTTP acknowledgments. */
@@ -149,8 +217,8 @@ class FlightArrivalsRepository(
         val visited = mutableSetOf<String>()
         while (visited.add(version)) {
             val next = chain[version] ?: break
-            if (next == version) break
-            version = next
+            if (next.version == version) break
+            version = next.version
         }
         version
     }
@@ -163,10 +231,12 @@ class FlightArrivalsRepository(
     }
 
     /** Caller holds localWrites; retain a bounded session-only lineage, never a server refresh version. */
-    private fun rememberAcknowledgment(owner: String, flightId: String, requestVersion: String, responseVersion: String) {
+    private fun rememberAcknowledgment(owner: String, flightId: String, requestVersion: String, responseVersion: String,
+        arrival: FlightArrivalSubmission? = null) {
         resetAcknowledgmentsForOwner(owner)
         val chain = acknowledgedVersions.remove(flightId) ?: linkedMapOf()
-        chain[requestVersion] = responseVersion
+        // A repeated peer callback must not erase proof of our own acknowledged arrival input.
+        chain[requestVersion] = Acknowledgment(responseVersion, arrival ?: chain[requestVersion]?.arrival)
         while (chain.size > 64) chain.remove(chain.keys.first())
         acknowledgedVersions[flightId] = chain
         while (acknowledgedVersions.size > 64) acknowledgedVersions.remove(acknowledgedVersions.keys.first())
@@ -181,6 +251,29 @@ class FlightArrivalsRepository(
     suspend fun hasSavedInput(flightId: String): Boolean = localWrites.withLock {
         val owner = currentOwner() ?: return@withLock false
         dao.rows(owner).any { it.flightId == flightId }
+    }
+
+    suspend fun hasUnacknowledgedAttempt(flightId: String): Boolean = localWrites.withLock {
+        val owner = currentOwner() ?: return@withLock false
+        dao.rows(owner).any { it.flightId == flightId && it.status == "pending" && it.attemptInputJson != null }
+    }
+
+    private fun relaxesArrival(row: FlightArrivalPendingEntity): Boolean = runCatching {
+        val previous = row.reviewedArrivalJson?.let { json.decodeFromString<FlightArrivalSubmission?>(it) } ?: return@runCatching false
+        val desired = json.decodeFromString<SaveFlightArrivalRequest>(row.inputJson)
+        !OffsetDateTime.parse(desired.ata).toInstant().isAfter(OffsetDateTime.parse(previous.ata).toInstant())
+    }.getOrDefault(false)
+
+    /** New/later arrival bounds wait until their service corrections have synchronized. */
+    suspend fun mustSyncBeforeServices(flightId: String): Boolean = localWrites.withLock {
+        val owner = currentOwner() ?: return@withLock false
+        dao.rows(owner).any { it.flightId == flightId && (it.status != "pending" || it.attemptInputJson != null || relaxesArrival(it)) }
+    }
+
+    suspend fun pendingInput(flightId: String): SaveFlightArrivalRequest? = localWrites.withLock {
+        val owner = currentOwner() ?: return@withLock null
+        dao.rows(owner).firstOrNull { it.flightId == flightId && it.status == "pending" }
+            ?.let { runCatching { json.decodeFromString<SaveFlightArrivalRequest>(it.inputJson) }.getOrNull() }
     }
 
     /** Retry retains the exact request and original version; it never silently rebases a conflict. */

@@ -152,16 +152,28 @@ class FlightsViewModel internal constructor(
     val currentUserDisplayName: Flow<String?> = flowOf(null),
     val cancellations: com.nags.operations.data.repo.FlightCancellationsRepository? = null,
     private val loadDepartureSignature: suspend (FlightDetail, com.nags.operations.data.db.entities.FlightDeparturePendingEntity?) -> ByteArray? = { _, _ -> null },
+    val services: com.nags.operations.data.repo.FlightServicesRepository? = null,
+    private val loadServiceAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
+    private val loadPendingServiceAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
+    private val saveLocalBatch: suspend (suspend () -> Unit) -> Unit = { save -> save() },
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
         sharedCatalogsRepository: SharedCatalogsRepository, arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository,
         departureRepository: com.nags.operations.data.repo.FlightDeparturesRepository,
         currentUserDisplayName: Flow<String?> = flowOf(null),
         loadDepartureSignature: suspend (FlightDetail, com.nags.operations.data.db.entities.FlightDeparturePendingEntity?) -> ByteArray? = { _, _ -> null },
-        cancellationRepository: com.nags.operations.data.repo.FlightCancellationsRepository? = null) : this(
+        cancellationRepository: com.nags.operations.data.repo.FlightCancellationsRepository? = null,
+        serviceRepository: com.nags.operations.data.repo.FlightServicesRepository? = null,
+        loadServiceAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
+        loadPendingServiceAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
+        saveLocalBatch: suspend (suspend () -> Unit) -> Unit = { save -> save() }) : this(
         arrivals = arrivalRepository,
         departures = departureRepository,
         cancellations = cancellationRepository,
+        services = serviceRepository,
+        loadServiceAttachment = loadServiceAttachment,
+        loadPendingServiceAttachment = loadPendingServiceAttachment,
+        saveLocalBatch = saveLocalBatch,
         actualsStaff = sharedCatalogsRepository.stationStaffFlow(),
         currentUserDisplayName = currentUserDisplayName,
         loadDepartureSignature = loadDepartureSignature,
@@ -194,6 +206,21 @@ class FlightsViewModel internal constructor(
         _state.update { if (it.selectedFlightId == id) it.copy(detail = detail) else it }
         return detail
     }
+
+    suspend fun saveOperationBatch(save: suspend () -> Unit) = saveLocalBatch(save)
+
+    suspend fun saveServices(flight: FlightDetail, changes: List<com.nags.operations.data.FlightServiceChange>,
+        formDraft: com.nags.operations.data.FlightServiceFormDraft?) {
+        checkNotNull(services) { "Service saving is unavailable." }.saveBatch(flight, changes, formDraft)
+    }
+
+    suspend fun reviewServices(id: String): FlightDetail = reviewArrival(id)
+
+    suspend fun serviceAttachment(flightId: String, serviceId: String, attachmentId: String, uploadedAtUtc: String): String? =
+        loadServiceAttachment(flightId, serviceId, attachmentId, uploadedAtUtc)
+
+    suspend fun pendingServiceAttachment(flightId: String, serviceId: String, attachmentId: String): String? =
+        loadPendingServiceAttachment(flightId, serviceId, attachmentId)
 
     suspend fun saveCancellation(flight: FlightDetail, input: com.nags.operations.data.SaveFlightCancellationRequest) {
         checkNotNull(cancellations) { "Cancellation saving is unavailable." }.save(flight, input)

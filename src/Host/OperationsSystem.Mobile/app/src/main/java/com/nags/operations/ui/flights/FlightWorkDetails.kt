@@ -24,7 +24,7 @@ import com.nags.operations.R
 import com.nags.operations.data.ResourceCatalogItem
 import com.nags.operations.data.StaffCatalogItem
 
-/** Nested form-only choices; repeated employee work periods remain separate entries. */
+/** Nested work choices keep each employee unique within the parent entry. */
 @Composable
 internal fun FlightWorkEmployeeList(
     items: List<FlightEmployeeDraft>,
@@ -33,6 +33,10 @@ internal fun FlightWorkEmployeeList(
     referenceYear: Int,
     zone: ZoneId,
     onChange: (List<FlightEmployeeDraft>) -> Unit,
+    enabled: Boolean = true,
+    errorMessage: String? = null,
+    fieldErrors: Map<String, Int> = emptyMap(),
+    timeBounds: FlightWorkTimeBounds? = null,
 ) {
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -52,35 +56,42 @@ internal fun FlightWorkEmployeeList(
         pickerOpen = true
     }
 
-    FlightWorkDetailsHeading(stringResource(R.string.work_employees, items.size))
+    FlightFormValidation(errorMessage) {
+        FlightWorkDetailsHeading(stringResource(R.string.work_employees, items.size))
+    }
     items.forEachIndexed { index, item ->
         key(item.id) {
             FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, item.employeeName),
-                onRemove = { onChange(items.filterNot { it.id == item.id }) }, compactDelete = true) {
+                onRemove = { onChange(items.filterNot { it.id == item.id }) }, compactDelete = true, enabled = enabled) {
                 FlightWorkChoiceRow(stringResource(R.string.work_staff_number, index + 1), item.employeeName,
-                    stringResource(R.string.work_select_employee), leadingPadding = 0.dp, onClick = { openPicker(item.id) })
+                    stringResource(R.string.work_select_employee), leadingPadding = 0.dp, enabled = enabled,
+                    errorMessage = fieldErrors["performers.${item.id}.staffMemberId"]?.let { stringResource(it) }, onClick = { openPicker(item.id) })
             }
             FlightFormDivider()
             FlightWorkPeriodFields(item.period, referenceYear, zone,
-                onChange = { period -> onChange(items.map { if (it.id == item.id) it.copy(period = period) else it }) })
+                onChange = { period -> onChange(items.map { if (it.id == item.id) it.copy(period = period) else it }) },
+                startEnabled = enabled, endEnabled = enabled,
+                startError = fieldErrors["performers.${item.id}.startUtc"]?.let { stringResource(it) },
+                endError = fieldErrors["performers.${item.id}.endUtc"]?.let { stringResource(it) }, timeBounds = timeBounds)
             if (showRemarks) FlightWorkNotes("", {}, item.remarks,
                 onRemarksChange = { remarks -> onChange(items.map { if (it.id == item.id) it.copy(remarks = remarks) else it }) },
                 description = stringResource(R.string.work_employee_remarks), showReference = false)
             FlightFormDivider()
         }
     }
-    FlightWorkAddRow(stringResource(R.string.work_add_employee, items.size + 1), onClick = { openPicker(null) })
-    if (pickerOpen) FlightWorkPicker(
+    FlightWorkAddRow(stringResource(R.string.work_add_employee, items.size + 1), enabled = enabled, onClick = { openPicker(null) })
+    if (pickerOpen && enabled) FlightWorkPicker(
         title = stringResource(R.string.work_select_employee),
         searchLabel = stringResource(R.string.work_search_employees),
         emptyLabel = stringResource(R.string.work_no_employees),
-        options = choices,
+        options = choices.filter { choice -> items.none { it.employeeId == choice.id && it.id != editingId } },
         selectedId = items.firstOrNull { it.id == editingId }?.employeeId,
         onSelect = { id ->
             if (!selectionHandled) options.firstOrNull { it.id == id }?.let { selected ->
                 selectionHandled = true
                 onChange(if (editingId == null) items + FlightEmployeeDraft(employeeId = selected.id,
-                    employeeName = selected.fullName, employeeCode = selected.employeeId, period = FlightWorkPeriod.now(zone))
+                    employeeName = selected.fullName, employeeCode = selected.employeeId,
+                    period = if (timeBounds != null) seedBlankWorkStart(FlightWorkPeriod(), zone, timeBounds) else FlightWorkPeriod.now(zone))
                 else items.map { if (it.id == editingId) it.copy(employeeId = selected.id,
                     employeeName = selected.fullName, employeeCode = selected.employeeId) else it })
             }

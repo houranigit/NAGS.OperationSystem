@@ -46,6 +46,10 @@ data class StaffCatalogItem(
     val manpowerTypeName: String,
 )
 
+/** Private mobile cache envelope: station metadata comes from the scoped API response header. */
+@Serializable
+internal data class StationStaffCatalogSnapshot(val scope: String, val stationId: String?, val items: List<StaffCatalogItem>)
+
 @Serializable
 data class AtaChapterCatalogItem(
     val id: String,

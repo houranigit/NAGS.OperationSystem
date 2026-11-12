@@ -82,6 +82,21 @@ fun SyncCenterScreen(
         confirmButton = { TextButton(onClick = { discardCancellationId?.let(viewModel::discardCancellation); discardCancellationId = null }) {
             Text(stringResource(R.string.cancellation_sync_discard))
         } }, dismissButton = { TextButton(onClick = { discardCancellationId = null }) { Text(stringResource(R.string.flights_cancel)) } })
+    val pendingServices by viewModel.pendingServices.collectAsStateWithLifecycle()
+    val serviceActionFailed by viewModel.serviceActionFailed.collectAsStateWithLifecycle()
+    var discardServiceFlightId by rememberSaveable { mutableStateOf<String?>(null) }
+    var discardServiceRecordId by rememberSaveable { mutableStateOf<String?>(null) }
+    if (discardServiceFlightId != null && discardServiceRecordId != null) AlertDialog(
+        onDismissRequest = { discardServiceFlightId = null; discardServiceRecordId = null },
+        title = { Text(stringResource(R.string.service_sync_discard)) },
+        text = { Text(stringResource(R.string.service_sync_discard_message)) },
+        confirmButton = { TextButton(onClick = {
+            viewModel.discardService(checkNotNull(discardServiceFlightId), checkNotNull(discardServiceRecordId))
+            discardServiceFlightId = null; discardServiceRecordId = null
+        }) { Text(stringResource(R.string.service_sync_discard)) } },
+        dismissButton = { TextButton(onClick = { discardServiceFlightId = null; discardServiceRecordId = null }) {
+            Text(stringResource(R.string.flights_cancel))
+        } })
     val pendingDepartures by viewModel.pendingDepartures.collectAsStateWithLifecycle()
     val departureActionFailed by viewModel.departureActionFailed.collectAsStateWithLifecycle()
     var discardDepartureId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -156,6 +171,28 @@ fun SyncCenterScreen(
                 }
             }
             arrivalActionError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
+            if (pendingServices.isNotEmpty()) {
+                item { Text(stringResource(R.string.service_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                items(pendingServices, key = { "service:${it.flightId}:${it.serviceRecordId}" }) { row ->
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
+                        Text(stringResource(if (row.status == "pending") R.string.service_pending else R.string.service_sync_review),
+                            style = MaterialTheme.typography.bodyMedium)
+                        row.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { viewModel.retryService(row.flightId, row.serviceRecordId) }, enabled = isOnline) {
+                                Text(stringResource(R.string.arrival_sync_retry))
+                            }
+                            TextButton(onClick = { discardServiceFlightId = row.flightId; discardServiceRecordId = row.serviceRecordId },
+                                enabled = row.attemptOperation == null || row.status != "pending") {
+                                Text(stringResource(R.string.service_sync_discard))
+                            }
+                        }
+                    }
+                }
+            }
+            if (serviceActionFailed) item { Text(stringResource(R.string.service_sync_action_failed), color = MaterialTheme.colorScheme.error) }
             if (pendingDepartures.isNotEmpty()) {
                 item { Text(stringResource(R.string.departure_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                 items(pendingDepartures, key = { "departure:${it.flightId}" }) { row ->

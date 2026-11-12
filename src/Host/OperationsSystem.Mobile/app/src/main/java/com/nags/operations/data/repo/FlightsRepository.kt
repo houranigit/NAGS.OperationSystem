@@ -255,6 +255,40 @@ class FlightsRepository internal constructor(
         _cacheChanges.tryEmit(Unit)
     }
 
+    /** Service acknowledgments update only the exact record, retaining all other saved work. */
+    suspend fun recordService(id: String, saved: com.nags.operations.data.FlightServiceSaved) {
+        updateServiceCache(id, saved.rowVersion, saved.activeWorkCount, saved.completedWorkCount) { records ->
+            records.filterNot { it.id == saved.service.id } + saved.service
+        }
+    }
+
+    suspend fun recordServiceDeleted(id: String, saved: com.nags.operations.data.FlightServiceDeleted) {
+        updateServiceCache(id, saved.rowVersion, saved.activeWorkCount, saved.completedWorkCount) { records ->
+            records.filterNot { it.id == saved.id }
+        }
+    }
+
+    private suspend fun updateServiceCache(id: String, rowVersion: String, activeWorkCount: Int?, completedWorkCount: Int?,
+        change: (List<com.nags.operations.data.FlightServiceRecord>) -> List<com.nags.operations.data.FlightServiceRecord>) {
+        val session = requireSession()
+        refreshMutex.withLock {
+            mutationMutex.withLock {
+                ensureCurrent(session)
+                dao.detail(session.owner, id)?.let { cached ->
+                    val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
+                    if (detail != null) {
+                        dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(
+                            detail.copy(services = change(detail.services), rowVersion = rowVersion)))))
+                    }
+                }
+                // Authoritative counts make a recovered acknowledgment idempotent, including after a crash.
+                updateSnapshotReportsLocked(session, id) { it.copy(activeWorkCount = activeWorkCount,
+                    completedWorkCount = completedWorkCount) }
+            }
+        }
+        _cacheChanges.tryEmit(Unit)
+    }
+
     /** Only existing scoped rows receive acknowledged metadata; their planning, membership and versions stay intact. */
     private suspend fun updateSnapshotReportsLocked(session: FlightCacheSession, id: String,
         change: (FlightListItem) -> FlightListItem): Boolean {

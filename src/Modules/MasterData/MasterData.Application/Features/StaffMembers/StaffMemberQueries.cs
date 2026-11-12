@@ -1,3 +1,4 @@
+using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Domain.Results;
@@ -90,25 +91,37 @@ public sealed class GetStaffMembersQueryHandler(IMasterDataDbContext db, IMaster
 /// Exposed under the reference view-options permission; station staff are always confined to
 /// their own station regardless of <paramref name="StationId"/>.
 /// </summary>
-public sealed record GetActiveStaffMemberOptionsQuery(Guid? StationId = null)
-    : IQuery<IReadOnlyList<StaffMemberOptionDto>>;
+public sealed record GetActiveStaffMemberOptionsQuery(Guid? StationId = null, bool CurrentStationOnly = false)
+    : IQuery<StaffMemberOptionsResult>;
 
-public sealed class GetActiveStaffMemberOptionsQueryHandler(IMasterDataDbContext db, IMasterDataScope scope)
-    : IQueryHandler<GetActiveStaffMemberOptionsQuery, IReadOnlyList<StaffMemberOptionDto>>
+public sealed class GetActiveStaffMemberOptionsQueryHandler(IMasterDataDbContext db, IMasterDataScope scope, IUserContext user)
+    : IQueryHandler<GetActiveStaffMemberOptionsQuery, StaffMemberOptionsResult>
 {
-    public async Task<Result<IReadOnlyList<StaffMemberOptionDto>>> Handle(GetActiveStaffMemberOptionsQuery request, CancellationToken cancellationToken)
+    public async Task<Result<StaffMemberOptionsResult>> Handle(GetActiveStaffMemberOptionsQuery request, CancellationToken cancellationToken)
     {
         var resolved = await scope.ResolveAsync(cancellationToken);
         if (resolved.IsFailure)
             return resolved.Error;
 
         var query = db.StaffMembers.AsNoTracking().Where(s => s.IsActive);
+        Guid? currentStation = null;
+        if (request.CurrentStationOnly)
+        {
+            if (resolved.Value.CustomerId.HasValue || user.ExternalReferenceId is not { } staffId)
+                return new StaffMemberOptionsResult([]);
+            currentStation = await db.StaffMembers.AsNoTracking()
+                .Where(s => s.Id == staffId && s.IsActive && db.Stations.Any(st => st.Id == s.StationId && st.IsActive))
+                .Select(s => (Guid?)s.StationId).SingleOrDefaultAsync(cancellationToken);
+            if (currentStation is null) return new StaffMemberOptionsResult([]);
+            // Mobile synchronization never inherits a global reader's broader staff visibility.
+            query = query.Where(s => s.StationId == currentStation.Value);
+        }
 
         // Station staff only ever see their own station's members; customer contacts see none.
         if (!resolved.Value.HasGlobalReadAccess)
         {
             if (resolved.Value.StationId is not { } scopedStation)
-                return Result.Success<IReadOnlyList<StaffMemberOptionDto>>([]);
+                return new StaffMemberOptionsResult([], currentStation);
             query = query.Where(s => s.StationId == scopedStation);
         }
 
@@ -123,7 +136,7 @@ public sealed class GetActiveStaffMemberOptionsQueryHandler(IMasterDataDbContext
                 db.ManpowerTypes.Where(m => m.Id == s.ManpowerTypeId).Select(m => m.Name).FirstOrDefault() ?? string.Empty))
             .ToListAsync(cancellationToken);
 
-        return Result.Success(options);
+        return new StaffMemberOptionsResult(options, currentStation);
     }
 }
 

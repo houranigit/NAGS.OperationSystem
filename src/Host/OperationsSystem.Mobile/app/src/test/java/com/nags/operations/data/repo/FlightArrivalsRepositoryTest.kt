@@ -26,6 +26,9 @@ class FlightArrivalsRepositoryTest {
     private var scheduled = 0
     private var failure: Exception? = null
     private var acceptFailure = false
+    private var unknownOtherWork = false
+    private var savedServices = false
+    private var live: FlightDetail? = null
     private var durableAcknowledgment: suspend (String, String, String) -> Unit = { _, _, _ -> }
     private val staff = "11111111-1111-1111-1111-111111111111"
     private val otherStaff = "22222222-2222-2222-2222-222222222222"
@@ -50,7 +53,91 @@ class FlightArrivalsRepositoryTest {
     private fun repository() = FlightArrivalsRepository(dao, owner, { owner.value }, { online },
         send = { id, input, version -> send(id, input, version) },
         accepted = { _, _ -> if (acceptFailure) throw IOException("disk unavailable") },
-        schedule = { scheduled++ }, json = Json, now = { at }, onAcknowledgedBeforeDelete = { id, before, after -> durableAcknowledgment(id, before, after) })
+        schedule = { scheduled++ }, json = Json, now = { at }, onAcknowledgedBeforeDelete = { id, before, after -> durableAcknowledgment(id, before, after) },
+        fetchFlight = { live ?: flight }, hasUnacknowledgedOtherWork = { unknownOtherWork }, hasSavedServices = { savedServices })
+
+    @Test fun peerAcknowledgmentAdvancesOnlyReviewedUnsentInputAndNeverUsesFetchedVersion() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        repo.onPriorWriteAcknowledged(flight.id, flight.rowVersion, "AAAAAAAAAAI=")
+        assertEquals("AAAAAAAAAAI=", dao.rows(owner.value!!).single().rowVersion)
+        assertTrue(dao.rows(owner.value!!).single().needsArrivalComparison)
+        live = flight.copy(rowVersion = "AAAAAAAAAAk=") // An unrelated newer read is not acknowledgment lineage.
+        send = { _, _, version ->
+            sends++
+            assertEquals("AAAAAAAAAAI=", version)
+            throw ApiException(409, "External flight edit")
+        }
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals("conflict", dao.rows(owner.value!!).single().status)
+        assertEquals(1, sends)
+    }
+
+    @Test fun changedReviewedArrivalConflictsBeforeUploadAfterPeerAcknowledgment() = runBlocking {
+        val repo = repository()
+        repo.save(flight.copy(arrivalSubmissions = listOf(submitted)), input)
+        repo.onPriorWriteAcknowledged(flight.id, flight.rowVersion, "AAAAAAAAAAI=")
+        live = flight.copy(rowVersion = "AAAAAAAAAAI=", arrivalSubmissions = listOf(submitted.copy(remarks = "Another edit")))
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals("conflict", dao.rows(owner.value!!).single().status)
+        assertNull(dao.rows(owner.value!!).single().attemptInputJson)
+        assertEquals(0, sends)
+    }
+
+    @Test fun acknowledgmentBeforeLocalSaveStillAdvancesOnlyItsOwnLineage() = runBlocking {
+        val repo = repository()
+        repo.onPriorWriteAcknowledged(flight.id, flight.rowVersion, "AAAAAAAAAAI=")
+        repo.save(flight, input)
+        assertEquals("AAAAAAAAAAI=", dao.rows(owner.value!!).single().rowVersion)
+        send = { _, _, version ->
+            sends++
+            assertEquals("AAAAAAAAAAI=", version)
+            FlightArrivalSaved(submitted, "AAAAAAAAAAM=")
+        }
+        live = flight.copy(rowVersion = "AAAAAAAAAAI=")
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals(1, sends)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun frozenRequestIsNotAdvancedAndReplaysBeforeNewOtherWork() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        failure = IOException("Unknown result")
+        assertTrue(repo.syncPending())
+        val frozen = dao.rows(owner.value!!).single()
+        repo.onPriorWriteAcknowledged(flight.id, flight.rowVersion, "AAAAAAAAAAI=")
+        assertEquals(frozen.rowVersion, dao.rows(owner.value!!).single().rowVersion)
+        unknownOtherWork = true
+        failure = null
+        assertFalse(repo.syncPending())
+        assertEquals(2, sends)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+        repo.save(flight, input)
+        assertFalse(repo.syncPending()) // Fresh arrival waits; it cannot block recovery of unknown work.
+        assertEquals(2, sends)
+        assertNull(dao.rows(owner.value!!).single().attemptInputJson)
+    }
+
+    @Test fun laterArrivalWaitsForServiceCorrectionsWhileEarlierArrivalRunsFirst() = runBlocking {
+        val repo = repository()
+        repo.save(flight.copy(arrivalSubmissions = listOf(submitted)), input.copy(ata = at.plusSeconds(60).toString()))
+        savedServices = true
+        online = true
+        assertFalse(repo.mustSyncBeforeServices(flight.id))
+        assertFalse(repo.syncPending(priorToServices = true))
+        assertFalse(repo.syncPending())
+        assertEquals(0, sends)
+        savedServices = false
+        assertFalse(repo.syncPending())
+        assertEquals(1, sends)
+        repo.save(flight.copy(arrivalSubmissions = listOf(submitted)), input.copy(ata = at.minusSeconds(60).toString()))
+        assertTrue(repo.mustSyncBeforeServices(flight.id))
+    }
 
     @Test fun offlineSaveSurvivesRepositoryRecreationAndOnlyAcknowledgedUploadsAreRemoved() = runBlocking {
         repository().save(flight, input)

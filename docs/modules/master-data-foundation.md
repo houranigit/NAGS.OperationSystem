@@ -1,7 +1,7 @@
 # MasterData Module Foundation
 
 Status: **Draft — active design and implementation reference**
-Last updated: 2026-07-03
+Last updated: 2026-11-11
 
 ## 1. Purpose And Authority
 
@@ -371,6 +371,8 @@ General rules preserved from legacy:
 - ManpowerType is required and must be active when creating or updating a StaffMember's type.
 - Employment contract is optional. When supplied, a start date is required; the end date is optional and cannot precede the start date.
 - A StaffMember is active when created.
+
+`GET /api/v1/masterdata/staff-members/options` keeps its existing active-staff list and account scope by default. Mobile callers use `currentStationOnly=true`: the server derives the station from the current active linked StaffMember and active Station, applies that restriction even to globally scoped readers, and supplies authoritative `X-Staff-Station-Id` metadata without changing the list body. A missing usable staff link returns no staff or station metadata, subject to existing scoped-account denial rules; a caller-supplied `stationId` can narrow but never widen that derived boundary.
 
 ### Working schedule
 

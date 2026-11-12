@@ -7,7 +7,7 @@ import java.util.UUID
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** Form-only values. These are not API payloads, persisted drafts, or scheduled services. */
+/** Local form-draft values; Services use a separate UTC API contract when started. */
 @Serializable
 internal data class FlightWorkDrafts(
     val services: List<FlightServiceDraft> = emptyList(),
@@ -27,6 +27,8 @@ internal val FlightWorkDraftsSaver = Saver<FlightWorkDrafts, String>(
 internal data class FlightWorkPeriod(
     val start: String = "",
     val end: String = "",
+    val originalStartUtc: String? = null,
+    val originalEndUtc: String? = null,
 ) {
     companion object {
         fun now(zone: ZoneId) = FlightWorkPeriod(
@@ -44,6 +46,7 @@ internal data class FlightServiceDraft(
     val remarks: String = "",
     val employees: List<FlightEmployeeDraft> = emptyList(),
     val attachments: List<FlightAttachmentDraft> = emptyList(),
+    val plannedServiceId: String? = null,
 )
 
 @Serializable
@@ -82,7 +85,7 @@ internal data class FlightResourceDraft(
     val remarks: String = "",
 )
 
-/** A temporary document reference or private-cache capture; never an upload or durable draft. */
+/** Selected media, durable pending media, or a scoped preview of an uploaded attachment. */
 @Serializable
 internal data class FlightAttachmentDraft(
     val id: String = UUID.randomUUID().toString(),
@@ -91,4 +94,5 @@ internal data class FlightAttachmentDraft(
     val mimeType: String = "",
     val durationMillis: Long = 0,
     val ownedCapture: Boolean = false,
+    val uploadedAtUtc: String? = null,
 )

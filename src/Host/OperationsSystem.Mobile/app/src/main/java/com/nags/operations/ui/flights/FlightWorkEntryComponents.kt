@@ -79,13 +79,14 @@ internal fun FlightWorkEntryGroup(content: @Composable () -> Unit) {
 /** Intrinsic labels leave the remaining row width to the selected value. */
 @Composable
 internal fun FlightWorkChoiceRow(label: String, value: String, description: String,
-    isPlaceholder: Boolean = false, leadingPadding: Dp = 14.dp, onClick: () -> Unit) {
-    FlightFormChoiceRow(label, value, description, isPlaceholder, leadingPadding, onClick = onClick)
+    isPlaceholder: Boolean = false, leadingPadding: Dp = 14.dp, enabled: Boolean = true,
+    errorMessage: String? = null, onClick: () -> Unit) {
+    FlightFormChoiceRow(label, value, description, isPlaceholder, leadingPadding, enabled, errorMessage, onClick)
 }
 
 @Composable
-internal fun FlightWorkAddRow(label: String, onClick: () -> Unit) {
-    Surface(onClick = onClick, color = MaterialTheme.colorScheme.surface,
+internal fun FlightWorkAddRow(label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Surface(onClick = onClick, enabled = enabled, color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
@@ -104,17 +105,18 @@ internal fun FlightWorkRemovableEntry(
     removeDescription: String,
     onRemove: () -> Unit,
     compactDelete: Boolean = false,
+    enabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     var removeOpen by rememberSaveable(id) { mutableStateOf(false) }
     val shift by animateDpAsState(if (removeOpen) (-80).dp else 0.dp, animationSpec = tween(180), label = "workDeleteReveal")
     Row(Modifier.fillMaxWidth().animateContentSize(), verticalAlignment = Alignment.Top) {
-        IconButton(onClick = { removeOpen = !removeOpen }, modifier = Modifier.size(48.dp)) {
-            Icon(Icons.Filled.RemoveCircle, removeDescription, Modifier.size(20.dp), tint = WorkRemoveRed)
+        IconButton(onClick = { removeOpen = !removeOpen }, enabled = enabled, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.Filled.RemoveCircle, removeDescription, Modifier.size(20.dp), tint = if (enabled) WorkRemoveRed else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
         }
         Box(Modifier.weight(1f).clipToBounds()) {
             if (removeOpen) Box(Modifier.align(Alignment.TopEnd).width(80.dp).heightIn(min = 48.dp), contentAlignment = Alignment.TopEnd) {
-                Button(onClick = onRemove,
+                Button(onClick = onRemove, enabled = enabled,
                     modifier = if (compactDelete) Modifier.align(Alignment.Center).width(64.dp).height(34.dp)
                         else Modifier.width(80.dp).heightIn(min = 48.dp),
                     shape = RoundedCornerShape(if (compactDelete) 10.dp else 12.dp),
@@ -136,36 +138,58 @@ internal fun FlightWorkPeriodFields(
     period: FlightWorkPeriod,
     referenceYear: Int,
     zone: ZoneId,
+    startEnabled: Boolean = true,
+    endEnabled: Boolean = true,
+    startError: String? = null,
+    endError: String? = null,
+    seedEndNow: Boolean = false,
+    timeBounds: FlightWorkTimeBounds? = null,
+    onStartPickerSessionChanged: (Boolean) -> Unit = {},
     onChange: (FlightWorkPeriod) -> Unit,
 ) {
     var picker by rememberSaveable { mutableStateOf<String?>(null) }
     val startLabel = stringResource(R.string.work_start)
     val endLabel = stringResource(R.string.work_end)
-    FlightFormDateTimeField(period.start, startLabel, startLabel, onClick = { picker = "start" })
+    FlightFormDateTimeField(period.start, startLabel, startLabel, enabled = startEnabled, errorMessage = startError,
+        onClick = {
+            onStartPickerSessionChanged(period.start.isBlank())
+            if (period.start.isBlank()) onChange(if (timeBounds != null) seedBlankWorkStart(period, zone, timeBounds)
+                else period.copy(start = LocalDateTime.now(zone).withSecond(0).withNano(0).toString()))
+            picker = "start"
+        })
     FlightFormDivider()
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f)) {
-            if (period.end.isBlank()) FlightFormChoiceRow(endLabel, stringResource(R.string.work_add_end), endLabel,
-                isPlaceholder = true, onClick = { onChange(period.copy(end = period.start)); picker = "end" })
-            else FlightFormDateTimeField(period.end, endLabel, endLabel, onClick = { picker = "end" })
-        }
-        if (period.end.isNotBlank()) IconButton(onClick = { onChange(period.copy(end = "")) }, modifier = Modifier.size(48.dp)) {
-            Icon(Icons.Outlined.Close, stringResource(R.string.work_clear_end), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
     val endBeforeStart = runCatching {
         period.end.isNotBlank() && LocalDateTime.parse(period.end).isBefore(LocalDateTime.parse(period.start))
     }.getOrDefault(false)
-    if (endBeforeStart) Text(stringResource(R.string.work_end_before_start),
-        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp).semantics { liveRegion = LiveRegionMode.Polite },
-        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-    if (picker != null) {
+    FlightFormValidation(endError ?: if (endBeforeStart) stringResource(R.string.work_end_before_start) else null) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                if (period.end.isBlank()) FlightFormChoiceRow(endLabel, stringResource(R.string.work_add_end), endLabel,
+                    isPlaceholder = true, enabled = endEnabled, onClick = {
+                        val now = LocalDateTime.now(zone).withSecond(0).withNano(0)
+                        val from = runCatching { LocalDateTime.parse(period.start) }.getOrNull()
+                        val seed = if (seedEndNow) (if (from != null && from > now) from else now).toString() else period.start
+                        onChange(if (timeBounds != null) seedBlankWorkEnd(period, zone, timeBounds, preferNow = seedEndNow)
+                            else period.copy(end = seed)); picker = "end"
+                    })
+                else FlightFormDateTimeField(period.end, endLabel, endLabel, enabled = endEnabled, onClick = { picker = "end" })
+            }
+            if (period.end.isNotBlank()) IconButton(onClick = { onChange(period.copy(end = "")) }, enabled = endEnabled,
+                modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Outlined.Close, stringResource(R.string.work_clear_end), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+    if (picker != null && (if (picker == "end") endEnabled else startEnabled)) {
         val editingEnd = picker == "end"
         val value = runCatching { LocalDateTime.parse(if (editingEnd) period.end.ifBlank { period.start } else period.start) }
             .getOrElse { LocalDateTime.now(zone).withSecond(0).withNano(0) }
         FlightFormDateTimeSheet(value, referenceYear,
             onValueChange = { if (editingEnd) onChange(period.copy(end = it.toString())) else onChange(period.copy(start = it.toString())) },
-            onDismiss = { picker = null }, title = if (editingEnd) endLabel else startLabel)
+            onDismiss = {
+                if (!editingEnd) onStartPickerSessionChanged(false)
+                picker = null
+            }, title = if (editingEnd) endLabel else startLabel)
     }
 }
 
@@ -192,7 +216,8 @@ internal fun FlightWorkNotes(
 }
 
 @Composable
-internal fun FlightWorkReferenceRow(reference: String, onChange: (String) -> Unit) {
+internal fun FlightWorkReferenceRow(reference: String, onChange: (String) -> Unit,
+    enabled: Boolean = true, errorMessage: String? = null) {
     FlightFormTextRow(stringResource(R.string.work_customer_reference), reference, onChange,
-        stringResource(R.string.arrival_optional))
+        stringResource(R.string.arrival_optional), enabled = enabled, errorMessage = errorMessage)
 }

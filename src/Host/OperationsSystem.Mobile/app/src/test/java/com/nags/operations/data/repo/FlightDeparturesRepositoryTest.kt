@@ -26,6 +26,7 @@ class FlightDeparturesRepositoryTest {
     private var online = false
     private var scheduled = 0
     private var savedArrival = false
+    private var savedServices = false
     private var arrivalVersion: String? = null
     private var acknowledgedArrival: suspend (String, String) -> String = { _, reviewed ->
         if (reviewed == "AAAAAAAAAAE=") arrivalVersion ?: reviewed else reviewed
@@ -54,10 +55,46 @@ class FlightDeparturesRepositoryTest {
     }
     private fun repository() = FlightDeparturesRepository(dao, files, owner, { owner.value }, { online },
         send = { id, value, version -> send(id, value, version) }, accepted = { _, _ -> if (acceptedFailure) throw IOException("disk unavailable") },
-        schedule = { scheduled++ }, json = Json, hasSavedArrival = { savedArrival },
+        schedule = { scheduled++ }, json = Json, hasSavedArrival = { savedArrival }, hasSavedServices = { savedServices },
         acknowledgedArrivalVersion = { id, reviewed -> acknowledgedArrival(id, reviewed) },
         fetchFlight = { fetches++; live }, now = { at },
         onSignatureAcknowledged = { id, saved, bytes -> previewAcknowledged(id, saved, bytes) })
+
+    @Test fun laterDepartureRelaxesBoundsBeforeServicesAndEarlierDepartureWaitsForCorrections() = runBlocking {
+        val repo = repository()
+        val existing = flight.copy(departureSubmissions = listOf(submitted))
+        repo.save(existing, input.copy(atd = at.plusSeconds(7200).toString(), signatureContent = null, signatureSignedAtUtc = null))
+        savedServices = true
+        online = true
+        assertTrue(repo.mustSyncBeforeServices(flight.id))
+        assertFalse(repo.syncPending(priorToServices = true))
+        assertEquals(1, sent.size)
+        val restarted = repository()
+        restarted.save(existing, input.copy(atd = at.plusSeconds(1800).toString(), signatureContent = null, signatureSignedAtUtc = null))
+        assertFalse(restarted.mustSyncBeforeServices(flight.id))
+        assertFalse(restarted.syncPending(priorToServices = true))
+        assertFalse(restarted.syncPending())
+        assertEquals(1, sent.size)
+        savedServices = false
+        assertFalse(restarted.syncPending())
+        assertEquals(2, sent.size)
+    }
+
+    @Test fun frozenDepartureReplaysBeforeFreshArrivalAndServiceIntent() = runBlocking {
+        val repo = repository()
+        repo.save(flight, input)
+        online = true
+        failure = IOException("Unknown server result")
+        assertTrue(repo.syncPending())
+        assertTrue(repo.hasUnacknowledgedAttempt(flight.id))
+        savedArrival = true
+        savedServices = true
+        failure = null
+        assertFalse(repo.syncPending(priorToServices = true))
+        assertEquals(2, sent.size)
+        assertEquals(sent[0], sent[1])
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
 
     @Test fun acknowledgedPngIsCachedBeforeQueueCleanupAndPreviewFailureCannotUndoTheSave() = runBlocking {
         val repo = repository()
