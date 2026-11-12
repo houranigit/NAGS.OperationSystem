@@ -27,6 +27,7 @@ public sealed class SaveFlightArrivalCommandValidator : AbstractValidator<SaveFl
             RuleFor(command => command.Arrival.Ata).NotEmpty();
             RuleFor(command => command.Arrival.AircraftTypeId).NotEmpty();
             RuleFor(command => command.Arrival.AircraftTailNumber).NotEmpty();
+            RuleFor(command => command.Arrival.TargetSubmissionId).Must(id => id is null || id != Guid.Empty);
         });
     }
 }
@@ -61,21 +62,31 @@ public sealed class SaveFlightArrivalCommandHandler(
         if (flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId))
             return Error.Conflict("Revert your cancellation before submitting arrival details.", "Operations.Flight.OwnCancellationSubmitted");
 
-        var own = flight.ArrivalSubmissions.SingleOrDefault(a => a.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
-        // Competing input remains a later application workflow; domain history is preserved.
-        if (own is null && flight.ArrivalSubmissions.Count > 0)
-            return Error.Forbidden("Only the employee who submitted the arrival can update it.", "Operations.Arrival.ReadOnly");
-
         var input = request.Arrival;
+        if (input.TargetSubmissionId == Guid.Empty)
+            return Error.Validation("Target arrival submission is required.", "Operations.ArrivalSubmission.TargetRequired");
+        var existing = input.TargetSubmissionId is { } targetId
+            ? flight.ArrivalSubmissions.SingleOrDefault(a => a.Id == targetId)
+            : flight.ArrivalSubmissions.SingleOrDefault(a => a.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
+        if (input.TargetSubmissionId.HasValue && existing is null)
+            return Error.NotFound("Arrival submission not found.", "Operations.ArrivalSubmission.NotFound");
+        if (existing is null && flight.ArrivalSubmissions.Count == 1)
+            existing = flight.ArrivalSubmissions.Single();
+        if (existing is null && flight.ArrivalSubmissions.Count > 1)
+            return Error.Conflict("Select the arrival submission to update.", "Operations.ArrivalSubmission.TargetRequired");
+        var foreign = existing is not null && existing.SubmittedByEmployee.StaffMemberId != actor.StaffMemberId;
+        if (foreign && !flight.AssignedEmployees.Any(employee => employee.Employee.StaffMemberId == actor.StaffMemberId))
+            return Error.Forbidden("Only assigned employees can update another employee's arrival.", "Operations.ArrivalSubmission.AssignmentRequired");
+
         // A lost success response may be replayed with the previous rowversion. Identical
         // input is acknowledged without a write, even if unrelated flight data has changed.
-        if (own is not null && own.Details.Ata == input.Ata &&
-            own.Details.AircraftType.AircraftTypeId == input.AircraftTypeId &&
-            own.Details.AircraftTailNumber == input.AircraftTailNumber.Trim() &&
-            own.Details.CustomerWorkReferenceNumber == Normalize(input.CustomerWorkReferenceNumber) &&
-            own.Details.Remarks == Normalize(input.Remarks) &&
-            own.Details.ReceivedByEmployee.StaffMemberId == actor.StaffMemberId)
-            return new FlightArrivalSavedDto(FlightArrivalSubmissionDto.Map(own), Convert.ToBase64String(flight.RowVersion));
+        if (existing is not null && existing.Details.Ata == input.Ata &&
+            existing.Details.AircraftType.AircraftTypeId == input.AircraftTypeId &&
+            existing.Details.AircraftTailNumber == input.AircraftTailNumber.Trim() &&
+            existing.Details.CustomerWorkReferenceNumber == Normalize(input.CustomerWorkReferenceNumber) &&
+            existing.Details.Remarks == Normalize(input.Remarks) &&
+            (foreign || existing.Details.ReceivedByEmployee.StaffMemberId == actor.StaffMemberId))
+            return new FlightArrivalSavedDto(FlightArrivalSubmissionDto.Map(existing), Convert.ToBase64String(flight.RowVersion));
 
         if (!flight.RowVersion.SequenceEqual(request.RowVersion))
             return ConcurrencyErrors.Stale;
@@ -83,11 +94,12 @@ public sealed class SaveFlightArrivalCommandHandler(
             !input.AcknowledgeConflictingSubmission)
             return Error.Conflict("Another employee reported this flight as canceled. Confirm before saving work details.",
                 "Operations.Flight.CancellationConfirmationRequired");
-        if (own is null || own.Details.Ata != input.Ata)
+        if (existing is null || existing.Details.Ata != input.Ata)
         {
-            var workBounds = FlightServiceBounds.ValidateExistingServices(flight, actor.StaffMemberId, arrivalOverride: input.Ata);
+            var actualsStaffId = existing?.SubmittedByEmployee.StaffMemberId ?? actor.StaffMemberId;
+            var workBounds = FlightServiceBounds.ValidateExistingServices(flight, actualsStaffId, arrivalOverride: input.Ata);
             if (workBounds.IsFailure) return workBounds.Error;
-            var taskBounds = FlightTaskBounds.ValidateExistingTasks(flight, actor.StaffMemberId, arrivalOverride: input.Ata);
+            var taskBounds = FlightTaskBounds.ValidateExistingTasks(flight, actualsStaffId, arrivalOverride: input.Ata);
             if (taskBounds.IsFailure) return taskBounds.Error;
         }
         var aircraft = await resolver.AircraftTypeAsync(input.AircraftTypeId, cancellationToken);
@@ -98,13 +110,25 @@ public sealed class SaveFlightArrivalCommandHandler(
             return staff.Error;
         var employee = staff.Value.Single();
         var details = ArrivalDetails.Create(input.CustomerWorkReferenceNumber, input.Ata, aircraft.Value,
-            input.AircraftTailNumber, employee, input.Remarks);
+            input.AircraftTailNumber, foreign ? existing!.Details.ReceivedByEmployee : employee, input.Remarks);
         if (details.IsFailure)
             return details.Error;
         db.SetOriginalRowVersion(flight, request.RowVersion);
-        var submitted = flight.SubmitArrival(employee, details.Value, actor.UserId, clock.GetUtcNow());
+        var previousDetails = existing?.Details;
+        var now = clock.GetUtcNow();
+        var submitted = flight.SubmitArrival(employee, details.Value, actor.UserId, now, existing?.Id);
         if (submitted.IsFailure)
             return submitted.Error;
+        if (foreign && previousDetails != submitted.Value.Details)
+            db.Enqueue(new global::Operations.Contracts.FlightSubmissionUpdated
+            {
+                FlightId = flight.Id, FlightNumber = flight.FlightNumber.Value, SubmissionId = submitted.Value.Id,
+                SubmissionKind = global::Operations.Contracts.FlightSubmissionKind.Arrival,
+                SubmittedByStaffMemberId = submitted.Value.SubmittedByEmployee.StaffMemberId,
+                SubmittedByUserId = submitted.Value.CreatedByUserId,
+                UpdatedByStaffMemberId = actor.StaffMemberId, UpdatedByUserId = actor.UserId,
+                UpdatedByDisplayName = employee.FullName, OccurredOnUtc = now
+            });
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -113,7 +137,7 @@ public sealed class SaveFlightArrivalCommandHandler(
         {
             return ConcurrencyErrors.Stale;
         }
-        catch (DbUpdateException) when (own is null)
+        catch (DbUpdateException) when (existing is null)
         {
             // Concurrent first submissions can hit the unique accepted/submitting-staff
             // index before EF issues the aggregate rowversion update. Preserve the same

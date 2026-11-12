@@ -5,6 +5,8 @@ import com.nags.operations.data.SaveFlightArrivalRequest
 import com.nags.operations.data.SaveFlightDepartureRequest
 import com.nags.operations.data.StaffCatalogItem
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.data.FlightArrivalSubmission
+import com.nags.operations.data.FlightDepartureSubmission
 import com.nags.operations.data.db.entities.FlightArrivalPendingEntity
 import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
 import com.nags.operations.data.visibleArrival
@@ -14,6 +16,29 @@ import java.util.Locale
 import kotlinx.serialization.json.Json
 
 private val actualDetailsJson = Json { ignoreUnknownKeys = true; isLenient = true }
+
+/** Desired values decorate this exact recorded report; attribution and acceptance remain server-owned. */
+internal fun FlightArrivalSubmission.withPendingCorrection(
+    pending: FlightArrivalPendingEntity?,
+    aircraftTypes: List<AircraftTypeCatalogItem> = emptyList(),
+): FlightArrivalSubmission {
+    val input = pending?.let { runCatching {
+        actualDetailsJson.decodeFromString<SaveFlightArrivalRequest>(it.inputJson).also { value -> OffsetDateTime.parse(value.ata) }
+    }.getOrNull() }?.takeIf { it.targetSubmissionId.equals(id, true) } ?: return this
+    val model = aircraftTypes.firstOrNull { it.id.equals(input.aircraftTypeId, true) }?.model
+        ?: aircraftTypeModel.takeIf { aircraftTypeId.equals(input.aircraftTypeId, true) }.orEmpty()
+    return copy(ata = input.ata, aircraftTypeId = input.aircraftTypeId, aircraftTypeModel = model,
+        aircraftTailNumber = input.aircraftTailNumber, customerWorkReferenceNumber = input.customerWorkReferenceNumber,
+        remarks = input.remarks)
+}
+
+/** A local signature preview is loaded separately; this overlay never invents a new signature version. */
+internal fun FlightDepartureSubmission.withPendingCorrection(pending: FlightDeparturePendingEntity?): FlightDepartureSubmission {
+    val input = pending?.let { runCatching {
+        actualDetailsJson.decodeFromString<SaveFlightDepartureRequest>(it.inputJson).also { value -> OffsetDateTime.parse(value.atd) }
+    }.getOrNull() }?.takeIf { it.targetSubmissionId.equals(id, true) } ?: return this
+    return copy(atd = input.atd, remarks = input.remarks)
+}
 
 /** Presentation only: local intent must never become an accepted submission or change a rowversion. */
 internal data class FlightActualDetails(
@@ -33,8 +58,6 @@ internal fun FlightDetail.actualDetails(
     currentUserName: String? = null,
     youLabel: String,
 ): FlightActualDetails? {
-    val arrival = visibleArrival()
-    val departure = visibleDeparture()
     val localArrival = pendingArrival?.takeIf { it.flightId == id && !currentStaffMemberId.isNullOrBlank() }?.let {
         runCatching {
             actualDetailsJson.decodeFromString<SaveFlightArrivalRequest>(it.inputJson).also { input -> OffsetDateTime.parse(input.ata) }
@@ -47,6 +70,18 @@ internal fun FlightDetail.actualDetails(
             actualDetailsJson.decodeFromString<SaveFlightDepartureRequest>(it.inputJson).also { input -> OffsetDateTime.parse(input.atd) }
         }.getOrNull()
     }
+    val arrival = localArrival?.targetSubmissionId?.let { target ->
+        arrivalSubmissions.firstOrNull { it.id.equals(target, true) }
+            ?: pendingArrival.reviewedArrivalJson?.let { raw -> runCatching {
+                actualDetailsJson.decodeFromString<FlightArrivalSubmission?>(raw)?.takeIf { it.id.equals(target, true) }
+            }.getOrNull() }
+    } ?: visibleArrival().takeIf { localArrival?.targetSubmissionId == null }
+    val departure = localDeparture?.targetSubmissionId?.let { target ->
+        departureSubmissions.firstOrNull { it.id.equals(target, true) }
+            ?: pendingDeparture.reviewedDepartureJson.let { raw -> runCatching {
+                actualDetailsJson.decodeFromString<List<FlightDepartureSubmission>>(raw).firstOrNull { it.id.equals(target, true) }
+            }.getOrNull() }
+    } ?: visibleDeparture().takeIf { localDeparture?.targetSubmissionId == null }
     val ata = localArrival?.ata ?: arrival?.ata
     val atd = localDeparture?.atd ?: departure?.atd
     if (ata == null && atd == null) return null
@@ -59,12 +94,13 @@ internal fun FlightDetail.actualDetails(
         ?: currentUserName?.takeIf { it.isNotBlank() }
         ?: youLabel
 
-    val receiver = if (localArrival != null) checkNotNull(currentStaffMemberId).let { it to actorName(it) }
+    val receiver = if (localArrival != null && localArrival.targetSubmissionId == null) checkNotNull(currentStaffMemberId).let { it to actorName(it) }
         else arrival?.receivedByEmployee?.let { it.staffMemberId to it.fullName }
-    val handler = if (localDeparture != null) checkNotNull(currentStaffMemberId).let { it to actorName(it) }
+    val handler = if (localDeparture != null && localDeparture.targetSubmissionId == null) checkNotNull(currentStaffMemberId).let { it to actorName(it) }
         else departure?.handledByEmployee?.let { it.staffMemberId to it.fullName }
     val model = if (localArrival != null) {
         aircraftTypes.firstOrNull { it.id.equals(localArrival.aircraftTypeId, true) }?.model
+            ?: arrival?.takeIf { it.aircraftTypeId.equals(localArrival.aircraftTypeId, true) }?.aircraftTypeModel
             ?: arrivalSubmissions.firstOrNull { it.aircraftTypeId.equals(localArrival.aircraftTypeId, true) }?.aircraftTypeModel
             ?: aircraftTypeModel?.takeIf { aircraftTypeId.equals(localArrival.aircraftTypeId, true) }
     } else arrival?.aircraftTypeModel

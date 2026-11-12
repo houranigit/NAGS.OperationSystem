@@ -6,6 +6,8 @@ import com.nags.operations.data.FlightDepartureSubmission
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.SaveFlightDepartureRequest
 import com.nags.operations.data.departureEditable
+import com.nags.operations.data.canUpdateDepartureSubmission
+import com.nags.operations.data.validArrivalId
 import com.nags.operations.data.db.dao.FlightDepartureDao
 import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
 import com.nags.operations.data.hasOwnCancellation
@@ -67,7 +69,10 @@ class FlightDeparturesRepository(
         check(!hasSavedCancellation(flight.id)) { "Revert your cancellation and wait for it to sync before saving work on this flight." }
         val owner = checkNotNull(currentOwner()) { "Sign in to save departure details." }
         val observed = generation
-        check(flight.departureEditable()) { "Only the employee who submitted the departure can update it." }
+        check(if (input.targetSubmissionId == null) flight.departureEditable()
+            else validArrivalId(input.targetSubmissionId) && flight.canUpdateDepartureSubmission(input.targetSubmissionId)) {
+            "You are not eligible to update this departure submission."
+        }
         check(flight.isInFlightWindow(now())) { "This flight is outside your current flight window." }
         val ownAcknowledged = localWrites.withLock {
             resetAcknowledgments(owner)
@@ -84,6 +89,9 @@ class FlightDeparturesRepository(
             val preserveAttempt = existing?.status == "pending"
             val normalized = input.normalized()
             val existingInput = existing?.let { runCatching { json.decodeFromString<SaveFlightDepartureRequest>(it.inputJson) }.getOrNull() }
+            check(existing == null || existingInput != null && existingInput.targetSubmissionId.equals(normalized.targetSubmissionId, true)) {
+                "Sync or discard the saved departure before updating a different submission."
+            }
             val reusedFile = existing?.signatureFile?.takeIf { normalized.signatureContent == null }
             val desired = normalized.copy(signatureContent = null,
                 signatureSignedAtUtc = if (reusedFile != null) existingInput?.signatureSignedAtUtc
@@ -229,8 +237,9 @@ class FlightDeparturesRepository(
             val comparable = current.departureSubmissions.map { live ->
                 if (reviewed.firstOrNull { it.id == live.id }?.signatureVersion == null) live.copy(signatureVersion = null) else live
             }
-            if (current.hasOwnCancellation() || (current.hasCancellationSubmission &&
-                    !json.decodeFromString<SaveFlightDepartureRequest>(original.inputJson).acknowledgeConflictingSubmission) || comparable.sortedBy { it.id } != reviewed.sortedBy { it.id })
+            val input = json.decodeFromString<SaveFlightDepartureRequest>(original.inputJson)
+            if (current.hasOwnCancellation() || input.targetSubmissionId?.let { !current.canUpdateDepartureSubmission(it) } == true ||
+                (current.hasCancellationSubmission && !input.acknowledgeConflictingSubmission) || comparable.sortedBy { it.id } != reviewed.sortedBy { it.id })
                 throw ApiException(409, "Departure details changed. Reload the flight and review them before saving again.")
         }
         return localWrites.withLock {
@@ -261,9 +270,10 @@ class FlightDeparturesRepository(
     }
 
     private fun relaxesDeparture(row: FlightDeparturePendingEntity): Boolean = runCatching {
-        val previous = json.decodeFromString<List<FlightDepartureSubmission>>(row.reviewedDepartureJson)
-            .firstOrNull { it.submittedByEmployee.staffMemberId.equals(row.staffMemberId, true) } ?: return@runCatching false
         val desired = json.decodeFromString<SaveFlightDepartureRequest>(row.inputJson)
+        val previous = json.decodeFromString<List<FlightDepartureSubmission>>(row.reviewedDepartureJson)
+            .firstOrNull { if (desired.targetSubmissionId == null) it.submittedByEmployee.staffMemberId.equals(row.staffMemberId, true)
+                else it.id.equals(desired.targetSubmissionId, true) } ?: return@runCatching false
         !OffsetDateTime.parse(desired.atd).toInstant().isBefore(OffsetDateTime.parse(previous.atd).toInstant())
     }.getOrDefault(false)
 
@@ -367,10 +377,14 @@ class FlightDeparturesRepository(
         check(runCatching { Base64.getDecoder().decode(version).size == 8 }.getOrDefault(false)) { "Reload the flight before saving departure details." }
         val atd = runCatching { OffsetDateTime.parse(input.atd) }.getOrNull()
         check(atd != null && atd.year in 1..9999 && atd.toInstant() != Instant.parse("0001-01-01T00:00:00Z")) { "Actual departure time is required." }
-        val own = json.decodeFromString<List<FlightDepartureSubmission>>(reviewedJson).any { it.submittedByEmployee.staffMemberId.equals(staffId, true) }
+        check(input.targetSubmissionId == null || validArrivalId(input.targetSubmissionId)) { "Reload the departure submission before saving." }
+        val recorded = json.decodeFromString<List<FlightDepartureSubmission>>(reviewedJson).any {
+            if (input.targetSubmissionId == null) it.submittedByEmployee.staffMemberId.equals(staffId, true)
+            else it.id.equals(input.targetSubmissionId, true)
+        }
         if (hasSignature) {
             val signed = input.signatureSignedAtUtc?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() }
             check(signed != null && signed.year in 1..9999 && signed.toInstant() != Instant.parse("0001-01-01T00:00:00Z")) { "Customer signing time is required." }
-        } else check(own && input.signatureSignedAtUtc == null) { "Customer signature is required." }
+        } else check(recorded && input.signatureSignedAtUtc == null) { "Customer signature is required." }
     }
 }

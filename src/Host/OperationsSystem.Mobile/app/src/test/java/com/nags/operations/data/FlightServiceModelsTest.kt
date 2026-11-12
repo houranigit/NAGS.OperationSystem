@@ -34,6 +34,9 @@ class FlightServiceModelsTest {
         assertTrue(ownEnd.serviceDeletable())
         val foreignEnd = ownEnd.copy(endedByUserId = "other")
         assertFalse(foreignEnd.serviceSelectionEditable())
+        assertTrue(foreignEnd.copy(canChangeService = true).serviceSelectionEditable())
+        assertTrue(foreignEnd.copy(canDelete = true).serviceDeletable())
+        assertFalse(foreignEnd.copy(canChangeService = true, canDelete = false).serviceDeletable())
         assertFalse(foreignEnd.serviceDeletable())
         assertTrue(foreignEnd.copy(endUtc = null, endedByUserId = null).serviceSelectionEditable())
         val foreignFile = record.copy(attachments = listOf(FlightServiceAttachmentRecord("file", 2, "file.pdf",
@@ -43,7 +46,7 @@ class FlightServiceModelsTest {
         assertFalse(record.copy(canChangeService = false).serviceSelectionEditable())
         assertFalse(record.copy(canDelete = false).serviceDeletable())
         assertFalse(record.copy(canEdit = false, canChangeService = true, canDelete = true).serviceSelectionEditable())
-        assertFalse(record.copy(canEdit = false, canChangeService = true, canDelete = true).serviceDeletable())
+        assertTrue(record.copy(canEdit = false, canChangeService = true, canDelete = true).serviceDeletable())
     }
 
     @Test fun omittedCapabilitiesInOldCacheRemainUsableAndDoNotGrantRightsToOtherEmployees() {

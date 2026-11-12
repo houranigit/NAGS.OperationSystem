@@ -1,3 +1,6 @@
+using Operations.Contracts;
+using System.Text.Json;
+using MasterData.Contracts.Seeding;
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
@@ -53,7 +56,7 @@ public sealed class FlightServiceSaveTests
     [Fact]
     public async Task Another_users_end_locks_selection_and_delete_without_locking_creator_core_corrections()
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await Fixture.CreateAsync(assigned: false);
         var id = Guid.NewGuid();
         var input = fixture.ClosedPerformerInput;
         (await fixture.SaveAsync(id, input)).IsSuccess.ShouldBeTrue();
@@ -132,7 +135,7 @@ public sealed class FlightServiceSaveTests
     [Fact]
     public async Task Legacy_end_without_known_attribution_keeps_existing_delete_protection()
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await Fixture.CreateAsync(assigned: false);
         var id = Guid.NewGuid();
         (await fixture.SaveAsync(id, fixture.ClosedPerformerInput with { EndUtc = Now.AddMinutes(30) }))
             .IsSuccess.ShouldBeTrue();
@@ -173,7 +176,7 @@ public sealed class FlightServiceSaveTests
     [Fact]
     public async Task Noncreator_may_set_the_end_of_open_work_without_changing_its_creator_or_core()
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await Fixture.CreateAsync(assigned: false);
         var id = Guid.NewGuid();
         (await fixture.SaveAsync(id, fixture.ClosedPerformerInput)).IsSuccess.ShouldBeTrue();
         var end = Now.AddMinutes(30);
@@ -195,7 +198,7 @@ public sealed class FlightServiceSaveTests
     [InlineData("media")]
     public async Task Noncreator_cannot_mix_a_core_performer_or_media_change_with_closing_work(string change)
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await Fixture.CreateAsync(assigned: false);
         var id = Guid.NewGuid();
         (await fixture.SaveAsync(id, fixture.ClosedPerformerInput)).IsSuccess.ShouldBeTrue();
         var input = fixture.ClosedPerformerInput with { EndUtc = Now.AddMinutes(30) };
@@ -224,7 +227,7 @@ public sealed class FlightServiceSaveTests
     [InlineData(true)]
     public async Task Creator_cannot_change_or_clear_another_users_recorded_end(bool clear)
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await Fixture.CreateAsync(assigned: false);
         var id = Guid.NewGuid();
         var end = Now.AddMinutes(30);
         (await fixture.SaveAsync(id, fixture.ClosedPerformerInput)).IsSuccess.ShouldBeTrue();
@@ -286,7 +289,7 @@ public sealed class FlightServiceSaveTests
     [Fact]
     public async Task Creator_cannot_delete_work_closed_by_someone_else()
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await Fixture.CreateAsync(assigned: false);
         var id = Guid.NewGuid();
         (await fixture.SaveAsync(id, fixture.ClosedPerformerInput)).IsSuccess.ShouldBeTrue();
         (await fixture.SaveAsync(id, fixture.ClosedPerformerInput with { EndUtc = Now.AddMinutes(30) }, fixture.Other))
@@ -688,7 +691,7 @@ public sealed class FlightServiceSaveTests
     [InlineData(true)]
     public async Task A_permitted_closer_preserves_unchanged_historical_performer_snapshots_after_deactivation_or_move(bool relocated)
     {
-        await using var fixture = await Fixture.CreateAsync();
+        await using var fixture = await Fixture.CreateAsync(assigned: false);
         var id = Guid.NewGuid();
         var saved = await fixture.SaveAsync(id, fixture.ClosedPerformerInput);
         saved.IsSuccess.ShouldBeTrue();
@@ -768,6 +771,113 @@ public sealed class FlightServiceSaveTests
     private static SaveFlightServiceAttachmentRequest NewImage() =>
         new(Guid.NewGuid(), (int)AttachmentKind.Image, "photo.png", "image/png", Png);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Assigned_employee_fully_corrects_active_or_done_service_preserving_creator_and_notifying_once(bool done)
+    {
+        await using var f = await Fixture.CreateAsync();
+        var id = Guid.NewGuid();
+        var image = NewImage();
+        var input = f.ClosedPerformerInput with { EndUtc = done ? Now.AddMinutes(30) : null, Attachments = [image] };
+        var initial = await f.SaveAsync(id, input);
+        initial.IsSuccess.ShouldBeTrue();
+        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(0);
+        var nextService = Guid.NewGuid();
+        f.Reader.AllowedServicesOverride = new HashSet<Guid> { input.ServiceId, nextService };
+        var replacement = NewImage();
+        var changed = input with { ServiceId = nextService, Notes = " Assigned correction ", CustomerReferenceNumber = "CORRECTED",
+            Performers = [input.Performers.Single() with { StartUtc = Now }], Attachments = [replacement] };
+
+        var corrected = await f.SaveAsync(id, changed, f.Other);
+
+        corrected.IsSuccess.ShouldBeTrue();
+        var dto = corrected.Value.Service;
+        dto.Id.ShouldBe(id); dto.CreatedByUserId.ShouldBe(f.Owner.UserId); dto.CreatedAtUtc.ShouldBe(initial.Value.Service.CreatedAtUtc);
+        dto.CreatedByDisplayName.ShouldBe("Original creator account"); dto.UpdatedByUserId.ShouldBe(f.Other.UserId);
+        dto.CanEdit.ShouldBeTrue(); dto.CanSetEnd.ShouldBeTrue(); dto.CanChangeService.ShouldBeTrue(); dto.CanDelete.ShouldBeTrue();
+        dto.EndedByUserId.ShouldBe(done ? f.Owner.UserId : null);
+        dto.Performers.Single().Id.ShouldBe(input.Performers.Single().Id); dto.Notes.ShouldBe("Assigned correction");
+        dto.Attachments.Single().Id.ShouldBe(replacement.Id); f.Storage.Files.ShouldHaveSingleItem();
+        var envelope = await f.Db.OutboxMessages.SingleAsync();
+        var notice = JsonSerializer.Deserialize<FlightSubmissionUpdated>(envelope.Content)!;
+        notice.SubmissionKind.ShouldBe(FlightSubmissionKind.Service); notice.SubmissionId.ShouldBe(id);
+        notice.SubmittedByUserId.ShouldBe(f.Owner.UserId); notice.SubmittedByStaffMemberId.ShouldBeNull();
+        notice.UpdatedByDisplayName.ShouldBe("Assigned editor account");
+        var saves = f.Writes.SaveCalls; var uploads = f.Storage.SaveCalls;
+        await f.ChangeVersionAsync();
+        f.Names.Values[f.Owner.UserId] = "Renamed creator account";
+        (await f.SaveAsync(id, changed, f.Other, InitialVersion)).Value.Service.CreatedByDisplayName.ShouldBe("Renamed creator account");
+        f.Writes.SaveCalls.ShouldBe(saves); f.Storage.SaveCalls.ShouldBe(uploads); (await f.Db.OutboxMessages.CountAsync()).ShouldBe(1);
+        (await f.SaveAsync(id, changed with { Notes = "Stale" }, f.Other, InitialVersion)).Error.Code.ShouldBe("General.ConcurrencyConflict");
+        var immutable = changed with { Attachments = [replacement with { FileName = "different.png" }] };
+        (await f.SaveAsync(id, immutable, f.Other)).Error.Code.ShouldBe("Operations.FlightService.AttachmentImmutable");
+        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(1);
+        var ended = changed with { EndUtc = Now.AddMinutes(35) };
+        (await f.SaveAsync(id, ended, f.Other)).Value.Service.EndedByUserId.ShouldBe(f.Other.UserId);
+        // The assigned creator may correct selection while retaining the other employee's End.
+        var ownerEdit = await f.SaveAsync(id, ended with { ServiceId = input.ServiceId });
+        ownerEdit.IsSuccess.ShouldBeTrue(); ownerEdit.Value.Service.EndedByUserId.ShouldBe(f.Other.UserId);
+        ownerEdit.Value.Service.CanDelete.ShouldBeTrue(); (await f.Db.OutboxMessages.CountAsync()).ShouldBe(2);
+        (await f.DeleteAsync(id, f.Other)).IsSuccess.ShouldBeTrue();
+        (await f.Db.OutboxMessages.OrderBy(item => item.OccurredOnUtc).ToListAsync()).Count.ShouldBe(3);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Foreign_service_correction_commit_failure_or_lost_response_never_duplicates_its_event(bool committed)
+    {
+        await using var f = await Fixture.CreateAsync(); var id = Guid.NewGuid();
+        (await f.SaveAsync(id)).IsSuccess.ShouldBeTrue();
+        var changed = f.Input with { Notes = "Assigned correction" };
+        f.Writes.Save = committed ? async ct => { await f.Db.SaveChangesAsync(ct); throw new IOException("Response loss"); }
+            : _ => throw new DbUpdateConcurrencyException("Stale write");
+        if (committed) await Should.ThrowAsync<IOException>(() => f.SaveAsync(id, changed, f.Other));
+        else (await f.SaveAsync(id, changed, f.Other)).Error.Code.ShouldBe("General.ConcurrencyConflict");
+        f.Db.ChangeTracker.Clear();
+        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(committed ? 1 : 0);
+        if (committed) (await f.SaveAsync(id, changed, f.Other, InitialVersion)).IsSuccess.ShouldBeTrue();
+        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(committed ? 1 : 0);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Assigned_foreign_delete_active_or_done_notifies_creator_once_even_after_response_loss(bool done, bool responseLoss)
+    {
+        await using var f = await Fixture.CreateAsync(); var id = Guid.NewGuid();
+        var input = f.ClosedPerformerInput with { EndUtc = done ? Now.AddMinutes(30) : null, Attachments = [NewImage()] };
+        (await f.SaveAsync(id, input)).IsSuccess.ShouldBeTrue();
+        if (responseLoss) f.Writes.Save = async ct => { await f.Db.SaveChangesAsync(ct); throw new IOException("Response loss"); };
+        if (responseLoss) await Should.ThrowAsync<IOException>(() => f.DeleteAsync(id, f.Other));
+        else (await f.DeleteAsync(id, f.Other)).IsSuccess.ShouldBeTrue();
+        f.Db.ChangeTracker.Clear();
+        var notice = JsonSerializer.Deserialize<FlightSubmissionUpdated>((await f.Db.OutboxMessages.SingleAsync()).Content)!;
+        notice.Action.ShouldBe(FlightSubmissionAction.Deleted); notice.SubmittedByUserId.ShouldBe(f.Owner.UserId);
+        notice.SubmissionId.ShouldBe(id); notice.SubmissionKind.ShouldBe(FlightSubmissionKind.Service);
+        notice.UpdatedByDisplayName.ShouldBe("Assigned editor account");
+        f.Storage.Files.ShouldBeEmpty();
+        (await f.DeleteAsync(id, f.Other, InitialVersion)).IsSuccess.ShouldBeTrue();
+        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Rejected_foreign_delete_preserves_record_media_and_has_no_notification()
+    {
+        await using var f = await Fixture.CreateAsync(); var id = Guid.NewGuid();
+        (await f.SaveAsync(id, f.Input with { Attachments = [NewImage()] })).IsSuccess.ShouldBeTrue();
+        await f.ChangeVersionAsync();
+        (await f.DeleteAsync(id, f.Other, InitialVersion)).Error.Code.ShouldBe("General.ConcurrencyConflict");
+        f.Writes.Save = _ => throw new DbUpdateConcurrencyException("Injected race");
+        (await f.DeleteAsync(id, f.Other)).Error.Code.ShouldBe("General.ConcurrencyConflict");
+        f.Db.ChangeTracker.Clear();
+        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(0); f.Storage.Files.ShouldHaveSingleItem();
+        (await f.ReadAsync()).Services.ShouldHaveSingleItem().Id.ShouldBe(id);
+    }
+
     private sealed record Actor(Guid StaffMemberId, Guid UserId);
 
     private sealed class Fixture : IAsyncDisposable
@@ -776,6 +886,7 @@ public sealed class FlightServiceSaveTests
         public required WriteBoundary Writes { get; init; }
         public required MemoryStorage Storage { get; init; }
         public required SchedulingMasterDataReader Reader { get; init; }
+        public required WorkUserNames Names { get; init; }
         public required Guid FlightId { get; init; }
         public required Actor Owner { get; init; }
         public required Actor Other { get; init; }
@@ -792,7 +903,7 @@ public sealed class FlightServiceSaveTests
             var current = version ?? (await Db.Flights.SingleAsync(f => f.Id == FlightId)).RowVersion;
             var handler = new SaveFlightServiceCommandHandler(Writes,
                 new Scope(new(Reader.StationId, acting.StaffMemberId, acting.UserId, Now)),
-                new MasterDataResolver(Reader), new Clock(), NoopMobileSyncBroadcaster.Instance, Storage);
+                new MasterDataResolver(Reader), new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, Names);
             return await handler.Handle(new SaveFlightServiceCommand(FlightId, recordId, input ?? Input, current), CancellationToken.None);
         }
 
@@ -802,7 +913,7 @@ public sealed class FlightServiceSaveTests
             var current = version ?? (await Db.Flights.SingleAsync(f => f.Id == FlightId)).RowVersion;
             var handler = new DeleteFlightServiceCommandHandler(Writes,
                 new Scope(new(Reader.StationId, acting.StaffMemberId, acting.UserId, Now)),
-                new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, new MasterDataResolver(Reader));
+                new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, new MasterDataResolver(Reader), Names);
             return await handler.Handle(new DeleteFlightServiceCommand(FlightId, recordId, current), CancellationToken.None);
         }
 
@@ -833,7 +944,7 @@ public sealed class FlightServiceSaveTests
             Db.ChangeTracker.Clear();
         }
 
-        public static async Task<Fixture> CreateAsync()
+        public static async Task<Fixture> CreateAsync(bool assigned = true)
         {
             var db = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -846,9 +957,9 @@ public sealed class FlightServiceSaveTests
                 new StationSnapshot(reader.StationId, "RUH", "Riyadh"),
                 new OperationTypeSnapshot(Guid.NewGuid(), "Transit"), FlightNumber.Create("SV100", "SV").Value,
                 ScheduledTime.Create(Now.AddHours(-1), Now.AddHours(1)).Value, null,
-                [new ServiceSnapshot(reader.ServiceId, "Planned service")],
-                [new StaffMemberSnapshot(owner.StaffMemberId, "Service creator", "E1"),
-                    new StaffMemberSnapshot(other.StaffMemberId, "Other operator", "E2")], owner.UserId, Now).Value;
+                [new ServiceSnapshot(assigned ? reader.ServiceId : WellKnownMasterDataIds.AircraftPerLandingService, "Planned service")],
+                assigned ? [new StaffMemberSnapshot(owner.StaffMemberId, "Service creator", "E1"),
+                    new StaffMemberSnapshot(other.StaffMemberId, "Other operator", "E2")] : [], owner.UserId, Now).Value;
             db.Flights.Add(flight);
             db.Entry(flight).Property(f => f.RowVersion).CurrentValue = InitialVersion.ToArray();
             await db.SaveChangesAsync();
@@ -856,6 +967,7 @@ public sealed class FlightServiceSaveTests
             {
                 Db = db, Writes = new WriteBoundary(db), Storage = new MemoryStorage(), Reader = reader,
                 FlightId = flight.Id, Owner = owner, Other = other,
+                Names = new(new Dictionary<Guid, string> { [owner.UserId] = "Original creator account", [other.UserId] = "Assigned editor account" }),
                 Input = new(reader.ServiceId, Now.AddMinutes(-30), null, "REF-1", "Service notes",
                     [new(Guid.NewGuid(), owner.StaffMemberId, Now.AddMinutes(-20))])
             };

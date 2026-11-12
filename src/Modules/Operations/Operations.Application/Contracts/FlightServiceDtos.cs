@@ -26,19 +26,21 @@ public sealed record FlightServiceDto(Guid Id, Guid ServiceId, string ServiceNam
     string? CustomerReferenceNumber, string? Notes, IReadOnlyList<FlightServicePerformerDto> Performers,
     Guid CreatedByUserId, Guid? EndedByUserId, DateTimeOffset CreatedAtUtc, Guid? UpdatedByUserId, DateTimeOffset? UpdatedAtUtc,
     bool CanEdit, bool CanSetEnd, IReadOnlyList<FlightServiceAttachmentDto> Attachments,
-    bool CanChangeService = false, bool CanDelete = false)
+    bool CanChangeService = false, bool CanDelete = false, string? CreatedByDisplayName = null, string? EndedByDisplayName = null)
 {
-    public static FlightServiceDto Map(FlightService service, Guid? userId = null, bool canOperate = false) => new(
+    public static FlightServiceDto Map(FlightService service, Guid? userId = null, bool canOperate = false,
+        bool assignedCorrection = false, string? createdByDisplayName = null, string? endedByDisplayName = null) => new(
         service.Id, service.Service.ServiceId, service.Service.Name, service.Window.FromUtc, service.Window.ToUtc,
         service.CustomerReferenceNumber, service.Notes,
         service.Performers.OrderBy(p => p.Id).Select(p => new FlightServicePerformerDto(p.Id, p.Employee.StaffMemberId,
             p.Employee.FullName, p.Employee.EmployeeId, p.Window.FromUtc, p.Window.ToUtc)).ToList(),
         service.CreatedByUserId, service.EndedByUserId, service.CreatedAtUtc, service.UpdatedByUserId, service.UpdatedAtUtc,
-        canOperate && userId == service.CreatedByUserId,
-        canOperate && (service.Window.ToUtc is null || userId == service.EndedByUserId),
+        canOperate && (userId == service.CreatedByUserId || assignedCorrection),
+        canOperate && (assignedCorrection || service.Window.ToUtc is null || userId == service.EndedByUserId),
         service.Attachments.OrderBy(a => a.UploadedAtUtc).ThenBy(a => a.Id).Select(FlightServiceAttachmentDto.Map).ToList(),
-        canOperate && userId == service.CreatedByUserId && !service.HasOtherUserEnd,
-        canOperate && userId == service.CreatedByUserId && (service.Window.ToUtc is null || userId == service.EndedByUserId));
+        canOperate && (assignedCorrection || userId == service.CreatedByUserId && !service.HasOtherUserEnd),
+        canOperate && (assignedCorrection || userId == service.CreatedByUserId && (service.Window.ToUtc is null || userId == service.EndedByUserId)),
+        createdByDisplayName, endedByDisplayName);
 }
 
 public sealed record FlightServiceSavedDto(FlightServiceDto Service, string RowVersion, int ActiveWorkCount, int CompletedWorkCount);

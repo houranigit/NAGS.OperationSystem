@@ -10,6 +10,7 @@ class NotificationAppearanceTest {
             Triple(NotificationKinds.StaffAssignedToFlight, 0xFF007AFF.toInt(), R.drawable.ic_notification_assignment),
             Triple(NotificationKinds.FlightReminder, 0xFFC76A0A.toInt(), R.drawable.ic_notification_reminder),
             Triple(NotificationKinds.FlightScheduleUpdated, 0xFF1689B9.toInt(), R.drawable.ic_notification_schedule),
+            Triple(NotificationKinds.FlightSubmissionUpdated, 0xFF1689B9.toInt(), R.drawable.ic_notification_schedule),
             Triple(NotificationKinds.EmployeeInvitedToFlight, 0xFF248A3D.toInt(), R.drawable.ic_notification_invitation),
         )
         expected.forEach { (kind, color, icon) ->

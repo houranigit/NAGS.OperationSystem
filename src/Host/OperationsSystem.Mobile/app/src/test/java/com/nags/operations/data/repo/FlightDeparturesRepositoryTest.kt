@@ -60,6 +60,71 @@ class FlightDeparturesRepositoryTest {
         fetchFlight = { fetches++; live }, now = { at },
         onSignatureAcknowledged = { id, saved, bytes -> previewAcknowledged(id, saved, bytes) })
 
+    @Test fun targetedAssignedCorrectionReusesOnlyTheRecordedTargetsSignature() = runBlocking {
+        val author = employee.copy(staffMemberId = "22222222-2222-2222-2222-222222222222", fullName = "Original author")
+        val original = submitted.copy(id = "66666666-6666-6666-6666-666666666666", submittedByEmployee = author,
+            handledByEmployee = author, signatureVersion = "original-signature")
+        val assigned = flight.copy(departureSubmissions = listOf(original), assignedEmployees = listOf(employee))
+        val correction = input.copy(signatureContent = null, signatureSignedAtUtc = null, targetSubmissionId = original.id)
+        assertFalse(assigned.departureEditable())
+        assertTrue(assigned.canUpdateDepartureSubmission(original.id))
+        assertTrue(runCatching { repository().save(assigned.copy(assignedEmployees = emptyList()), correction) }.isFailure)
+        assertTrue(runCatching { repository().save(assigned, correction.copy(targetSubmissionId = null)) }.isFailure)
+        repository().save(assigned, correction)
+        val queued = dao.rows(owner.value!!).single()
+        assertEquals(listOf(original), Json.decodeFromString<List<FlightDepartureSubmission>>(queued.reviewedDepartureJson))
+        assertNull(queued.signatureFile)
+        send = { _, value, version ->
+            sent += value to version
+            FlightDepartureSaved(original.copy(remarks = value.remarks), "AAAAAAAAAAI=")
+        }
+        online = true
+        assertFalse(repository().syncPending())
+        assertEquals(listOf(correction.normalized() to flight.rowVersion), sent)
+        assertTrue(files.files.isEmpty())
+    }
+
+    @Test fun targetedSignatureReplacementRetainsExactRetryAndRejectsTargetSwitch() = runBlocking {
+        val author = employee.copy(staffMemberId = "22222222-2222-2222-2222-222222222222")
+        val original = submitted.copy(id = "66666666-6666-6666-6666-666666666666", submittedByEmployee = author)
+        val other = original.copy(id = "77777777-7777-7777-7777-777777777777")
+        val assigned = flight.copy(departureSubmissions = listOf(original, other), assignedEmployees = listOf(employee))
+        val correction = input.copy(targetSubmissionId = original.id)
+        val repo = repository()
+        repo.save(assigned, correction)
+        online = true; failure = IOException("lost response")
+        assertTrue(repo.syncPending())
+        val frozen = dao.rows(owner.value!!).single()
+        assertTrue(runCatching { repo.save(assigned, correction.copy(targetSubmissionId = other.id)) }.isFailure)
+        repo.save(assigned, correction.copy(signatureContent = null, signatureSignedAtUtc = null, remarks = "later edit"))
+        assertEquals(frozen.attemptInputJson, dao.rows(owner.value!!).single().attemptInputJson)
+        assertEquals(frozen.attemptSignatureFile, dao.rows(owner.value!!).single().attemptSignatureFile)
+        failure = null
+        send = { _, value, version -> sent += value to version; FlightDepartureSaved(original, "AAAAAAAAAAI=") }
+        val restarted = repository()
+        assertTrue(restarted.syncPending())
+        assertFalse(restarted.syncPending())
+        assertEquals(sent[0], sent[1])
+        assertEquals(original.id, sent.last().first.targetSubmissionId)
+        assertNull(sent.last().first.signatureContent)
+        assertNull(sent.last().first.signatureSignedAtUtc)
+        assertTrue(files.files.isEmpty())
+    }
+
+    @Test fun targetedComparisonRejectsLostAssignmentBeforeUpload() = runBlocking {
+        val original = submitted.copy(id = "66666666-6666-6666-6666-666666666666",
+            submittedByEmployee = employee.copy(staffMemberId = "22222222-2222-2222-2222-222222222222"))
+        val assigned = flight.copy(departureSubmissions = listOf(original), assignedEmployees = listOf(employee))
+        val repo = repository()
+        repo.save(assigned, input.copy(signatureContent = null, signatureSignedAtUtc = null, targetSubmissionId = original.id))
+        repo.onPriorWriteAcknowledged(flight.id, flight.rowVersion, "AAAAAAAAAAI=")
+        live = assigned.copy(assignedEmployees = emptyList())
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals("conflict", dao.rows(owner.value!!).single().status)
+        assertTrue(sent.isEmpty())
+    }
+
     @Test fun laterDepartureRelaxesBoundsBeforeServicesAndEarlierDepartureWaitsForCorrections() = runBlocking {
         val repo = repository()
         val existing = flight.copy(departureSubmissions = listOf(submitted))

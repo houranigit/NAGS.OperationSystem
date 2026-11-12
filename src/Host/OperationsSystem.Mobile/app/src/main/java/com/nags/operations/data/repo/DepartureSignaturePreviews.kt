@@ -3,6 +3,7 @@ package com.nags.operations.data.repo
 import com.nags.operations.data.FlightDepartureSaved
 import com.nags.operations.data.FlightDepartureSubmission
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.data.SaveFlightDepartureRequest
 import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
 import com.nags.operations.data.visibleDeparture
 import java.io.File
@@ -15,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 
 /** Private account/API-scoped previews; queued signature ownership remains in the departure queue. */
 class DepartureSignaturePreviews(
@@ -35,7 +37,18 @@ class DepartureSignaturePreviews(
             val bytes = pendingBytes(flight.id, pending.changeId)
             return bytes?.takeIf { owner == currentOwner() && generation == observed }
         }
-        val submission = flight.visibleDeparture() ?: return null
+        val retained = pending?.takeIf { it.ownerSubject == owner && it.flightId == flight.id &&
+            it.staffMemberId.equals(flight.currentStaffMemberId, true) }
+        val targetSubmissionId = retained?.let { runCatching {
+            Json.decodeFromString<SaveFlightDepartureRequest>(it.inputJson).targetSubmissionId
+        }.getOrNull() }
+        val submission = if (targetSubmissionId == null) flight.visibleDeparture()
+            else flight.departureSubmissions.firstOrNull { it.id.equals(targetSubmissionId, true) }
+                ?: retained.let { row -> runCatching {
+                    Json.decodeFromString<List<FlightDepartureSubmission>>(row.reviewedDepartureJson)
+                        .firstOrNull { it.id.equals(targetSubmissionId, true) }
+                }.getOrNull() }
+        if (submission == null) return null
         val key = key(owner, flight.id, submission)
         val cached = gate.withLock {
             if (owner != currentOwner() || observed != generation) return@withLock null

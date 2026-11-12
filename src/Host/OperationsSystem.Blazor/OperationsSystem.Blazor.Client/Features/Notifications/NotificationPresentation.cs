@@ -32,7 +32,7 @@ public static class NotificationPresentation
     {
         "EmployeeInvitedToFlight" => "person_add",
         "FlightReminder" => "alarm",
-        "FlightScheduleUpdated" => "event_repeat",
+        "FlightScheduleUpdated" or "FlightSubmissionUpdated" => "event_repeat",
         _ => "flight_takeoff"
     };
 
@@ -40,7 +40,7 @@ public static class NotificationPresentation
     {
         "FlightReminder" => "notification-tone--reminder",
         "EmployeeInvitedToFlight" => "notification-tone--invitation",
-        "FlightScheduleUpdated" => "notification-tone--info",
+        "FlightScheduleUpdated" or "FlightSubmissionUpdated" => "notification-tone--info",
         _ => "notification-tone--assignment"
     };
 

@@ -56,6 +56,87 @@ class FlightArrivalsRepositoryTest {
         schedule = { scheduled++ }, json = Json, now = { at }, onAcknowledgedBeforeDelete = { id, before, after -> durableAcknowledgment(id, before, after) },
         fetchFlight = { live ?: flight }, hasUnacknowledgedOtherWork = { unknownOtherWork }, hasSavedServices = { savedServices })
 
+    @Test fun assignedEmployeeCanQueueAnExplicitCorrectionWithoutChangingRecordedAttribution() = runBlocking {
+        val original = submitted.copy(id = "66666666-6666-6666-6666-666666666666",
+            submittedByEmployee = employee.copy(staffMemberId = otherStaff, fullName = "Original author"))
+        val assigned = flight.copy(arrivalSubmissions = listOf(original), assignedEmployees = listOf(employee))
+        val correction = input.copy(targetSubmissionId = original.id)
+        assertFalse(assigned.arrivalEditable())
+        assertTrue(assigned.canUpdateArrivalSubmission(original.id))
+        assertFalse(assigned.copy(assignedEmployees = emptyList()).canUpdateArrivalSubmission(original.id))
+        assertTrue(runCatching { repository().save(assigned.copy(assignedEmployees = emptyList()), correction) }.isFailure)
+        assertTrue(runCatching { repository().save(assigned, input) }.isFailure)
+        repository().save(assigned, correction)
+        val row = dao.rows(owner.value!!).single()
+        assertEquals(original, Json.decodeFromString<FlightArrivalSubmission>(row.reviewedArrivalJson!!))
+        val sent = mutableListOf<SaveFlightArrivalRequest>()
+        send = { _, value, _ -> sent += value; FlightArrivalSaved(original.copy(remarks = value.remarks), "AAAAAAAAAAI=") }
+        online = true
+        assertFalse(repository().syncPending())
+        assertEquals(listOf(correction.normalized()), sent)
+        assertEquals(otherStaff, original.submittedByEmployee.staffMemberId)
+    }
+
+    @Test fun targetedCorrectionRetainsFrozenTargetAndRejectsSwitchingSubmissions() = runBlocking {
+        val original = submitted.copy(id = "66666666-6666-6666-6666-666666666666",
+            submittedByEmployee = employee.copy(staffMemberId = otherStaff))
+        val other = original.copy(id = "77777777-7777-7777-7777-777777777777")
+        val assigned = flight.copy(arrivalSubmissions = listOf(original, other), assignedEmployees = listOf(employee))
+        val first = input.copy(targetSubmissionId = original.id)
+        val requests = mutableListOf<Pair<SaveFlightArrivalRequest, String>>()
+        send = { _, value, version ->
+            requests += value to version
+            failure?.let { throw it }
+            FlightArrivalSaved(original.copy(remarks = value.remarks), "AAAAAAAAAAI=")
+        }
+        val repo = repository()
+        repo.save(assigned, first)
+        online = true; failure = IOException("lost response")
+        assertTrue(repo.syncPending())
+        val frozen = dao.rows(owner.value!!).single().attemptInputJson
+        assertTrue(runCatching { repo.save(assigned, first.copy(targetSubmissionId = other.id)) }.isFailure)
+        val latest = first.copy(remarks = "correction after timeout")
+        repo.save(assigned, latest)
+        assertEquals(frozen, dao.rows(owner.value!!).single().attemptInputJson)
+        failure = null
+        assertTrue(repository().syncPending())
+        assertFalse(repository().syncPending())
+        assertEquals(listOf(first.normalized() to flight.rowVersion, first.normalized() to flight.rowVersion,
+            latest.normalized() to "AAAAAAAAAAI="), requests)
+    }
+
+    @Test fun targetedComparisonRequiresTheSameReviewedTargetAndAssignment() = runBlocking {
+        val original = submitted.copy(id = "66666666-6666-6666-6666-666666666666",
+            submittedByEmployee = employee.copy(staffMemberId = otherStaff))
+        val assigned = flight.copy(arrivalSubmissions = listOf(original), assignedEmployees = listOf(employee))
+        val repo = repository()
+        repo.save(assigned, input.copy(targetSubmissionId = original.id))
+        repo.onPriorWriteAcknowledged(flight.id, flight.rowVersion, "AAAAAAAAAAI=")
+        live = assigned.copy(assignedEmployees = emptyList())
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals("conflict", dao.rows(owner.value!!).single().status)
+        assertEquals(0, sends)
+    }
+
+    @Test fun acknowledgmentOfOneTargetNeverReplacesAnotherTargetsReviewedSnapshot() = runBlocking {
+        val original = submitted.copy(id = "66666666-6666-6666-6666-666666666666",
+            submittedByEmployee = employee.copy(staffMemberId = otherStaff))
+        val other = original.copy(id = "77777777-7777-7777-7777-777777777777", remarks = "Other report")
+        val assigned = flight.copy(arrivalSubmissions = listOf(original, other), assignedEmployees = listOf(employee))
+        val repo = repository()
+        send = { _, _, _ -> FlightArrivalSaved(original, "AAAAAAAAAAI=") }
+        repo.save(assigned, input.copy(targetSubmissionId = original.id))
+        online = true
+        assertFalse(repo.syncPending())
+        online = false
+        repo.save(assigned, input.copy(targetSubmissionId = other.id))
+        val next = dao.rows(owner.value!!).single()
+        assertEquals("AAAAAAAAAAI=", next.rowVersion)
+        assertEquals(other, Json.decodeFromString<FlightArrivalSubmission>(next.reviewedArrivalJson!!))
+        assertTrue(next.needsArrivalComparison)
+    }
+
     @Test fun peerAcknowledgmentAdvancesOnlyReviewedUnsentInputAndNeverUsesFetchedVersion() = runBlocking {
         val repo = repository()
         repo.save(flight, input)

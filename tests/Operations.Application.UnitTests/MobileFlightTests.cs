@@ -127,10 +127,10 @@ public sealed class MobileFlightTests
     }
 
     [Theory]
-    [InlineData(null, 4)]
+    [InlineData(null, 5)]
     [InlineData("MyFlights", 1)]
     [InlineData("PerLanding", 1)]
-    [InlineData("AdHoc", 2)]
+    [InlineData("AdHoc", 3)]
     public async Task Feed_UsesAssignmentCreatorAndAdHocFirstCategories(string? category, int count)
     {
         await using var db = NewDb();
@@ -139,9 +139,9 @@ public sealed class MobileFlightTests
         var ownAdHoc = FlightFor("300", adHoc: true);
         var ownMixed = FlightFor("400", perLanding: true, adHoc: true);
         var otherUser = Guid.NewGuid();
-        db.Flights.AddRange(mine, landing, ownAdHoc, ownMixed,
+        var assignedAdHoc = FlightFor("600", assigned: true, adHoc: true, createdBy: otherUser);
+        db.Flights.AddRange(mine, landing, ownAdHoc, ownMixed, assignedAdHoc,
             FlightFor("500"), // A station dispatcher still cannot widen My Flights.
-            FlightFor("600", assigned: true, adHoc: true, createdBy: otherUser),
             FlightFor("700", perLanding: true, adHoc: true, createdBy: otherUser),
             FlightFor("800", assigned: true, stationId: Guid.NewGuid()));
         await db.SaveChangesAsync();
@@ -167,9 +167,38 @@ public sealed class MobileFlightTests
             mixed.IsMyAdHocFlight.ShouldBeTrue();
             mixed.IsMyFlight.ShouldBeFalse();
         }
+        if (category is null or "AdHoc")
+        {
+            var assigned = result.Value.Items.Single(f => f.Id == assignedAdHoc.Id);
+            assigned.IsMyAdHocFlight.ShouldBeTrue();
+            assigned.IsMyFlight.ShouldBeFalse();
+        }
         if (category == "PerLanding")
             result.Value.Items.Single().Id.ShouldBe(landing.Id);
         db.ChangeTracker.Entries<Flight>().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AdHocDetail_AllowsAssignedColleaguesAndDeniesUnassignedNonCreators(bool assigned)
+    {
+        await using var db = NewDb();
+        var flight = FlightFor("100", assigned: assigned, adHoc: true, createdBy: Guid.NewGuid());
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+
+        var result = await new GetMobileFlightByIdQueryHandler(db, Scope(), new SchedulingMasterDataReader(), new Actor())
+            .Handle(new GetMobileFlightByIdQuery(flight.Id), CancellationToken.None);
+
+        result.IsSuccess.ShouldBe(assigned);
+        if (assigned)
+        {
+            result.Value.CanSaveArrival.ShouldBeTrue();
+            result.Value.CanSaveDeparture.ShouldBeTrue();
+        }
+        else
+            result.Error.Code.ShouldBe("Operations.Flight.NotFound");
     }
 
     [Theory]
@@ -211,7 +240,7 @@ public sealed class MobileFlightTests
     public async Task HiddenFlights_CannotBeReadByDetailLogoOrInvitationRoutes(string reason)
     {
         await using var db = NewDb();
-        var flight = FlightFor("100", assigned: reason != "unassigned",
+        var flight = FlightFor("100", assigned: reason is not ("unassigned" or "others-ad-hoc"),
             adHoc: reason == "others-ad-hoc", createdBy: Guid.NewGuid(),
             stationId: reason == "other-station" ? Guid.NewGuid() : StationId,
             sta: reason == "outdated" ? Now.AddDays(-2) : Now,
@@ -441,6 +470,37 @@ public sealed class MobileFlightTests
 
     private static OperationsDbContext NewDb() => new(new DbContextOptionsBuilder<OperationsDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Work_detail_uses_creator_account_names_and_assignment_capabilities_without_performer_inference(bool assigned)
+    {
+        await using var db = NewDb();
+        var flight = FlightFor("100", assigned: assigned, perLanding: !assigned);
+        var reader = new SchedulingMasterDataReader();
+        reader.StaffMembers[StaffId] = new(StaffId, "Different performing employee", "E1", StationId, Guid.NewGuid(), true);
+        var creator = Guid.NewGuid();
+        var employee = new StaffMemberSnapshot(StaffId, "Different performing employee", "E1");
+        var window = TimeWindow.Create(Now, Now.AddMinutes(20)).Value;
+        var service = flight.SaveService(Guid.NewGuid(), new ServiceSnapshot(reader.ServiceId, "Service"), null, window, null,
+            [new FlightServicePerformerInput(employee, window, Guid.NewGuid())], creator, Now).Value;
+        flight.SaveTask(Guid.NewGuid(), FlightTaskType.Minor, null, null, window, null,
+            [new FlightTaskPerformerInput(employee, window, null, Guid.NewGuid())], [], [], [], creator, Now).IsSuccess.ShouldBeTrue();
+        db.Flights.Add(flight); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        var names = new WorkUserNames(new Dictionary<Guid, string> { [creator] = "True creator account", [UserId] = "Current viewer" });
+
+        var result = await new GetMobileFlightByIdQueryHandler(db, Scope(), reader, new Actor(), names)
+            .Handle(new GetMobileFlightByIdQuery(flight.Id), CancellationToken.None);
+
+        result.IsSuccess.ShouldBeTrue();
+        var dto = result.Value.Services!.Single(); var task = result.Value.Tasks!.Single();
+        dto.Id.ShouldBe(service.Id); dto.CreatedByDisplayName.ShouldBe("True creator account"); dto.EndedByDisplayName.ShouldBe("True creator account");
+        task.CreatedByDisplayName.ShouldBe("True creator account"); task.EndedByDisplayName.ShouldBe("True creator account");
+        dto.CanEdit.ShouldBe(assigned); dto.CanSetEnd.ShouldBe(assigned); dto.CanChangeService.ShouldBe(assigned); dto.CanDelete.ShouldBe(assigned);
+        task.CanEdit.ShouldBe(assigned); task.CanSetEnd.ShouldBe(assigned); task.CanChangeType.ShouldBe(assigned); task.CanDelete.ShouldBe(assigned);
+        names.Requests.ShouldHaveSingleItem().ShouldBe(new[] { creator });
+    }
 
     private static Flight FlightFor(string number, bool assigned = false, bool perLanding = false,
         bool adHoc = false, Guid? stationId = null, Guid? createdBy = null, DateTimeOffset? sta = null, DateTimeOffset? std = null) =>

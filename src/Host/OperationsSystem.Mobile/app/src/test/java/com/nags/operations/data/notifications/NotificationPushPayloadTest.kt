@@ -10,6 +10,22 @@ import org.junit.Test
 
 class NotificationPushPayloadTest {
     @Test
+    fun supportsSubmissionUpdateAndOpensItsFlight() {
+        val payload = requireNotNull(NotificationPushPayload.fromData(mapOf(
+            "notificationId" to "submission-update-1",
+            "kind" to NotificationKinds.FlightSubmissionUpdated,
+            "recipientUserId" to "original-submitter",
+            "payloadJson" to """{"flightId":"flight-1","flightNumber":"SV123","submissionId":"arrival-1","submissionKind":"Arrival"}""",
+            "bodyEn" to "A teammate updated your arrival submission for flight SV123.",
+        )))
+        assertEquals("flight-1", payload.openRequest()?.flightId)
+        assertEquals("original-submitter", payload.openRequest()?.recipientUserId)
+        assertTrue(NotificationCategory.FlightUpdates.includes(payload.kind))
+        assertEquals(payload.bodyEn, payload.toDto().bodyEn)
+        assertNull(NotificationPushPayload.fromData(mapOf("notificationId" to "invalid", "kind" to payload.kind)))
+    }
+
+    @Test
     fun parsesFlightAssignmentPayloadAndOpenRequest() {
         val payload = NotificationPushPayload.fromData(
             mapOf(

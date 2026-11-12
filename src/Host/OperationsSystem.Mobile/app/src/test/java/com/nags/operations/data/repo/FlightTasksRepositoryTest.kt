@@ -72,6 +72,63 @@ class FlightTasksRepositoryTest {
         hasUnacknowledgedDepartureAttempt = { departureAttempt }, hasUnacknowledgedSiblingWork = { siblingAttempt },
         legacyDraftAttachment = { _, _, _ -> legacyFile }, resourceCatalogs = { resourceTypes })
 
+    @Test fun assignedFullCorrectionRetainsStableTaskCreatorAndIgnoresDisplayOnlyRefresh() = runBlocking {
+        val closed = input.copy(endUtc = now.plusSeconds(60).toString(), performers = input.performers.map { it.copy(endUtc = now.toString()) })
+        val baseline = saved(record, closed).task.copy(createdByUserId = "original-author", createdByDisplayName = "Original author",
+            endedByUserId = "original-closer", canEdit = true, canSetEnd = true, canChangeType = true, canDelete = false)
+        val reviewed = flight.copy(tasks = listOf(baseline))
+        val desired = baseline.input().copy(taskType = 1, notes = "Assigned correction", endUtc = now.plusSeconds(90).toString())
+        val repo = repository()
+        repo.save(reviewed, record, desired)
+        val queued = dao.rows(owner.value!!).single()
+        assertEquals(baseline, Json.decodeFromString<FlightTaskRecord>(queued.reviewedTaskJson!!))
+        try { repo.delete(reviewed, record); fail("Expected creator/closer deletion guard") } catch (_: IllegalStateException) { }
+        assertEquals(queued, dao.rows(owner.value!!).single())
+        live = reviewed.copy(tasks = listOf(baseline.copy(createdByDisplayName = "Updated account display name",
+            endedByDisplayName = "Authoritative closer")))
+        sender = { _, id, value, version ->
+            sent += Triple(id, value, version)
+            FlightTaskSaved(baseline.copy(taskType = value.taskType, notes = value.notes, endUtc = value.endUtc), v2)
+        }
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals(record, sent.single().first)
+        assertEquals(1, sent.single().second!!.taskType)
+        assertEquals("original-author", live.tasks.single().createdByUserId)
+        assertEquals(baseline.createdAtUtc, live.tasks.single().createdAtUtc)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun explicitDeleteCapabilityAllowsForeignClosedTaskWithoutCreatingAnotherOccurrence() = runBlocking {
+        val closed = input.copy(endUtc = now.plusSeconds(60).toString(), performers = input.performers.map { it.copy(endUtc = now.toString()) })
+        val original = saved(record, closed).task.copy(createdByUserId = "original-author", endedByUserId = "other-closer", canDelete = true)
+        live = flight.copy(tasks = listOf(original))
+        val repo = repository()
+        repo.delete(live, record)
+        assertEquals("delete", dao.rows(owner.value!!).single().operation)
+        assertEquals(original, Json.decodeFromString<FlightTaskRecord>(dao.rows(owner.value!!).single().reviewedTaskJson!!))
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals(listOf(Triple(record, null, v1)), sent)
+        assertTrue(live.tasks.isEmpty())
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun deniedOrLostForeignTaskDeleteCapabilityNeverSendsFreshMutation() = runBlocking {
+        val original = saved(record, input).task.copy(createdByUserId = "another-author", canDelete = false)
+        val denied = flight.copy(tasks = listOf(original))
+        val repo = repository()
+        assertTrue(runCatching { repo.delete(denied, record) }.isFailure)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+        repo.delete(denied.copy(tasks = listOf(original.copy(canDelete = true))), record)
+        live = denied
+        online = true
+        assertFalse(repo.syncPending())
+        assertTrue(sent.isEmpty())
+        assertEquals("conflict", dao.rows(owner.value!!).single().status)
+        assertNull(dao.rows(owner.value!!).single().attemptOperation)
+    }
+
     @Test fun offlinePendingEditsSurviveRepositoryRecreationAndSyncOnlyLatestValue() = runBlocking {
         repository().save(flight, record, input)
         val original = dao.rows(owner.value!!).single()

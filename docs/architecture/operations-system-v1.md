@@ -566,7 +566,7 @@ Use this section to record decisions as they become final.
 
 | Date | Decision | Reason |
 |------|----------|--------|
-| 2026-11-09 | Arrival Save records the authenticated employee's input locally before upload; other employees initially view it read-only | Preserve offline recovery and ownership while deferring competing-input workflow; see the [arrival save workflow](../modules/operations-foundation.md#arrival-save-workflow) |
+| 2026-11-12 | Assigned employees may update each other's arrival/departure submissions while retaining original attribution; notify the original submitter of a colleague's change | Equal authority on assigned flights; approval locking and administrator unlocking remain TODO; see the [arrival save workflow](../modules/operations-foundation.md#arrival-save-workflow) |
 | 2026-06-18 | Old project is business reference only | Preserve business knowledge without carrying old technical debt |
 | 2026-06-18 | SQL Server is the v1.0.0 database | Matches current operational knowledge and reduces migration risk |
 | 2026-06-18 | MediatR is the initial mediator | Familiar, supports pipeline behaviors, and matches the intended CQRS style |

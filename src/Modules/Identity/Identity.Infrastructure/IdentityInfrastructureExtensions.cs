@@ -60,6 +60,7 @@ public static class IdentityInfrastructureExtensions
         services.AddScoped<IPasswordResetNotifier, EmailPasswordResetNotifier>();
         services.AddScoped<ILinkedEmailVerificationNotifier, EmailLinkedEmailVerificationNotifier>();
         services.AddScoped<IWorkOrderEmailRecipientReader, WorkOrderEmailRecipientReader>();
+        services.AddScoped<IUserDisplayNameReader, UserDisplayNameReader>();
 
         // Contribute Identity's permissions to the composed cross-module registry.
         services.AddSingleton<IPermissionCatalog, IdentityPermissionCatalog>();

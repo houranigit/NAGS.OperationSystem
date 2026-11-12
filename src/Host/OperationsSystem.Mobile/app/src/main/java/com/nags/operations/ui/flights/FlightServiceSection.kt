@@ -33,13 +33,18 @@ internal fun FlightServiceSection(
     errors: Map<String, Map<String, Int>> = emptyMap(),
     defaultEmployee: FlightEmployeeDraft? = null,
     timeBounds: FlightWorkTimeBounds = FlightWorkTimeBounds(),
+    showHeading: Boolean = true,
+    showAdd: Boolean = true,
+    countOffset: Int = 0,
+    showRemoveControls: Boolean = true,
+    draftLabels: Boolean = false,
 ) {
     var selectingService by rememberSaveable { mutableStateOf<String?>(null) }
     var addingService by rememberSaveable { mutableStateOf(false) }
     var selectionHandled by rememberSaveable { mutableStateOf(false) }
     val title = stringResource(R.string.work_services)
     Column(Modifier.animateContentSize(animationSpec = tween(200)), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        FlightFormSectionTitle(stringResource(R.string.work_services_count, items.size))
+        if (showHeading) FlightFormSectionTitle(stringResource(R.string.work_services_count, items.size + countOffset))
         items.forEach { item -> key(item.id) {
             var initialStartStaffIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
             val fields = errors[item.id].orEmpty()
@@ -47,11 +52,12 @@ internal fun FlightServiceSection(
                 item.employees.isNotEmpty() || defaultEmployee != null
             val editable = enabled && defaultStaffReady && canEdit(item.id)
             val endEditable = enabled && defaultStaffReady && canSetEnd(item.id)
-            FlightWorkEntryGroup(Modifier.flightFormNavigationTarget("service:${item.id}")) {
+            FlightWorkEntryGroup(Modifier.flightFormNavigationTarget("service:${item.id}", highlight = true)) {
+                if (draftLabels) FlightWorkDraftLabel(stringResource(R.string.work_new_service_draft))
                 val description = item.serviceName.ifBlank { title }
                 fun update(change: (FlightServiceDraft) -> FlightServiceDraft) =
                     onChange { current -> current.map { if (it.id == item.id) change(it) else it } }
-                FlightWorkRemovableEntry(item.id, stringResource(R.string.work_remove_item, description),
+                FlightWorkOptionalRemoval(showRemoveControls, item.id, stringResource(R.string.work_remove_item, description),
                     onRemove = { onChange { current -> current.filterNot { it.id == item.id } } }, compactDelete = true, enabled = enabled && canDelete(item.id)) {
                     FlightWorkChoiceRow("",
                         item.serviceName.ifBlank { stringResource(R.string.flight_form_required_field) },
@@ -87,8 +93,8 @@ internal fun FlightServiceSection(
                     errorMessage = (fields["notes"] ?: fields["attachments"])?.let { stringResource(it) })
             }
         } }
-        FlightFormFieldGroup {
-            FlightWorkAddRow(stringResource(R.string.work_add_service, items.size + 1),
+        if (showAdd) FlightFormFieldGroup {
+            FlightWorkAddRow(stringResource(R.string.work_add_service, items.size + countOffset + 1),
                 enabled = enabled && defaultEmployee != null && catalogs.services.any { !it.isAircraftPerLanding }, onClick = {
                 selectingService = null
                 addingService = true

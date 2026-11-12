@@ -76,7 +76,7 @@ internal fun initialTaskEditorDraft(flight: FlightDetail, catalogs: FlightOperat
     pending.forEach { row ->
         if (row.operation == "delete") items.remove(row.taskRecordId)
         else row.inputJson?.let { raw -> runCatching { Json.decodeFromString<SaveFlightTaskRequest>(raw) }.getOrNull()?.let {
-            items[row.taskRecordId] = it.toTaskEditorDraft(row.taskRecordId, saved[row.taskRecordId], catalogs, zone)
+            items[row.taskRecordId] = it.toTaskEditorDraft(row.taskRecordId, saved[row.taskRecordId] ?: row.reviewedRecord(), catalogs, zone)
         } }
     }
     stored?.tasks?.forEach { local -> if (local.id !in items && pending.none { it.taskRecordId == local.id }) {
@@ -291,10 +291,12 @@ internal fun reviewTaskEnds(items: List<FlightTaskDraft>, previousRecords: List<
     val conflicts = mutableSetOf<String>()
     val reviewed = items.map { draft ->
         val latest = latestRecords.firstOrNull { it.id == draft.id } ?: return@map draft
-        if (latest.canSetEnd || latest.endUtc == null) return@map draft
         val previous = previousRecords.firstOrNull { it.id == draft.id }
         val desiredEnd = draft.period.end.takeIf(String::isNotBlank)?.let { arrivalInputTime(it, draft.period.originalEndUtc, zone) }
         val unchanged = canonical(desiredEnd) == canonical(previous?.endUtc)
+        if (unchanged && canonical(latest.endUtc) != canonical(previous?.endUtc)) return@map draft.copy(period = draft.period.copy(
+            end = latest.endUtc?.let { operationLocalTime(it, zone) }.orEmpty(), originalEndUtc = latest.endUtc))
+        if (latest.canSetEnd || latest.endUtc == null) return@map draft
         val matchesRecorded = canonical(desiredEnd) == canonical(latest.endUtc)
         if (useRecordedEnds || unchanged || matchesRecorded) draft.copy(period = draft.period.copy(
             end = operationLocalTime(latest.endUtc, zone), originalEndUtc = latest.endUtc))

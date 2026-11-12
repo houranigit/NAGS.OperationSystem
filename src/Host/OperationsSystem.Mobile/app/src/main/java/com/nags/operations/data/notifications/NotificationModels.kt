@@ -95,6 +95,7 @@ object NotificationKinds {
     const val StaffAssignedToFlight = "StaffAssignedToFlight"
     const val EmployeeInvitedToFlight = "EmployeeInvitedToFlight"
     const val FlightScheduleUpdated = "FlightScheduleUpdated"
+    const val FlightSubmissionUpdated = "FlightSubmissionUpdated"
     const val FlightReminder = "FlightReminder"
 }
 
@@ -166,6 +167,7 @@ data class NotificationPushPayload(
             NotificationKinds.StaffAssignedToFlight,
             NotificationKinds.EmployeeInvitedToFlight,
             NotificationKinds.FlightScheduleUpdated,
+            NotificationKinds.FlightSubmissionUpdated,
             NotificationKinds.FlightReminder,
         )
 

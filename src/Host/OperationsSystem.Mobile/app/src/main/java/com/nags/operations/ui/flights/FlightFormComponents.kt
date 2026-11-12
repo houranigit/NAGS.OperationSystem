@@ -167,6 +167,9 @@ internal fun FlightRecordingFormScaffold(
     identityContent: @Composable ((onTitlePositioned: (Float, Int) -> Unit) -> Unit)? = null,
     compact: Boolean = false,
     validationState: FlightFormValidationState? = null,
+    navigationIcon: ImageVector = Icons.Outlined.Close,
+    navigationDescription: String? = null,
+    headerTitle: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(onDismissRequest = onRequestClose,
@@ -278,10 +281,12 @@ internal fun FlightRecordingFormScaffold(
                         Row(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                             .widthIn(max = 640.dp).fillMaxWidth().align(Alignment.TopCenter).padding(horizontal = 12.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            FlightFormHeaderButton(Icons.Outlined.Close, stringResource(R.string.flights_cancel),
+                            FlightFormHeaderButton(navigationIcon, navigationDescription ?: stringResource(R.string.flights_cancel),
                                 onClick = { focus.clearFocus(); keyboard?.hide(); onRequestClose() })
-                            Text(flight.flightNumber, Modifier.weight(1f).graphicsLayer { alpha = titleProgress }
-                                .clearAndSetSemantics { if (titleProgress >= 0.5f) text = AnnotatedString(flight.flightNumber) },
+                            val headerProgress = if (headerTitle != null) 1f else titleProgress
+                            val headerText = headerTitle ?: flight.flightNumber
+                            Text(headerText, Modifier.weight(1f).graphicsLayer { alpha = headerProgress }
+                                .clearAndSetSemantics { if (headerProgress >= 0.5f) text = AnnotatedString(headerText) },
                                 style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, lineHeight = 20.sp), fontWeight = FontWeight.SemiBold,
                                 textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             FlightFormHeaderButton(if (saveLoading) Icons.Outlined.Sync else Icons.Filled.Check,

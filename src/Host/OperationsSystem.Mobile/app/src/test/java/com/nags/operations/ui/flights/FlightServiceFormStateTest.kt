@@ -30,6 +30,33 @@ class FlightServiceFormStateTest {
         createdAtUtc = "2026-11-11T11:00:00Z", performers = listOf(FlightServicePerformerRecord(performerId, otherStaffId,
             "Original employee", "E2", "2026-11-11T11:00:00Z")), canEdit = false, canSetEnd = true)
 
+    @Test fun explicitServiceReviewMergesUnchangedConcurrentEndAndPreservesIntentionalPermittedChanges() {
+        val draft = initialServiceEditorDraft(flight.copy(services = listOf(record)), catalog, emptyList(), null, zone)
+            .services.first { it.id == recordId }.copy(remarks = "Core correction")
+        val latest = record.copy(endUtc = "2026-11-11T12:00:00Z", endedByUserId = "teammate", canEdit = true, canSetEnd = true)
+        val merged = reviewServiceEnds(listOf(draft), listOf(record), listOf(latest), zone)
+        assertTrue(merged.conflictedServiceIds.isEmpty())
+        assertEquals("2026-11-11T12:00", merged.items.single().period.end)
+        assertEquals(draft.remarks, merged.items.single().remarks)
+        val deliberate = draft.copy(period = draft.period.copy(end = "2026-11-11T12:30"))
+        assertEquals(deliberate, reviewServiceEnds(listOf(deliberate), listOf(record), listOf(latest), zone).items.single())
+        val closed = record.copy(endUtc = latest.endUtc)
+        val closedDraft = draft.copy(period = draft.period.copy(end = "2026-11-11T12:00", originalEndUtc = latest.endUtc))
+        assertEquals("", reviewServiceEnds(listOf(closedDraft), listOf(closed), listOf(latest.copy(endUtc = null)), zone).items.single().period.end)
+    }
+
+    @Test fun explicitServiceReviewKeepsConflictingProtectedEndUntilRecordedEndIsChosen() {
+        val draft = FlightServiceDraft(id = recordId, period = FlightWorkPeriod("2026-11-11T11:00", "2026-11-11T12:30"), remarks = "Keep notes")
+        val latest = record.copy(endUtc = "2026-11-11T12:00:00Z", endedByUserId = "teammate", canSetEnd = false)
+        val conflict = reviewServiceEnds(listOf(draft), listOf(record), listOf(latest), zone)
+        assertEquals(setOf(recordId), conflict.conflictedServiceIds)
+        assertEquals(draft, conflict.items.single())
+        val confirmed = reviewServiceEnds(listOf(draft), listOf(record), listOf(latest), zone, useRecordedEnds = true)
+        assertTrue(confirmed.conflictedServiceIds.isEmpty())
+        assertEquals("2026-11-11T12:00", confirmed.items.single().period.end)
+        assertEquals("Keep notes", confirmed.items.single().remarks)
+    }
+
     @Test fun publishedReopenKeepsPdfAndExplicitPlannedRemovalsWithoutCreatingASaveChange() {
         val pdf = FlightServiceAttachmentRecord("77777777-7777-7777-7777-777777777777", 2, "service.pdf",
             "application/pdf", 594, uploadedAtUtc = "2026-11-11T11:01:00Z")

@@ -17,7 +17,7 @@ private val invitationAppearance = NotificationAppearance(0xFF248A3D.toInt(), R.
 /** Shared by the inbox and Android alerts so a kind keeps the same color and glyph. */
 internal fun notificationAppearance(kind: String): NotificationAppearance = when (kind) {
     NotificationKinds.FlightReminder -> reminderAppearance
-    NotificationKinds.FlightScheduleUpdated -> scheduleAppearance
+    NotificationKinds.FlightScheduleUpdated, NotificationKinds.FlightSubmissionUpdated -> scheduleAppearance
     NotificationKinds.EmployeeInvitedToFlight -> invitationAppearance
     else -> assignmentAppearance
 }

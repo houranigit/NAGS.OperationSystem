@@ -17,7 +17,8 @@ data class FlightArrivalPendingEntity(
     val error: String? = null,
     // Retain any transmitted request until acknowledged, independently of later local edits.
     val attemptInputJson: String? = null,
-    // Null predates a reviewed snapshot; JSON "null" explicitly means no own arrival existed.
+    // The reviewed target, or own arrival for untargeted saves. JSON "null" means no own arrival existed;
+    // a null column predates reviewed snapshots. The request JSON retains an explicit target ID.
     val reviewedArrivalJson: String? = null,
     @ColumnInfo(defaultValue = "0") val needsArrivalComparison: Boolean = false,
 )

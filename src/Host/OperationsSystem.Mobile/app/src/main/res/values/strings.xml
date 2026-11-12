@@ -1,4 +1,33 @@
 <resources>
+    <string name="flight_submission_update_arrival_details">Update arrival details…</string>
+    <string name="flight_submission_update_departure_details">Update departure details…</string>
+    <string name="work_submitted_active">Active</string>
+    <string name="work_submitted_done">Done</string>
+    <string name="work_submitted_view_details">View details</string>
+    <string name="work_submitted_note_service">This service was submitted</string>
+    <string name="work_submitted_note_task">This task was submitted</string>
+    <string name="work_submitted_note_by">\u0020by\u0020</string>
+    <string name="work_submitted_update_service">Update Service…</string>
+    <string name="work_submitted_update_task">Update Task…</string>
+    <string name="work_submitted_ata">ATA</string>
+    <string name="work_new_service_draft">New service · Draft</string>
+    <string name="work_new_task_draft">New task · Draft</string>
+    <string name="work_update_service_title">Update Service</string>
+    <string name="work_update_task_title">Update Task</string>
+    <string name="work_update_save">Save changes</string>
+    <string name="work_update_unavailable">This submission is no longer available to update.</string>
+    <string name="work_delete_service_on_save">This service will be deleted when you save.</string>
+    <string name="work_delete_task_on_save">This task will be deleted when you save.</string>
+    <string name="work_review_end_title">End time changed</string>
+    <string name="work_review_end_message">Another employee changed the recorded End. Keep the recorded End before saving your other changes.</string>
+    <string name="flight_submission_work_package" translatable="false">W.PKG#</string>
+    <string name="flight_submission_note_prefix">This section was submitted by\u0020</string>
+    <string name="flight_submission_note_on">\u0020on\u0020</string>
+    <string name="flight_submission_update">Update submission…</string>
+    <string name="flight_submission_update_arrival">Update Arrival</string>
+    <string name="flight_submission_update_departure">Update Departure</string>
+    <string name="flight_submission_save">Save submission update</string>
+    <string name="flight_submission_timestamp">%1$s at %2$s</string>
     <string name="app_name">Operations</string>
     <string name="notification_channel_id" translatable="false">flight_assignments</string>
     <string name="notification_channel_name" translatable="false">Flight assignments</string>

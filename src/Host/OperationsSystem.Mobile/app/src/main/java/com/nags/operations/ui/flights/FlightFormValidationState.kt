@@ -1,21 +1,35 @@
 package com.nags.operations.ui.flights
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.unit.dp
 
 /** Form-local positions. Registering an error never moves the viewport or takes focus. */
 internal class FlightFormValidationState {
@@ -40,6 +54,7 @@ internal class FlightFormValidationState {
         val target = targets.firstOrNull { it.navigationKey == key && it.bounds != null } ?: return false
         val navigate = navigateToWindowTop
         if (navigate != null) navigate(target.bounds!!.top) else reveal(target, focus = false)
+        if (target.highlightEnabled && target in targets) target.highlightRequest++
         return true
     }
 
@@ -62,6 +77,8 @@ internal class FlightFormTarget {
     var message: String? = null
     var navigationKey: String? = null
     var focusTargets = 0
+    var highlightEnabled = false
+    var highlightRequest by mutableIntStateOf(0)
 }
 
 internal val LocalFlightFormValidationState = staticCompositionLocalOf<FlightFormValidationState?> { null }
@@ -102,14 +119,32 @@ internal fun Modifier.flightFormValidationFocus(enabled: Boolean = true): Modifi
 
 /** The same registry also exposes saved service/task card destinations. */
 @Composable
-internal fun Modifier.flightFormNavigationTarget(key: String): Modifier {
+internal fun Modifier.flightFormNavigationTarget(key: String, highlight: Boolean = false): Modifier {
     val state = LocalFlightFormValidationState.current ?: return this
-    val target = remember(state, key) { FlightFormTarget().apply { navigationKey = key } }
+    val target = remember(state, key, highlight) {
+        FlightFormTarget().apply { navigationKey = key; highlightEnabled = highlight }
+    }
     DisposableEffect(state, target) {
         state.register(target)
         onDispose { state.unregister(target) }
     }
-    return flightFormPosition(target)
+    if (!highlight) return flightFormPosition(target)
+    val pulse = remember(target) { Animatable(0f) }
+    val motionScale = rememberCoroutineScope().coroutineContext[MotionDurationScale]
+    LaunchedEffect(target, target.highlightRequest) {
+        if (target.highlightRequest == 0 || motionScale?.scaleFactor == 0f) pulse.snapTo(0f)
+        else {
+            pulse.snapTo(1f)
+            pulse.animateTo(0f, tween(1400, easing = CubicBezierEasing(0f, 0f, 0.58f, 1f)))
+        }
+    }
+    val highlightColor = MaterialTheme.colorScheme.onSurface
+    val highlightAlpha = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) 0.14f else 0.1f
+    return flightFormPosition(target).drawWithContent {
+        drawContent()
+        if (pulse.value > 0f) drawRoundRect(highlightColor.copy(alpha = highlightAlpha * pulse.value),
+            cornerRadius = CornerRadius(16.dp.toPx()))
+    }
 }
 
 private fun Modifier.flightFormPosition(target: FlightFormTarget): Modifier =

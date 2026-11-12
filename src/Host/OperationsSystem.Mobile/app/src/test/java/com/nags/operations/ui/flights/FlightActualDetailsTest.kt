@@ -116,4 +116,48 @@ class FlightActualDetailsTest {
         val compatible = pendingArrival.copy(inputJson = pendingArrival.inputJson.dropLast(1) + ",\"futureField\":true}")
         assertEquals(localArrival.ata, flight.actualDetails(pendingArrival = compatible, youLabel = "You")!!.ata)
     }
+
+    @Test fun explicitTargetCorrectionsPreserveOriginalReceiverAndHandlerAcrossCacheRefresh() {
+        val targetedArrival = pendingArrival.copy(inputJson = Json.encodeToString(localArrival.copy(targetSubmissionId = arrival.id)),
+            reviewedArrivalJson = Json.encodeToString(arrival))
+        val targetedDeparture = pendingDeparture.copy(inputJson = Json.encodeToString(localDeparture.copy(targetSubmissionId = departure.id)),
+            reviewedDepartureJson = Json.encodeToString(listOf(departure)))
+        for (detail in listOf(flight, flight.copy(arrivalSubmissions = emptyList(), departureSubmissions = emptyList()))) {
+            val actuals = detail.actualDetails(targetedArrival, targetedDeparture, aircraft, staff, youLabel = "You")!!
+            assertEquals(localArrival.ata, actuals.ata)
+            assertEquals(localDeparture.atd, actuals.atd)
+            assertEquals(listOf(other.fullName), actuals.employeeNames)
+            assertEquals("NEW", actuals.tailNumber)
+            assertTrue(actuals.savedLocally)
+        }
+        assertEquals(other, arrival.submittedByEmployee)
+        assertEquals(other, departure.submittedByEmployee)
+    }
+
+    @Test fun submittedCardsOverlayDesiredValuesAndOptionalClearsWithoutChangingServerMetadata() {
+        val originalArrival = arrival.copy(customerWorkReferenceNumber = "OLD REF", remarks = "Old arrival note",
+            updatedAtUtc = "2026-11-10T10:05:00Z")
+        val originalDeparture = departure.copy(remarks = "Old departure note", signatureVersion = "server-signature-v1",
+            updatedAtUtc = "2026-11-10T11:05:00Z")
+        val queuedArrival = pendingArrival.copy(inputJson = Json.encodeToString(localArrival.copy(
+            customerWorkReferenceNumber = null, remarks = null, targetSubmissionId = arrival.id)))
+        val queuedDeparture = pendingDeparture.copy(inputJson = Json.encodeToString(localDeparture.copy(
+            remarks = null, targetSubmissionId = departure.id)), signatureFile = "replacement.png")
+        assertEquals(originalArrival.copy(ata = localArrival.ata, aircraftTypeId = localArrival.aircraftTypeId,
+            aircraftTypeModel = "B737", aircraftTailNumber = "NEW", customerWorkReferenceNumber = null, remarks = null),
+            originalArrival.withPendingCorrection(queuedArrival, aircraft))
+        assertEquals(originalDeparture.copy(atd = localDeparture.atd, remarks = null),
+            originalDeparture.withPendingCorrection(queuedDeparture))
+        assertEquals("server-signature-v1", originalDeparture.withPendingCorrection(queuedDeparture).signatureVersion)
+    }
+
+    @Test fun submittedCardOverlayIgnoresUntargetedDifferentAndMalformedLocalInput() {
+        assertEquals(arrival, arrival.withPendingCorrection(pendingArrival, aircraft))
+        assertEquals(departure, departure.withPendingCorrection(pendingDeparture))
+        assertEquals(arrival, arrival.withPendingCorrection(pendingArrival.copy(inputJson = Json.encodeToString(
+            localArrival.copy(targetSubmissionId = "another-arrival"))), aircraft))
+        assertEquals(departure, departure.withPendingCorrection(pendingDeparture.copy(inputJson = "invalid JSON")))
+        assertEquals("", arrival.withPendingCorrection(pendingArrival.copy(inputJson = Json.encodeToString(
+            localArrival.copy(targetSubmissionId = arrival.id)))).aircraftTypeModel)
+    }
 }

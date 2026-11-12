@@ -230,6 +230,20 @@ class FlightTaskFormStateTest {
         assertEquals(ownEdit, reviewTaskEnds(listOf(ownEdit), listOf(previous), listOf(latestOwned), zone, useRecordedEnds = true).items.single())
     }
 
+    @Test fun fullAssignedReviewAdoptsOnlyUnchangedConcurrentEndAndPreservesOtherEdits() {
+        val original = draft(record).copy(remarks = "Local core correction")
+        val latest = record.copy(endUtc = end, endedByUserId = "teammate", canSetEnd = true)
+        val merged = reviewTaskEnds(listOf(original), listOf(record), listOf(latest), zone)
+        assertTrue(merged.conflictedTaskIds.isEmpty())
+        assertEquals("2026-11-11T12:00", merged.items.single().period.end)
+        assertEquals(original.remarks, merged.items.single().remarks)
+        val intentional = original.copy(period = original.period.copy(end = "2026-11-11T12:30"))
+        assertEquals(intentional, reviewTaskEnds(listOf(intentional), listOf(record), listOf(latest), zone).items.single())
+        val closed = record.copy(endUtc = end)
+        val reopened = latest.copy(endUtc = null)
+        assertEquals("", reviewTaskEnds(listOf(draft(closed)), listOf(closed), listOf(reopened), zone).items.single().period.end)
+    }
+
     @Test fun anUnsavedResourceWhoseCatalogTypeChangesGetsAVisibleCorrectionPath() {
         val item = draft().copy(tools = listOf(FlightResourceDraft(resourceRecordId, resourceId, "Tool",
             FlightWorkPeriod("2026-11-11T11:00"), calculationType = 1)))

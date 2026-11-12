@@ -43,6 +43,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -200,6 +202,18 @@ internal fun FlightRemarksComposer(
     }
 }
 
+/** The submitted-card view keeps existing document/photo and inline audio behavior. */
+@Composable
+internal fun FlightReadOnlyAttachmentRow(item: FlightAttachmentDraft, media: FlightComposerMedia) {
+    val currentMedia by rememberUpdatedState(media)
+    val session = LocalFlightMediaSession.current
+    DisposableEffect(item.id, session) {
+        onDispose { if (currentMedia.playingAttachmentId == item.id) session.stopAudio() }
+    }
+    if (item.mimeType.startsWith("audio/", true)) ComposerAudioRow(item, media, enabled = false, showRemove = false)
+    else ComposerFileRow(item, media, enabled = false, showRemove = false)
+}
+
 @Composable
 private fun ComposerRecordingToolbar(media: FlightComposerMedia) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically,
@@ -225,7 +239,7 @@ private fun ComposerRecordingToolbar(media: FlightComposerMedia) {
 }
 
 @Composable
-private fun ComposerFileRow(item: FlightAttachmentDraft, media: FlightComposerMedia, enabled: Boolean) {
+private fun ComposerFileRow(item: FlightAttachmentDraft, media: FlightComposerMedia, enabled: Boolean, showRemove: Boolean = true) {
     val image = item.mimeType.startsWith("image/") || (item.mimeType.isBlank() &&
         item.name.substringAfterLast('.', "").lowercase(Locale.ROOT) in setOf("jpg", "jpeg", "png", "webp", "gif", "heic", "heif", "bmp"))
     Row(Modifier.fillMaxWidth().padding(start = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -245,12 +259,12 @@ private fun ComposerFileRow(item: FlightAttachmentDraft, media: FlightComposerMe
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        ComposerRemove(item, media, enabled)
+        if (showRemove) ComposerRemove(item, media, enabled)
     }
 }
 
 @Composable
-private fun ComposerAudioRow(item: FlightAttachmentDraft, media: FlightComposerMedia, enabled: Boolean) {
+private fun ComposerAudioRow(item: FlightAttachmentDraft, media: FlightComposerMedia, enabled: Boolean, showRemove: Boolean = true) {
     val selected = media.playingAttachmentId == item.id
     val playing = selected && media.isPlaying
     val duration = if (selected && media.playbackDurationMillis > 0) media.playbackDurationMillis else item.durationMillis
@@ -271,7 +285,7 @@ private fun ComposerAudioRow(item: FlightAttachmentDraft, media: FlightComposerM
             Text(if (timing.isEmpty()) stringResource(R.string.composer_audio) else "${stringResource(R.string.composer_audio)} · $timing",
                 style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        ComposerRemove(item, media, enabled)
+        if (showRemove) ComposerRemove(item, media, enabled)
     }
 }
 

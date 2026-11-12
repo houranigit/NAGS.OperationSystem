@@ -26,6 +26,7 @@ data class SaveFlightDepartureRequest(
     val signatureSignedAtUtc: String? = null,
     val remarks: String? = null,
     val acknowledgeConflictingSubmission: Boolean = false,
+    val targetSubmissionId: String? = null,
 ) {
     fun withoutAcknowledgement() = copy(acknowledgeConflictingSubmission = false)
     fun normalized() = copy(remarks = remarks?.trim()?.takeIf(String::isNotEmpty))
@@ -38,3 +39,10 @@ fun FlightDetail.departureEditable(): Boolean = canSaveDeparture && validArrival
     !hasOwnCancellation() && (departureSubmissions.isEmpty() || departureSubmissions.any {
         it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, ignoreCase = true)
     })
+
+/** A targeted correction never creates a report on behalf of the signed-in employee. */
+fun FlightDetail.canUpdateDepartureSubmission(submissionId: String): Boolean =
+    canSaveDeparture && validArrivalId(currentStaffMemberId) && !hasOwnCancellation() &&
+        departureSubmissions.any { it.id.equals(submissionId, true) &&
+            (it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true) ||
+                assignedEmployees.any { employee -> employee.staffMemberId.equals(currentStaffMemberId, true) }) }

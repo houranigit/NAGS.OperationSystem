@@ -9,15 +9,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Engineering
+import androidx.compose.material.icons.filled.FlightTakeoff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -46,27 +49,28 @@ internal fun FlightDepartureSummary(departure: FlightDepartureSubmission, zone: 
         fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val employee: @Composable (Modifier) -> Unit = { modifier ->
+            val customerSignature: @Composable (Modifier) -> Unit = { modifier ->
                 Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.departure_actual_details), style = labelStyle,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    // Fit the preview inside the value line; it must not move the employee caption.
-                    Box(Modifier.fillMaxWidth().height(with(LocalDensity.current) { valueStyle.lineHeight.toDp() }),
+                    val signatureHeight = with(LocalDensity.current) { 44.sp.toDp() }
+                    val signatureWidth = with(LocalDensity.current) { 160.sp.toDp() }
+                    Box(Modifier.fillMaxWidth().height(signatureHeight),
                         contentAlignment = Alignment.CenterStart) {
-                        if (signature != null) Image(signature, signatureDescription, Modifier.fillMaxWidth().height(with(LocalDensity.current) { valueStyle.lineHeight.toDp() }),
+                        if (signature != null) Image(signature, signatureDescription, Modifier.width(signatureWidth).height(signatureHeight),
                             contentScale = ContentScale.Fit, alignment = Alignment.CenterStart)
                         else Text("-", style = valueStyle, maxLines = 1)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.Engineering, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(departure.handledByEmployee.fullName, Modifier.weight(1f), style = labelStyle,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
             val time: @Composable (Modifier) -> Unit = { modifier ->
                 Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(stringResource(R.string.operations_atd_short), style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.FlightTakeoff, null, Modifier.size(14.dp), tint =
+                            if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF81C995) else Color(0xFF248A3D))
+                        Text(stringResource(R.string.operations_atd_short), style = labelStyle,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     Text(formatIsoTimeForDisplay(departure.atd, zone), style = valueStyle, maxLines = 1)
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.CalendarMonth, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -77,11 +81,11 @@ internal fun FlightDepartureSummary(departure: FlightDepartureSubmission, zone: 
             }
             if (maxWidth < 260.dp * LocalDensity.current.fontScale) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    employee(Modifier.fillMaxWidth())
+                    customerSignature(Modifier.fillMaxWidth())
                     time(Modifier.align(Alignment.End))
                 }
             } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
-                employee(Modifier.weight(1f))
+                customerSignature(Modifier.weight(1f))
                 time(Modifier)
             }
         }

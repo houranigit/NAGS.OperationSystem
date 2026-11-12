@@ -10,6 +10,7 @@ internal sealed class SchedulingMasterDataReader(string? customerIataCode = "SV"
     public Guid ServiceId { get; } = Guid.NewGuid();
     public IReadOnlySet<Guid>? AllowedServicesOverride { get; set; }
     public Dictionary<Guid, StaffMemberReadSnapshot> StaffMembers { get; } = [];
+    public Dictionary<Guid, AircraftTypeReadSnapshot> AircraftTypes { get; } = [];
     public Dictionary<Guid, AtaChapterReadSnapshot> AtaChapters { get; } = [];
     public Dictionary<Guid, ToolReadSnapshot> Tools { get; } = [];
     public Dictionary<Guid, MaterialReadSnapshot> Materials { get; } = [];
@@ -25,7 +26,7 @@ internal sealed class SchedulingMasterDataReader(string? customerIataCode = "SV"
         Task.FromResult<OperationTypeReadSnapshot?>(new(id, "Transit", true));
 
     public Task<AircraftTypeReadSnapshot?> GetAircraftTypeAsync(Guid id, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+        Task.FromResult(AircraftTypes.GetValueOrDefault(id));
 
     public Task<ServiceReadSnapshot?> GetServiceAsync(Guid id, CancellationToken cancellationToken) =>
         throw new NotImplementedException();

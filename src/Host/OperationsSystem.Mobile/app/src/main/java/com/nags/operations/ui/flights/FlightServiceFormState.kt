@@ -42,7 +42,7 @@ internal fun initialServiceEditorDraft(flight: FlightDetail, catalogs: FlightOpe
         if (row.operation == "delete") items.remove(row.serviceRecordId)
         else row.inputJson?.let { raw ->
             runCatching { Json.decodeFromString<SaveFlightServiceRequest>(raw) }.getOrNull()?.let { input ->
-                val baseline = records[row.serviceRecordId]
+                val baseline = records[row.serviceRecordId] ?: row.reviewedRecord()
                 val name = catalogs.services.firstOrNull { it.id.equals(input.serviceId, true) }?.name ?: baseline?.serviceName.orEmpty()
                 items[row.serviceRecordId] = input.toEditorDraft(row.serviceRecordId, name, baseline, catalogs, zone)
             }
@@ -245,6 +245,29 @@ internal fun serviceActualBoundsValidation(items: List<FlightServiceDraft>, zone
         }
         if (errors.isEmpty()) null else item.id to errors
     }.toMap()
+}
+
+internal data class ServiceEndReview(val items: List<FlightServiceDraft>, val conflictedServiceIds: Set<String>)
+
+/** Core-only corrections adopt a teammate's newer End; deliberate permitted End edits remain local. */
+internal fun reviewServiceEnds(items: List<FlightServiceDraft>, previousRecords: List<FlightServiceRecord>,
+    latestRecords: List<FlightServiceRecord>, zone: ZoneId, useRecordedEnds: Boolean = false): ServiceEndReview {
+    fun canonical(raw: String?): String? = raw?.let { runCatching { OffsetDateTime.parse(it).toInstant().toString() }.getOrDefault(it) }
+    val conflicts = mutableSetOf<String>()
+    val reviewed = items.map { draft ->
+        val latest = latestRecords.firstOrNull { it.id == draft.id } ?: return@map draft
+        val previous = previousRecords.firstOrNull { it.id == draft.id }
+        val desiredEnd = draft.period.end.takeIf(String::isNotBlank)?.let { arrivalInputTime(it, draft.period.originalEndUtc, zone) }
+        val unchanged = canonical(desiredEnd) == canonical(previous?.endUtc)
+        if (unchanged && canonical(latest.endUtc) != canonical(previous?.endUtc)) return@map draft.copy(period = draft.period.copy(
+            end = latest.endUtc?.let { operationLocalTime(it, zone) }.orEmpty(), originalEndUtc = latest.endUtc))
+        if (latest.canSetEnd || latest.endUtc == null) return@map draft
+        val matchesRecorded = canonical(desiredEnd) == canonical(latest.endUtc)
+        if (useRecordedEnds || unchanged || matchesRecorded) draft.copy(period = draft.period.copy(
+            end = operationLocalTime(latest.endUtc, zone), originalEndUtc = latest.endUtc))
+        else { conflicts += draft.id; draft }
+    }
+    return ServiceEndReview(reviewed, conflicts)
 }
 
 /** Prefilled rows stay local until started; removing a known record targets only that stable identity. */

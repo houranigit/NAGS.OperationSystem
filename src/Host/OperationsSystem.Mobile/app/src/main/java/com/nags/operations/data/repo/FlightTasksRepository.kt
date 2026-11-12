@@ -259,7 +259,8 @@ class FlightTasksRepository(
             val current = live.tasks.firstOrNull { it.id == row.taskRecordId }
             fun comparable(task: FlightTaskRecord?) = task?.copy(performers = task.performers.sortedBy { it.id },
                 tools = task.tools.sortedBy { it.id }, materials = task.materials.sortedBy { it.id },
-                generalSupports = task.generalSupports.sortedBy { it.id }, attachments = task.attachments.sortedBy { it.id })
+                generalSupports = task.generalSupports.sortedBy { it.id }, attachments = task.attachments.sortedBy { it.id },
+                createdByDisplayName = null, endedByDisplayName = null)
             if (live.hasCancellationSubmission || live.rowVersion != row.rowVersion || comparable(current) != comparable(reviewed))
                 throw ApiException(409, "Task details changed. Reload the flight and review them before saving again.")
             check(live.canSaveTasks) { "Reload the flight to check task access." }
@@ -275,7 +276,7 @@ class FlightTasksRepository(
         val current = baseline?.let { reviewed -> flight?.tasks?.firstOrNull { it.id == reviewed.id } }
         if (input == null) {
             check((baseline == null || baseline.canDelete) && current?.canDelete != false) {
-                "A task ended by another employee cannot be removed."
+                "You cannot remove this task record."
             }
             return
         }

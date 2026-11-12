@@ -65,6 +65,11 @@ internal fun FlightTaskSection(
     errors: Map<String, Map<String, Int>> = emptyMap(),
     defaultEmployee: FlightEmployeeDraft? = null,
     timeBounds: FlightWorkTimeBounds = FlightWorkTimeBounds(),
+    showHeading: Boolean = true,
+    showAdd: Boolean = true,
+    countOffset: Int = 0,
+    showRemoveControls: Boolean = true,
+    draftLabels: Boolean = false,
 ) {
     var pickerTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     val taskLabel = stringResource(R.string.work_task)
@@ -79,23 +84,24 @@ internal fun FlightTaskSection(
     }
 
     Column(Modifier.animateContentSize(animationSpec = tween(200)), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        FlightFormSectionTitle(stringResource(R.string.work_tasks_count, items.size))
+        if (showHeading) FlightFormSectionTitle(stringResource(R.string.work_tasks_count, items.size + countOffset))
         items.forEachIndexed { index, task ->
             key(task.id) {
                 var initialStartStaffIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
                 val fields = errors[task.id].orEmpty()
                 val editable = enabled && canEdit(task.id)
                 val childBounds = timeBounds.within(task.period, zone)
-                FlightWorkEntryGroup(Modifier.flightFormNavigationTarget("task:${task.id}")) {
-                    FlightWorkRemovableEntry(
-                        id = task.id,
-                        removeDescription = stringResource(R.string.work_remove_item, "$taskLabel ${index + 1}"),
+                FlightWorkEntryGroup(Modifier.flightFormNavigationTarget("task:${task.id}", highlight = true)) {
+                    if (draftLabels) FlightWorkDraftLabel(stringResource(R.string.work_new_task_draft))
+                    FlightWorkOptionalRemoval(
+                        show = showRemoveControls, id = task.id,
+                        removeDescription = stringResource(R.string.work_remove_item, "$taskLabel ${index + countOffset + 1}"),
                         onRemove = { onChange { current -> current.filterNot { it.id == task.id } } },
                         compactDelete = true,
                         enabled = enabled && canDelete(task.id),
                     ) {
                         FlightTaskTypeRow(
-                            label = stringResource(R.string.work_task_number, index + 1),
+                            label = stringResource(R.string.work_task_number, index + countOffset + 1),
                             value = task.taskType,
                             enabled = editable && canChangeType(task.id),
                             errorMessage = fields["taskType"]?.let { stringResource(it) },
@@ -166,8 +172,8 @@ internal fun FlightTaskSection(
                 }
             }
         }
-        FlightFormFieldGroup {
-            FlightWorkAddRow(stringResource(R.string.work_add_task, items.size + 1), enabled = enabled && defaultEmployee != null) {
+        if (showAdd) FlightFormFieldGroup {
+            FlightWorkAddRow(stringResource(R.string.work_add_task, items.size + countOffset + 1), enabled = enabled && defaultEmployee != null) {
                 val period = seedBlankWorkStart(FlightWorkPeriod(), zone, timeBounds)
                 val added = FlightTaskDraft(taskType = "Major", period = period,
                     employees = listOfNotNull(defaultEmployee?.copy(id = UUID.randomUUID().toString(), period = period)))

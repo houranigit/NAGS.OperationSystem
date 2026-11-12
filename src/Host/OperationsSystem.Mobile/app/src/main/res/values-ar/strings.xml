@@ -1,5 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="flight_submission_update_arrival_details">تحديث تفاصيل الوصول…</string>
+    <string name="flight_submission_update_departure_details">تحديث تفاصيل المغادرة…</string>
+    <string name="work_submitted_active">نشط</string>
+    <string name="work_submitted_done">مكتمل</string>
+    <string name="work_submitted_view_details">عرض التفاصيل</string>
+    <string name="work_submitted_note_service">تم إرسال هذه الخدمة</string>
+    <string name="work_submitted_note_task">تم إرسال هذه المهمة</string>
+    <string name="work_submitted_note_by">\u0020بواسطة\u0020</string>
+    <string name="work_submitted_update_service">تحديث الخدمة…</string>
+    <string name="work_submitted_update_task">تحديث المهمة…</string>
+    <string name="work_submitted_ata">ATA</string>
+    <string name="work_new_service_draft">خدمة جديدة · مسودة</string>
+    <string name="work_new_task_draft">مهمة جديدة · مسودة</string>
+    <string name="work_update_service_title">تحديث الخدمة</string>
+    <string name="work_update_task_title">تحديث المهمة</string>
+    <string name="work_update_save">حفظ التغييرات</string>
+    <string name="work_update_unavailable">لم يعد هذا الإرسال متاحًا للتحديث.</string>
+    <string name="work_delete_service_on_save">سيتم حذف هذه الخدمة عند الحفظ.</string>
+    <string name="work_delete_task_on_save">سيتم حذف هذه المهمة عند الحفظ.</string>
+    <string name="work_review_end_title">تم تغيير وقت الانتهاء</string>
+    <string name="work_review_end_message">قام موظف آخر بتغيير وقت الانتهاء المسجل. احتفظ بوقت الانتهاء المسجل قبل حفظ التغييرات الأخرى.</string>
+    <string name="flight_submission_note_prefix">تم إرسال هذا القسم بواسطة\u0020</string>
+    <string name="flight_submission_note_on">\u0020في\u0020</string>
+    <string name="flight_submission_update">تحديث الإرسال…</string>
+    <string name="flight_submission_update_arrival">تحديث الوصول</string>
+    <string name="flight_submission_update_departure">تحديث المغادرة</string>
+    <string name="flight_submission_save">حفظ تحديث الإرسال</string>
+    <string name="flight_submission_timestamp">%1$s الساعة %2$s</string>
     <string name="app_name">العمليات</string>
     <string name="account_title">ملفي الشخصي</string>
     <string name="account_open">فتح ملفي الشخصي</string>

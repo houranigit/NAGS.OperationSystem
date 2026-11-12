@@ -292,7 +292,8 @@ class FlightServicesRepository(
             val reviewed = row.reviewedServiceJson?.let { json.decodeFromString<FlightServiceRecord>(it) }
             val current = live.services.firstOrNull { it.id == row.serviceRecordId }
             fun comparable(service: FlightServiceRecord?) = service?.copy(performers = service.performers.sortedBy { it.id },
-                attachments = service.attachments.sortedBy { it.id }, canChangeService = service.serviceSelectionEditable(), canDelete = service.serviceDeletable())
+                attachments = service.attachments.sortedBy { it.id }, canChangeService = service.serviceSelectionEditable(),
+                canDelete = service.serviceDeletable(), createdByDisplayName = null, endedByDisplayName = null)
             if (live.hasCancellationSubmission || live.rowVersion != row.rowVersion || comparable(current) != comparable(reviewed))
                 throw ApiException(409, "Service details changed. Reload the flight and review them before saving again.")
             check(live.canSaveServices && live.allowedServiceIds != null) { "Reload the flight to check service access and eligibility." }
@@ -309,7 +310,7 @@ class FlightServicesRepository(
         val current = baseline?.let { reviewed -> flight?.services?.firstOrNull { it.id == reviewed.id } }
         if (input == null) {
             check((baseline == null || baseline.serviceDeletable()) && current?.serviceDeletable() != false) {
-                "A service ended by another employee cannot be removed."
+                "You cannot remove this service record."
             }
             return
         }

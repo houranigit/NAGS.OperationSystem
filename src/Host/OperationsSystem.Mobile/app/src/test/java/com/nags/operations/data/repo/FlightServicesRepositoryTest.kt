@@ -75,6 +75,65 @@ class FlightServicesRepositoryTest {
             localBounds ?: FlightServiceActualBounds(it.visibleArrival()?.ata, it.visibleDeparture()?.atd)
         })
 
+    @Test fun assignedFullCorrectionUsesTheSameRecordAndPreservesOriginalCreatorWhileDisplayMetadataRefreshes() = runBlocking {
+        val closed = input.copy(endUtc = now.plusSeconds(60).toString(), performers = input.performers.map { it.copy(endUtc = now.toString()) })
+        val baseline = saved(record, closed).service.copy(createdByUserId = "original-author", createdByDisplayName = "Original author",
+            endedByUserId = "original-closer", canEdit = true, canSetEnd = true, canChangeService = true, canDelete = false)
+        val reviewed = flight.copy(services = listOf(baseline), allowedServiceIds = listOf(input.serviceId, second))
+        val desired = baseline.input().copy(serviceId = second, notes = "Assigned correction", endUtc = now.plusSeconds(90).toString())
+        val repo = repository()
+        repo.save(reviewed, record, desired)
+        val queued = dao.rows(owner.value!!).single()
+        assertEquals(baseline, Json.decodeFromString<FlightServiceRecord>(queued.reviewedServiceJson!!))
+        try { repo.delete(reviewed, record); fail("Expected creator/closer deletion guard") } catch (_: IllegalStateException) { }
+        assertEquals(queued, dao.rows(owner.value!!).single())
+        live = reviewed.copy(services = listOf(baseline.copy(createdByDisplayName = "Updated account display name",
+            endedByDisplayName = "Authoritative closer")))
+        sender = { _, id, value, version ->
+            sent += Triple(id, value, version)
+            FlightServiceSaved(baseline.copy(serviceId = value.serviceId, notes = value.notes, endUtc = value.endUtc), v2)
+        }
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals(record, sent.single().first)
+        assertEquals(second, sent.single().second!!.serviceId)
+        assertEquals("original-author", live.services.single().createdByUserId)
+        assertEquals(baseline.createdAtUtc, live.services.single().createdAtUtc)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun explicitDeleteCapabilityAllowsForeignClosedServiceAndTargetsOnlyItsStableRecord() = runBlocking {
+        val closed = input.copy(endUtc = now.plusSeconds(60).toString(), performers = input.performers.map { it.copy(endUtc = now.toString()) })
+        val original = saved(record, closed).service.copy(createdByUserId = "original-author", endedByUserId = "other-closer",
+            canDelete = true, canEdit = true, canSetEnd = true)
+        live = flight.copy(services = listOf(original))
+        val repo = repository()
+        repo.delete(live, record)
+        assertEquals("delete", dao.rows(owner.value!!).single().operation)
+        assertEquals(original, Json.decodeFromString<FlightServiceRecord>(dao.rows(owner.value!!).single().reviewedServiceJson!!))
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals(listOf(Triple(record, null, v1)), sent)
+        assertTrue(live.services.isEmpty())
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun deniedOrLostDeleteCapabilityRetainsForeignServiceForExplicitReview() = runBlocking {
+        val original = saved(record, input).service.copy(createdByUserId = "another-author", canDelete = false)
+        val denied = flight.copy(services = listOf(original))
+        val repo = repository()
+        assertTrue(runCatching { repo.delete(denied, record) }.isFailure)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+        val allowed = denied.copy(services = listOf(original.copy(canDelete = true)))
+        repo.delete(allowed, record)
+        live = denied
+        online = true
+        assertFalse(repo.syncPending())
+        assertTrue(sent.isEmpty())
+        assertEquals("conflict", dao.rows(owner.value!!).single().status)
+        assertNull(dao.rows(owner.value!!).single().attemptOperation)
+    }
+
     @Test fun unknownTaskAttemptDefersFreshServiceWithoutFreezingOrChangingItsInput() = runBlocking {
         val repo = repository()
         repo.save(flight, record, input)

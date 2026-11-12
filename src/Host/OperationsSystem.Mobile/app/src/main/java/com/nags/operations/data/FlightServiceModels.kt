@@ -92,13 +92,15 @@ data class FlightServiceRecord(
     val performers: List<FlightServicePerformerRecord> = emptyList(), val canEdit: Boolean = false,
     val canSetEnd: Boolean = false, val attachments: List<FlightServiceAttachmentRecord> = emptyList(),
     val canChangeService: Boolean? = null, val canDelete: Boolean? = null,
+    val createdByDisplayName: String? = null,
+    val endedByDisplayName: String? = null,
 ) {
     private fun hasOtherUserEnd() =
         endUtc != null && endedByUserId != null && !endedByUserId.equals(createdByUserId, true)
 
     /** Older cached records derive the same protection until refreshed capabilities arrive. */
-    fun serviceSelectionEditable() = canEdit && canChangeService != false && !hasOtherUserEnd()
-    fun serviceDeletable() = canEdit && canSetEnd && canDelete != false && !hasOtherUserEnd()
+    fun serviceSelectionEditable() = canEdit && (canChangeService ?: !hasOtherUserEnd())
+    fun serviceDeletable() = canDelete ?: (canEdit && canSetEnd && !hasOtherUserEnd())
 
     fun input() = SaveFlightServiceRequest(serviceId, startUtc, endUtc, customerReferenceNumber, notes,
         performers.map { SaveFlightServicePerformerRequest(it.id, it.staffMemberId, it.startUtc, it.endUtc) },

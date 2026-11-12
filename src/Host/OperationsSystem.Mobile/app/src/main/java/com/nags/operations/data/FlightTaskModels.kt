@@ -150,6 +150,8 @@ data class FlightTaskRecord(val id: String, val taskType: Int, val startUtc: Str
     val attachments: List<FlightServiceAttachmentRecord> = emptyList(), val createdByUserId: String, val endedByUserId: String? = null,
     val createdAtUtc: String, val updatedByUserId: String? = null, val updatedAtUtc: String? = null,
     val canEdit: Boolean = false, val canSetEnd: Boolean = false, val canDelete: Boolean = false, val canChangeType: Boolean = false,
+    val createdByDisplayName: String? = null,
+    val endedByDisplayName: String? = null,
 ) {
     fun input(): SaveFlightTaskRequest {
         fun resources(items: List<FlightTaskResourceRecord>) = items.map {

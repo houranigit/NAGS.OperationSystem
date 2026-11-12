@@ -1,3 +1,4 @@
+using Identity.Contracts;
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
@@ -82,7 +83,7 @@ public sealed class GetMobileFlightsQueryHandler(
 
 public sealed record GetMobileFlightByIdQuery(Guid Id) : IQuery<FlightDetailDto>;
 
-public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMobileFlightScope scope, IMasterDataReader masterData, IUserContext? user = null)
+public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMobileFlightScope scope, IMasterDataReader masterData, IUserContext? user = null, IUserDisplayNameReader? userNames = null)
     : IQueryHandler<GetMobileFlightByIdQuery, FlightDetailDto>
 {
     public async Task<Result<FlightDetailDto>> Handle(GetMobileFlightByIdQuery request, CancellationToken cancellationToken)
@@ -114,9 +115,13 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
             flight.DepartureSubmissions.Any(d => d.SubmittedByEmployee.StaffMemberId == staffId);
         var allowed = await new MasterDataResolver(masterData).AllowedServiceIdsForStaffAsync(staffId, flight.Station.StationId, cancellationToken);
         var allowedIds = allowed.IsSuccess ? allowed.Value : [];
+        var names = await FlightWorkAttribution.NamesAsync(userNames,
+            flight.Services.SelectMany(item => new Guid?[] { item.CreatedByUserId, item.EndedByUserId })
+                .Concat(flight.Tasks.SelectMany(item => new Guid?[] { item.CreatedByUserId, item.EndedByUserId })), cancellationToken);
         return FlightDetails.Map(flight, station.TimeZoneId, staffId,
             canOperate && !ownCancellation, canOperate && !ownCancellation, canOperate && !ownWork && flight.ServiceRecords.Count == 0 && flight.TaskRecords.Count == 0,
-            canOperate && flight.CancellationSubmissions.Count == 0 && allowedIds.Count > 0, resolved.Value.UserId, allowedIds, canOperate && flight.CancellationSubmissions.Count == 0);
+            canOperate && flight.CancellationSubmissions.Count == 0 && allowedIds.Count > 0, resolved.Value.UserId, allowedIds, canOperate && flight.CancellationSubmissions.Count == 0,
+            flight.AssignedEmployees.Any(employee => employee.Employee.StaffMemberId == staffId), names);
     }
 }
 
@@ -173,7 +178,8 @@ internal static class MobileFlightQuery
             !row.Flight.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) &&
             row.Flight.AssignedEmployees.Any(e => e.Employee.StaffMemberId == scope.StaffMemberId),
             row.Flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
-            row.Flight.CreatedByUserId == scope.UserId, stationTimeZoneId,
+            (row.Flight.CreatedByUserId == scope.UserId ||
+             row.Flight.AssignedEmployees.Any(e => e.Employee.StaffMemberId == scope.StaffMemberId)), stationTimeZoneId,
             row.Flight.ArrivalSubmissions.Any(), row.Flight.DepartureSubmissions.Any(),
             row.Flight.CancellationSubmissions.Any(),
             row.Flight.ReturnToRamps.Any(r => r.DepartureDetails == null), row.LatestReturnToRampSequence,
@@ -206,9 +212,11 @@ internal static class MobileFlightQuery
                 f.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
                 f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)),
             MobileFlightCategory.AdHoc => query.Where(f =>
-                f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && f.CreatedByUserId == userId),
+                f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
+                (f.CreatedByUserId == userId || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId))),
             _ => query.Where(f =>
-                (f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && f.CreatedByUserId == userId) ||
+                (f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
+                 (f.CreatedByUserId == userId || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId))) ||
                 (f.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
                  (f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) ||
                   f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId))))

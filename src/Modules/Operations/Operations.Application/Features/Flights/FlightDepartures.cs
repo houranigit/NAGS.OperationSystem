@@ -27,6 +27,7 @@ public sealed class SaveFlightDepartureCommandValidator : AbstractValidator<Save
         When(command => command.Departure is not null, () =>
         {
             RuleFor(command => command.Departure.Atd).NotEmpty();
+            RuleFor(command => command.Departure.TargetSubmissionId).Must(id => id is null || id != Guid.Empty);
         });
     }
 }
@@ -64,10 +65,21 @@ public sealed class SaveFlightDepartureCommandHandler(
         if (flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId))
             return Error.Conflict("Revert your cancellation before submitting departure details.", "Operations.Flight.OwnCancellationSubmitted");
 
-        var own = flight.DepartureSubmissions.SingleOrDefault(d => d.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
-        if (own is null && flight.DepartureSubmissions.Count > 0)
-            return Error.Forbidden("Only the employee who submitted the departure can update it.", "Operations.Departure.ReadOnly");
         var input = request.Departure;
+        if (input.TargetSubmissionId == Guid.Empty)
+            return Error.Validation("Target departure submission is required.", "Operations.DepartureSubmission.TargetRequired");
+        var existing = input.TargetSubmissionId is { } targetId
+            ? flight.DepartureSubmissions.SingleOrDefault(d => d.Id == targetId)
+            : flight.DepartureSubmissions.SingleOrDefault(d => d.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
+        if (input.TargetSubmissionId.HasValue && existing is null)
+            return Error.NotFound("Departure submission not found.", "Operations.DepartureSubmission.NotFound");
+        if (existing is null && flight.DepartureSubmissions.Count == 1)
+            existing = flight.DepartureSubmissions.Single();
+        if (existing is null && flight.DepartureSubmissions.Count > 1)
+            return Error.Conflict("Select the departure submission to update.", "Operations.DepartureSubmission.TargetRequired");
+        var foreign = existing is not null && existing.SubmittedByEmployee.StaffMemberId != actor.StaffMemberId;
+        if (foreign && !flight.AssignedEmployees.Any(employee => employee.Employee.StaffMemberId == actor.StaffMemberId))
+            return Error.Forbidden("Only assigned employees can update another employee's departure.", "Operations.DepartureSubmission.AssignmentRequired");
         if (input.Atd == default)
             return Error.Validation("Actual departure time is required.", "Operations.DepartureDetails.AtdRequired");
         if (input.SignatureContent is { } content)
@@ -79,17 +91,17 @@ public sealed class SaveFlightDepartureCommandHandler(
             if (input.SignatureSignedAtUtc is null || input.SignatureSignedAtUtc == default(DateTimeOffset))
                 return Error.Validation("Customer signing time is required.", "Operations.CustomerSignature.SignedAtRequired");
         }
-        else if (own is null || input.SignatureSignedAtUtc is not null)
+        else if (existing is null || input.SignatureSignedAtUtc is not null)
             return Error.Validation("Customer signature is required.", "Operations.DepartureDetails.CustomerSignatureRequired");
 
         // Replaying the same signed input after a lost response does not create a second file
         // or require its now-obsolete rowversion. New input must still pass concurrency below.
-        if (own is not null && own.Details.Atd == input.Atd && own.Details.Remarks == Normalize(input.Remarks) &&
-            own.Details.HandledByEmployee.StaffMemberId == actor.StaffMemberId &&
+        if (existing is not null && existing.Details.Atd == input.Atd && existing.Details.Remarks == Normalize(input.Remarks) &&
+            (foreign || existing.Details.HandledByEmployee.StaffMemberId == actor.StaffMemberId) &&
             (input.SignatureContent is null ||
-                own.Details.CustomerSignature.SignedAtUtc == input.SignatureSignedAtUtc &&
-                await SignatureMatchesAsync(own.Details.CustomerSignature.StorageKey, input.SignatureContent, cancellationToken)))
-            return new FlightDepartureSavedDto(FlightDepartureSubmissionDto.Map(own), Convert.ToBase64String(flight.RowVersion));
+                existing.Details.CustomerSignature.SignedAtUtc == input.SignatureSignedAtUtc &&
+                await SignatureMatchesAsync(existing.Details.CustomerSignature.StorageKey, input.SignatureContent, cancellationToken)))
+            return new FlightDepartureSavedDto(FlightDepartureSubmissionDto.Map(existing), Convert.ToBase64String(flight.RowVersion));
 
         if (!flight.RowVersion.SequenceEqual(request.RowVersion))
             return ConcurrencyErrors.Stale;
@@ -97,11 +109,12 @@ public sealed class SaveFlightDepartureCommandHandler(
             !input.AcknowledgeConflictingSubmission)
             return Error.Conflict("Another employee reported this flight as canceled. Confirm before saving work details.",
                 "Operations.Flight.CancellationConfirmationRequired");
-        if (own is null || own.Details.Atd != input.Atd)
+        if (existing is null || existing.Details.Atd != input.Atd)
         {
-            var workBounds = FlightServiceBounds.ValidateExistingServices(flight, actor.StaffMemberId, departureOverride: input.Atd);
+            var actualsStaffId = existing?.SubmittedByEmployee.StaffMemberId ?? actor.StaffMemberId;
+            var workBounds = FlightServiceBounds.ValidateExistingServices(flight, actualsStaffId, departureOverride: input.Atd);
             if (workBounds.IsFailure) return workBounds.Error;
-            var taskBounds = FlightTaskBounds.ValidateExistingTasks(flight, actor.StaffMemberId, departureOverride: input.Atd);
+            var taskBounds = FlightTaskBounds.ValidateExistingTasks(flight, actualsStaffId, departureOverride: input.Atd);
             if (taskBounds.IsFailure) return taskBounds.Error;
         }
         var completedWork = FlightServiceBounds.RequireCompletedForDeparture(flight);
@@ -113,7 +126,7 @@ public sealed class SaveFlightDepartureCommandHandler(
             return staff.Error;
         var employee = staff.Value.Single();
         StoredFile? stored = null;
-        var signature = own?.Details.CustomerSignature;
+        var signature = existing?.Details.CustomerSignature;
         if (input.SignatureContent is not null)
         {
             using var stream = new MemoryStream(input.SignatureContent, writable: false);
@@ -127,20 +140,32 @@ public sealed class SaveFlightDepartureCommandHandler(
             }
             signature = created.Value;
         }
-        var details = DepartureDetails.Create(input.Atd, signature, employee, input.Remarks);
+        var details = DepartureDetails.Create(input.Atd, signature, foreign ? existing!.Details.HandledByEmployee : employee, input.Remarks);
         if (details.IsFailure)
         {
             if (stored is not null) await DeleteUnreferencedSignatureAsync(stored.StorageKey);
             return details.Error;
         }
-        var previousKey = own?.Details.CustomerSignature.StorageKey;
+        var previousKey = existing?.Details.CustomerSignature.StorageKey;
+        var previousDetails = existing?.Details;
+        var now = clock.GetUtcNow();
         db.SetOriginalRowVersion(flight, request.RowVersion);
-        var submitted = flight.SubmitDeparture(employee, details.Value, actor.UserId, clock.GetUtcNow());
+        var submitted = flight.SubmitDeparture(employee, details.Value, actor.UserId, now, existing?.Id);
         if (submitted.IsFailure)
         {
             if (stored is not null) await DeleteUnreferencedSignatureAsync(stored.StorageKey);
             return submitted.Error;
         }
+        if (foreign && previousDetails != submitted.Value.Details)
+            db.Enqueue(new global::Operations.Contracts.FlightSubmissionUpdated
+            {
+                FlightId = flight.Id, FlightNumber = flight.FlightNumber.Value, SubmissionId = submitted.Value.Id,
+                SubmissionKind = global::Operations.Contracts.FlightSubmissionKind.Departure,
+                SubmittedByStaffMemberId = submitted.Value.SubmittedByEmployee.StaffMemberId,
+                SubmittedByUserId = submitted.Value.CreatedByUserId,
+                UpdatedByStaffMemberId = actor.StaffMemberId, UpdatedByUserId = actor.UserId,
+                UpdatedByDisplayName = employee.FullName, OccurredOnUtc = now
+            });
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -150,7 +175,7 @@ public sealed class SaveFlightDepartureCommandHandler(
             if (stored is not null) await DeleteUnreferencedSignatureAsync(stored.StorageKey);
             return ConcurrencyErrors.Stale;
         }
-        catch (DbUpdateException) when (own is null)
+        catch (DbUpdateException) when (existing is null)
         {
             if (stored is not null) await DeleteUnreferencedSignatureAsync(stored.StorageKey);
             if (await db.Flights.AsNoTracking().AnyAsync(f => f.Id == request.FlightId && f.DepartureSubmissions.Any(), cancellationToken))

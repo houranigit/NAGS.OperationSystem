@@ -64,6 +64,20 @@ import java.time.LocalDateTime
 private val WorkAddGreen = Color(0xFF248A3D)
 private val WorkRemoveRed = Color(0xFFD92D3F)
 
+/** Published entries expose removal only when their existing capability permits it. */
+@Composable
+internal fun FlightWorkOptionalRemoval(show: Boolean, id: String, removeDescription: String,
+    onRemove: () -> Unit, compactDelete: Boolean, enabled: Boolean, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    if (show) FlightWorkRemovableEntry(id, removeDescription, onRemove, compactDelete, enabled, content)
+    else Column(Modifier.fillMaxWidth().padding(start = 14.dp), content = content)
+}
+
+@Composable
+internal fun FlightWorkDraftLabel(label: String) {
+    Text(label, Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
 /** The same quiet physical-left rule binds each service or task's full-width fields. */
 @Composable
 internal fun FlightWorkEntryGroup(modifier: Modifier = Modifier, content: @Composable () -> Unit) {

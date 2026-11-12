@@ -8,6 +8,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -56,6 +58,23 @@ class DepartureSignaturePreviewsTest {
         owner = "api|other-account"
         assertNull(store().load(flight, pending))
         assertEquals(1, pendingReads)
+    }
+
+    @Test fun targetedPendingCorrectionLoadsTheExactOriginalSignatureInsteadOfOwnDeparture() = runBlocking {
+        val original = submission.copy(id = "foreign-departure", submittedByEmployee = employee.copy(staffMemberId = "other"),
+            signatureVersion = "foreign-signature")
+        val detail = flight.copy(departureSubmissions = listOf(submission, original))
+        val pending = FlightDeparturePendingEntity(owner!!, flight.id, flight.flightNumber, "staff", "change",
+            Json.encodeToString(SaveFlightDepartureRequest(original.atd, targetSubmissionId = original.id)),
+            "one", Json.encodeToString(listOf(original)), "now")
+        val requested = mutableListOf<String>()
+        fetch = { _, id, _ -> requested += id; png }
+        assertArrayEquals(png, store().load(detail, pending))
+        assertEquals(listOf(original.id), requested)
+        online = false
+        assertArrayEquals(png, store().load(detail.copy(departureSubmissions = listOf(submission)), pending))
+        assertEquals(1, reads)
+        assertEquals(0, pendingReads)
     }
 
     @Test fun ownerAndApiIsolationAndClearRejectAnInFlightOldResponse() = runBlocking {

@@ -108,6 +108,23 @@ public sealed class WorkOrderEmailPreferenceTests
         recipient.Email.ShouldNotBe(user.PendingEmail);
     }
 
+    [Fact]
+    public async Task Display_names_are_batched_by_requested_creator_account_including_retained_inactive_users()
+    {
+        await using var db = CreateDb();
+        var active = await AddUserAsync(db); var inactive = await AddUserAsync(db); var unrelated = await AddUserAsync(db);
+        db.Entry(inactive).Property(user => user.Status).CurrentValue = UserStatus.Deactivated;
+        await db.SaveChangesAsync();
+        var reader = new UserDisplayNameReader(db);
+        var requested = Enumerable.Range(0, 501).Select(_ => Guid.NewGuid()).Concat(new[] { active.Id, inactive.Id, inactive.Id, Guid.Empty }).ToArray();
+
+        var names = await reader.GetDisplayNamesAsync(requested);
+
+        names.Count.ShouldBe(2); names[active.Id].ShouldBe(active.DisplayName); names[inactive.Id].ShouldBe(inactive.DisplayName);
+        names.ShouldNotContainKey(unrelated.Id);
+        (await reader.GetDisplayNamesAsync([])).ShouldBeEmpty();
+    }
+
     private static IdentityDbContext CreateDb() => new(new DbContextOptionsBuilder<IdentityDbContext>()
         .UseInMemoryDatabase($"work-order-email-preference-{Guid.NewGuid():N}").Options);
 

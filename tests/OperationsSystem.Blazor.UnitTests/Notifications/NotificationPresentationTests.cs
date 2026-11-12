@@ -8,12 +8,14 @@ namespace OperationsSystem.Blazor.UnitTests.Notifications;
 
 public sealed class NotificationPresentationTests
 {
-    [Fact]
-    public async Task Presentation_stays_English_and_builds_flight_deep_link_regardless_of_app_locale()
+    [Theory]
+    [InlineData("StaffAssignedToFlight")]
+    [InlineData("FlightSubmissionUpdated")]
+    public async Task Presentation_stays_English_and_builds_flight_deep_link_regardless_of_app_locale(string kind)
     {
         var locale = new LocaleState(new NoOpJsRuntime());
         var flightId = Guid.NewGuid();
-        var notification = Notification(flightId);
+        var notification = Notification(flightId) with { Kind = kind };
 
         NotificationPresentation.Title(notification, locale).ShouldBe("Assigned");
         NotificationPresentation.Body(notification, locale).ShouldBe("A teammate added you.");
@@ -79,6 +81,7 @@ public sealed class NotificationPresentationTests
     [InlineData("FlightReminder", "notification-tone--reminder")]
     [InlineData("StaffAssignedToFlight", "notification-tone--assignment")]
     [InlineData("FlightScheduleUpdated", "notification-tone--info")]
+    [InlineData("FlightSubmissionUpdated", "notification-tone--info")]
     [InlineData("EmployeeInvitedToFlight", "notification-tone--invitation")]
     public void Notification_kinds_use_their_requested_semantic_tones(string kind, string tone)
     {
@@ -89,6 +92,7 @@ public sealed class NotificationPresentationTests
     [InlineData("EmployeeInvitedToFlight", NotificationCategories.Invitations, "person_add")]
     [InlineData("FlightReminder", NotificationCategories.Reminders, "alarm")]
     [InlineData("FlightScheduleUpdated", NotificationCategories.FlightUpdates, "event_repeat")]
+    [InlineData("FlightSubmissionUpdated", NotificationCategories.FlightUpdates, "event_repeat")]
     [InlineData("StaffAssignedToFlight", NotificationCategories.FlightUpdates, "flight_takeoff")]
     [InlineData("LegacyNotification", NotificationCategories.FlightUpdates, "flight_takeoff")]
     public void Category_and_inbox_link_cover_known_and_unclassified_notifications(string kind, string category, string icon)

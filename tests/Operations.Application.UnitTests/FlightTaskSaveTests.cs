@@ -1,3 +1,4 @@
+using Operations.Contracts;
 using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Domain.Results;
@@ -133,7 +134,7 @@ public sealed class FlightTaskSaveTests
     [Fact]
     public async Task Other_employee_can_only_close_and_only_closer_can_change_end_while_creator_keeps_core_fields()
     {
-        await using var f = await Fixture.CreateAsync(); var id = Guid.NewGuid(); var input = f.ClosedPerformerInput;
+        await using var f = await Fixture.CreateAsync(assigned: false); var id = Guid.NewGuid(); var input = f.ClosedPerformerInput;
         (await f.SaveAsync(id, input)).IsSuccess.ShouldBeTrue();
         (await f.SaveAsync(id, input with { Notes = "Foreign edit" }, f.Other)).Error.Code.ShouldBe("Operations.FlightTask.ReadOnly");
         input = input with { EndUtc = Now.AddMinutes(30) };
@@ -219,6 +220,100 @@ public sealed class FlightTaskSaveTests
 
     private static SaveFlightServiceAttachmentRequest Image() => new(Guid.NewGuid(), 0, "photo.png", "image/png", Png);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Assigned_employee_fully_corrects_active_or_done_task_with_resources_media_and_original_creator(bool done)
+    {
+        await using var f = await Fixture.CreateAsync(); var id = Guid.NewGuid(); var materialId = Guid.NewGuid(); var toolId = Guid.NewGuid();
+        f.Reader.Materials[materialId] = new(materialId, "Quantity material", true, ResourceCalculationType.Quantity);
+        f.Reader.Tools[toolId] = new(toolId, "Duration tool", true, ResourceCalculationType.Duration);
+        var input = f.ClosedPerformerInput with { EndUtc = done ? Now.AddMinutes(30) : null, Attachments = [Image()],
+            Materials = [new(Guid.NewGuid(), materialId, 1, Notes: "Original")],
+            Tools = [new(Guid.NewGuid(), toolId, StartUtc: Now, EndUtc: Now.AddMinutes(10))] };
+        var initial = await f.SaveAsync(id, input); initial.IsSuccess.ShouldBeTrue();
+        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(0);
+        var changed = input with { TaskType = 1, Notes = "Assigned correction", CustomerReferenceNumber = "CORRECTED", Attachments = [Image()],
+            Materials = [input.Materials.Single() with { Quantity = 2.5m, Notes = "Corrected resource" }],
+            Performers = [input.Performers.Single() with { Notes = "Corrected staff", StartUtc = Now }] };
+
+        var result = await f.SaveAsync(id, changed, f.Other);
+
+        result.IsSuccess.ShouldBeTrue(); var dto = result.Value.Task;
+        dto.Id.ShouldBe(id); dto.CreatedByUserId.ShouldBe(f.Owner.UserId); dto.CreatedAtUtc.ShouldBe(initial.Value.Task.CreatedAtUtc);
+        dto.CreatedByDisplayName.ShouldBe("Original creator account"); dto.UpdatedByUserId.ShouldBe(f.Other.UserId);
+        dto.CanEdit.ShouldBeTrue(); dto.CanChangeType.ShouldBeTrue(); dto.CanSetEnd.ShouldBeTrue(); dto.CanDelete.ShouldBeTrue();
+        dto.EndedByUserId.ShouldBe(done ? f.Owner.UserId : null); dto.Materials.Single().Quantity.ShouldBe(2.5m);
+        dto.Performers.Single().Id.ShouldBe(input.Performers.Single().Id); dto.Performers.Single().Notes.ShouldBe("Corrected staff");
+        f.Storage.Files.ShouldHaveSingleItem();
+        var notice = JsonSerializer.Deserialize<FlightSubmissionUpdated>((await f.Db.OutboxMessages.SingleAsync()).Content)!;
+        notice.SubmissionKind.ShouldBe(FlightSubmissionKind.Task); notice.SubmittedByUserId.ShouldBe(f.Owner.UserId);
+        notice.SubmittedByStaffMemberId.ShouldBeNull(); notice.UpdatedByDisplayName.ShouldBe("Assigned editor account");
+        var saves = f.Writes.SaveCalls; var uploads = f.Storage.SaveCalls; await f.ChangeVersionAsync();
+        f.Names.Values[f.Owner.UserId] = "Renamed creator account";
+        (await f.SaveAsync(id, changed, f.Other, InitialVersion)).Value.Task.CreatedByDisplayName.ShouldBe("Renamed creator account");
+        f.Writes.SaveCalls.ShouldBe(saves); f.Storage.SaveCalls.ShouldBe(uploads); (await f.Db.OutboxMessages.CountAsync()).ShouldBe(1);
+        (await f.SaveAsync(id, changed with { Notes = "Stale edit" }, f.Other, InitialVersion)).Error.Code.ShouldBe("General.ConcurrencyConflict");
+        var invalid = changed with { Materials = [changed.Materials.Single() with { Quantity = 0 }] };
+        (await f.SaveAsync(id, invalid, f.Other)).IsFailure.ShouldBeTrue(); (await f.Db.OutboxMessages.CountAsync()).ShouldBe(1);
+        (await f.SaveAsync(id, changed with { EndUtc = Now.AddMinutes(35) }, f.Other)).Value.Task.EndedByUserId.ShouldBe(f.Other.UserId);
+        (await f.DeleteAsync(id, f.Other)).IsSuccess.ShouldBeTrue();
+        (await f.Db.OutboxMessages.OrderBy(item => item.OccurredOnUtc).ToListAsync()).Count.ShouldBe(3);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Foreign_task_correction_failure_or_lost_response_does_not_duplicate_notification(bool committed)
+    {
+        await using var f = await Fixture.CreateAsync(); var id = Guid.NewGuid();
+        (await f.SaveAsync(id)).IsSuccess.ShouldBeTrue(); var changed = f.Input with { Notes = "Assigned correction" };
+        f.Writes.Save = committed ? async ct => { await f.Db.SaveChangesAsync(ct); throw new IOException("Response loss"); }
+            : _ => throw new DbUpdateConcurrencyException("Stale write");
+        if (committed) await Should.ThrowAsync<IOException>(() => f.SaveAsync(id, changed, f.Other));
+        else (await f.SaveAsync(id, changed, f.Other)).Error.Code.ShouldBe("General.ConcurrencyConflict");
+        f.Db.ChangeTracker.Clear(); (await f.Db.OutboxMessages.CountAsync()).ShouldBe(committed ? 1 : 0);
+        if (committed) (await f.SaveAsync(id, changed, f.Other, InitialVersion)).IsSuccess.ShouldBeTrue();
+        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(committed ? 1 : 0);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Assigned_foreign_delete_active_or_done_notifies_creator_once_even_after_response_loss(bool done, bool responseLoss)
+    {
+        await using var f = await Fixture.CreateAsync(); var id = Guid.NewGuid();
+        var input = f.ClosedPerformerInput with { EndUtc = done ? Now.AddMinutes(30) : null, Attachments = [Image()] };
+        (await f.SaveAsync(id, input)).IsSuccess.ShouldBeTrue();
+        if (responseLoss) f.Writes.Save = async ct => { await f.Db.SaveChangesAsync(ct); throw new IOException("Response loss"); };
+        if (responseLoss) await Should.ThrowAsync<IOException>(() => f.DeleteAsync(id, f.Other));
+        else (await f.DeleteAsync(id, f.Other)).IsSuccess.ShouldBeTrue();
+        f.Db.ChangeTracker.Clear();
+        var notice = JsonSerializer.Deserialize<FlightSubmissionUpdated>((await f.Db.OutboxMessages.SingleAsync()).Content)!;
+        notice.Action.ShouldBe(FlightSubmissionAction.Deleted); notice.SubmittedByUserId.ShouldBe(f.Owner.UserId);
+        notice.SubmissionId.ShouldBe(id); notice.SubmissionKind.ShouldBe(FlightSubmissionKind.Task);
+        notice.UpdatedByDisplayName.ShouldBe("Assigned editor account");
+        f.Storage.Files.ShouldBeEmpty();
+        (await f.DeleteAsync(id, f.Other, InitialVersion)).IsSuccess.ShouldBeTrue();
+        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Rejected_foreign_delete_preserves_record_media_and_has_no_notification()
+    {
+        await using var f = await Fixture.CreateAsync(); var id = Guid.NewGuid();
+        (await f.SaveAsync(id, f.Input with { Attachments = [Image()] })).IsSuccess.ShouldBeTrue();
+        await f.ChangeVersionAsync();
+        (await f.DeleteAsync(id, f.Other, InitialVersion)).Error.Code.ShouldBe("General.ConcurrencyConflict");
+        f.Writes.Save = _ => throw new DbUpdateConcurrencyException("Injected race");
+        (await f.DeleteAsync(id, f.Other)).Error.Code.ShouldBe("General.ConcurrencyConflict");
+        f.Db.ChangeTracker.Clear();
+        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(0); f.Storage.Files.ShouldHaveSingleItem();
+        (await f.ReadAsync()).Tasks.ShouldHaveSingleItem().Id.ShouldBe(id);
+    }
+
     private sealed record Actor(Guid StaffMemberId, Guid UserId);
 
     private sealed class Fixture : IAsyncDisposable
@@ -227,6 +322,7 @@ public sealed class FlightTaskSaveTests
         public required WriteBoundary Writes { get; init; }
         public required MemoryStorage Storage { get; init; }
         public required SchedulingMasterDataReader Reader { get; init; }
+        public required WorkUserNames Names { get; init; }
         public required Guid FlightId { get; init; }
         public required Actor Owner { get; init; }
         public required Actor Other { get; init; }
@@ -243,7 +339,7 @@ public sealed class FlightTaskSaveTests
             var current = version ?? (await Db.Flights.SingleAsync(f => f.Id == FlightId)).RowVersion;
             var handler = new SaveFlightTaskCommandHandler(Writes,
                 new Scope(new(Reader.StationId, acting.StaffMemberId, acting.UserId, Now)),
-                new MasterDataResolver(Reader), Reader, new Clock(), NoopMobileSyncBroadcaster.Instance, Storage);
+                new MasterDataResolver(Reader), Reader, new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, Names);
             return await handler.Handle(new SaveFlightTaskCommand(FlightId, recordId, input ?? Input, current), CancellationToken.None);
         }
 
@@ -253,7 +349,7 @@ public sealed class FlightTaskSaveTests
             var current = version ?? (await Db.Flights.SingleAsync(f => f.Id == FlightId)).RowVersion;
             var handler = new DeleteFlightTaskCommandHandler(Writes,
                 new Scope(new(Reader.StationId, acting.StaffMemberId, acting.UserId, Now)),
-                new Clock(), NoopMobileSyncBroadcaster.Instance, Storage);
+                new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, Names);
             return await handler.Handle(new DeleteFlightTaskCommand(FlightId, recordId, current), CancellationToken.None);
         }
 
@@ -287,7 +383,7 @@ public sealed class FlightTaskSaveTests
             Db.ChangeTracker.Clear();
         }
 
-        public static async Task<Fixture> CreateAsync()
+        public static async Task<Fixture> CreateAsync(bool assigned = true)
         {
             var db = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -300,9 +396,9 @@ public sealed class FlightTaskSaveTests
                 new StationSnapshot(reader.StationId, "RUH", "Riyadh"),
                 new OperationTypeSnapshot(Guid.NewGuid(), "Transit"), FlightNumber.Create("SV100", "SV").Value,
                 ScheduledTime.Create(Now.AddHours(-1), Now.AddHours(1)).Value, null,
-                [new ServiceSnapshot(reader.ServiceId, "Planned service")],
-                [new StaffMemberSnapshot(owner.StaffMemberId, "Task creator", "E1"),
-                    new StaffMemberSnapshot(other.StaffMemberId, "Other operator", "E2")], owner.UserId, Now).Value;
+                [new ServiceSnapshot(assigned ? reader.ServiceId : WellKnownMasterDataIds.AircraftPerLandingService, "Planned service")],
+                assigned ? [new StaffMemberSnapshot(owner.StaffMemberId, "Task creator", "E1"),
+                    new StaffMemberSnapshot(other.StaffMemberId, "Other operator", "E2")] : [], owner.UserId, Now).Value;
             db.Flights.Add(flight);
             db.Entry(flight).Property(f => f.RowVersion).CurrentValue = InitialVersion.ToArray();
             await db.SaveChangesAsync();
@@ -310,6 +406,7 @@ public sealed class FlightTaskSaveTests
             {
                 Db = db, Writes = new WriteBoundary(db), Storage = new MemoryStorage(), Reader = reader,
                 FlightId = flight.Id, Owner = owner, Other = other,
+                Names = new(new Dictionary<Guid, string> { [owner.UserId] = "Original creator account", [other.UserId] = "Assigned editor account" }),
                 Input = new(0, null, Now.AddMinutes(-30), null, "REF-1", "Task notes",
                     [new(Guid.NewGuid(), owner.StaffMemberId, Now.AddMinutes(-20))], [], [], [])
             };
