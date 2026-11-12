@@ -53,7 +53,10 @@ internal fun FlightServiceSection(
             val editable = enabled && defaultStaffReady && canEdit(item.id)
             val endEditable = enabled && defaultStaffReady && canSetEnd(item.id)
             FlightWorkEntryGroup(Modifier.flightFormNavigationTarget("service:${item.id}", highlight = true)) {
-                if (draftLabels) FlightWorkDraftLabel(stringResource(R.string.work_new_service_draft))
+                if (draftLabels) FlightWorkDraftLabel(stringResource(R.string.work_new_service_draft),
+                    badge = stringResource(R.string.work_scheduled_service).takeIf {
+                        item.plannedServiceId?.takeIf(String::isNotBlank)?.equals(item.serviceId, ignoreCase = true) == true
+                    })
                 val description = item.serviceName.ifBlank { title }
                 fun update(change: (FlightServiceDraft) -> FlightServiceDraft) =
                     onChange { current -> current.map { if (it.id == item.id) change(it) else it } }

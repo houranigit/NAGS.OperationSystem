@@ -12,6 +12,7 @@
     <string name="work_submitted_update_task">تحديث المهمة…</string>
     <string name="work_submitted_ata">ATA</string>
     <string name="work_new_service_draft">خدمة جديدة · مسودة</string>
+    <string name="work_scheduled_service">خدمة مجدولة</string>
     <string name="work_new_task_draft">مهمة جديدة · مسودة</string>
     <string name="work_update_service_title">تحديث الخدمة</string>
     <string name="work_update_task_title">تحديث المهمة</string>

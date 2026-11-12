@@ -11,6 +11,7 @@
     <string name="work_submitted_update_task">Update Task…</string>
     <string name="work_submitted_ata">ATA</string>
     <string name="work_new_service_draft">New service · Draft</string>
+    <string name="work_scheduled_service">Scheduled Service</string>
     <string name="work_new_task_draft">New task · Draft</string>
     <string name="work_update_service_title">Update Service</string>
     <string name="work_update_task_title">Update Task</string>

@@ -768,7 +768,8 @@ internal fun FlightOperationsForm(
             FlightFormValidation(it, modifier = Modifier.flightFormNavigationTarget("save-error"), registerError = false) { }
         }
         if (otherEmployeeArrival != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // The scaffold adds 10dp after this group, matching the 28dp work-note gap.
+            Column(Modifier.padding(bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FlightSavedDetailsCard { FlightArrivalSummary(otherEmployeeArrival.withPendingCorrection(pending, aircraftTypes), entryZone) }
                 FlightSubmissionNote(otherEmployeeArrival.submittedByEmployee.fullName, otherEmployeeArrival.createdAtUtc, entryZone,
                     updateLabel = stringResource(R.string.flight_submission_update_arrival_details),
@@ -921,7 +922,8 @@ internal fun FlightOperationsForm(
                 onChange = { change -> updateWorkDrafts(workDrafts.copy(tasks = editLocalWorkDrafts(workDrafts.tasks, taskMetadata.keys, { it.id }, change))) })
         }
         if (otherEmployeeDeparture != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // The final note also keeps 28dp to the end, including the scaffold's 24dp inset.
+            Column(Modifier.padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FlightSavedDetailsCard { FlightDepartureSummary(otherEmployeeDeparture.withPendingCorrection(pendingDeparture), entryZone, savedSignaturePreview) }
                 FlightSubmissionNote(otherEmployeeDeparture.submittedByEmployee.fullName, otherEmployeeDeparture.createdAtUtc, entryZone,
                     updateLabel = stringResource(R.string.flight_submission_update_departure_details),

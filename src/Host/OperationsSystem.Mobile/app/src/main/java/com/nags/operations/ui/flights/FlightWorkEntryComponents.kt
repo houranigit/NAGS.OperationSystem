@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -43,6 +44,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -73,9 +75,21 @@ internal fun FlightWorkOptionalRemoval(show: Boolean, id: String, removeDescript
 }
 
 @Composable
-internal fun FlightWorkDraftLabel(label: String) {
-    Text(label, Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp),
-        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+internal fun FlightWorkDraftLabel(label: String, badge: String? = null) {
+    Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (badge != null) {
+            val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+            Surface(Modifier.widthIn(max = 168.dp), shape = RoundedCornerShape(50),
+                color = if (dark) Color(0xFF4A3A18) else Color(0xFFFFF3D6),
+                contentColor = if (dark) Color(0xFFFFD18E) else Color(0xFF8B4B00)) {
+                Text(badge, Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                    style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
 }
 
 /** The same quiet physical-left rule binds each service or task's full-width fields. */
