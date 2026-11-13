@@ -30,6 +30,7 @@ import com.nags.operations.data.SaveFlightServiceRequest
 import com.nags.operations.data.FlightDepartureSaved
 import com.nags.operations.data.SaveFlightDepartureRequest
 import com.nags.operations.data.SaveFlightArrivalRequest
+import com.nags.operations.data.SaveFlightOperationsBatchRequest
 import io.ktor.client.request.prepareGet
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -45,6 +46,13 @@ import io.ktor.http.isSuccess
 
 /** Station- and time-bounded mobile flight reads and add-only staff invitations. */
 class OperationsApi internal constructor(private val client: HttpClient) {
+    suspend fun saveOperationsBatch(flightId: String, input: SaveFlightOperationsBatchRequest, rowVersion: String): FlightDetail =
+        client.put(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(flightId)}/operations-batch")) {
+            contentType(ContentType.Application.Json)
+            headers { append("If-Match", "\"$rowVersion\"") }
+            setBody(input)
+        }.bodyOrThrow()
+
     constructor(tokenStore: TokenStore, client: HttpClient = HttpClientFactory.create(tokenStore)) : this(client)
 
     /** The authenticated API proxies raster logo bytes; no storage URL or bearer is exposed to UI. */

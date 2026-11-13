@@ -19,6 +19,7 @@
     <string name="work_update_unavailable">This submission is no longer available to update.</string>
     <string name="work_delete_service_on_save">This service will be deleted when you save.</string>
     <string name="work_delete_task_on_save">This task will be deleted when you save.</string>
+    <string name="work_delete_not_allowed">You no longer have permission to delete this entry. Undo the deletion or discard the saved local change.</string>
     <string name="work_review_end_title">End time changed</string>
     <string name="work_review_end_message">Another employee changed the recorded End. Keep the recorded End before saving your other changes.</string>
     <string name="flight_submission_work_package" translatable="false">W.PKG#</string>
@@ -72,10 +73,17 @@
     <string name="home_greeting_fallback">Hello, there</string>
     <string name="home_adhoc">AdHoc</string>
     <string name="home_nav_flights">Flights</string>
-    <string name="home_nav_hand_over">Hand Over flights</string>
-    <string name="home_nav_page">Page %1$d</string>
-    <string name="home_search">Search flights</string>
-    <string name="flights_tab_my">My Flights</string>
+    <string name="home_nav_invitations">Invitations</string>
+    <string name="home_nav_search">Search</string>
+    <string name="home_nav_my_work">My Work</string>
+    <string name="home_create_adhoc">Create AdHoc flight</string>
+    <string name="home_close_adhoc">Close AdHoc creation</string>
+    <string name="home_invitations_received">Received</string>
+    <string name="home_invitations_sent">Sent</string>
+    <string name="home_search_invitations">Search invitations</string>
+    <string name="home_search_flight_number">Flight number</string>
+    <string name="home_search_my_work">Search my work</string>
+    <string name="flights_tab_my">Scheduled</string>
     <string name="flights_tab_per_landing">Per Landing</string>
     <string name="flights_tab_adhoc">AdHoc</string>
     <string name="flights_per_landing_empty">No Per Landing flights</string>
@@ -332,7 +340,7 @@
     <string name="arrival_sync_item">Flight %1$s</string>
     <string name="arrival_sync_retry">Retry upload</string>
     <string name="arrival_sync_discard">Discard saved arrival</string>
-    <string name="arrival_sync_discard_message">Discard the arrival saved on this device? This does not remove any arrival already saved online.</string>
+    <string name="arrival_sync_discard_message">Discard this saved change? For a combined Save, this discards every section saved together. Online records are kept.</string>
     <string name="arrival_sync_no_pending">No pending arrival uploads.</string>
     <string name="arrival_aircraft_unavailable">Refresh the aircraft catalog and select an available aircraft type.</string>
     <string name="arrival_review_before_save">Review your saved arrival, then tap Save to upload it again.</string>
@@ -357,7 +365,7 @@
     <string name="departure_sync_item">Flight %1$s</string>
     <string name="departure_sync_retry">Retry upload</string>
     <string name="departure_sync_discard">Discard saved departure</string>
-    <string name="departure_sync_discard_message">Discard the departure saved on this device? This will not remove a departure already saved online.</string>
+    <string name="departure_sync_discard_message">Discard this saved change? For a combined Save, this discards every section saved together. Online records are kept.</string>
     <string name="departure_sync_action_failed">Could not update the saved departure. Please try again.</string>
     <string name="flight_actuals_saved_locally">Saved on this device</string>
     <string name="flight_actuals_you">You</string>
@@ -430,7 +438,7 @@
     <string name="service_sync_review">Reload the flight and review your saved service changes before saving again.</string>
     <string name="service_pending">Service changes saved on this device. Waiting to sync.</string>
     <string name="service_sync_discard">Discard local service changes?</string>
-    <string name="service_sync_discard_message">Only changes on this device will be discarded. A service already published online remains on the flight.</string>
+    <string name="service_sync_discard_message">Discard this saved change? For a combined Save, this discards every section saved together. Online records are kept.</string>
     <string name="service_sync_action_failed">Could not update the saved service changes. Try again.</string>
     <string name="service_validation_service">Select an available service.</string>
     <string name="service_validation_start">Enter a valid start time.</string>
@@ -482,7 +490,7 @@
     <string name="task_pending">Task changes saved on this device. Waiting to sync.</string>
     <string name="task_sync_review">Reload the flight and review your saved task changes before saving again.</string>
     <string name="task_sync_discard">Discard local task changes?</string>
-    <string name="task_sync_discard_message">Only changes on this device will be discarded. A task already published online remains on the flight.</string>
+    <string name="task_sync_discard_message">Discard this saved change? For a combined Save, this discards every section saved together. Online records are kept.</string>
     <string name="task_sync_action_failed">Could not update the saved task changes. Try again.</string>
     <string name="task_review">Review saved tasks</string>
     <string name="task_validation_duration_quantity">Duration usage cannot include a quantity. Remove and add this item again.</string>
@@ -493,4 +501,17 @@
     <string name="task_review_end_message">Another employee recorded an End time. Keep their recorded End times and retain your other changes?</string>
     <string name="task_review_use_recorded_end">Use recorded End</string>
     <string name="task_validation_resource_type_changed">This item changed how usage is recorded. Remove and add it again to review it.</string>
+    <string name="flight_review_online">Online submission</string>
+    <string name="flight_review_offline">Offline: showing the last downloaded online values. Changes will be checked again when you reconnect.</string>
+    <string name="flight_review_local">Your saved input</string>
+    <string name="flight_review_merge_hint">Overwrite copies your provided values into the fields above. Online values stay where you have no local input. Save when ready.</string>
+    <string name="flight_review_applied">Your values are applied above. Review the fields, then Save. Nothing has been published yet.</string>
+    <string name="flight_review_discard">Discard</string>
+    <string name="flight_review_overwrite">Overwrite</string>
+    <string name="flight_review_submit_anyway">Submit Anyway</string>
+    <string name="flight_review_not_provided">No local input</string>
+    <string name="flight_review_action">Review…</string>
+    <string name="flight_review_removed">The local change was discarded. Online values are kept.</string>
+    <string name="flight_review_delete">Your saved change deletes this entry. Overwrite stages that deletion; Save applies it.</string>
+    <string name="flight_review_empty_online">There is no online submission for this entry.</string>
 </resources>

@@ -186,7 +186,7 @@ public sealed class SaveFlightServiceCommandHandler(IOperationsDbContext db, IMo
         return Saved(flight, record, actor.UserId, assignedCorrection, names);
     }
 
-    private static Result ValidateInput(SaveFlightServiceRequest input, FlightService? existing)
+    internal static Result ValidateInput(SaveFlightServiceRequest input, FlightService? existing)
     {
         if (input.ServiceId == Guid.Empty || input.StartUtc == default)
             return Error.Validation("Service and start time are required.", "Operations.FlightService.DetailsRequired");
@@ -226,7 +226,7 @@ public sealed class SaveFlightServiceCommandHandler(IOperationsDbContext db, IMo
         return Result.Success();
     }
 
-    private static bool CoreMatches(FlightService service, SaveFlightServiceRequest input) =>
+    internal static bool CoreMatches(FlightService service, SaveFlightServiceRequest input) =>
         service.Service.ServiceId == input.ServiceId && service.Window.FromUtc == input.StartUtc &&
         service.CustomerReferenceNumber == Normalize(input.CustomerReferenceNumber) && service.Notes == Normalize(input.Notes) &&
         service.Performers.Count == input.Performers.Count && service.Performers.All(p => input.Performers.Any(i =>

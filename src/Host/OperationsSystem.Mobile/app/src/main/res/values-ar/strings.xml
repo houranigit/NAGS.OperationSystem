@@ -20,6 +20,7 @@
     <string name="work_update_unavailable">لم يعد هذا الإرسال متاحًا للتحديث.</string>
     <string name="work_delete_service_on_save">سيتم حذف هذه الخدمة عند الحفظ.</string>
     <string name="work_delete_task_on_save">سيتم حذف هذه المهمة عند الحفظ.</string>
+    <string name="work_delete_not_allowed">لم تعد لديك صلاحية حذف هذا الإدخال. تراجع عن الحذف أو تجاهل التغيير المحلي المحفوظ.</string>
     <string name="work_review_end_title">تم تغيير وقت الانتهاء</string>
     <string name="work_review_end_message">قام موظف آخر بتغيير وقت الانتهاء المسجل. احتفظ بوقت الانتهاء المسجل قبل حفظ التغييرات الأخرى.</string>
     <string name="flight_submission_note_prefix">تم إرسال هذا القسم بواسطة\u0020</string>
@@ -40,10 +41,17 @@
     <string name="home_greeting_fallback">مرحبًا بك</string>
     <string name="home_adhoc">AdHoc</string>
     <string name="home_nav_flights">الرحلات</string>
-    <string name="home_nav_hand_over">الرحلات المسلّمة</string>
-    <string name="home_nav_page">الصفحة %1$d</string>
-    <string name="home_search">البحث عن الرحلات</string>
-    <string name="flights_tab_my">رحلاتي</string>
+    <string name="home_nav_invitations">الدعوات</string>
+    <string name="home_nav_search">بحث</string>
+    <string name="home_nav_my_work">أعمالي</string>
+    <string name="home_create_adhoc">إنشاء رحلة AdHoc</string>
+    <string name="home_close_adhoc">إغلاق إنشاء رحلة AdHoc</string>
+    <string name="home_invitations_received">الواردة</string>
+    <string name="home_invitations_sent">المرسلة</string>
+    <string name="home_search_invitations">البحث في الدعوات</string>
+    <string name="home_search_flight_number">رقم الرحلة</string>
+    <string name="home_search_my_work">البحث في أعمالي</string>
+    <string name="flights_tab_my">المجدولة</string>
     <string name="flights_tab_per_landing">لكل هبوط</string>
     <string name="flights_tab_adhoc">AdHoc</string>
     <string name="flights_per_landing_empty">لا توجد رحلات لكل هبوط</string>
@@ -308,7 +316,7 @@
     <string name="arrival_sync_item">الرحلة %1$s</string>
     <string name="arrival_sync_retry">إعادة محاولة المزامنة</string>
     <string name="arrival_sync_discard">تجاهل الوصول المحفوظ</string>
-    <string name="arrival_sync_discard_message">هل تريد تجاهل الوصول المحفوظ على هذا الجهاز؟ لن يتم حذف أي وصول محفوظ عبر الإنترنت.</string>
+    <string name="arrival_sync_discard_message">هل تريد تجاهل هذا التغيير المحفوظ؟ إذا كان جزءًا من عملية حفظ مجمّعة، فسيتم تجاهل جميع الأقسام المحفوظة معها. تبقى السجلات المحفوظة عبر الإنترنت كما هي.</string>
     <string name="arrival_sync_no_pending">لا توجد بيانات وصول بانتظار المزامنة.</string>
     <string name="arrival_aircraft_unavailable">حدّث قائمة الطائرات واختر نوع طائرة متاحًا.</string>
     <string name="arrival_review_before_save">راجع بيانات الوصول المحفوظة ثم اضغط حفظ لإرسالها مجددًا.</string>
@@ -333,7 +341,7 @@
     <string name="departure_sync_item">الرحلة %1$s</string>
     <string name="departure_sync_retry">إعادة محاولة المزامنة</string>
     <string name="departure_sync_discard">تجاهل المغادرة المحفوظة</string>
-    <string name="departure_sync_discard_message">هل تريد تجاهل المغادرة المحفوظة على هذا الجهاز؟ لن يتم حذف أي مغادرة محفوظة عبر الإنترنت.</string>
+    <string name="departure_sync_discard_message">هل تريد تجاهل هذا التغيير المحفوظ؟ إذا كان جزءًا من عملية حفظ مجمّعة، فسيتم تجاهل جميع الأقسام المحفوظة معها. تبقى السجلات المحفوظة عبر الإنترنت كما هي.</string>
     <string name="departure_sync_action_failed">تعذر تحديث المغادرة المحفوظة. يرجى المحاولة مجددًا.</string>
     <string name="flight_actuals_saved_locally">محفوظ على هذا الجهاز</string>
     <string name="flight_actuals_you">أنت</string>
@@ -406,7 +414,7 @@
     <string name="service_sync_review">أعد تحميل الرحلة وراجع تغييرات الخدمة المحفوظة قبل الحفظ مجددًا.</string>
     <string name="service_pending">تغييرات الخدمة محفوظة على هذا الجهاز وتنتظر المزامنة.</string>
     <string name="service_sync_discard">تجاهل تغييرات الخدمة المحلية؟</string>
-    <string name="service_sync_discard_message">سيتم تجاهل التغييرات على هذا الجهاز فقط. تبقى الخدمة المنشورة بالفعل ضمن الرحلة.</string>
+    <string name="service_sync_discard_message">هل تريد تجاهل هذا التغيير المحفوظ؟ إذا كان جزءًا من عملية حفظ مجمّعة، فسيتم تجاهل جميع الأقسام المحفوظة معها. تبقى السجلات المحفوظة عبر الإنترنت كما هي.</string>
     <string name="service_sync_action_failed">تعذر تحديث تغييرات الخدمة المحفوظة. حاول مجددًا.</string>
     <string name="service_validation_service">اختر خدمة متاحة.</string>
     <string name="service_validation_start">أدخل وقت بدء صالحًا.</string>
@@ -458,7 +466,7 @@
     <string name="task_pending">حُفظت تغييرات المهام على هذا الجهاز. بانتظار المزامنة.</string>
     <string name="task_sync_review">أعد تحميل الرحلة وراجع تغييرات المهام المحفوظة قبل الحفظ مجددًا.</string>
     <string name="task_sync_discard">تجاهل تغييرات المهام المحلية؟</string>
-    <string name="task_sync_discard_message">سيتم تجاهل التغييرات على هذا الجهاز فقط. تبقى المهمة المنشورة عبر الإنترنت على الرحلة.</string>
+    <string name="task_sync_discard_message">هل تريد تجاهل هذا التغيير المحفوظ؟ إذا كان جزءًا من عملية حفظ مجمّعة، فسيتم تجاهل جميع الأقسام المحفوظة معها. تبقى السجلات المحفوظة عبر الإنترنت كما هي.</string>
     <string name="task_sync_action_failed">تعذر تحديث تغييرات المهام المحفوظة. حاول مجددًا.</string>
     <string name="task_review">مراجعة المهام المحفوظة</string>
     <string name="task_validation_duration_quantity">لا يمكن أن يتضمن الاستخدام بالمدة كمية. احذف هذا العنصر وأضفه مجددًا.</string>
@@ -469,4 +477,17 @@
     <string name="task_review_end_message">سجّل موظف آخر وقت انتهاء. هل تريد الاحتفاظ بأوقات الانتهاء المسجلة مع الإبقاء على تغييراتك الأخرى؟</string>
     <string name="task_review_use_recorded_end">استخدام الانتهاء المسجل</string>
     <string name="task_validation_resource_type_changed">تغيّرت طريقة تسجيل استخدام هذا العنصر. احذفه وأضفه مجددًا لمراجعته.</string>
+    <string name="flight_review_online">الإدخال المحفوظ عبر الإنترنت</string>
+    <string name="flight_review_offline">غير متصل: تُعرض آخر قيم تم تنزيلها. سيتم التحقق من التغييرات عند الاتصال مجددًا.</string>
+    <string name="flight_review_local">إدخالك المحفوظ على هذا الجهاز</string>
+    <string name="flight_review_merge_hint">ينسخ الاستبدال القيم التي أدخلتها إلى الحقول أعلاه، ويُبقي القيم المحفوظة عبر الإنترنت للحقول التي لم تُدخل لها قيمة. اضغط حفظ عند الانتهاء.</string>
+    <string name="flight_review_applied">تم تطبيق قيمك أعلاه. راجع الحقول ثم اضغط حفظ. لم يتم نشر أي تغيير بعد.</string>
+    <string name="flight_review_discard">تجاهل</string>
+    <string name="flight_review_overwrite">استبدال</string>
+    <string name="flight_review_submit_anyway">إرسال على أي حال</string>
+    <string name="flight_review_not_provided">لا يوجد إدخال محلي</string>
+    <string name="flight_review_action">مراجعة…</string>
+    <string name="flight_review_removed">تم تجاهل التغيير المحلي والإبقاء على القيم المحفوظة عبر الإنترنت.</string>
+    <string name="flight_review_delete">يحذف تغييرك المحفوظ هذا الإدخال. يُجهّز الاستبدال الحذف ويُطبّقه الحفظ.</string>
+    <string name="flight_review_empty_online">لا يوجد إدخال محفوظ عبر الإنترنت لهذا السجل.</string>
 </resources>

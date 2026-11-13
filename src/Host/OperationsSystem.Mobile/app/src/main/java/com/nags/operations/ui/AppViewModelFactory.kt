@@ -18,6 +18,7 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
             graph.tokenStore.displayNameFlow, graph.departureSignaturePreviews::load, graph.flightCancellations,
             graph.flightServices, graph::loadServiceAttachment, graph::loadPendingServiceAttachment, graph::saveFlightOperationBatch,
             graph.flightTasks, graph::loadTaskAttachment, graph::loadPendingTaskAttachment,
+            graph::saveReviewedFlightOperation, graph::discardReviewedFlightOperation,
         )
         AccountViewModel::class.java -> AccountViewModel(graph.authRepository, graph.networkMonitor)
         SyncCenterViewModel::class.java -> SyncCenterViewModel(

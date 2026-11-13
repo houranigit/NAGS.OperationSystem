@@ -1,9 +1,11 @@
 package com.nags.operations.ui.theme
 
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 
 private val LightColors = lightColorScheme(
@@ -55,6 +57,8 @@ fun OperationsTheme(
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
         typography = Typography,
-        content = content,
-    )
+    ) {
+        // Clickable flight form field rows opt into ripple at their own surface only.
+        CompositionLocalProvider(LocalRippleConfiguration provides null, content = content)
+    }
 }

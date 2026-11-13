@@ -403,8 +403,9 @@ private fun SubmittedWorkNote(metadata: FlightWorkRecordMetadata, zone: ZoneId, 
     val author = metadata.createdByDisplayName?.takeIf { metadata.published && it.isNotBlank() }
     val by = stringResource(R.string.work_submitted_note_by)
     val on = stringResource(R.string.flight_submission_note_on)
-    val update = stringResource(if (isTask) R.string.work_submitted_update_task else R.string.work_submitted_update_service)
-    val linkColor = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF70B7FF) else AccentBlue
+    val needsReview = metadata.pendingStatus != null && metadata.pendingStatus != "pending"
+    val update = stringResource(if (needsReview) R.string.flight_review_action else if (isTask) R.string.work_submitted_update_task else R.string.work_submitted_update_service)
+    val linkColor = if (needsReview) MaterialTheme.colorScheme.error else if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF70B7FF) else AccentBlue
     if (prefix.isNotBlank() || onUpdate != null) Text(buildAnnotatedString {
         append(prefix)
         if (author != null) { append(by); withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(author) } }

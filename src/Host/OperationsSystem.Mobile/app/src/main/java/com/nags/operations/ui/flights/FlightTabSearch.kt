@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -47,6 +49,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -75,6 +78,14 @@ internal fun FlightTabSearchHeader(
     onOpenSearch: () -> Unit,
     onCloseSearch: () -> Unit,
     modifier: Modifier = Modifier,
+    searchDescription: String = stringResource(R.string.flights_search),
+    placeholder: String = stringResource(R.string.flights_search_placeholder),
+    openSearchDescription: String = stringResource(R.string.flights_search_open),
+    showCloseButton: Boolean = true,
+    autoFocusOnOpen: Boolean = true,
+    searchIcon: ImageVector = Icons.Default.Search,
+    searchAtPhysicalRight: Boolean = false,
+    searchSurface: Color = SearchSurface,
     tabs: @Composable () -> Unit,
 ) {
     val transition = updateTransition(isSearchOpen, label = "Flight search")
@@ -88,15 +99,14 @@ internal fun FlightTabSearchHeader(
     val foreground = MaterialTheme.colorScheme.onSurface
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     val accent = MaterialTheme.colorScheme.primary
-    val searchDescription = stringResource(R.string.flights_search)
     val fieldVisible = isSearchOpen || progress > 0f
 
-    LaunchedEffect(isSearchOpen) {
-        if (isSearchOpen) {
+    LaunchedEffect(isSearchOpen, autoFocusOnOpen) {
+        if (isSearchOpen && autoFocusOnOpen) {
             delay(SEARCH_MOTION_MILLIS.toLong())
             focusRequester.requestFocus()
             keyboard?.show()
-        } else {
+        } else if (!isSearchOpen) {
             keyboard?.hide()
             focusManager.clearFocus()
         }
@@ -113,16 +123,25 @@ internal fun FlightTabSearchHeader(
         BoxWithConstraints(Modifier.fillMaxWidth().height(48.dp)) {
             HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = foreground.copy(alpha = 0.1f))
             val controlWidth = 48.dp + (maxWidth - 32.dp - 48.dp) * progress
-            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(end = 72.dp)
+            val tabPlacement = if (searchAtPhysicalRight) {
+                Modifier.align(AbsoluteAlignment.BottomLeft).fillMaxWidth().absolutePadding(right = 72.dp)
+            } else {
+                Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(end = 72.dp)
+            }
+            val searchPlacement = if (searchAtPhysicalRight) {
+                Modifier.align(AbsoluteAlignment.CenterRight).absolutePadding(right = 16.dp)
+            } else {
+                Modifier.align(Alignment.CenterEnd).padding(end = 16.dp)
+            }
+            Box(tabPlacement
                 .graphicsLayer { alpha = 1f - progress }
                 .then(if (isSearchOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
                 tabs()
             }
-            Row(Modifier.align(Alignment.CenterEnd).padding(end = 16.dp)
-                .width(controlWidth).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(searchPlacement.width(controlWidth).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f).height(48.dp).clipToBounds()) {
                     Box(Modifier.fillMaxSize().padding(horizontal = 6.dp * (1f - progress), vertical = 6.dp)
-                        .background(SearchSurface, RoundedCornerShape(24.dp)))
+                        .background(searchSurface, RoundedCornerShape(24.dp)))
                     Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                         if (isSearchOpen) {
                             Box(Modifier.size(48.dp).pointerInput(focusRequester, keyboard) {
@@ -131,12 +150,12 @@ internal fun FlightTabSearchHeader(
                                     keyboard?.show()
                                 }
                             }, contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Search, contentDescription = null,
+                                Icon(searchIcon, contentDescription = null,
                                     tint = secondary, modifier = Modifier.size(21.dp))
                             }
                         } else {
                             IconButton(onClick = onOpenSearch, modifier = Modifier.size(48.dp)) {
-                                Icon(Icons.Default.Search, stringResource(R.string.flights_search_open),
+                                Icon(searchIcon, openSearchDescription,
                                     tint = foreground, modifier = Modifier.size(22.dp))
                             }
                         }
@@ -158,7 +177,7 @@ internal fun FlightTabSearchHeader(
                                     .semantics { contentDescription = searchDescription },
                                 decorationBox = { innerTextField ->
                                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                                        if (query.isEmpty()) Text(stringResource(R.string.flights_search_placeholder),
+                                        if (query.isEmpty()) Text(placeholder,
                                             style = MaterialTheme.typography.bodyLarge,
                                             color = secondary, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
                                         innerTextField()
@@ -178,13 +197,13 @@ internal fun FlightTabSearchHeader(
                         }
                     }
                 }
-                if (fieldVisible) {
+                if (fieldVisible && showCloseButton) {
                     Spacer(Modifier.width(8.dp * progress))
                     Box(Modifier.width(48.dp * progress).height(48.dp).clipToBounds()
                         .then(if (!isSearchOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
                         IconButton(onClick = ::closeSearch, enabled = isSearchOpen,
                             modifier = Modifier.requiredSize(48.dp).graphicsLayer { alpha = progress }) {
-                            Box(Modifier.size(36.dp).background(SearchSurface, CircleShape), contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(36.dp).background(searchSurface, CircleShape), contentAlignment = Alignment.Center) {
                                 Icon(Icons.Default.Close, stringResource(R.string.flights_search_close),
                                     tint = foreground, modifier = Modifier.size(20.dp))
                             }

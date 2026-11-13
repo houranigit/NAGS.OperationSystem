@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
@@ -47,9 +49,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -66,6 +70,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -84,6 +89,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
@@ -118,6 +124,8 @@ fun NotificationsScreen(
     onBack: () -> Unit,
     onOpenFlight: (NotificationOpenRequest) -> Unit,
     onOpenSchedule: (NotificationOpenRequest) -> Unit = {},
+    embedded: Boolean = false,
+    bottomContentPadding: Dp = 24.dp,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
@@ -132,8 +140,14 @@ fun NotificationsScreen(
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Scaffold(
             topBar = {
-                TopAppBar(
+                if (embedded) {
+                    NotificationsTabHeader(
+                        clearEnabled = state.items.isNotEmpty() && !state.isArchivingAll,
+                        onClear = { confirmClear = true },
+                    )
+                } else TopAppBar(
                     expandedHeight = 56.dp,
+                    windowInsets = TopAppBarDefaults.windowInsets,
                     title = { Text(stringResource(R.string.notifications_title),
                         style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
                         fontWeight = FontWeight.SemiBold) },
@@ -157,11 +171,13 @@ fun NotificationsScreen(
                 )
             },
             containerColor = FlightFormGround,
+            contentWindowInsets = if (embedded) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
-                HorizontalDivider(color = Color(0xFFE3E6EB))
+                if (!embedded) HorizontalDivider(color = Color(0xFFE3E6EB))
                 val listState = rememberLazyListState()
                 NotificationList(state, viewModel, listState,
+                    embedded = embedded, bottomContentPadding = bottomContentPadding,
                     onOpen = { viewModel.open(it, onOpenFlight, onOpenSchedule) })
             }
         }
@@ -186,12 +202,36 @@ fun NotificationsScreen(
     }
 }
 
+@Composable
+private fun NotificationsTabHeader(clearEnabled: Boolean, onClear: () -> Unit) {
+    val foreground = MaterialTheme.colorScheme.onSurface
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
+        HorizontalDivider(color = foreground.copy(alpha = 0.1f))
+        Box(Modifier.fillMaxWidth().height(48.dp)) {
+            HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = foreground.copy(alpha = 0.1f))
+            Text(stringResource(R.string.notifications_title),
+                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(AbsoluteAlignment.CenterLeft).absolutePadding(left = 16.dp, right = 80.dp))
+            IconButton(onClick = onClear, enabled = clearEnabled,
+                modifier = Modifier.align(AbsoluteAlignment.CenterRight).absolutePadding(right = 16.dp).size(48.dp),
+                colors = IconButtonDefaults.iconButtonColors(contentColor = NotificationDeleteRed,
+                    disabledContentColor = NotificationDeleteRed.copy(alpha = 0.38f))) {
+                Icon(Icons.Default.Archive, contentDescription = stringResource(R.string.notifications_clear_all))
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NotificationList(
     state: NotificationsViewModel.UiState,
     viewModel: NotificationsViewModel,
     listState: LazyListState,
+    embedded: Boolean,
+    bottomContentPadding: Dp,
     onOpen: (NotificationDto) -> Unit,
 ) {
     var revealedId by remember { mutableStateOf<String?>(null) }
@@ -226,7 +266,8 @@ private fun NotificationList(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
         }
         PullToRefreshBox(isRefreshing = state.isRefreshing,
-            onRefresh = { viewModel.refresh(userInitiated = true) }, modifier = Modifier.weight(1f).fillMaxWidth()) {
+            onRefresh = { viewModel.refresh(userInitiated = true) }, modifier = Modifier.weight(1f).fillMaxWidth()
+                .padding(bottom = if (embedded && state.items.isEmpty()) bottomContentPadding else 0.dp)) {
             when {
                 state.isLoading && state.items.isEmpty() -> NotificationListSkeleton()
                 state.error != null && state.items.isEmpty() -> Box(
@@ -242,7 +283,7 @@ private fun NotificationList(
                         message = stringResource(R.string.notifications_empty_body))
                 }
                 else -> LazyColumn(state = listState,
-                    contentPadding = PaddingValues(bottom = 24.dp),
+                    contentPadding = PaddingValues(bottom = bottomContentPadding),
                     verticalArrangement = Arrangement.spacedBy(0.dp), modifier = Modifier.fillMaxSize()) {
                     state.error?.let { message ->
                         item(key = "refresh-error") {

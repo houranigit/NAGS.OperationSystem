@@ -22,12 +22,15 @@ import com.nags.operations.data.db.dao.SharedCatalogDao
 import com.nags.operations.data.db.entities.FlightDetailCacheEntity
 import com.nags.operations.data.db.entities.FlightSnapshotEntity
 import com.nags.operations.data.db.entities.SharedCatalogSnapshotEntity
+import com.nags.operations.data.db.dao.FlightOperationsBatchDao
+import com.nags.operations.data.db.entities.FlightOperationsBatchEntity
 
 /** Mobile caches and operational intent remain separate from notifications and the untouched legacy database. */
-@Database(version = 10, exportSchema = true, entities = [
+@Database(version = 13, exportSchema = true, entities = [FlightOperationsBatchEntity::class,
     SharedCatalogSnapshotEntity::class, FlightSnapshotEntity::class, FlightDetailCacheEntity::class, FlightArrivalPendingEntity::class, FlightDeparturePendingEntity::class, FlightCancellationPendingEntity::class, FlightServicePendingEntity::class, FlightServiceFormDraftEntity::class, FlightTaskPendingEntity::class,
 ])
 abstract class CatalogDatabase : RoomDatabase() {
+    abstract fun flightOperationsBatchDao(): FlightOperationsBatchDao
     abstract fun sharedCatalogDao(): SharedCatalogDao
     abstract fun flightCacheDao(): FlightCacheDao
     abstract fun flightArrivalDao(): FlightArrivalDao
@@ -121,12 +124,58 @@ abstract class CatalogDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS flight_operations_batch (ownerSubject TEXT NOT NULL, flightId TEXT NOT NULL, changeId TEXT NOT NULL, inputJson TEXT NOT NULL, rowVersion TEXT NOT NULL, status TEXT NOT NULL, error TEXT, attemptInputJson TEXT, attemptRowVersion TEXT, needsComparison INTEGER NOT NULL DEFAULT 0, attemptRejected INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(ownerSubject, flightId))")
+            }
+        }
+
+        private fun ensureBatchFlags(db: SupportSQLiteDatabase) {
+            // Intermediate v11/v12 layouts lack these flags; retain existing values.
+            val batchColumns = db.query("PRAGMA table_info(flight_operations_batch)").use { cursor ->
+                val name = cursor.getColumnIndexOrThrow("name")
+                buildSet {
+                    while (cursor.moveToNext()) add(cursor.getString(name))
+                }
+            }
+            if ("needsComparison" !in batchColumns) {
+                db.execSQL("ALTER TABLE flight_operations_batch ADD COLUMN needsComparison INTEGER NOT NULL DEFAULT 0")
+            }
+            if ("attemptRejected" !in batchColumns) {
+                db.execSQL("ALTER TABLE flight_operations_batch ADD COLUMN attemptRejected INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                ensureBatchFlags(db)
+            }
+        }
+
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Either intermediate v12 feature may have been installed independently.
+                ensureBatchFlags(db)
+                listOf("flight_arrival_pending", "flight_departure_pending", "flight_service_pending", "flight_task_pending").forEach { table ->
+                    val columns = db.query("PRAGMA table_info($table)").use { cursor ->
+                        val name = cursor.getColumnIndexOrThrow("name")
+                        buildSet {
+                            while (cursor.moveToNext()) add(cursor.getString(name))
+                        }
+                    }
+                    if ("reviewSourceInputJson" !in columns) {
+                        db.execSQL("ALTER TABLE $table ADD COLUMN reviewSourceInputJson TEXT")
+                    }
+                }
+            }
+        }
+
         fun get(context: Context): CatalogDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 CatalogDatabase::class.java,
                 "shared-catalogs.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13).build().also { instance = it }
         }
     }
 }

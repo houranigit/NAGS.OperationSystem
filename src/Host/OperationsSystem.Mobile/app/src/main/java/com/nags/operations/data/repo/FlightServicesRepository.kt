@@ -48,9 +48,17 @@ class FlightServicesRepository(
     private val effectiveLocalActuals: suspend (FlightDetail) -> FlightServiceActualBounds = {
         FlightServiceActualBounds(it.visibleArrival()?.ata, it.visibleDeparture()?.atd)
     },
+    private val grouped: suspend (String, String?) -> Boolean = { _, _ -> false },
+    private val groupedRetry: suspend (String, String?) -> Boolean = { _, _ -> false },
+    private val groupedDiscard: suspend (String, String?) -> Boolean = { _, _ -> false },
+    private val batchFiles: suspend () -> Set<String> = { emptySet() },
+    private val operationWrite: suspend (suspend () -> Unit) -> Unit = { it() },
+    private val operationSave: suspend (suspend () -> Unit) -> Unit = operationWrite,
+    private val operationGate: FlightOperationsGate = FlightOperationsGate(),
+    private val onAttemptRejected: suspend (String, String?) -> Unit = { _, _ -> },
 ) {
     private val gate = Mutex()
-    private val localWrites = Mutex()
+    private val localWrites = FlightOperationsLocalLock(operationGate)
     @Volatile private var accepting = true
     @Volatile private var generation = 0L
     private data class Ack(val id: String, val service: FlightServiceRecord?, val version: String)
@@ -68,7 +76,10 @@ class FlightServicesRepository(
     suspend fun delete(flight: FlightDetail, recordId: String) = saveBatch(flight, listOf(FlightServiceChange(recordId, null)))
 
     /** Validate the complete batch and import its bytes before one Room transaction publishes it. */
-    suspend fun saveBatch(flight: FlightDetail, changes: List<FlightServiceChange>, formDraft: FlightServiceFormDraft? = null): Unit = submissionGate.withLock {
+    suspend fun saveBatch(flight: FlightDetail, changes: List<FlightServiceChange>, formDraft: FlightServiceFormDraft? = null): Unit = operationSave {
+        saveBatchWithinGate(flight, changes, formDraft)
+    }
+    private suspend fun saveBatchWithinGate(flight: FlightDetail, changes: List<FlightServiceChange>, formDraft: FlightServiceFormDraft? = null): Unit = submissionGate.withLock {
         val owner = checkNotNull(currentOwner()) { "Sign in to save services." }
         val observed = generation
         val draftOnly = changes.isEmpty() && formDraft != null
@@ -130,7 +141,7 @@ class FlightServicesRepository(
                     else FlightServicePendingEntity(owner, flight.id, change.serviceRecordId, flight.flightNumber, UUID.randomUUID().toString(),
                         if (value == null) "delete" else "save", stripped?.let { json.encodeToString(it) }, version,
                         reviewed?.let { json.encodeToString(it) }, now().toString(), needsServiceComparison = version != flight.rowVersion,
-                        attachmentFilesJson = json.encodeToString(files))
+                        attachmentFilesJson = json.encodeToString(files), reviewSourceInputJson = existing?.reviewSourceInputJson)
                     existingRows[change.serviceRecordId] = row
                 }
                 val draft = formDraft?.let { draft ->
@@ -192,12 +203,14 @@ class FlightServicesRepository(
             .sortedBy { if (it.attemptOperation != null) 0 else 1 } }) {
             if (!accepting || owner != currentOwner()) return@withLock false
             if (snapshot.flightId in unresolved) continue
+            if (snapshot.attemptOperation == null && grouped(snapshot.flightId, snapshot.serviceRecordId)) { blocked += snapshot.flightId; continue }
             if (snapshot.attemptOperation == null && (hasSavedArrival(snapshot.flightId) ||
                     hasUnacknowledgedDepartureAttempt(snapshot.flightId) || hasUnacknowledgedSiblingWork(snapshot.flightId))) {
                 blocked += snapshot.flightId
                 continue
             }
             var acknowledged = false
+            var didSend = false
             try {
                 val row = prepare(snapshot) ?: continue
                 val version = checkNotNull(row.attemptRowVersion)
@@ -223,6 +236,7 @@ class FlightServicesRepository(
                     // already accepted write; fresh desired saves were checked before freezing.
                     validate(hydrated, version, row.reviewedServiceJson?.let { json.decodeFromString(it) },
                         replayingFrozenAttempt = true)
+                    didSend = true
                     val result = sendSave(row.flightId, row.serviceRecordId, hydrated, version)
                     acknowledged = true
                     if (owner != currentOwner()) return@withLock false
@@ -232,6 +246,7 @@ class FlightServicesRepository(
                     catch (_: Exception) { /* Optional preview caching cannot undo an HTTP acknowledgment. */ }
                     Ack(row.serviceRecordId, result.service, result.rowVersion)
                 } else {
+                    didSend = true
                     val result = sendDelete(row.flightId, row.serviceRecordId, version)
                     acknowledged = true
                     if (owner != currentOwner()) return@withLock false
@@ -262,11 +277,16 @@ class FlightServicesRepository(
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 if (owner != currentOwner()) return@withLock false
+                val rejected = didSend && !acknowledged && error is ApiException && error.statusCode in 400..499 && error.statusCode !in listOf(401, 408, 429)
+                if (rejected) onAttemptRejected(snapshot.flightId, snapshot.serviceRecordId)
                 val transient = acknowledged || error is IOException || error is HttpRequestTimeoutException || error is SerializationException ||
                     error is ApiException && (error.statusCode >= 500 || error.statusCode in listOf(408, 429))
                 val status = if (transient || error is ApiException && error.statusCode == 401) "pending"
                     else if (error is ApiException && error.statusCode in listOf(409, 412)) "conflict" else "failed"
-                localWrites.withLock { pendingRow(snapshot)?.let { dao.put(it.copy(status = status, error = when (status) {
+                localWrites.withLock { pendingRow(snapshot)?.let { current ->
+                    val it = if (rejected) current.copy(attemptOperation = null, attemptInputJson = null,
+                        attemptRowVersion = null, attemptAttachmentFilesJson = null) else current
+                    dao.put(it.copy(status = status, error = when (status) {
                     "pending" -> "Saved on this device. Waiting to sync; reconnect or sign in again."
                     "conflict" -> "The service changed. Reload the flight and review your saved service before saving again."
                     else -> if (error is ApiException) error.userMessage() else "Service was not accepted. Reload the flight and review it."
@@ -393,9 +413,25 @@ class FlightServicesRepository(
     }
     private fun SaveFlightServiceRequest.withoutBytes() = copy(attachments = attachments?.map { it.copy(content = null, contentUri = null) }).normalized()
     private fun files(value: String?): Map<String, String> = value?.let { json.decodeFromString(it) } ?: emptyMap()
+    @Volatile var batchCleanupDeferred: Boolean = false
+    suspend fun cleanupAfterBatch() = localWrites.withLock { reclaimFiles() }
+    suspend fun batchInput(row: FlightServicePendingEntity): SaveFlightServiceRequest? {
+        if (row.operation == "delete") return null
+        val input = json.decodeFromString<SaveFlightServiceRequest>(checkNotNull(row.inputJson))
+        val stored = files(row.attachmentFilesJson)
+        val published = row.reviewedServiceJson?.let { json.decodeFromString<FlightServiceRecord>(it).attachments.map { file -> file.id } }.orEmpty()
+        return input.copy(attachments = input.attachments?.map { attachment ->
+            attachment.copy(content = stored[attachment.id]?.takeIf { attachment.id !in published }?.let { key ->
+                val bytes = attachmentStore.read(key)
+                validateAttachmentBytes(attachment, bytes)
+                Base64.getEncoder().encodeToString(bytes)
+            })
+        })
+    }
     private suspend fun reclaimFiles() {
+        if (batchCleanupDeferred) return
         try { attachmentStore.retainOnly((dao.allRows().flatMap { files(it.attachmentFilesJson).values + files(it.attemptAttachmentFilesJson).values } +
-            dao.allDrafts().flatMap { files(it.attachmentFilesJson).values }).toSet()) }
+            dao.allDrafts().flatMap { files(it.attachmentFilesJson).values }).toSet() + batchFiles()) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { /* Cleanup cannot undo a completed local transaction. */ }
     }
@@ -434,13 +470,20 @@ class FlightServicesRepository(
         val owner = currentOwner() ?: return@withLock false
         dao.rows(owner).any { it.flightId == flightId && it.status == "pending" && it.attemptOperation != null }
     }
-    suspend fun retry(flightId: String, recordId: String) = localWrites.withLock {
+    suspend fun retry(flightId: String, recordId: String) = operationWrite { retryWithinGate(flightId, recordId) }
+    private suspend fun retryWithinGate(flightId: String, recordId: String) {
+        if (groupedRetry(flightId, recordId)) return
+        localWrites.withLock {
         val owner = currentOwner() ?: return@withLock
         check(accepting) { "Your session changed. Reopen Sync Center." }
         dao.rows(owner).firstOrNull { it.flightId == flightId && it.serviceRecordId == recordId }?.let { dao.put(it.copy(status = "pending", error = null)) }
         runCatching { schedule() }
     }
-    suspend fun discard(flightId: String, recordId: String) = localWrites.withLock {
+    }
+    suspend fun discard(flightId: String, recordId: String) = operationWrite { discardWithinGate(flightId, recordId) }
+    private suspend fun discardWithinGate(flightId: String, recordId: String) {
+        if (groupedDiscard(flightId, recordId)) return
+        localWrites.withLock {
         val owner = currentOwner() ?: return@withLock
         check(accepting) { "Your session changed. Reopen Sync Center." }
         dao.rows(owner).firstOrNull { it.flightId == flightId && it.serviceRecordId == recordId }?.let {
@@ -448,6 +491,7 @@ class FlightServicesRepository(
             dao.delete(owner, flightId, recordId, it.changeId)
         }
         reclaimFiles()
+    }
     }
     suspend fun review(flightId: String): FlightDetail = fetchFlight(flightId).also { check(!it.fromCache) { "Connect to reload the latest flight." } }
     suspend fun formDraft(flightId: String): FlightServiceFormDraftEntity? = localWrites.withLock {

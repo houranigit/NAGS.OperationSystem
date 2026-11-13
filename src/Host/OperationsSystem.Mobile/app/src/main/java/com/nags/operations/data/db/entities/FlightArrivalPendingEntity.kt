@@ -1,10 +1,12 @@
 package com.nags.operations.data.db.entities
 
 import androidx.room.Entity
+import kotlinx.serialization.Serializable
 import androidx.room.ColumnInfo
 
 /** Durable arrival intent stays separate from replaceable flight snapshots. */
 @Entity(tableName = "flight_arrival_pending", primaryKeys = ["ownerSubject", "flightId"])
+@Serializable
 data class FlightArrivalPendingEntity(
     val ownerSubject: String,
     val flightId: String,
@@ -21,4 +23,5 @@ data class FlightArrivalPendingEntity(
     // a null column predates reviewed snapshots. The request JSON retains an explicit target ID.
     val reviewedArrivalJson: String? = null,
     @ColumnInfo(defaultValue = "0") val needsArrivalComparison: Boolean = false,
+    val reviewSourceInputJson: String? = null,
 )

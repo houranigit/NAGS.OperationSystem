@@ -45,16 +45,19 @@ class FlightCancellationsRepository(
     private val hasSavedWork: suspend (String) -> Boolean,
     private val submissionGate: Mutex = Mutex(),
     private val now: () -> Instant = Instant::now,
+    private val operationGate: FlightOperationsGate = FlightOperationsGate(),
+    private val operationWrite: suspend (suspend () -> Unit) -> Unit = { it() },
 ) {
     private val gate = Mutex()
-    private val localWrites = Mutex()
+    private val localWrites = FlightOperationsLocalLock(operationGate)
     @Volatile private var accepting = true
     @Volatile private var generation = 0L
     val changes: Flow<List<FlightCancellationPendingEntity>> = ownerFlow.flatMapLatest { owner ->
         if (owner == null) flowOf(emptyList()) else dao.observe(owner)
     }
 
-    suspend fun save(flight: FlightDetail, input: SaveFlightCancellationRequest): Unit = submissionGate.withLock {
+    suspend fun save(flight: FlightDetail, input: SaveFlightCancellationRequest) = operationWrite { saveWithinGate(flight, input) }
+    private suspend fun saveWithinGate(flight: FlightDetail, input: SaveFlightCancellationRequest): Unit = submissionGate.withLock {
         val owner = checkNotNull(currentOwner()) { "Sign in to cancel this flight." }
         val observed = generation
         check(flight.cancellationEditable() && !flight.hasOwnWork() && !hasSavedWork(flight.id)) {
@@ -84,7 +87,8 @@ class FlightCancellationsRepository(
     }
 
     /** Unsent local cancellation is discarded; an unknown save is acknowledged before its exact ID is reverted. */
-    suspend fun revert(flight: FlightDetail): Unit = submissionGate.withLock {
+    suspend fun revert(flight: FlightDetail) = operationWrite { revertWithinGate(flight) }
+    private suspend fun revertWithinGate(flight: FlightDetail): Unit = submissionGate.withLock {
         val owner = checkNotNull(currentOwner()) { "Sign in to revert your cancellation." }
         val observed = generation
         check(flight.canSaveCancellation) { "You cannot revert this cancellation." }
@@ -188,7 +192,8 @@ class FlightCancellationsRepository(
         retry || localWrites.withLock { dao.rows(owner).any { it.status == "pending" } }
     }
 
-    suspend fun retry(flightId: String) = localWrites.withLock {
+    suspend fun retry(flightId: String) = operationWrite { retryWithinGate(flightId) }
+    private suspend fun retryWithinGate(flightId: String) = localWrites.withLock {
         val owner = currentOwner() ?: return@withLock
         check(accepting) { "Your session changed. Reopen Sync Center." }
         dao.rows(owner).firstOrNull { it.flightId == flightId }?.let { dao.put(it.copy(status = "pending", error = null)) }
@@ -196,7 +201,8 @@ class FlightCancellationsRepository(
     }
 
     /** A transmitted cancellation cannot be discarded as though it had never reached the server. */
-    suspend fun discard(flightId: String) = localWrites.withLock {
+    suspend fun discard(flightId: String) = operationWrite { discardWithinGate(flightId) }
+    private suspend fun discardWithinGate(flightId: String) = localWrites.withLock {
         val owner = currentOwner() ?: return@withLock
         check(accepting) { "Your session changed. Reopen Sync Center." }
         dao.rows(owner).firstOrNull { it.flightId == flightId }?.let {

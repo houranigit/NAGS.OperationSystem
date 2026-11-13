@@ -462,8 +462,9 @@ class FlightDeparturesRepositoryTest {
         assertTrue(sent.isEmpty())
     }
 
-    @Test fun transientUnauthorizedAndConflictFailuresKeepInputAndFrozenSignature() = runBlocking {
+    @Test fun unknownOutcomesKeepFrozenProofWhileDefiniteRejectionsKeepOnlyDesiredSignatureAndInput() = runBlocking {
         for ((error, status) in listOf(IOException("offline") to "pending", ApiException(401, "signed out") to "pending",
+            ApiException(408, "timeout") to "pending", ApiException(429, "retry later") to "pending", ApiException(500, "server failure") to "pending",
             ApiException(409, "stale") to "conflict", ApiException(403, "not permitted") to "failed")) {
             val repo = repository()
             repo.clear()
@@ -473,7 +474,15 @@ class FlightDeparturesRepositoryTest {
             repo.syncPending()
             val row = dao.rows(owner.value!!).single()
             assertEquals(status, row.status)
-            assertNotNull(row.attemptSignatureFile)
+            assertNotNull(row.signatureFile)
+            if (status == "pending") {
+                assertNotNull(row.attemptInputJson)
+                assertNotNull(row.attemptSignatureFile)
+            } else {
+                assertNull(row.attemptInputJson)
+                assertNull(row.attemptRowVersion)
+                assertNull(row.attemptSignatureFile)
+            }
             assertEquals(input.normalized(), Json.decodeFromString<SaveFlightDepartureRequest>(row.inputJson).copy(signatureContent = input.signatureContent))
             assertEquals(1, files.files.size)
         }

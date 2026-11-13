@@ -69,6 +69,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -107,6 +108,7 @@ fun FlightsScreen(
     onNotificationHandled: (String?) -> Unit = {},
     selectedTab: Int = 0,
     onSelectTab: (Int) -> Unit = {},
+    bottomContentPadding: Dp = 80.dp,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     // Keep each list alive even when the pager disposes an offscreen page.
@@ -195,6 +197,7 @@ fun FlightsScreen(
             val category = FlightCategory.entries[page]
             FlightListPage(state = state.forCategory(category), viewModel = viewModel,
                 listState = listStates[page],
+                bottomContentPadding = bottomContentPadding,
                 active = page == pagerState.settledPage && state.category == category)
         }
         if (state.isSearchOpen) {
@@ -329,18 +332,20 @@ fun FlightsScreen(
                         onSaveServices = viewModel::saveServices,
                         pendingTasks = pendingTasks.filter { it.flightId == flight.id },
                         onSaveTasks = viewModel::saveTasks,
-                        onReviewTasks = { viewModel.reviewTasks(flight.id) },
+                        onReviewTasks = { viewModel.reviewFlightInput(flight.id) },
                         loadTaskAttachment = viewModel::taskAttachment,
                         loadPendingTaskAttachment = viewModel::pendingTaskAttachment,
                         onSaveBatch = viewModel::saveOperationBatch,
-                        onReviewServices = { viewModel.reviewServices(flight.id) },
+                        onReviewServices = { viewModel.reviewFlightInput(flight.id) },
                         loadServiceAttachment = viewModel::serviceAttachment,
                         loadPendingServiceAttachment = viewModel::pendingServiceAttachment,
                         progressStatus = progressStatus,
                         loadSignature = viewModel::departureSignature,
                         onSaveArrival = { detail, input -> checkNotNull(viewModel.arrivals).save(detail, input) },
-                        onReviewArrival = { viewModel.reviewArrival(flight.id) },
-                        onSaveDeparture = viewModel::saveDeparture)
+                        onReviewArrival = { viewModel.reviewFlightInput(flight.id) },
+                        onSaveDeparture = viewModel::saveDeparture,
+                        onSaveReviewed = viewModel::saveReviewed,
+                        onDiscardReviewed = { target -> viewModel.discardReviewed(flight.id, target) })
                 } else {
                     FlightCancellationForm(state.detail ?: flight, viewModel::customerLogo, onClose = closeForm, progressStatus = progressStatus,
                         pending = pendingCancellation, onSave = viewModel::saveCancellation,
@@ -359,6 +364,7 @@ private fun FlightListPage(
     state: FlightsUiState,
     viewModel: FlightsViewModel,
     listState: LazyListState,
+    bottomContentPadding: Dp,
     active: Boolean,
 ) {
     // Account-scoped durable input updates card badges immediately, without detail HTTP reads.
@@ -368,6 +374,14 @@ private fun FlightListPage(
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val savedCancellations by (viewModel.cancellations?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
         .collectAsStateWithLifecycle(initialValue = emptyList())
+    val savedServices by (viewModel.services?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val savedTasks by (viewModel.tasks?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val workNeedsReviewIds = remember(savedServices, savedTasks) {
+        (savedServices.filter { it.status != "pending" }.map { it.flightId } + savedTasks.filter { it.status != "pending" }.map { it.flightId }).toSet()
+    }
+    val pendingWorkIds = remember(savedServices, savedTasks) { (savedServices.map { it.flightId } + savedTasks.map { it.flightId }).toSet() }
     val arrivalsById = remember(savedArrivals) { savedArrivals.associateBy { it.flightId } }
     val departuresById = remember(savedDepartures) { savedDepartures.associateBy { it.flightId } }
     val cancellationsById = remember(savedCancellations) { savedCancellations.associateBy { it.flightId } }
@@ -426,7 +440,7 @@ private fun FlightListPage(
             }
             else -> LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 80.dp),
+                contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = bottomContentPadding),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -439,11 +453,11 @@ private fun FlightListPage(
                 items(state.items, key = { it.id }, contentType = { "flight" }) { flight ->
                     val pendingProgress = flight.cardPendingProgress(arrivalsById[flight.id], departuresById[flight.id], cancellationsById[flight.id])
                     val needsReview = pendingProgress == FlightProgressStatus.ArrivalNeedsReview ||
-                        pendingProgress == FlightProgressStatus.DepartureNeedsReview || pendingProgress == FlightProgressStatus.CancellationNeedsReview
+                        pendingProgress == FlightProgressStatus.DepartureNeedsReview || pendingProgress == FlightProgressStatus.CancellationNeedsReview || flight.id in workNeedsReviewIds
                     val pendingLabel = when {
                         needsReview -> stringResource(R.string.flight_card_needs_review)
                         pendingProgress == FlightProgressStatus.CancellationRevertPending -> stringResource(R.string.flight_card_revert_pending)
-                        pendingProgress != null -> stringResource(R.string.flight_card_pending_sync)
+                        pendingProgress != null || flight.id in pendingWorkIds -> stringResource(R.string.flight_card_pending_sync)
                         else -> null
                     }
                     FlightCard(flight = flight,

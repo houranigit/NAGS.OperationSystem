@@ -51,9 +51,17 @@ class FlightDeparturesRepository(
     private val submissionGate: Mutex = Mutex(),
     private val onAcknowledgedBeforeDelete: suspend (String, String, String) -> Unit = { _, _, _ -> },
     private val hasSavedServices: suspend (String) -> Boolean = { false },
+    private val grouped: suspend (String, String?) -> Boolean = { _, _ -> false },
+    private val groupedRetry: suspend (String, String?) -> Boolean = { _, _ -> false },
+    private val groupedDiscard: suspend (String, String?) -> Boolean = { _, _ -> false },
+    private val batchFiles: suspend () -> Set<String> = { emptySet() },
+    private val operationWrite: suspend (suspend () -> Unit) -> Unit = { it() },
+    private val operationSave: suspend (suspend () -> Unit) -> Unit = operationWrite,
+    private val operationGate: FlightOperationsGate = FlightOperationsGate(),
+    private val onAttemptRejected: suspend (String, String?) -> Unit = { _, _ -> },
 ) {
     private val gate = Mutex()
-    private val localWrites = Mutex()
+    private val localWrites = FlightOperationsLocalLock(operationGate)
     @Volatile private var accepting = true
     @Volatile private var generation = 0L
     private var acknowledgedOwner: String? = null
@@ -62,7 +70,8 @@ class FlightDeparturesRepository(
         if (owner == null) flowOf(emptyList()) else dao.observe(owner)
     }
 
-    suspend fun save(flight: FlightDetail, input: SaveFlightDepartureRequest): Unit = submissionGate.withLock {
+    suspend fun save(flight: FlightDetail, input: SaveFlightDepartureRequest) = operationSave { saveWithinGate(flight, input) }
+    private suspend fun saveWithinGate(flight: FlightDetail, input: SaveFlightDepartureRequest): Unit = submissionGate.withLock {
         check(!flight.hasCancellationSubmission || input.acknowledgeConflictingSubmission) {
             "Another employee reported this flight as canceled. Confirm departure before saving."
         }
@@ -110,7 +119,7 @@ class FlightDeparturesRepository(
                     inputJson = json.encodeToString(desired), signatureFile = file, savedAtUtc = now().toString(), error = null)
                 else FlightDeparturePendingEntity(owner, flight.id, flight.flightNumber, checkNotNull(flight.currentStaffMemberId),
                     UUID.randomUUID().toString(), json.encodeToString(desired), version, reviewed, now().toString(), file,
-                    needsDepartureComparison = version != flight.rowVersion)
+                    needsDepartureComparison = version != flight.rowVersion, reviewSourceInputJson = existing?.reviewSourceInputJson)
                 dao.put(row)
                 row.rowVersion
             } finally { reclaimSignatures() }
@@ -146,11 +155,14 @@ class FlightDeparturesRepository(
         val blockedByArrival = mutableSetOf<String>()
         for (snapshot in localWrites.withLock { dao.rows(owner).filter { it.status == "pending" } }) {
             if (!accepting || owner != currentOwner()) return@withLock false
+            if (snapshot.attemptInputJson == null && grouped(snapshot.flightId, null)) { blockedByArrival += snapshot.flightId; continue }
             if (snapshot.attemptInputJson == null && (hasSavedArrival(snapshot.flightId) ||
                 priorToServices && !relaxesDeparture(snapshot) || !priorToServices && hasSavedServices(snapshot.flightId))) {
                 blockedByArrival += snapshot.flightId
                 continue
             }
+            var didSend = false
+            var acknowledged = false
             try {
                 val prepared = prepare(snapshot) ?: continue
                 val input = runCatching { json.decodeFromString<SaveFlightDepartureRequest>(checkNotNull(prepared.attemptInputJson)) }.getOrNull()
@@ -168,7 +180,9 @@ class FlightDeparturesRepository(
                     fail(prepared, "The saved customer signature or departure is unavailable. Reload the flight and review it.")
                     continue
                 }
+                didSend = true
                 val result = send(prepared.flightId, hydrated, checkNotNull(prepared.attemptRowVersion))
+                acknowledged = true
                 if (owner != currentOwner()) return@withLock false
                 hydrated.signatureContent?.let { content ->
                     try { onSignatureAcknowledged(prepared.flightId, result, Base64.getDecoder().decode(content)) }
@@ -207,7 +221,9 @@ class FlightDeparturesRepository(
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 if (owner != currentOwner()) return@withLock false
-                val transient = error is IOException || error is HttpRequestTimeoutException || error is SerializationException ||
+                val rejected = didSend && !acknowledged && error is ApiException && error.statusCode in 400..499 && error.statusCode !in listOf(401, 408, 429)
+                if (rejected) onAttemptRejected(snapshot.flightId, null)
+                val transient = acknowledged || error is IOException || error is HttpRequestTimeoutException || error is SerializationException ||
                     error is ApiException && (error.statusCode >= 500 || error.statusCode in listOf(408, 429))
                 val status = if (transient || error is ApiException && error.statusCode == 401) "pending"
                     else if (error is ApiException && error.statusCode in listOf(409, 412)) "conflict" else "failed"
@@ -216,7 +232,10 @@ class FlightDeparturesRepository(
                     "conflict" -> "The flight changed. Reload it and review your saved departure before saving again."
                     else -> if (error is ApiException) error.userMessage() else "Departure was not accepted. Reload the flight and review it."
                 }
-                localWrites.withLock { pendingRow(snapshot)?.let { dao.put(it.copy(status = status, error = message)) } }
+                localWrites.withLock { pendingRow(snapshot)?.let { dao.put(it.copy(status = status, error = message,
+                    attemptInputJson = if (rejected) null else it.attemptInputJson,
+                    attemptRowVersion = if (rejected) null else it.attemptRowVersion,
+                    attemptSignatureFile = if (rejected) null else it.attemptSignatureFile)) } }
                 retry = retry || transient
                 if (error is ApiException && error.statusCode == 401) return@withLock false
             }
@@ -288,20 +307,28 @@ class FlightDeparturesRepository(
             ?.let { runCatching { json.decodeFromString<SaveFlightDepartureRequest>(it.inputJson) }.getOrNull() }
     }
 
-    suspend fun retry(flightId: String) = localWrites.withLock {
+    suspend fun retry(flightId: String) = operationWrite { retryWithinGate(flightId) }
+    private suspend fun retryWithinGate(flightId: String) {
+        if (groupedRetry(flightId, null)) return
+        localWrites.withLock {
         val owner = currentOwner() ?: return@withLock
         check(accepting) { "Your session changed. Reopen Sync Center." }
         dao.rows(owner).firstOrNull { it.flightId == flightId }?.let { dao.put(it.copy(status = "pending", error = null)) }
         runCatching { schedule() }
     }
 
-    suspend fun discard(flightId: String) = localWrites.withLock {
+    }
+    suspend fun discard(flightId: String) = operationWrite { discardWithinGate(flightId) }
+    private suspend fun discardWithinGate(flightId: String) {
+        if (groupedDiscard(flightId, null)) return
+        localWrites.withLock {
         val owner = currentOwner() ?: return@withLock
         check(accepting) { "Your session changed. Reopen Sync Center." }
         dao.rows(owner).firstOrNull { it.flightId == flightId }?.let { dao.delete(owner, it.flightId, it.changeId) }
         reclaimSignatures()
     }
 
+    }
     private fun sameInput(first: String, second: String?): Boolean = runCatching {
         json.decodeFromString<SaveFlightDepartureRequest>(first).withoutAcknowledgement().normalized() ==
             json.decodeFromString<SaveFlightDepartureRequest>(checkNotNull(second)).withoutAcknowledgement().normalized()
@@ -314,8 +341,16 @@ class FlightDeparturesRepository(
         pendingRow(row)?.let { dao.put(it.copy(status = "failed", error = message)) }
     }
 
+    @Volatile var batchCleanupDeferred: Boolean = false
+    suspend fun cleanupAfterBatch() = localWrites.withLock { reclaimSignatures() }
+    suspend fun batchInput(row: FlightDeparturePendingEntity): SaveFlightDepartureRequest {
+        val input = json.decodeFromString<SaveFlightDepartureRequest>(row.inputJson)
+        val bytes = row.signatureFile?.let { signatureStore.read(it).also(::checkSignatureBytes) }
+        return input.copy(signatureContent = bytes?.let { Base64.getEncoder().encodeToString(it) })
+    }
     private suspend fun reclaimSignatures() {
-        try { signatureStore.retainOnly(dao.signatureFiles().toSet()) }
+        if (batchCleanupDeferred) return
+        try { signatureStore.retainOnly(dao.signatureFiles().toSet() + batchFiles()) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { /* A later resume/sync reclaims orphans; cleanup cannot undo a committed disk save. */ }
     }
@@ -367,11 +402,7 @@ class FlightDeparturesRepository(
         return Base64.getDecoder().decode(content).also(::checkSignatureBytes)
     }
 
-    private fun checkSignatureBytes(content: ByteArray) {
-        check(content.size in 45..2_097_152 && content.copyOfRange(0, 8).contentEquals(byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10))) {
-            "The customer signature must be a PNG image of at most 2 MB."
-        }
-    }
+    private fun checkSignatureBytes(content: ByteArray) = com.nags.operations.data.validateFlightSignatureBytes(content)
 
     private fun validate(input: SaveFlightDepartureRequest, version: String, staffId: String, reviewedJson: String, hasSignature: Boolean) {
         check(runCatching { Base64.getDecoder().decode(version).size == 8 }.getOrDefault(false)) { "Reload the flight before saving departure details." }

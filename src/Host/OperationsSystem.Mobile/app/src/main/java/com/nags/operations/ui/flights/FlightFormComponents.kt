@@ -49,7 +49,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RippleConfiguration
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
@@ -387,6 +389,17 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
     }
 }
 
+/** Field rows retain touch feedback; nested buttons keep the app's press-free configuration. */
+@Composable
+internal fun FlightFormFieldSurface(onClick: () -> Unit, enabled: Boolean, modifier: Modifier,
+    content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalRippleConfiguration provides RippleConfiguration()) {
+        Surface(onClick = onClick, enabled = enabled, color = MaterialTheme.colorScheme.surface, modifier = modifier) {
+            CompositionLocalProvider(LocalRippleConfiguration provides null, content = content)
+        }
+    }
+}
+
 @Composable
 internal fun FlightFormDateTimeField(value: String, label: String, description: String, enabled: Boolean = true,
     errorMessage: String? = null, onClear: (() -> Unit)? = null, clearDescription: String? = null,
@@ -398,7 +411,7 @@ internal fun FlightFormDateTimeField(value: String, label: String, description: 
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     FlightFormValidation(errorMessage, registerError = enabled) {
-        Surface(onClick = { focus.clearFocus(); keyboard?.hide(); onClick() }, enabled = enabled, color = MaterialTheme.colorScheme.surface,
+        FlightFormFieldSurface(onClick = { focus.clearFocus(); keyboard?.hide(); onClick() }, enabled = enabled,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormValidationFocus(enabled)
                 .semantics { contentDescription = description }) {
             // A trailing clear target owns the end inset; avoid adding the field's 14dp inset
@@ -463,7 +476,7 @@ internal fun FlightFormChoiceRow(label: String, value: String, description: Stri
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     FlightFormValidation(errorMessage, registerError = enabled) {
-        Surface(onClick = { focus.clearFocus(); keyboard?.hide(); onClick() }, enabled = enabled, color = MaterialTheme.colorScheme.surface,
+        FlightFormFieldSurface(onClick = { focus.clearFocus(); keyboard?.hide(); onClick() }, enabled = enabled,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormValidationFocus(enabled)
                 .semantics { contentDescription = description }) {
             // Selected names also identify the entry when their picker is read-only.

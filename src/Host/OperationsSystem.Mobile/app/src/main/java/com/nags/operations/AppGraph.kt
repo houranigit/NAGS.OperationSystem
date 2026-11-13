@@ -1,5 +1,12 @@
 package com.nags.operations
 
+import com.nags.operations.data.*
+import com.nags.operations.data.repo.FlightOperationsBatchesRepository
+import com.nags.operations.data.repo.RoomFlightOperationsBatchStore
+import com.nags.operations.data.repo.FlightOperationsGate
+import kotlinx.serialization.json.Json
+import java.util.Base64
+import kotlinx.coroutines.CancellationException
 import com.nags.operations.data.hasOwnCancellation
 import com.nags.operations.data.visibleArrival
 import com.nags.operations.data.visibleDeparture
@@ -88,7 +95,7 @@ class AppGraph private constructor(context: Context) {
         online = networkMonitor.isOnline, scope = appScope,
     )
     val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline, customerLogos)
-    private val flightOperationsSyncMutex = Mutex()
+    private val flightOperationsSyncMutex = FlightOperationsGate()
     private val flightSubmissionGate = Mutex()
     private var flightWriteAcknowledgments = 0L
     val flightArrivals: FlightArrivalsRepository = FlightArrivalsRepository(
@@ -97,8 +104,15 @@ class AppGraph private constructor(context: Context) {
             if (tokenStore.getAccessToken().isNullOrBlank()) null
             else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
         },
+        operationGate = flightOperationsSyncMutex,
+        operationWrite = { work -> flightOperationsSyncMutex.withLock { work() } },
+        operationSave = { work -> flightOperationsSyncMutex.withLock { flightOperationsBatches.save(work) } },
+        grouped = { id, _ -> flightOperationsBatches.blocksFreshDrain(id) },
+        onAttemptRejected = { id, recordId -> flightOperationsBatches.legacyRejected("arrival", id, recordId) },
+        groupedRetry = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.retry("arrival", id, recordId) } },
+        groupedDiscard = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.discard("arrival", id, recordId) } },
         online = { networkMonitor.isOnline.value }, send = operationsApi::saveArrival,
-        accepted = flightsRepository::recordArrival,
+        accepted = { id, saved -> flightsRepository.recordArrival(id, saved); flightOperationsBatches.legacyArrivalAccepted(id, saved) },
         schedule = {
             FlightArrivalSyncWorker.schedule(appContext)
             appScope.launch { syncFlightOperations() }
@@ -110,6 +124,7 @@ class AppGraph private constructor(context: Context) {
         hasSavedCancellation = { id -> hasCancellationIntent(id) }, submissionGate = flightSubmissionGate,
         onAcknowledgedBeforeDelete = { id, requestVersion, acknowledgedVersion ->
             flightWriteAcknowledgments++
+            flightOperationsBatches.onPriorWriteAcknowledged(id, requestVersion, acknowledgedVersion)
             persistArrivalAcknowledgment(id, requestVersion, acknowledgedVersion)
         },
     )
@@ -130,9 +145,17 @@ class AppGraph private constructor(context: Context) {
             else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
         },
         online = { networkMonitor.isOnline.value },
+        operationGate = flightOperationsSyncMutex,
+        operationWrite = { work -> flightOperationsSyncMutex.withLock { work() } },
+        operationSave = { work -> flightOperationsSyncMutex.withLock { flightOperationsBatches.save(work) } },
+        grouped = { id, _ -> flightOperationsBatches.blocksFreshDrain(id) },
+        onAttemptRejected = { id, recordId -> flightOperationsBatches.legacyRejected("service", id, recordId) },
+        groupedRetry = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.retry("service", id, recordId) } },
+        groupedDiscard = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.discard("service", id, recordId) } },
+        batchFiles = { flightOperationsBatches.fileReferences("service") },
         sendSave = { id, recordId, input, version -> flightArrivals.withCurrentSession { operationsApi.saveService(id, recordId, input, version) } },
         sendDelete = { id, recordId, version -> flightArrivals.withCurrentSession { operationsApi.removeService(id, recordId, version) } },
-        acceptedSave = flightsRepository::recordService, acceptedDelete = flightsRepository::recordServiceDeleted,
+        acceptedSave = { id, saved -> flightsRepository.recordService(id, saved); flightOperationsBatches.legacyServiceAccepted(id, saved) }, acceptedDelete = { id, saved -> flightsRepository.recordServiceDeleted(id, saved); flightOperationsBatches.legacyServiceDeleted(id, saved.id) },
         schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } },
         json = HttpClientFactory.json,
         hasSavedArrival = { id -> flightArrivals.mustSyncBeforeServices(id) },
@@ -149,6 +172,7 @@ class AppGraph private constructor(context: Context) {
         hasSavedCancellation = { id -> hasCancellationIntent(id) }, submissionGate = flightSubmissionGate,
         onAcknowledgedBeforeDelete = { id, before, after ->
             flightWriteAcknowledgments++
+            flightOperationsBatches.onPriorWriteAcknowledged(id, before, after)
             flightArrivals.onPriorWriteAcknowledged(id, before, after)
             flightTasks.onPriorWriteAcknowledged(id, before, after)
             flightDepartures.onPriorWriteAcknowledged(id, before, after)
@@ -172,9 +196,17 @@ class AppGraph private constructor(context: Context) {
             else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
         },
         online = { networkMonitor.isOnline.value },
+        operationGate = flightOperationsSyncMutex,
+        operationWrite = { work -> flightOperationsSyncMutex.withLock { work() } },
+        operationSave = { work -> flightOperationsSyncMutex.withLock { flightOperationsBatches.save(work) } },
+        grouped = { id, _ -> flightOperationsBatches.blocksFreshDrain(id) },
+        onAttemptRejected = { id, recordId -> flightOperationsBatches.legacyRejected("task", id, recordId) },
+        groupedRetry = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.retry("task", id, recordId) } },
+        groupedDiscard = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.discard("task", id, recordId) } },
+        batchFiles = { flightOperationsBatches.fileReferences("task") },
         sendSave = { id, recordId, input, version -> flightArrivals.withCurrentSession { operationsApi.saveTask(id, recordId, input, version) } },
         sendDelete = { id, recordId, version -> flightArrivals.withCurrentSession { operationsApi.removeTask(id, recordId, version) } },
-        acceptedSave = flightsRepository::recordTask, acceptedDelete = flightsRepository::recordTaskDeleted,
+        acceptedSave = { id, saved -> flightsRepository.recordTask(id, saved); flightOperationsBatches.legacyTaskAccepted(id, saved) }, acceptedDelete = { id, saved -> flightsRepository.recordTaskDeleted(id, saved); flightOperationsBatches.legacyTaskDeleted(id, saved.id) },
         schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } },
         json = HttpClientFactory.json,
         hasSavedArrival = { id -> flightArrivals.mustSyncBeforeServices(id) },
@@ -202,6 +234,7 @@ class AppGraph private constructor(context: Context) {
         hasSavedCancellation = { id -> hasCancellationIntent(id) }, submissionGate = flightSubmissionGate,
         onAcknowledgedBeforeDelete = { id, before, after ->
             flightWriteAcknowledgments++
+            flightOperationsBatches.onPriorWriteAcknowledged(id, before, after)
             flightArrivals.onPriorWriteAcknowledged(id, before, after)
             flightServices.onPriorWriteAcknowledged(id, before, after)
             flightDepartures.onPriorWriteAcknowledged(id, before, after)
@@ -214,8 +247,16 @@ class AppGraph private constructor(context: Context) {
             if (tokenStore.getAccessToken().isNullOrBlank()) null
             else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
         },
+        operationGate = flightOperationsSyncMutex,
+        operationWrite = { work -> flightOperationsSyncMutex.withLock { work() } },
+        operationSave = { work -> flightOperationsSyncMutex.withLock { flightOperationsBatches.save(work) } },
+        grouped = { id, _ -> flightOperationsBatches.blocksFreshDrain(id) },
+        onAttemptRejected = { id, recordId -> flightOperationsBatches.legacyRejected("departure", id, recordId) },
+        groupedRetry = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.retry("departure", id, recordId) } },
+        groupedDiscard = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.discard("departure", id, recordId) } },
+        batchFiles = { flightOperationsBatches.fileReferences("departure") },
         online = { networkMonitor.isOnline.value }, send = operationsApi::saveDeparture,
-        accepted = flightsRepository::recordDeparture,
+        accepted = { id, saved -> flightsRepository.recordDeparture(id, saved); flightOperationsBatches.legacyDepartureAccepted(id, saved) },
         schedule = {
             FlightArrivalSyncWorker.schedule(appContext)
             appScope.launch { syncFlightOperations() }
@@ -229,6 +270,7 @@ class AppGraph private constructor(context: Context) {
         onSignatureAcknowledged = { id, saved, bytes -> cacheAcknowledgedSignature(id, saved, bytes) },
         onAcknowledgedBeforeDelete = { id, before, after ->
             flightWriteAcknowledgments++
+            flightOperationsBatches.onPriorWriteAcknowledged(id, before, after)
             flightArrivals.onPriorWriteAcknowledged(id, before, after)
             flightServices.onPriorWriteAcknowledged(id, before, after)
             flightTasks.onPriorWriteAcknowledged(id, before, after)
@@ -237,6 +279,8 @@ class AppGraph private constructor(context: Context) {
     )
     val flightCancellations: com.nags.operations.data.repo.FlightCancellationsRepository = com.nags.operations.data.repo.FlightCancellationsRepository(
         dao = catalogDatabase.flightCancellationDao(), ownerFlow = logoOwners,
+        operationGate = flightOperationsSyncMutex,
+        operationWrite = { work -> flightOperationsSyncMutex.withLock { work() } },
         currentOwner = {
             if (tokenStore.getAccessToken().isNullOrBlank()) null
             else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
@@ -257,6 +301,48 @@ class AppGraph private constructor(context: Context) {
         online = { networkMonitor.isOnline.value }, fetch = operationsApi::departureSignature,
         pendingBytes = { id, changeId -> flightDepartures.signaturePreview(id, changeId) },
     )
+    private val flightOperationsBatches: FlightOperationsBatchesRepository by lazy {
+        FlightOperationsBatchesRepository(RoomFlightOperationsBatchStore(catalogDatabase),
+            currentOwner = { if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject()) },
+            online = { networkMonitor.isOnline.value }, fetch = flightsRepository::flight,
+            send = operationsApi::saveOperationsBatch,
+            accepted = { detail, input ->
+                // Publish the complete HTTP ACK once; previews are optional and precede private-file release.
+                flightsRepository.recordOperationsBatch(detail)
+                for (row in input.services) detail.services.firstOrNull { it.id == row.serviceRecordId }?.let { record ->
+                    try { serviceAttachmentPreviews.recordAcknowledged(detail.id, FlightServiceSaved(record, detail.rowVersion),
+                        flightServices.batchInput(row)?.attachments.orEmpty().mapNotNull { file -> file.content?.let { file.id to Base64.getDecoder().decode(it) } }.toMap()) }
+                    catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { }
+                }
+                for (row in input.tasks) detail.tasks.firstOrNull { it.id == row.taskRecordId }?.let { record ->
+                    try { taskAttachmentPreviews.recordAcknowledged(detail.id, FlightTaskSaved(record, detail.rowVersion),
+                        flightTasks.batchInput(row)?.attachments.orEmpty().mapNotNull { file -> file.content?.let { file.id to Base64.getDecoder().decode(it) } }.toMap()) }
+                    catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { }
+                }
+                input.departure?.let { row ->
+                    val target = HttpClientFactory.json.decodeFromString<SaveFlightDepartureRequest>(row.inputJson).targetSubmissionId
+                    val record = detail.departureSubmissions.firstOrNull { if (target != null) it.id == target else it.submittedByEmployee.staffMemberId.equals(row.staffMemberId, true) }
+                    val content = flightDepartures.batchInput(row).signatureContent
+                    if (record != null && content != null) try { departureSignaturePreviews.recordAcknowledged(detail.id,
+                        FlightDepartureSaved(record, detail.rowVersion), Base64.getDecoder().decode(content)) }
+                    catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { }
+                }
+                flightWriteAcknowledgments++
+            },
+            hydrateArrival = { HttpClientFactory.json.decodeFromString<SaveFlightArrivalRequest>(it.inputJson) },
+            hydrateDeparture = flightDepartures::batchInput, hydrateService = flightServices::batchInput, hydrateTask = flightTasks::batchInput,
+            acknowledgedVersion = ::acknowledgedBeforeWork,
+            deferCleanup = { deferred -> flightServices.batchCleanupDeferred = deferred; flightTasks.batchCleanupDeferred = deferred; flightDepartures.batchCleanupDeferred = deferred },
+            cleanup = { flightServices.cleanupAfterBatch(); flightTasks.cleanupAfterBatch(); flightDepartures.cleanupAfterBatch() },
+            schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } }, json = HttpClientFactory.json,
+            onAcknowledged = { id, before, after ->
+                flightArrivals.onPriorWriteAcknowledged(id, before, after)
+                flightServices.onPriorWriteAcknowledged(id, before, after)
+                flightTasks.onPriorWriteAcknowledged(id, before, after)
+                flightDepartures.onPriorWriteAcknowledged(id, before, after)
+            })
+    }
+
     val notificationsRepository: NotificationsRepository =
         NotificationsRepository(notificationsApi, database, tokenStore, appScope, networkMonitor.isOnline)
     val sharedCatalogsRepository = SharedCatalogsRepository(sharedCatalogsApi, catalogDatabase, tokenStore, customerLogos)
@@ -334,7 +420,7 @@ class AppGraph private constructor(context: Context) {
         }
     }
 
-    suspend fun signOut() {
+    suspend fun signOut() = flightOperationsSyncMutex.withLock {
         sessionTransitionMutex.withLock {
             notificationNavigation.clearForSessionEnd()
             deactivateNotificationDisplay(tokenStore.getSessionSubject())
@@ -345,6 +431,7 @@ class AppGraph private constructor(context: Context) {
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
+            flightOperationsBatches.clear()
             flightArrivals.clear()
             flightServices.clear()
             flightTasks.clear()
@@ -370,7 +457,13 @@ class AppGraph private constructor(context: Context) {
     }
 
     /** Keep a multi-section local save together while each repository commits its durable intent. */
-    suspend fun saveFlightOperationBatch(save: suspend () -> Unit) = flightOperationsSyncMutex.withLock { save() }
+    suspend fun saveFlightOperationBatch(save: suspend () -> Unit) = flightOperationsSyncMutex.withLock { flightOperationsBatches.save(save) }
+
+    suspend fun saveReviewedFlightOperation(flight: FlightDetail, target: FlightOperationReviewTarget, save: suspend () -> Unit) =
+        flightOperationsSyncMutex.withLock { flightOperationsBatches.saveReviewed(flight, target, save) }
+
+    suspend fun discardReviewedFlightOperation(flightId: String, target: FlightOperationReviewTarget) =
+        flightOperationsSyncMutex.withLock { flightOperationsBatches.discardReviewed(flightId, target) }
 
     /** Relax actual bounds before work, then synchronize work before tightening actual bounds. */
     suspend fun syncFlightOperations(): Boolean {
@@ -378,17 +471,22 @@ class AppGraph private constructor(context: Context) {
         return flightOperationsSyncMutex.withLock {
             // A late parent ACK can unblock a service skipped earlier in this pass. Continue
             // only after acknowledged progress; transient failures use the worker's backoff.
+            suspend fun <T> legacyDrain(drain: suspend () -> T): T {
+                flightOperationsBatches.adoptLegacyPending()
+                return drain()
+            }
             var previousAcknowledgments: Long
             do {
                 previousAcknowledgments = flightWriteAcknowledgments
-                flightArrivals.syncPending(priorToServices = true)
-                flightDepartures.syncPending(priorToServices = true)
-                val servicesPending = flightServices.syncPending()
-                val tasksPending = flightTasks.syncPending()
-                val arrivalsPending = flightArrivals.syncPending()
-                val departuresPending = flightDepartures.syncPending()
-                val cancellationsPending = flightCancellations.syncPending()
-                if (arrivalsPending || servicesPending || tasksPending || departuresPending || cancellationsPending) return@withLock true
+                legacyDrain { flightArrivals.syncPending(priorToServices = true) }
+                legacyDrain { flightDepartures.syncPending(priorToServices = true) }
+                val servicesPending = legacyDrain { flightServices.syncPending() }
+                val tasksPending = legacyDrain { flightTasks.syncPending() }
+                val arrivalsPending = legacyDrain { flightArrivals.syncPending() }
+                val departuresPending = legacyDrain { flightDepartures.syncPending() }
+                val batchesPending = flightOperationsBatches.syncPending()
+                val cancellationsPending = legacyDrain { flightCancellations.syncPending() }
+                if (arrivalsPending || servicesPending || tasksPending || departuresPending || batchesPending || cancellationsPending) return@withLock true
             } while (previousAcknowledgments != flightWriteAcknowledgments)
             false
         }
@@ -475,7 +573,7 @@ class AppGraph private constructor(context: Context) {
         systemNotificationManager.show(payload, activeSubject)
     }
 
-    private suspend fun prepareForAccountSwitch() {
+    private suspend fun prepareForAccountSwitch() = flightOperationsSyncMutex.withLock {
         sessionTransitionMutex.withLock {
             notificationNavigation.clearForSessionEnd()
             deactivateNotificationDisplay(tokenStore.getSessionSubject())
@@ -487,6 +585,7 @@ class AppGraph private constructor(context: Context) {
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
+            flightOperationsBatches.clear()
             flightArrivals.clear()
             flightServices.clear()
             flightTasks.clear()

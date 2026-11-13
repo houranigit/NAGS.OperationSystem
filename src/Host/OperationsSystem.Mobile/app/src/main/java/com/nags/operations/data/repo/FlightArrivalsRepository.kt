@@ -47,11 +47,18 @@ class FlightArrivalsRepository(
     private val fetchFlight: suspend (String) -> FlightDetail = { error("Reload the flight before synchronizing arrival.") },
     private val hasUnacknowledgedOtherWork: suspend (String) -> Boolean = { false },
     private val hasSavedServices: suspend (String) -> Boolean = { false },
+    private val grouped: suspend (String, String?) -> Boolean = { _, _ -> false },
+    private val groupedRetry: suspend (String, String?) -> Boolean = { _, _ -> false },
+    private val groupedDiscard: suspend (String, String?) -> Boolean = { _, _ -> false },
+    private val operationWrite: suspend (suspend () -> Unit) -> Unit = { it() },
+    private val operationSave: suspend (suspend () -> Unit) -> Unit = operationWrite,
+    private val operationGate: FlightOperationsGate = FlightOperationsGate(),
+    private val onAttemptRejected: suspend (String, String?) -> Unit = { _, _ -> },
 ) {
     // Network sends and session transitions share this gate. A new bearer cannot be
     // published while an old account's request is still using the HTTP client.
     private val gate = Mutex()
-    private val localWrites = Mutex()
+    private val localWrites = FlightOperationsLocalLock(operationGate)
     @Volatile private var accepting = true
     @Volatile private var generation = 0L
     // Only exact acknowledgments of this session's writes can advance a reviewed version.
@@ -63,7 +70,8 @@ class FlightArrivalsRepository(
         if (owner == null) flowOf(emptyList()) else dao.observe(owner)
     }
 
-    suspend fun save(flight: FlightDetail, input: SaveFlightArrivalRequest) {
+    suspend fun save(flight: FlightDetail, input: SaveFlightArrivalRequest) = operationSave { saveWithinGate(flight, input) }
+    private suspend fun saveWithinGate(flight: FlightDetail, input: SaveFlightArrivalRequest) {
         val owner = checkNotNull(currentOwner()) { "Sign in to save arrival details." }
         val observed = generation
         val normalized = input.normalized()
@@ -90,7 +98,7 @@ class FlightArrivalsRepository(
                 val desired = existing?.copy(inputJson = json.encodeToString(normalized), savedAtUtc = now().toString(), error = null)
                     ?: FlightArrivalPendingEntity(owner, flight.id, flight.flightNumber, UUID.randomUUID().toString(),
                         json.encodeToString(normalized), flight.rowVersion, now().toString(),
-                        reviewedArrivalJson = json.encodeToString(reviewedArrival(flight, normalized.targetSubmissionId)))
+                        reviewedArrivalJson = json.encodeToString(reviewedArrival(flight, normalized.targetSubmissionId)), reviewSourceInputJson = retained?.reviewSourceInputJson)
                 dao.put(advanceAcknowledged(desired))
             }
         }
@@ -108,6 +116,7 @@ class FlightArrivalsRepository(
         val blocked = mutableSetOf<String>()
         for (snapshot in localWrites.withLock { dao.rows(owner).filter { it.status == "pending" } }) {
             if (!accepting || owner != currentOwner()) return@withLock false
+            if (snapshot.attemptInputJson == null && grouped(snapshot.flightId, null)) { blocked += snapshot.flightId; continue }
             if (snapshot.attemptInputJson == null && !relaxesArrival(snapshot) &&
                 (priorToServices || hasSavedServices(snapshot.flightId))) {
                 blocked += snapshot.flightId
@@ -119,6 +128,8 @@ class FlightArrivalsRepository(
                 blocked += snapshot.flightId
                 continue
             }
+            var didSend = false
+            var acknowledged = false
             try {
                 val row = prepare(snapshot) ?: continue
                 val input = runCatching { json.decodeFromString<SaveFlightArrivalRequest>(checkNotNull(row.attemptInputJson)) }.getOrNull()
@@ -126,7 +137,9 @@ class FlightArrivalsRepository(
                     updateIfPending(row, row.copy(status = "failed", error = "The saved arrival is incomplete. Reload the flight and review it."))
                     continue
                 }
+                didSend = true
                 val result = send(row.flightId, input, row.rowVersion)
+                acknowledged = true
                 if (owner != currentOwner()) return@withLock false
                 accepted(row.flightId, result)
                 // Publish our exact ACK before the dependent-queue callback. Departure saves
@@ -152,7 +165,9 @@ class FlightArrivalsRepository(
                 throw cancelled // A cancelled send remains pending and replays safely.
             } catch (error: Exception) {
                 if (owner != currentOwner()) return@withLock false
-                val transient = error is IOException || error is HttpRequestTimeoutException || error is SerializationException ||
+                val rejected = didSend && !acknowledged && error is ApiException && error.statusCode in 400..499 && error.statusCode !in listOf(401, 408, 429)
+                if (rejected) onAttemptRejected(snapshot.flightId, null)
+                val transient = acknowledged || error is IOException || error is HttpRequestTimeoutException || error is SerializationException ||
                     (error is ApiException && (error.statusCode >= 500 || error.statusCode in listOf(408, 429)))
                 val status = if (transient || (error is ApiException && error.statusCode == 401)) "pending"
                     else if (error is ApiException && error.statusCode in listOf(409, 412)) "conflict" else "failed"
@@ -162,7 +177,7 @@ class FlightArrivalsRepository(
                     else -> if (error is ApiException) error.userMessage()
                         else "Arrival was not accepted. Reload the flight to check access and arrival details."
                 }
-                updateIfPending(snapshot, snapshot.copy(status = status, error = message))
+                updateIfPending(snapshot, snapshot.copy(status = status, error = message), clearRejectedAttempt = rejected)
                 retry = retry || transient
                 if (error is ApiException && error.statusCode == 401) return@withLock false
             }
@@ -294,23 +309,27 @@ class FlightArrivalsRepository(
     }
 
     /** Retry retains the exact request and original version; it never silently rebases a conflict. */
-    suspend fun retry(flightId: String) {
+    suspend fun retry(flightId: String) = operationWrite { retryWithinGate(flightId) }
+    private suspend fun retryWithinGate(flightId: String) {
+        if (groupedRetry(flightId, null)) return
         val owner = currentOwner() ?: return
         val observed = generation
         localWrites.withLock {
             check(accepting && observed == generation && owner == currentOwner()) { "Your session changed. Reopen Sync Center." }
-            val row = dao.rows(owner).firstOrNull { it.flightId == flightId } ?: return
+            val row = dao.rows(owner).firstOrNull { it.flightId == flightId } ?: return@withLock
             dao.put(row.copy(status = "pending", error = null))
         }
         runCatching { schedule() }
     }
 
-    suspend fun discard(flightId: String) {
+    suspend fun discard(flightId: String) = operationWrite { discardWithinGate(flightId) }
+    private suspend fun discardWithinGate(flightId: String) {
+        if (groupedDiscard(flightId, null)) return
         val owner = currentOwner() ?: return
         val observed = generation
         localWrites.withLock {
             check(accepting && observed == generation && owner == currentOwner()) { "Your session changed. Reopen Sync Center." }
-            val row = dao.rows(owner).firstOrNull { it.flightId == flightId } ?: return
+            val row = dao.rows(owner).firstOrNull { it.flightId == flightId } ?: return@withLock
             dao.delete(owner, row.flightId, row.changeId)
         }
     }
@@ -323,10 +342,10 @@ class FlightArrivalsRepository(
     private suspend fun pendingRow(row: FlightArrivalPendingEntity): FlightArrivalPendingEntity? =
         dao.rows(row.ownerSubject).firstOrNull { it.flightId == row.flightId && it.changeId == row.changeId && it.status == "pending" }
 
-    private suspend fun updateIfPending(original: FlightArrivalPendingEntity, updated: FlightArrivalPendingEntity) = localWrites.withLock {
+    private suspend fun updateIfPending(original: FlightArrivalPendingEntity, updated: FlightArrivalPendingEntity, clearRejectedAttempt: Boolean = false) = localWrites.withLock {
         // Discard/replacement may finish during an HTTP request. A late failure must
         // never resurrect discarded input or replace a newer local correction.
-        pendingRow(original)?.let { latest -> dao.put(latest.copy(status = updated.status, error = updated.error)) }
+        pendingRow(original)?.let { latest -> dao.put(latest.copy(status = updated.status, error = updated.error, attemptInputJson = if (clearRejectedAttempt) null else latest.attemptInputJson)) }
     }
 
     suspend fun pause() {

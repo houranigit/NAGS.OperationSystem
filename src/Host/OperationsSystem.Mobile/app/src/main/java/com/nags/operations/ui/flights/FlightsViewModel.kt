@@ -159,6 +159,8 @@ class FlightsViewModel internal constructor(
     val tasks: com.nags.operations.data.repo.FlightTasksRepository? = null,
     private val loadTaskAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
     private val loadPendingTaskAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
+    private val saveReviewedOperation: suspend (FlightDetail, com.nags.operations.data.FlightOperationReviewTarget, suspend () -> Unit) -> Unit = { _, _, _ -> error("Review saving is unavailable.") },
+    private val discardReviewedOperation: suspend (String, com.nags.operations.data.FlightOperationReviewTarget) -> Unit = { _, _ -> error("Review discard is unavailable.") },
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
         sharedCatalogsRepository: SharedCatalogsRepository, arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository,
@@ -172,7 +174,9 @@ class FlightsViewModel internal constructor(
         saveLocalBatch: suspend (suspend () -> Unit) -> Unit = { save -> save() },
         taskRepository: com.nags.operations.data.repo.FlightTasksRepository? = null,
         loadTaskAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
-        loadPendingTaskAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null }) : this(
+        loadPendingTaskAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
+        saveReviewedOperation: suspend (FlightDetail, com.nags.operations.data.FlightOperationReviewTarget, suspend () -> Unit) -> Unit = { _, _, _ -> error("Review saving is unavailable.") },
+        discardReviewedOperation: suspend (String, com.nags.operations.data.FlightOperationReviewTarget) -> Unit = { _, _ -> error("Review discard is unavailable.") }) : this(
         arrivals = arrivalRepository,
         departures = departureRepository,
         cancellations = cancellationRepository,
@@ -183,6 +187,8 @@ class FlightsViewModel internal constructor(
         loadServiceAttachment = loadServiceAttachment,
         loadPendingServiceAttachment = loadPendingServiceAttachment,
         saveLocalBatch = saveLocalBatch,
+        saveReviewedOperation = saveReviewedOperation,
+        discardReviewedOperation = discardReviewedOperation,
         actualsStaff = sharedCatalogsRepository.stationStaffFlow(),
         currentUserDisplayName = currentUserDisplayName,
         loadDepartureSignature = loadDepartureSignature,
@@ -215,6 +221,19 @@ class FlightsViewModel internal constructor(
         _state.update { if (it.selectedFlightId == id) it.copy(detail = detail) else it }
         return detail
     }
+
+    /** Review reads server values when available and explicitly exposes a cached snapshot offline. */
+    suspend fun reviewFlightInput(id: String): FlightDetail {
+        val detail = fetchFlight(id)
+        _state.update { if (it.selectedFlightId == id) it.copy(detail = detail) else it }
+        return detail
+    }
+
+    suspend fun saveReviewed(flight: FlightDetail, target: com.nags.operations.data.FlightOperationReviewTarget, save: suspend () -> Unit) =
+        saveReviewedOperation(flight, target, save)
+
+    suspend fun discardReviewed(flightId: String, target: com.nags.operations.data.FlightOperationReviewTarget) =
+        discardReviewedOperation(flightId, target)
 
     suspend fun saveOperationBatch(save: suspend () -> Unit) = saveLocalBatch(save)
 

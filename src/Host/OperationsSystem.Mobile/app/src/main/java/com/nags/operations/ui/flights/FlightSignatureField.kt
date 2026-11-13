@@ -48,7 +48,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -97,7 +96,7 @@ internal fun FlightSignatureField(value: String, hasSavedSignature: Boolean = fa
     val description = stringResource(if (hasSignature) R.string.operations_signature_edit else R.string.operations_signature_title)
     val state = stringResource(if (hasSignature) R.string.operations_signature_captured else R.string.operations_signature_add)
     val inkColor = MaterialTheme.colorScheme.onSurface
-    Surface(onClick = onOpen, enabled = enabled, color = MaterialTheme.colorScheme.surface,
+    FlightFormFieldSurface(onClick = onOpen, enabled = enabled,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).flightFormValidationFocus(enabled).semantics {
             contentDescription = description
             stateDescription = state

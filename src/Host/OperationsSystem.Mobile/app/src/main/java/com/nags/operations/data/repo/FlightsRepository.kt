@@ -175,6 +175,21 @@ class FlightsRepository internal constructor(
         }
     }
 
+    /** A batch response replaces every operational section together, never one member at a time. */
+    suspend fun recordOperationsBatch(detail: FlightDetail) {
+        val session = requireSession()
+        refreshMutex.withLock {
+            mutationMutex.withLock {
+                ensureCurrent(session)
+                dao.detail(session.owner, detail.id)?.let { cached ->
+                    dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(detail))))
+                }
+                updateSnapshotReportsLocked(session, detail.id) { it.withReportFlags(detail) }
+            }
+        }
+        _cacheChanges.tryEmit(Unit)
+    }
+
     /** Cache-only current evidence for mutually exclusive local submissions; never starts an HTTP read. */
     suspend fun cachedFlight(id: String): FlightDetail? = captureSession()?.let { cachedDetailOrNull(it, id) }
 

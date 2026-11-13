@@ -87,7 +87,7 @@ private fun FlightTaskDraft.rezone(before: ZoneId, after: ZoneId) = copy(period 
 
 private fun FlightServiceRecord.toEditorDraft(zone: ZoneId) = input().toEditorDraft(id, serviceName, this, FlightOperationsCatalogs(), zone)
 
-private fun SaveFlightServiceRequest.toEditorDraft(id: String, name: String, baseline: FlightServiceRecord?,
+internal fun SaveFlightServiceRequest.toEditorDraft(id: String, name: String, baseline: FlightServiceRecord?,
     catalogs: FlightOperationsCatalogs, zone: ZoneId) = FlightServiceDraft(id, serviceId, name,
     FlightWorkPeriod(operationLocalTime(startUtc, zone), endUtc?.let { operationLocalTime(it, zone) }.orEmpty(), startUtc, endUtc),
     customerReferenceNumber.orEmpty(), notes.orEmpty(),
@@ -101,7 +101,7 @@ private fun SaveFlightServiceRequest.toEditorDraft(id: String, name: String, bas
         FlightServiceAttachmentInput(it.id, it.kind, it.fileName, it.contentType)
     }).orEmpty().map { attachment ->
         val uploaded = baseline?.attachments?.firstOrNull { it.id == attachment.id }
-        FlightAttachmentDraft(attachment.id, "", attachment.fileName, attachment.contentType, uploadedAtUtc = uploaded?.uploadedAtUtc)
+        FlightAttachmentDraft(attachment.id, attachment.contentUri.orEmpty(), attachment.fileName, attachment.contentType, uploadedAtUtc = uploaded?.uploadedAtUtc)
     })
 
 internal fun FlightServiceDraft.serviceInput(zone: ZoneId, storedAttachmentIds: Set<String> = emptySet()): SaveFlightServiceRequest =

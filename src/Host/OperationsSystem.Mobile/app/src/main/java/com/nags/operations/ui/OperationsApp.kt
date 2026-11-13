@@ -17,6 +17,7 @@ import androidx.navigation.compose.rememberNavController
 import com.nags.operations.AppGraph
 import com.nags.operations.ui.account.AccountScreen
 import com.nags.operations.ui.account.AccountViewModel
+import com.nags.operations.ui.home.AdHocFlightShell
 import com.nags.operations.ui.home.MainShellScreen
 import com.nags.operations.ui.login.LoginScreen
 import com.nags.operations.ui.login.LoginViewModel
@@ -33,6 +34,7 @@ private object Routes {
     const val Notifications = "notifications"
     const val Account = "account"
     const val SyncCenter = "sync"
+    const val AdHoc = "adhoc-create"
 }
 
 /** A null UI session means DataStore has not emitted yet, rather than a signed-out account. */
@@ -105,7 +107,7 @@ fun OperationsApp() {
         }
         composable(Routes.Flights) {
             MainShellScreen(graph = graph, factory = factory, subject = subject,
-                onOpenNotifications = { navController.navigate(Routes.Notifications) },
+                onCreateAdHoc = { navController.navigate(Routes.AdHoc) { launchSingleTop = true } },
                 onOpenAccount = { navController.navigate(Routes.Account) },
                 notificationOpenRequest = pendingNotification,
                 onNotificationHandled = graph.notificationNavigation::consume)
@@ -119,6 +121,10 @@ fun OperationsApp() {
             val model: SyncCenterViewModel = viewModel(key = "sync:$subject", factory = factory)
             SyncCenterScreen(viewModel = model, onBack = { navController.popBackStack() })
         }
+        composable(Routes.AdHoc) {
+            AdHocFlightShell(onClose = { navController.popBackStack() })
+        }
+        // Retain the previous inbox destination for restored navigation stacks.
         composable(Routes.Notifications) {
             val model: NotificationsViewModel = viewModel(key = "notifications:$subject", factory = factory)
             NotificationsScreen(viewModel = model, onBack = { navController.popBackStack() },

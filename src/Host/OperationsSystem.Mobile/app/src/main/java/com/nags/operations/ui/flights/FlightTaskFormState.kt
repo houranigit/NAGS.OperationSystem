@@ -85,7 +85,7 @@ internal fun initialTaskEditorDraft(flight: FlightDetail, catalogs: FlightOperat
     return items.values.toList()
 }
 
-private fun SaveFlightTaskRequest.toTaskEditorDraft(id: String, baseline: FlightTaskRecord?,
+internal fun SaveFlightTaskRequest.toTaskEditorDraft(id: String, baseline: FlightTaskRecord?,
     catalogs: FlightOperationsCatalogs, zone: ZoneId): FlightTaskDraft {
     fun period(start: String?, end: String?) = FlightWorkPeriod(start?.let { operationLocalTime(it, zone) }.orEmpty(),
         end?.let { operationLocalTime(it, zone) }.orEmpty(), start, end)
@@ -108,7 +108,7 @@ private fun SaveFlightTaskRequest.toTaskEditorDraft(id: String, baseline: Flight
         resources(generalSupports, baseline?.generalSupports.orEmpty(), catalogs.generalSupports),
         (attachments ?: baseline?.attachments?.map { FlightServiceAttachmentInput(it.id, it.kind, it.fileName, it.contentType) }).orEmpty().map { attachment ->
             val uploaded = baseline?.attachments?.firstOrNull { it.id == attachment.id }
-            FlightAttachmentDraft(attachment.id, "", attachment.fileName, attachment.contentType, uploadedAtUtc = uploaded?.uploadedAtUtc)
+            FlightAttachmentDraft(attachment.id, attachment.contentUri.orEmpty(), attachment.fileName, attachment.contentType, uploadedAtUtc = uploaded?.uploadedAtUtc)
         })
 }
 

@@ -67,6 +67,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.nags.operations.R
+import com.nags.operations.data.FlightOperationReviewTarget
 import com.nags.operations.data.AircraftTypeCatalogItem
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
@@ -140,6 +141,8 @@ internal fun FlightOperationsForm(
     loadTaskAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
     loadPendingTaskAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
     listItem: FlightListItem? = null,
+    onSaveReviewed: suspend (FlightDetail, FlightOperationReviewTarget, suspend () -> Unit) -> Unit = { _, _, _ -> error("Review saving is unavailable.") },
+    onDiscardReviewed: suspend (FlightOperationReviewTarget) -> Unit = { error("Review discard is unavailable.") },
 ) {
     val entryTimeZoneId = rememberSaveable { flight.stationTimeZoneId }
     val entryZone = remember(entryTimeZoneId) { stationTimeZone(entryTimeZoneId) }
@@ -237,6 +240,8 @@ internal fun FlightOperationsForm(
     var saving by remember { mutableStateOf(false) }
     var updateSection by rememberSaveable { mutableStateOf<String?>(null) }
     var updateSnapshot by rememberSaveable { mutableStateOf<String?>(null) }
+    var updateReviewMode by rememberSaveable { mutableStateOf(false) }
+    var updateReviewCached by rememberSaveable { mutableStateOf(false) }
     var workUpdateSnapshot by rememberSaveable { mutableStateOf<String?>(null) }
     var validationAttempted by rememberSaveable { mutableStateOf(false) }
     var saveError by rememberSaveable { mutableStateOf<String?>(null) }
@@ -267,6 +272,29 @@ internal fun FlightOperationsForm(
     }
     val arrivalEnabled = flight.arrivalEditable() && !requiresReview && !saving
     val errors = if (validationAttempted && arrivalEnabled && (arrivalChanged || reviewedChangeId != null)) input().validationErrors(arrivalVersion) else emptySet()
+    fun restoreOnlineArrival() {
+        aircraftId = arrival?.aircraftTypeId ?: flight.aircraftTypeId.orEmpty()
+        originalAta = arrival?.ata
+        ata = arrival?.let { operationLocalTime(it.ata, entryZone) }.orEmpty()
+        tailNumber = arrival?.aircraftTailNumber.orEmpty()
+        reference = arrival?.customerWorkReferenceNumber.orEmpty()
+        arrivalRemarks = arrival?.remarks.orEmpty()
+        arrivalBaseline = Json.encodeToString(input())
+        arrivalVersion = flight.rowVersion
+        arrivalReviewedSnapshot = Json.encodeToString(flight.arrivalSubmissions)
+        queuedBaseline = null
+    }
+    fun restoreOnlineDeparture() {
+        atd = departure?.let { operationLocalTime(it.atd, entryZone) }.orEmpty()
+        originalAtd = departure?.atd
+        departureRemarks = departure?.remarks.orEmpty()
+        departureBaselineAtd = atd
+        departureBaselineRemarks = departureRemarks
+        departureVersion = flight.rowVersion
+        departureReviewedSnapshot = Json.encodeToString(flight.departureSubmissions)
+        signature = ""; signatureSignedAtUtc = null
+        queuedDepartureBaseline = null
+    }
     // Refresh untouched arrival fields while retaining edits in every other section.
     LaunchedEffect(arrival, flight.rowVersion, pending?.changeId, pending?.inputJson, pending?.rowVersion) {
         if (pendingInput != null && reviewedChangeId != pending?.changeId) {
@@ -294,20 +322,11 @@ internal fun FlightOperationsForm(
                 }
                 arrivalBaseline = checkNotNull(queuedBaseline)
                 queuedBaseline = null
+            } else if (!arrivalChanged) {
+                // A safe local discard is not an ACK. Restore only this untouched editor.
+                restoreOnlineArrival()
             }
-        } else if (!arrivalChanged && pending == null) {
-            if (arrival != null) {
-                aircraftId = arrival.aircraftTypeId
-                originalAta = arrival.ata
-                ata = operationLocalTime(arrival.ata, entryZone)
-                tailNumber = arrival.aircraftTailNumber
-                reference = arrival.customerWorkReferenceNumber.orEmpty()
-                arrivalRemarks = arrival.remarks.orEmpty()
-                arrivalBaseline = Json.encodeToString(input())
-            }
-            arrivalVersion = flight.rowVersion
-            arrivalReviewedSnapshot = Json.encodeToString(flight.arrivalSubmissions)
-        }
+        } else if (!arrivalChanged && pending == null) restoreOnlineArrival()
     }
     LaunchedEffect(departure, flight.rowVersion, pendingDeparture?.changeId, pendingDeparture?.inputJson, pendingDeparture?.rowVersion) {
         if (pendingDepartureInput != null && reviewedDepartureChangeId != pendingDeparture?.changeId) {
@@ -334,16 +353,8 @@ internal fun FlightOperationsForm(
                     departureVersion = flight.rowVersion
                     departureReviewedSnapshot = Json.encodeToString(flight.departureSubmissions)
                 }
-            }
-        } else if (!departureChanged && pendingDeparture == null) {
-            atd = departure?.let { operationLocalTime(it.atd, entryZone) }.orEmpty()
-            originalAtd = departure?.atd
-            departureRemarks = departure?.remarks.orEmpty()
-            departureBaselineAtd = atd
-            departureBaselineRemarks = departureRemarks
-            departureVersion = flight.rowVersion
-            departureReviewedSnapshot = Json.encodeToString(flight.departureSubmissions)
-        }
+            } else if (!departureChanged) restoreOnlineDeparture()
+        } else if (!departureChanged && pendingDeparture == null) restoreOnlineDeparture()
     }
     // Untouched editors follow refreshed data; a dirty editor keeps its reviewed records and rowversion.
     LaunchedEffect(flight.services, flight.rowVersion, flight.allowedServiceIds, flight.currentStaffMemberId, flight.assignedEmployees, catalogs.services, catalogs.stationStaff,
@@ -613,15 +624,12 @@ internal fun FlightOperationsForm(
             })
             formScope.launch {
                 try {
-                    // The worker cannot drain a partially enqueued form between these durable local writes.
+                    // The coordinator validates and commits every section as one durable save.
                     onSaveBatch {
                         suspend fun saveArrival() {
                             onSaveArrival(flight.copy(rowVersion = arrivalVersion,
                                 arrivalSubmissions = Json.decodeFromString<List<FlightArrivalSubmission>>(arrivalReviewedSnapshot)),
                                 arrivalValue.copy(acknowledgeConflictingSubmission = acknowledgeConflict))
-                            arrivalBaseline = Json.encodeToString(arrivalValue)
-                            queuedBaseline = Json.encodeToString(arrivalValue)
-                            reviewedChangeId = null
                         }
                         suspend fun saveDeparture() {
                             val content = if (ink.isNotBlank()) withContext(Dispatchers.Default) { signaturePngContent(ink) } else null
@@ -642,22 +650,30 @@ internal fun FlightOperationsForm(
                         }
                         if (saveFormDraft) {
                             onSaveServices(flight.copy(rowVersion = serviceVersion, services = serviceReviewed), serviceChanges, durableDraft)
-                            if (saveTaskInput) {
-                                taskBaseline = taskEditorFingerprint(workSnapshot.tasks)
-                                taskBaselineInputs = Json.encodeToString(workSnapshot.tasks.associate { it.id to taskInputFingerprint(it.taskInput(entryZone)) })
-                                knownTaskIdsJson = Json.encodeToString((knownTaskIds + taskChanges.filter { it.input != null }.map { it.taskRecordId } -
-                                    taskChanges.filter { it.input == null }.map { it.taskRecordId }.toSet()).toList())
-                                reviewedTaskChangesJson = "[]"
-                            }
-                            suppressedServiceIdsJson = Json.encodeToString(savedSuppressed)
-                            serviceBaseline = serviceEditorFingerprint(workSnapshot.services, emptyList(), savedSuppressed)
-                            serviceBaselineInputs = Json.encodeToString(workSnapshot.services.associate { it.id to serviceInputFingerprint(it.serviceInput(entryZone)) })
-                            knownServiceIdsJson = Json.encodeToString((knownServiceIds + serviceChanges.filter { it.input != null }.map { it.serviceRecordId } -
-                                serviceChanges.filter { it.input == null }.map { it.serviceRecordId }.toSet()).toList())
-                            reviewedServiceChangesJson = "[]"
                         }
                         if (saveArrivalInput && !relaxArrival) saveArrival()
                         if (saveDepartureInput && !relaxDeparture) saveDeparture()
+                    }
+                    // A failed later section must leave every editor dirty, including its review state.
+                    if (saveArrivalInput) {
+                        arrivalBaseline = Json.encodeToString(arrivalValue)
+                        queuedBaseline = Json.encodeToString(arrivalValue)
+                        reviewedChangeId = null
+                    }
+                    if (saveFormDraft) {
+                        if (saveTaskInput) {
+                            taskBaseline = taskEditorFingerprint(workSnapshot.tasks)
+                            taskBaselineInputs = Json.encodeToString(workSnapshot.tasks.associate { it.id to taskInputFingerprint(it.taskInput(entryZone)) })
+                            knownTaskIdsJson = Json.encodeToString((knownTaskIds + taskChanges.filter { it.input != null }.map { it.taskRecordId } -
+                                taskChanges.filter { it.input == null }.map { it.taskRecordId }.toSet()).toList())
+                            reviewedTaskChangesJson = "[]"
+                        }
+                        suppressedServiceIdsJson = Json.encodeToString(savedSuppressed)
+                        serviceBaseline = serviceEditorFingerprint(workSnapshot.services, emptyList(), savedSuppressed)
+                        serviceBaselineInputs = Json.encodeToString(workSnapshot.services.associate { it.id to serviceInputFingerprint(it.serviceInput(entryZone)) })
+                        knownServiceIdsJson = Json.encodeToString((knownServiceIds + serviceChanges.filter { it.input != null }.map { it.serviceRecordId } -
+                            serviceChanges.filter { it.input == null }.map { it.serviceRecordId }.toSet()).toList())
+                        reviewedServiceChangesJson = "[]"
                     }
                     // A later edit cannot be claimed by an earlier disk-save snapshot.
                     if (serviceEditorFingerprint(workDrafts.services, workDrafts.tasks, suppressedServiceIds) == workFingerprint) closeForm()
@@ -714,7 +730,53 @@ internal fun FlightOperationsForm(
     val taskMetadata = flightTaskRecordMetadata(flight, pendingTasks)
     val submittedServices = workDrafts.services.filter { it.id in serviceMetadata }
     val submittedTasks = workDrafts.tasks.filter { it.id in taskMetadata }
+    val reviewTargets = flightReviewTargets(pending, pendingDeparture, pendingServices, pendingTasks)
+    fun openReview(target: FlightOperationReviewTarget) {
+        if (saving) return
+        if (mediaSession.hasActiveRecording) { saveError = finishRecordingMessage; validationRequest++; return }
+        mediaSession.stopAudio(); saving = true; saveError = null
+        formScope.launch {
+            try {
+                val latest = when (target.kind) { "service" -> onReviewServices(); "task" -> onReviewTasks(); else -> onReviewArrival() }
+                val reviewZone = stationTimeZone(latest.stationTimeZoneId)
+                when (target.kind) {
+                    "arrival", "departure" -> {
+                        val explicitId = if (target.kind == "arrival") pendingInput?.targetSubmissionId else pendingDepartureInput?.targetSubmissionId
+                        val id = explicitId ?: if (target.kind == "arrival") latest.visibleArrival()?.id else latest.visibleDeparture()?.id
+                        updateSnapshot = Json.encodeToString(latest)
+                        updateReviewMode = true
+                        updateReviewCached = latest.fromCache
+                        updateSection = "${target.kind}:${id.orEmpty()}"
+                    }
+                    "service" -> {
+                        val row = pendingServices.first { it.serviceRecordId == target.recordId && it.changeId == target.changeId }
+                        val recorded = latest.services.firstOrNull { it.id == row.serviceRecordId }
+                        val value = (row.reviewSourceInputJson ?: row.inputJson)?.let { Json.decodeFromString<SaveFlightServiceRequest>(it) } ?: recorded?.input()
+                        val local = value?.toEditorDraft(row.serviceRecordId,
+                            recorded?.serviceName ?: catalogs.services.firstOrNull { it.id == value.serviceId }?.name.orEmpty(),
+                            recorded ?: row.reviewedRecord(), catalogs, reviewZone) ?: FlightServiceDraft(id = row.serviceRecordId)
+                        workUpdateSnapshot = Json.encodeToString(FlightWorkUpdateSnapshot(latest,
+                            FlightWorkDrafts(services = listOf(local)), true, reviewMode = true, fromCache = latest.fromCache))
+                    }
+                    "task" -> {
+                        val row = pendingTasks.first { it.taskRecordId == target.recordId && it.changeId == target.changeId }
+                        val recorded = latest.tasks.firstOrNull { it.id == row.taskRecordId }
+                        val value = (row.reviewSourceInputJson ?: row.inputJson)?.let { Json.decodeFromString<SaveFlightTaskRequest>(it) } ?: recorded?.input()
+                        val local = value?.toTaskEditorDraft(row.taskRecordId, recorded ?: row.reviewedRecord(), catalogs, reviewZone)
+                            ?: FlightTaskDraft(id = row.taskRecordId)
+                        workUpdateSnapshot = Json.encodeToString(FlightWorkUpdateSnapshot(latest,
+                            FlightWorkDrafts(tasks = listOf(local)), false, reviewMode = true, fromCache = latest.fromCache))
+                    }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { saveError = error.userMessage(); validationRequest++ }
+            finally { saving = false }
+        }
+    }
     fun openWorkUpdate(service: FlightServiceDraft? = null, task: FlightTaskDraft? = null) {
+        val failed = reviewTargets.firstOrNull { it.recordId == (service?.id ?: task?.id) && it.kind == if (service != null) "service" else "task" }
+        if (failed != null) { openReview(failed); return }
+
         if (saving) return
         if (mediaSession.hasActiveRecording) { saveError = finishRecordingMessage; validationRequest++; return }
         mediaSession.stopAudio()
@@ -760,6 +822,7 @@ internal fun FlightOperationsForm(
                     localCancellation = progressStatus in listOf(FlightProgressStatus.CancellationPendingSync,
                         FlightProgressStatus.CancellationNeedsReview, FlightProgressStatus.CancellationRevertPending)),
                 pendingSyncLabel = pendingLabel, hasSyncError = needsReview,
+                onReviewClick = reviewTargets.firstOrNull()?.let { target -> { openReview(target) } },
                 onActiveWorkClick = if (workTargets.any { !it.completed }) ({ navigateWork(false) }) else null,
                 onCompletedWorkClick = if (workTargets.any { it.completed }) ({ navigateWork(true) }) else null,
                 onFlightNumberPositioned = positioned)
@@ -772,10 +835,15 @@ internal fun FlightOperationsForm(
             Column(Modifier.padding(bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FlightSavedDetailsCard { FlightArrivalSummary(otherEmployeeArrival.withPendingCorrection(pending, aircraftTypes), entryZone) }
                 FlightSubmissionNote(otherEmployeeArrival.submittedByEmployee.fullName, otherEmployeeArrival.createdAtUtc, entryZone,
-                    updateLabel = stringResource(R.string.flight_submission_update_arrival_details),
-                    onUpdate = if (!saving && flight.canUpdateArrivalSubmission(otherEmployeeArrival.id)) ({
+                    updateLabel = stringResource(if (pending?.status?.let { it != "pending" } == true) R.string.flight_review_action else R.string.flight_submission_update_arrival_details),
+                    needsReview = pending?.status?.let { it != "pending" } == true,
+                    onUpdate = if (!saving && (flight.canUpdateArrivalSubmission(otherEmployeeArrival.id) || pending?.status?.let { it != "pending" } == true)) ({
+                        val failed = reviewTargets.firstOrNull { it.kind == "arrival" }
+                        if (failed != null) openReview(failed) else {
+                        updateReviewMode = false
                         updateSnapshot = Json.encodeToString(flight)
                         updateSection = "arrival:${otherEmployeeArrival.id}"
+                        }
                     }) else null)
             }
         } else {
@@ -783,19 +851,9 @@ internal fun FlightOperationsForm(
             if (pending != null && pending.status != "pending" && reviewedChangeId != pending.changeId) {
                 ArrivalFormMessage(stringResource(R.string.arrival_sync_review), error = true)
                 pending.error?.takeIf { pending.status != "pending" }?.let { ArrivalFormMessage(it, error = true) }
-                if (pending.status != "pending") TextButton(enabled = !saving, onClick = {
-                    saving = true; saveError = null
-                    formScope.launch {
-                        try {
-                            val latest = onReviewArrival()
-                            arrivalVersion = latest.rowVersion
-                            arrivalReviewedSnapshot = Json.encodeToString(latest.arrivalSubmissions)
-                            reviewedChangeId = pending.changeId
-                        } catch (cancelled: CancellationException) { throw cancelled }
-                        catch (error: Exception) { saveError = error.userMessage() }
-                        finally { saving = false }
-                    }
-                }) { Text(stringResource(R.string.arrival_reload_review)) }
+                TextButton(enabled = !saving, onClick = { reviewTargets.firstOrNull { it.kind == "arrival" }?.let(::openReview) }) {
+                    Text(stringResource(R.string.flight_review_action), color = MaterialTheme.colorScheme.error)
+                }
             } else if (pending != null && pending.status != "pending") ArrivalFormMessage(stringResource(R.string.arrival_review_before_save))
             FlightActualFormCard(
                 id = "actual-arrival", label = stringResource(R.string.operations_actual_arrival),
@@ -838,19 +896,11 @@ internal fun FlightOperationsForm(
             if (servicesNeedReview) {
                 ArrivalFormMessage(stringResource(R.string.service_sync_review), error = true)
                 pendingServices.filter { it.status != "pending" }.mapNotNull { it.error }.distinct().forEach { ArrivalFormMessage(it, error = true) }
-                TextButton(enabled = !saving, onClick = {
-                    saving = true; saveError = null
-                    formScope.launch {
-                        try {
-                            val latest = onReviewServices()
-                            serviceReviewedJson = Json.encodeToString(latest.services)
-                            serviceVersion = latest.rowVersion
-                            reviewedServiceChangesJson = Json.encodeToString(pendingServices.filter { it.status != "pending" }.map { it.changeId })
-                        } catch (cancelled: CancellationException) { throw cancelled }
-                        catch (error: Exception) { saveError = error.userMessage() }
-                        finally { saving = false }
+                pendingServices.filter { it.status != "pending" }.forEach { row ->
+                    TextButton(enabled = !saving, onClick = { openReview(FlightOperationReviewTarget("service", row.serviceRecordId, row.changeId)) }) {
+                        Text(stringResource(R.string.flight_review_action), color = MaterialTheme.colorScheme.error)
                     }
-                }) { Text(stringResource(R.string.service_review)) }
+                }
             }
             if (serviceErrors.values.any { "rowVersion" in it }) FlightFormValidation(stringResource(R.string.service_validation_version)) { }
             FlightFormSectionTitle(stringResource(R.string.work_services_count, workDrafts.services.size))
@@ -882,16 +932,11 @@ internal fun FlightOperationsForm(
             if (tasksNeedReview) {
                 ArrivalFormMessage(stringResource(R.string.task_sync_review), error = true)
                 pendingTasks.filter { it.status != "pending" }.mapNotNull { it.error }.distinct().forEach { ArrivalFormMessage(it, error = true) }
-                TextButton(enabled = !saving, onClick = {
-                    saving = true; saveError = null
-                    formScope.launch {
-                        try {
-                            applyTaskReview(onReviewTasks())
-                        } catch (cancelled: CancellationException) { throw cancelled }
-                        catch (error: Exception) { saveError = error.userMessage() }
-                        finally { saving = false }
+                pendingTasks.filter { it.status != "pending" }.forEach { row ->
+                    TextButton(enabled = !saving, onClick = { openReview(FlightOperationReviewTarget("task", row.taskRecordId, row.changeId)) }) {
+                        Text(stringResource(R.string.flight_review_action), color = MaterialTheme.colorScheme.error)
                     }
-                }) { Text(stringResource(R.string.task_review)) }
+                }
             }
             if (taskErrors.values.any { "rowVersion" in it }) FlightFormValidation(stringResource(R.string.task_validation_version)) { }
             FlightFormSectionTitle(stringResource(R.string.work_tasks_count, workDrafts.tasks.size))
@@ -926,10 +971,15 @@ internal fun FlightOperationsForm(
             Column(Modifier.padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FlightSavedDetailsCard { FlightDepartureSummary(otherEmployeeDeparture.withPendingCorrection(pendingDeparture), entryZone, savedSignaturePreview) }
                 FlightSubmissionNote(otherEmployeeDeparture.submittedByEmployee.fullName, otherEmployeeDeparture.createdAtUtc, entryZone,
-                    updateLabel = stringResource(R.string.flight_submission_update_departure_details),
-                    onUpdate = if (!saving && flight.canUpdateDepartureSubmission(otherEmployeeDeparture.id)) ({
+                    updateLabel = stringResource(if (pendingDeparture?.status?.let { it != "pending" } == true) R.string.flight_review_action else R.string.flight_submission_update_departure_details),
+                    needsReview = pendingDeparture?.status?.let { it != "pending" } == true,
+                    onUpdate = if (!saving && (flight.canUpdateDepartureSubmission(otherEmployeeDeparture.id) || pendingDeparture?.status?.let { it != "pending" } == true)) ({
+                        val failed = reviewTargets.firstOrNull { it.kind == "departure" }
+                        if (failed != null) openReview(failed) else {
+                        updateReviewMode = false
                         updateSnapshot = Json.encodeToString(flight)
                         updateSection = "departure:${otherEmployeeDeparture.id}"
+                        }
                     }) else null)
             }
         } else {
@@ -939,20 +989,9 @@ internal fun FlightOperationsForm(
                 pendingDeparture.error?.let { ArrivalFormMessage(it, error = true) }
             }
             if (departureNeedsReview) {
-                TextButton(enabled = !saving, onClick = {
-                    saving = true
-                    formScope.launch {
-                        try {
-                            val latest = onReviewArrival()
-                            departureVersion = latest.rowVersion
-                            departureReviewedSnapshot = Json.encodeToString(latest.departureSubmissions)
-                            reviewedDepartureChangeId = pendingDeparture.changeId
-                            saveError = null
-                        } catch (cancelled: CancellationException) { throw cancelled }
-                        catch (error: Exception) { saveError = error.userMessage() }
-                        finally { saving = false }
-                    }
-                }) { Text(stringResource(R.string.departure_reload_review)) }
+                TextButton(enabled = !saving, onClick = { reviewTargets.firstOrNull { it.kind == "departure" }?.let(::openReview) }) {
+                    Text(stringResource(R.string.flight_review_action), color = MaterialTheme.colorScheme.error)
+                }
             }
             FlightActualFormCard(
                 id = "actual-departure", label = stringResource(R.string.operations_actual_departure), time = atd,
@@ -1008,7 +1047,8 @@ internal fun FlightOperationsForm(
         androidx.compose.runtime.key(sectionToUpdate, snapshotToUpdate) {
             FlightSubmissionUpdateForm(snapshot, sectionToUpdate.substringAfter(":"), sectionToUpdate.startsWith("arrival:"),
                 aircraftTypes, loadCustomerLogo, pending, pendingDeparture, loadSignature, onReviewArrival,
-                onSaveArrival, onSaveDeparture, onClose = { updateSection = null; updateSnapshot = null })
+                onSaveArrival, onSaveDeparture, onClose = { updateSection = null; updateSnapshot = null },
+                reviewMode = updateReviewMode, cachedReview = updateReviewCached, onSaveReviewed = onSaveReviewed, onDiscardReviewed = onDiscardReviewed)
         }
     }
     workUpdateSnapshot?.let { raw ->
@@ -1016,10 +1056,13 @@ internal fun FlightOperationsForm(
         androidx.compose.runtime.key(raw) {
             FlightWorkSubmissionUpdateForm(snapshot, flight, catalogs,
                 pendingServices.firstOrNull { it.serviceRecordId == snapshot.recordId },
-                pendingTasks.firstOrNull { it.taskRecordId == snapshot.recordId }, pendingInput, pendingDepartureInput,
+                pendingTasks.firstOrNull { it.taskRecordId == snapshot.recordId },
+                pendingInput?.takeIf { !snapshot.reviewMode || pending?.status == "pending" },
+                pendingDepartureInput?.takeIf { !snapshot.reviewMode || pendingDeparture?.status == "pending" },
                 loadCustomerLogo, if (snapshot.isService) onReviewServices else onReviewTasks,
                 onSaveServices, onSaveTasks, onSaveBatch, loadServiceAttachment, loadPendingServiceAttachment,
-                loadTaskAttachment, loadPendingTaskAttachment, onClose = { workUpdateSnapshot = null })
+                loadTaskAttachment, loadPendingTaskAttachment, onClose = { workUpdateSnapshot = null },
+                onSaveReviewed = onSaveReviewed, onDiscardReviewed = onDiscardReviewed)
         }
     }
 }
