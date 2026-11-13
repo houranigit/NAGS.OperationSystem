@@ -24,6 +24,7 @@ public sealed partial class FlightVisibilityScopeTests
         using var readerClient = reader.Client;
         using var anonymous = factory.CreateClient();
         var flightId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8100", [actor.StaffId, reader.StaffId]);
+        await SeedWorkArrivalAsync(admin, actorClient, flightId);
         var recordId = Guid.NewGuid();
         var path = $"{Base}/flights/{flightId}/services/{recordId}";
         var detail = (await actorClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{flightId}"))!;
@@ -68,7 +69,7 @@ public sealed partial class FlightVisibilityScopeTests
             (await wrongStationPerformer.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
                 .ShouldBe("Operations.Ref.StaffStationMismatch");
         }
-        var hiddenId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8101");
+        var hiddenId = await ScheduleFlightAsync(admin, await CreateStationAsync(admin, refs.CountryId), refs, "8101");
         using (var hidden = await SendServiceAsync(actorClient, hiddenId, Guid.NewGuid(), input, detail.RowVersion))
             hidden.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         var unchanged = (await actorClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{flightId}"))!;
@@ -87,6 +88,7 @@ public sealed partial class FlightVisibilityScopeTests
         using var client = actor.Client;
         var actorId = (await client.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("id").GetGuid();
         var flightId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8110", [actor.StaffId]);
+        await SeedWorkArrivalAsync(admin, client, flightId);
         var recordId = Guid.NewGuid();
         var attachment = new SaveFlightServiceAttachmentRequest(Guid.NewGuid(), (int)AttachmentKind.Image,
             "folder/photo.png", "image/png", ServicePng());
@@ -125,8 +127,8 @@ public sealed partial class FlightVisibilityScopeTests
         var repeatedId = Guid.NewGuid();
         var repeatedInput = input with
         {
-            EndUtc = input.StartUtc.AddMinutes(30),
-            Performers = [input.Performers.Single() with { Id = Guid.NewGuid(), EndUtc = input.StartUtc.AddMinutes(25) }],
+            StartUtc = input.StartUtc.AddMinutes(-30), EndUtc = input.StartUtc,
+            Performers = [input.Performers.Single() with { Id = Guid.NewGuid(), StartUtc = input.StartUtc.AddMinutes(-25), EndUtc = input.StartUtc.AddMinutes(-5) }],
             Attachments = []
         };
         using var repeated = await SendServiceAsync(client, flightId, repeatedId, repeatedInput, saved.RowVersion);
@@ -170,6 +172,7 @@ public sealed partial class FlightVisibilityScopeTests
         using var actorClient = actor.Client;
         using var viewerClient = viewer.Client;
         var flightId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8120", [actor.StaffId, viewer.StaffId]);
+        await SeedWorkArrivalAsync(admin, actorClient, flightId);
         var recordId = Guid.NewGuid();
         var attachment = new SaveFlightServiceAttachmentRequest(Guid.NewGuid(), (int)AttachmentKind.Image, "photo.png", "image/png", ServicePng());
         var input = ServiceInput(refs.ServiceId, actor.StaffId) with { Attachments = [attachment] };
@@ -196,7 +199,7 @@ public sealed partial class FlightVisibilityScopeTests
             wrongParent.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         using (var wrongAttachment = await actorClient.GetAsync(Preview(file: Guid.NewGuid())))
             wrongAttachment.StatusCode.ShouldBe(HttpStatusCode.NotFound);
-        var hiddenId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8121");
+        var hiddenId = await ScheduleFlightAsync(admin, await CreateStationAsync(admin, refs.CountryId), refs, "8121");
         using (var hidden = await actorClient.GetAsync(Preview(flight: hiddenId)))
             hidden.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         using (var anonymous = factory.CreateClient())
@@ -226,7 +229,8 @@ public sealed partial class FlightVisibilityScopeTests
         using var closerClient = closer.Client;
         var creatorId = (await creatorClient.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("id").GetGuid();
         var closerId = (await closerClient.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("id").GetGuid();
-        var flightId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8130", [creator.StaffId, closer.StaffId]);
+        var flightId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8130", [creator.StaffId]);
+        await SeedWorkArrivalAsync(admin, creatorClient, flightId);
         var recordId = Guid.NewGuid();
         var input = ServiceInput(refs.ServiceId, creator.StaffId);
         input = input with { Performers = [input.Performers.Single() with { EndUtc = input.StartUtc.AddMinutes(20) }] };
@@ -234,6 +238,7 @@ public sealed partial class FlightVisibilityScopeTests
         using var create = await SendServiceAsync(creatorClient, flightId, recordId, input, detail.RowVersion);
         create.StatusCode.ShouldBe(HttpStatusCode.OK);
         var created = (await create.Content.ReadFromJsonAsync<FlightServiceSavedDto>())!;
+        created = created with { RowVersion = (await RemoveRecordedFlightAssignmentsAsync(creatorClient, flightId)).RowVersion };
         var closedInput = input with { EndUtc = input.StartUtc.AddMinutes(30) };
         using (var tamper = await SendServiceAsync(closerClient, flightId, recordId, closedInput with { Notes = "Unowned notes" }, created.RowVersion))
             tamper.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -243,7 +248,7 @@ public sealed partial class FlightVisibilityScopeTests
         closed.Service.CreatedByUserId.ShouldBe(creatorId);
         closed.Service.EndedByUserId.ShouldBe(closerId);
         closed.Service.CanEdit.ShouldBeFalse();
-        closed.Service.CanSetEnd.ShouldBeTrue();
+        closed.Service.CanSetEnd.ShouldBeFalse();
         closed.ActiveWorkCount.ShouldBe(0);
         closed.CompletedWorkCount.ShouldBe(1);
         var ownerView = (await creatorClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{flightId}"))!;
@@ -263,19 +268,9 @@ public sealed partial class FlightVisibilityScopeTests
         corrected.Service.EndedByUserId.ShouldBe(closerId);
         corrected.Service.EndUtc.ShouldBe(closedInput.EndUtc);
         using var clear = await SendServiceAsync(closerClient, flightId, recordId, correctedInput with { EndUtc = null }, corrected.RowVersion);
-        clear.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var reopened = (await clear.Content.ReadFromJsonAsync<FlightServiceSavedDto>())!;
-        reopened.Service.EndedByUserId.ShouldBeNull();
-        reopened.ActiveWorkCount.ShouldBe(1);
-        reopened.CompletedWorkCount.ShouldBe(0);
-        using var remove = await DeleteServiceAsync(creatorClient, flightId, recordId, reopened.RowVersion);
-        remove.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var removed = (await remove.Content.ReadFromJsonAsync<FlightServiceRemovedDto>())!;
-        removed.ActiveWorkCount.ShouldBe(0);
-        removed.CompletedWorkCount.ShouldBe(0);
-        using var repeatedDelete = await DeleteServiceAsync(creatorClient, flightId, recordId, reopened.RowVersion);
-        repeatedDelete.StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await repeatedDelete.Content.ReadFromJsonAsync<FlightServiceRemovedDto>())!.RowVersion.ShouldBe(removed.RowVersion);
+        clear.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var retained = await OperationsBatchDetailAsync(creatorClient, flightId);
+        retained.Services!.ShouldHaveSingleItem().EndUtc.ShouldBe(closedInput.EndUtc);
     }
 
     [Fact]
@@ -286,6 +281,7 @@ public sealed partial class FlightVisibilityScopeTests
         var actor = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
         using var client = actor.Client;
         var flightId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8140", [actor.StaffId]);
+        await SeedWorkArrivalAsync(admin, client, flightId);
         var recordId = Guid.NewGuid();
         var input = ServiceInput(refs.ServiceId, actor.StaffId);
         var detail = (await client.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{flightId}"))!;

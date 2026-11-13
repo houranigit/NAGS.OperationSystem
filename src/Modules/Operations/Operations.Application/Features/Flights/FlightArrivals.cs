@@ -3,6 +3,7 @@ using BuildingBlocks.Application.Mobile;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
+using Identity.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
@@ -37,7 +38,8 @@ public sealed class SaveFlightArrivalCommandHandler(
     IMobileFlightScope scope,
     MasterDataResolver resolver,
     TimeProvider clock,
-    IMobileSyncBroadcaster mobileSync) : ICommandHandler<SaveFlightArrivalCommand, FlightArrivalSavedDto>
+    IMobileSyncBroadcaster mobileSync,
+    IUserDisplayNameReader? userNames = null) : ICommandHandler<SaveFlightArrivalCommand, FlightArrivalSavedDto>
 {
     public async Task<Result<FlightArrivalSavedDto>> Handle(SaveFlightArrivalCommand request, CancellationToken cancellationToken)
     {
@@ -45,7 +47,7 @@ public sealed class SaveFlightArrivalCommandHandler(
         if (resolved.IsFailure)
             return resolved.Error;
         var actor = resolved.Value;
-        var flight = await MobileFlightQuery.ApplyScope(db.Flights, actor).AsSplitQuery()
+        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights, actor).AsSplitQuery()
             .Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
             .Include(f => f.ArrivalSubmissions).Include(f => f.DepartureSubmissions)
             .Include(f => f.CancellationSubmissions).Include(f => f.ReturnToRamps)
@@ -62,6 +64,8 @@ public sealed class SaveFlightArrivalCommandHandler(
         if (flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId))
             return Error.Conflict("Revert your cancellation before submitting arrival details.", "Operations.Flight.OwnCancellationSubmitted");
 
+        var names = await FlightWorkAttribution.NamesAsync(userNames,
+            FlightWorkAttribution.UserIds(flight).Append(actor.UserId), cancellationToken);
         var input = request.Arrival;
         if (input.TargetSubmissionId == Guid.Empty)
             return Error.Validation("Target arrival submission is required.", "Operations.ArrivalSubmission.TargetRequired");
@@ -75,18 +79,21 @@ public sealed class SaveFlightArrivalCommandHandler(
         if (existing is null && flight.ArrivalSubmissions.Count > 1)
             return Error.Conflict("Select the arrival submission to update.", "Operations.ArrivalSubmission.TargetRequired");
         var foreign = existing is not null && existing.SubmittedByEmployee.StaffMemberId != actor.StaffMemberId;
-        if (foreign && !flight.AssignedEmployees.Any(employee => employee.Employee.StaffMemberId == actor.StaffMemberId))
+        if (foreign && !flight.CanCorrectOperationalWork(actor.StaffMemberId))
             return Error.Forbidden("Only assigned employees can update another employee's arrival.", "Operations.ArrivalSubmission.AssignmentRequired");
+
+        var searchAccess = FlightSearchPolicy.Arrival(flight, actor.StaffMemberId, existing);
+        if (searchAccess.IsFailure) return searchAccess.Error;
 
         // A lost success response may be replayed with the previous rowversion. Identical
         // input is acknowledged without a write, even if unrelated flight data has changed.
         if (existing is not null && existing.Details.Ata == input.Ata &&
             existing.Details.AircraftType.AircraftTypeId == input.AircraftTypeId &&
-            existing.Details.AircraftTailNumber == input.AircraftTailNumber.Trim() &&
-            existing.Details.CustomerWorkReferenceNumber == Normalize(input.CustomerWorkReferenceNumber) &&
+            IdentifiersMatch(existing.Details.AircraftTailNumber, input.AircraftTailNumber) &&
+            IdentifiersMatch(existing.Details.CustomerWorkReferenceNumber, input.CustomerWorkReferenceNumber) &&
             existing.Details.Remarks == Normalize(input.Remarks) &&
             (foreign || existing.Details.ReceivedByEmployee.StaffMemberId == actor.StaffMemberId))
-            return new FlightArrivalSavedDto(FlightArrivalSubmissionDto.Map(existing), Convert.ToBase64String(flight.RowVersion));
+            return new FlightArrivalSavedDto(FlightArrivalSubmissionDto.Map(existing, names), Convert.ToBase64String(flight.RowVersion));
 
         if (!flight.RowVersion.SequenceEqual(request.RowVersion))
             return ConcurrencyErrors.Stale;
@@ -94,6 +101,11 @@ public sealed class SaveFlightArrivalCommandHandler(
             !input.AcknowledgeConflictingSubmission)
             return Error.Conflict("Another employee reported this flight as canceled. Confirm before saving work details.",
                 "Operations.Flight.CancellationConfirmationRequired");
+        var remarks = FlightActualRules.ArrivalRemarks(flight, input.Remarks);
+        if (remarks.IsFailure) return remarks.Error;
+        var chronology = FlightActualRules.Chronology(flight, existing?.SubmittedByEmployee.StaffMemberId ?? actor.StaffMemberId,
+            arrivalOverride: input.Ata);
+        if (chronology.IsFailure) return chronology.Error;
         if (existing is null || existing.Details.Ata != input.Ata)
         {
             var actualsStaffId = existing?.SubmittedByEmployee.StaffMemberId ?? actor.StaffMemberId;
@@ -129,6 +141,7 @@ public sealed class SaveFlightArrivalCommandHandler(
                 UpdatedByStaffMemberId = actor.StaffMemberId, UpdatedByUserId = actor.UserId,
                 UpdatedByDisplayName = employee.FullName, OccurredOnUtc = now
             });
+        await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), cancellationToken);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
@@ -148,8 +161,9 @@ public sealed class SaveFlightArrivalCommandHandler(
         }
         mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null,
             MobileSyncAudience.AllStations, clock.GetUtcNow()));
-        return new FlightArrivalSavedDto(FlightArrivalSubmissionDto.Map(submitted.Value), Convert.ToBase64String(flight.RowVersion));
+        return new FlightArrivalSavedDto(FlightArrivalSubmissionDto.Map(submitted.Value, names), Convert.ToBase64String(flight.RowVersion));
     }
 
+    private static bool IdentifiersMatch(string? stored, string? input) => Normalize(stored)?.ToUpperInvariant() == Normalize(input)?.ToUpperInvariant();
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

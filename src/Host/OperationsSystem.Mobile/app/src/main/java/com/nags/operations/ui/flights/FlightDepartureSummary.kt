@@ -42,7 +42,7 @@ import java.time.ZoneId
 /** Another employee's saved departure remains at the departure section in its own card. */
 @Composable
 internal fun FlightDepartureSummary(departure: FlightDepartureSubmission, zone: ZoneId, signaturePreview: ByteArray? = null) {
-    val signature = rememberSignatureBitmap(signaturePreview)
+    val signature = rememberSignatureBitmap(signaturePreview.takeIf { departure.hasSignature })
     val signatureDescription = stringResource(R.string.operations_signature_title)
     val labelStyle = MaterialTheme.typography.labelSmall
     val valueStyle = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 22.sp,

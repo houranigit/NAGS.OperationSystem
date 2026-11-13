@@ -8,6 +8,8 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -152,6 +154,25 @@ class CustomerLogoStore internal constructor(
             if (!currentLocked(request.owner, request.generation)) return@withLock null
             readSavedLocked(request.customerId, entries[request.customerId])
         } }
+    }
+
+    /** Full preparation requires the exact advertised asset to be durably readable, never an older fallback. */
+    internal suspend fun prefetch(customerIds: Set<String>) {
+        val owner = currentOwner() ?: return
+        for (id in customerIds) {
+            try { load(id) }
+            catch (changed: CancellationException) {
+                currentCoroutineContext().ensureActive()
+                throw IOException("Customer logo metadata changed during offline preparation.", changed)
+            }
+            withContext(dispatcher) { mutex.withLock {
+                check(currentOwner() == owner && activeOwner == owner) { "Customer logo access changed during synchronization." }
+                val entry = entries[id] ?: return@withLock
+                if (entry.version != null && entry.version != NONE) check(entry.savedVersion == entry.version && readSavedLocked(id, entry) != null) {
+                    "A customer logo could not be prepared offline."
+                }
+            } }
+        }
     }
 
     /** A denied detail only revokes customers with no other flight in the last complete scoped snapshot. */

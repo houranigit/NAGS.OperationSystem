@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notice_dismiss">Dismiss message</string>
+    <string name="notice_retry">Retry</string>
+    <string name="notifications_delete_all_messages">delete all messages</string>
+    <string name="flight_arrival_before_work">Add arrival details before adding work or departure.</string>
+    <string name="flight_service_overlap">This service overlaps another occurrence. Close it or choose a different period.</string>
+    <string name="flight_departure_before_arrival">Actual departure cannot be before actual arrival.</string>
+    <string name="flight_unknown_customer_arrival_remarks">Arrival Remarks are required for an unknown customer.</string>
+    <string name="flight_complete_service">Complete Service…</string>
+    <string name="flight_complete_task">Complete Task…</string>
+    <string name="flight_complete_work_end_required">Set the End time to complete this work.</string>
+    <string name="flight_search_work_limits">You can complete open services and tasks and add missing departure details.</string>
+    <string name="flight_work_no_longer_editable">This work is no longer editable. Your saved input is retained for review.</string>
+    <string name="flight_recently_viewed">Recently Viewed</string>
+    <string name="flight_history_empty">No work yet</string>
+    <string name="flight_history_empty_hint">Flights you save, update or complete will appear here.</string>
+    <string name="flight_exact_search_empty_hint">Enter the complete flight number to search your station’s current flight window.</string>
+    <string name="feed_today">Today</string>
+    <string name="feed_yesterday">Yesterday</string>
+    <string name="feed_earlier">Earlier</string>
+    <string name="adhoc_created_by">This flight was created by\u0020</string>
+    <string name="adhoc_pending_details">Saved on this device. Waiting to synchronize Flight details.</string>
+    <string name="adhoc_retained_scope_notice">This retained flight is outside your current station or flight window. Retry or discard its saved input in Sync Center.</string>
+    <string name="adhoc_flight_details">Flight details</string>
+    <string name="adhoc_customer">Customer</string>
+    <string name="adhoc_choose_customer">Choose customer</string>
+    <string name="adhoc_customer_required">Select a customer.</string>
+    <string name="adhoc_flight_number_required">Enter a flight number.</string>
+    <string name="adhoc_flight_number_length">Flight number must be at most 12 characters.</string>
+    <string name="adhoc_choose_sta">Choose scheduled arrival</string>
+    <string name="adhoc_choose_std">Choose scheduled departure</string>
+    <string name="adhoc_sta_invalid">Choose an unambiguous scheduled arrival.</string>
+    <string name="adhoc_window_hint">Choose times within the current flight window.</string>
+    <string name="adhoc_std_invalid">Scheduled departure cannot be before scheduled arrival.</string>
+    <string name="adhoc_verify_station">Connect and verify your current station before saving.</string>
+    <string name="adhoc_window_error">AdHoc flight times must overlap the current flight window.</string>
+    <string name="adhoc_search_customers">Search customers</string>
+    <string name="adhoc_customers_empty">No cached customers.</string>
+</resources>

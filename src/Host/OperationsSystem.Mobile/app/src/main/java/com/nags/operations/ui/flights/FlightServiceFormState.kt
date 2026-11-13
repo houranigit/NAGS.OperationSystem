@@ -52,7 +52,7 @@ internal fun initialServiceEditorDraft(flight: FlightDetail, catalogs: FlightOpe
         items[local.id] = local.rezone(oldZone, zone)
     } }
     val suppressed = stored?.suppressedPlannedServiceIds.orEmpty()
-    if (!flight.isPerLanding && flight.allowedServiceIds != null) {
+    if (!flight.isPerLanding && flight.canAddServices != false && flight.allowedServiceIds != null) {
         val allowed = flight.allowedServiceIds.map { it.lowercase() }.toSet()
         val existing = items.values.map { it.serviceId.lowercase() }.toSet() +
             pending.mapNotNull { it.reviewedServiceJson?.let { json -> runCatching { Json.decodeFromString<FlightServiceRecord>(json).serviceId.lowercase() }.getOrNull() } }
@@ -138,9 +138,13 @@ internal fun serviceInputFingerprint(input: SaveFlightServiceRequest): String {
 
 internal fun serviceEditorValidation(item: FlightServiceDraft, request: SaveFlightServiceRequest, flight: FlightDetail,
     catalogs: FlightOperationsCatalogs, rowVersion: String, actualArrival: String?, actualDeparture: String?): Map<String, Int> = buildMap {
-    val errors = request.validationErrors(rowVersion, actualArrival, actualDeparture, flight.allowedServiceIds?.toSet())
-    if ("serviceId" in errors || flight.allowedServiceIds?.none { it.equals(request.serviceId, true) } != false ||
-        catalogs.services.none { it.id.equals(request.serviceId, true) && !it.isAircraftPerLanding }) put("serviceId", R.string.service_validation_service)
+    val completionOnly = flight.services.firstOrNull { it.id == item.id }?.canCloseOnly == true
+    val errors = request.validationErrors(rowVersion, actualArrival, actualDeparture,
+        if (completionOnly) null else flight.allowedServiceIds?.toSet())
+    if (actualArrival.isNullOrBlank()) put("startUtc", R.string.flight_arrival_before_work)
+    if (!completionOnly && ("serviceId" in errors || flight.allowedServiceIds?.none { it.equals(request.serviceId, true) } != false ||
+        catalogs.services.none { it.id.equals(request.serviceId, true) && !it.isAircraftPerLanding })) put("serviceId", R.string.service_validation_service)
+    if (completionOnly && request.endUtc == null) put("endUtc", R.string.flight_complete_work_end_required)
     if ("startUtc" in errors) put("startUtc", R.string.service_validation_start)
     if ("endUtc" in errors) put("endUtc", R.string.service_validation_end)
     if ("customerReferenceNumber" in errors) put("customerReferenceNumber", R.string.service_validation_reference)

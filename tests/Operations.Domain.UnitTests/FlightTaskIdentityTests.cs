@@ -28,7 +28,7 @@ public sealed class FlightTaskIdentityTests
         var before = task.UpdatedAtUtc;
         var rejected = flight.SaveTask(id, FlightTaskType.Major, null, "Invalid", Period(), "Changed", [p],
             [t with { Usage = ResourceUsage.Create(MasterData.Contracts.Resources.ResourceCalculationType.Duration, null, TestData.Now.AddHours(-3), null).Value }], [], [], actor, TestData.Now.AddMinutes(2));
-        rejected.IsFailure.ShouldBeTrue(); task.CustomerReferenceNumber.ShouldBe("Ref2"); task.TaskType.ShouldBe(FlightTaskType.Minor);
+        rejected.IsFailure.ShouldBeTrue(); task.CustomerReferenceNumber.ShouldBe("REF2"); task.TaskType.ShouldBe(FlightTaskType.Minor);
         task.UpdatedAtUtc.ShouldBe(before); task.Materials.Single().ShouldBeSameAs(material); task.Attachments.Single().ShouldBeSameAs(attachment);
     }
 

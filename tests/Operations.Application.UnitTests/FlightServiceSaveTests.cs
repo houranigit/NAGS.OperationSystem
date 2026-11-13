@@ -157,10 +157,12 @@ public sealed class FlightServiceSaveTests
         var firstId = Guid.NewGuid();
         var secondId = Guid.NewGuid();
 
-        var first = await fixture.SaveAsync(firstId);
+        var first = await fixture.SaveAsync(firstId, fixture.Input with { EndUtc = Now,
+            Performers = [fixture.Input.Performers.Single() with { EndUtc = Now }] });
         var second = await fixture.SaveAsync(secondId, fixture.Input with
         {
-            Performers = [fixture.Input.Performers.Single() with { Id = Guid.NewGuid() }]
+            StartUtc = Now,
+            Performers = [fixture.Input.Performers.Single() with { Id = Guid.NewGuid(), StartUtc = Now }]
         });
 
         first.IsSuccess.ShouldBeTrue();
@@ -189,7 +191,7 @@ public sealed class FlightServiceSaveTests
         result.Value.Service.EndUtc.ShouldBe(end);
         result.Value.Service.Notes.ShouldBe(fixture.ClosedPerformerInput.Notes);
         result.Value.Service.CanEdit.ShouldBeFalse();
-        result.Value.Service.CanSetEnd.ShouldBeTrue();
+        result.Value.Service.CanSetEnd.ShouldBeFalse();
     }
 
     [Theory]
@@ -707,9 +709,10 @@ public sealed class FlightServiceSaveTests
         result.Value.Service.CanEdit.ShouldBeFalse();
         result.Value.Service.EndedByUserId.ShouldBe(fixture.Other.UserId);
         result.Value.Service.Performers.ShouldHaveSingleItem().ShouldBe(original);
-        var replacement = fixture.ClosedPerformerInput with { Performers = [fixture.ClosedPerformerInput.Performers.Single() with { Id = Guid.NewGuid() }] };
+        var replacement = fixture.ClosedPerformerInput with { StartUtc = Now.AddMinutes(30),
+            Performers = [fixture.ClosedPerformerInput.Performers.Single() with { Id = Guid.NewGuid(), StartUtc = Now.AddMinutes(30), EndUtc = null }] };
         var rejected = await fixture.SaveAsync(Guid.NewGuid(), replacement, fixture.Other);
-        rejected.Error.Code.ShouldBe(relocated ? "Operations.Ref.StaffStationMismatch" : "Operations.Ref.StaffInactive");
+        rejected.Error.Code.ShouldBe("Operations.Search.NewWorkReadOnly");
     }
 
     [Theory]
@@ -746,7 +749,9 @@ public sealed class FlightServiceSaveTests
         await using var fixture = await Fixture.CreateAsync();
         var repairedId = Guid.NewGuid();
         var otherId = Guid.NewGuid();
-        var otherInput = fixture.Input with { Performers = [fixture.Input.Performers.Single() with { Id = Guid.NewGuid() }] };
+        var otherService = Guid.NewGuid();
+        fixture.Reader.AllowedServicesOverride = new HashSet<Guid> { fixture.Input.ServiceId, otherService };
+        var otherInput = fixture.Input with { ServiceId = otherService, Performers = [fixture.Input.Performers.Single() with { Id = Guid.NewGuid() }] };
         (await fixture.SaveAsync(repairedId)).IsSuccess.ShouldBeTrue();
         (await fixture.SaveAsync(otherId, otherInput, fixture.Other)).IsSuccess.ShouldBeTrue();
         await fixture.RecordDepartureAsync();
@@ -878,6 +883,170 @@ public sealed class FlightServiceSaveTests
         (await f.ReadAsync()).Services.ShouldHaveSingleItem().Id.ShouldBe(id);
     }
 
+    [Fact]
+    public async Task New_service_requires_arrival_without_publishing_work_or_media()
+    {
+        await using var f = await Fixture.CreateAsync(withArrival: false);
+        var result = await f.SaveAsync(Guid.NewGuid(), f.Input with { Attachments = [NewImage()] });
+        result.Error.Code.ShouldBe("Operations.Flight.ArrivalRequired");
+        f.Writes.SaveCalls.ShouldBe(0); f.Storage.SaveCalls.ShouldBe(0);
+        (await f.ReadAsync()).Services.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Repeated_known_service_rejects_overlap_including_ongoing_occurrences(bool closed)
+    {
+        await using var f = await Fixture.CreateAsync();
+        var first = f.Input with { EndUtc = closed ? Now.AddMinutes(30) : null,
+            Performers = [f.Input.Performers.Single() with { EndUtc = closed ? Now : null }] };
+        (await f.SaveAsync(Guid.NewGuid(), first)).IsSuccess.ShouldBeTrue();
+        var writes = f.Writes.SaveCalls;
+        var next = f.Input with { StartUtc = Now, Performers = [new(Guid.NewGuid(), f.Owner.StaffMemberId, Now)] };
+        (await f.SaveAsync(Guid.NewGuid(), next)).Error.Code.ShouldBe("Operations.FlightService.OverlappingPeriods");
+        f.Writes.SaveCalls.ShouldBe(writes); (await f.ReadAsync()).Services.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Unknown_services_may_overlap_but_each_requires_remarks()
+    {
+        await using var f = await Fixture.CreateAsync();
+        f.Reader.AllowedServicesOverride = new HashSet<Guid> { WellKnownMasterDataIds.UnknownService };
+        var input = f.Input with { ServiceId = WellKnownMasterDataIds.UnknownService };
+        (await f.SaveAsync(Guid.NewGuid(), input)).IsSuccess.ShouldBeTrue();
+        (await f.SaveAsync(Guid.NewGuid(), input with { Performers = [input.Performers.Single() with { Id = Guid.NewGuid() }] })).IsSuccess.ShouldBeTrue();
+        (await f.SaveAsync(Guid.NewGuid(), input with { Notes = null, Performers = [input.Performers.Single() with { Id = Guid.NewGuid() }] })).Error.Code.ShouldBe("Operations.WorkOrder.UnknownDescriptionRequired");
+        (await f.ReadAsync()).Services.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Combined_save_uses_final_periods_and_can_delete_a_conflicting_occurrence()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var oldId = Guid.NewGuid(); var newId = Guid.NewGuid();
+        (await f.SaveAsync(oldId)).IsSuccess.ShouldBeTrue();
+        var next = f.Input with { Performers = [f.Input.Performers.Single() with { Id = Guid.NewGuid() }] };
+        var result = await f.BatchAsync(new(ServiceChanges: [new(newId, next), new(oldId, null)]));
+        result.IsSuccess.ShouldBeTrue();
+        (await f.ReadAsync()).Services.ShouldHaveSingleItem().Id.ShouldBe(newId);
+    }
+
+    [Fact]
+    public async Task Combined_save_can_close_then_repeat_ongoing_service_regardless_of_change_order()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var firstId = Guid.NewGuid(); var nextId = Guid.NewGuid();
+        (await f.SaveAsync(firstId)).IsSuccess.ShouldBeTrue();
+        var closed = f.Input with { EndUtc = Now, Performers = [f.Input.Performers.Single() with { EndUtc = Now }] };
+        var next = f.Input with { StartUtc = Now, Performers = [new(Guid.NewGuid(), f.Owner.StaffMemberId, Now)] };
+        var result = await f.BatchAsync(new(ServiceChanges: [new(nextId, next), new(firstId, closed)]));
+        result.IsSuccess.ShouldBeTrue(); (await f.ReadAsync()).Services.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Combined_arrival_and_work_satisfy_prerequisite_and_normalize_frozen_lowercase_input()
+    {
+        await using var f = await Fixture.CreateAsync(withArrival: false);
+        var aircraftId = Guid.NewGuid(); f.Reader.AircraftTypes[aircraftId] = new(aircraftId, "Boeing", "737", true);
+        var input = new SaveFlightOperationsBatchRequest(
+            Arrival: new(Now.AddHours(-1), aircraftId, " hz-ab1 ", " pkg-a ", null),
+            ServiceChanges: [new(Guid.NewGuid(), f.Input with { CustomerReferenceNumber = " cust-a " })]);
+        var result = await f.BatchAsync(input);
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.ArrivalSubmissions!.Single().AircraftTailNumber.ShouldBe("HZ-AB1");
+        result.Value.ArrivalSubmissions!.Single().CustomerWorkReferenceNumber.ShouldBe("PKG-A");
+        result.Value.Services!.Single().CustomerReferenceNumber.ShouldBe("CUST-A");
+        var writes = f.Writes.SaveCalls; await f.ChangeVersionAsync();
+        (await f.BatchAsync(input, InitialVersion)).IsSuccess.ShouldBeTrue();
+        f.Writes.SaveCalls.ShouldBe(writes);
+    }
+
+    [Fact]
+    public async Task Rejected_combined_overlap_does_not_publish_arrival_work_files_or_outbox()
+    {
+        await using var f = await Fixture.CreateAsync(withArrival: false);
+        var aircraftId = Guid.NewGuid(); f.Reader.AircraftTypes[aircraftId] = new(aircraftId, "Boeing", "737", true);
+        var input = f.Input with { Attachments = [NewImage()] };
+        var result = await f.BatchAsync(new(Arrival: new(Now.AddHours(-1), aircraftId, "HZ-A", null, null),
+            ServiceChanges: [new(Guid.NewGuid(), input), new(Guid.NewGuid(), input with {
+                Performers = [input.Performers.Single() with { Id = Guid.NewGuid() }], Attachments = null })]));
+        result.Error.Code.ShouldBe("Operations.FlightService.OverlappingPeriods");
+        f.Writes.SaveCalls.ShouldBe(0); f.Storage.SaveCalls.ShouldBe(0);
+        f.Db.ChangeTracker.Clear();
+        (await f.Db.Flights.Include(item => item.ArrivalSubmissions).SingleAsync()).ArrivalSubmissions.ShouldBeEmpty();
+        (await f.ReadAsync()).Services.ShouldBeEmpty(); (await f.Db.OutboxMessages.CountAsync()).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Legacy_exact_replays_acknowledge_without_arrival_and_metadata_changes_must_satisfy_new_rules()
+    {
+        await using var f = await Fixture.CreateAsync(withArrival: false); var id = Guid.NewGuid();
+        var input = f.Input with { CustomerReferenceNumber = "ref-old" };
+        await f.SeedHistoricalServiceAsync(id, input);
+        var historical = (await f.ReadAsync()).Services.Single();
+        f.Db.Entry(historical).Property(item => item.CustomerReferenceNumber).CurrentValue = "ref-old";
+        await f.Db.SaveChangesAsync(); await f.ChangeVersionAsync();
+        (await f.SaveAsync(id, input, version: InitialVersion)).IsSuccess.ShouldBeTrue();
+        (await f.BatchAsync(new(ServiceChanges: [new(id, input)]), InitialVersion)).IsSuccess.ShouldBeTrue();
+        f.Writes.SaveCalls.ShouldBe(0);
+        (await f.SaveAsync(id, input with { Notes = "New metadata" })).Error.Code.ShouldBe("Operations.Flight.ArrivalRequired");
+    }
+
+    [Fact]
+    public async Task Untouched_historical_overlaps_do_not_block_unrelated_edits_but_changed_overlapping_work_is_rejected()
+    {
+        await using var f = await Fixture.CreateAsync(); var first = Guid.NewGuid(); var second = Guid.NewGuid();
+        await f.SeedHistoricalServiceAsync(first, f.Input);
+        await f.SeedHistoricalServiceAsync(second, f.Input with { Performers = [f.Input.Performers.Single() with { Id = Guid.NewGuid() }] });
+        var otherService = Guid.NewGuid();
+        f.Reader.AllowedServicesOverride = new HashSet<Guid> { f.Input.ServiceId, otherService };
+        var unrelated = f.Input with { ServiceId = otherService, Performers = [f.Input.Performers.Single() with { Id = Guid.NewGuid() }] };
+        (await f.BatchAsync(new(ServiceChanges: [new(Guid.NewGuid(), unrelated)]))).IsSuccess.ShouldBeTrue();
+        (await f.SaveAsync(first, f.Input with { Notes = "Metadata correction" })).Error.Code.ShouldBe("Operations.FlightService.OverlappingPeriods");
+        (await f.BatchAsync(new(ServiceChanges: [new(first, f.Input with { Notes = "Metadata correction" })])))
+            .Error.Code.ShouldBe("Operations.FlightService.OverlappingPeriods");
+    }
+
+    [Fact]
+    public async Task Zero_duration_service_periods_remain_valid_beside_ongoing_work()
+    {
+        await using var f = await Fixture.CreateAsync(); (await f.SaveAsync(Guid.NewGuid())).IsSuccess.ShouldBeTrue();
+        var point = f.Input with { StartUtc = Now, EndUtc = Now, Performers = [new(Guid.NewGuid(), f.Owner.StaffMemberId, Now, Now)] };
+        (await f.SaveAsync(Guid.NewGuid(), point)).IsSuccess.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Existing_adhoc_unknown_customer_requires_remarks_when_saving_new_arrival(bool combined)
+    {
+        await using var f = await Fixture.CreateAsync(withArrival: false);
+        var flight = await f.Db.Flights.SingleAsync();
+        f.Db.Entry(flight.Customer).Property(item => item.CustomerId).CurrentValue = WellKnownMasterDataIds.UnknownCustomer;
+        f.Db.Entry(flight.OperationType).Property(item => item.OperationTypeId).CurrentValue = WellKnownMasterDataIds.AdHocOperationType;
+        await f.Db.SaveChangesAsync(); f.Db.ChangeTracker.Clear();
+        var aircraftId = Guid.NewGuid(); f.Reader.AircraftTypes[aircraftId] = new(aircraftId, "Boeing", "737", true);
+        var arrival = new SaveFlightArrivalRequest(Now.AddHours(-1), aircraftId, "HZ-A", null, null);
+        if (combined)
+        {
+            (await f.BatchAsync(new(Arrival: arrival))).Error.Code.ShouldBe("Operations.ArrivalDetails.RemarksRequiredForUnknownCustomer");
+            f.Writes.SaveCalls.ShouldBe(0);
+            (await f.BatchAsync(new(Arrival: arrival with { Remarks = "Customer identified locally" }))).IsSuccess.ShouldBeTrue();
+        }
+        else
+        {
+            var handler = new SaveFlightArrivalCommandHandler(f.Writes,
+                new Scope(new(f.Reader.StationId, f.Owner.StaffMemberId, f.Owner.UserId, Now)), new MasterDataResolver(f.Reader),
+                new Clock(), NoopMobileSyncBroadcaster.Instance, f.Names);
+            (await handler.Handle(new(f.FlightId, arrival, InitialVersion), CancellationToken.None)).Error.Code
+                .ShouldBe("Operations.ArrivalDetails.RemarksRequiredForUnknownCustomer");
+            f.Writes.SaveCalls.ShouldBe(0);
+            (await handler.Handle(new(f.FlightId, arrival with { Remarks = "Customer identified locally" }, InitialVersion), CancellationToken.None))
+                .IsSuccess.ShouldBeTrue();
+        }
+    }
+
     private sealed record Actor(Guid StaffMemberId, Guid UserId);
 
     private sealed class Fixture : IAsyncDisposable
@@ -890,6 +1059,7 @@ public sealed class FlightServiceSaveTests
         public required Guid FlightId { get; init; }
         public required Actor Owner { get; init; }
         public required Actor Other { get; init; }
+        private bool RemoveCreatorAssignmentAfterFirstSave { get; set; }
         public required SaveFlightServiceRequest Input { get; init; }
         public SaveFlightServiceRequest ClosedPerformerInput => Input with
         {
@@ -904,7 +1074,36 @@ public sealed class FlightServiceSaveTests
             var handler = new SaveFlightServiceCommandHandler(Writes,
                 new Scope(new(Reader.StationId, acting.StaffMemberId, acting.UserId, Now)),
                 new MasterDataResolver(Reader), new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, Names);
-            return await handler.Handle(new SaveFlightServiceCommand(FlightId, recordId, input ?? Input, current), CancellationToken.None);
+            var result = await handler.Handle(new SaveFlightServiceCommand(FlightId, recordId, input ?? Input, current), CancellationToken.None);
+            if (result.IsSuccess && RemoveCreatorAssignmentAfterFirstSave)
+            {
+                // Exercise retained own-record rights after a real scheduling assignment is removed.
+                RemoveCreatorAssignmentAfterFirstSave = false;
+                var flight = await Db.Flights.Include(item => item.AssignedEmployees).SingleAsync(item => item.Id == FlightId);
+                flight.ReplaceAssignedEmployees([], Now).IsSuccess.ShouldBeTrue();
+                await Db.SaveChangesAsync();
+            }
+            return result;
+        }
+
+        public async Task SeedHistoricalServiceAsync(Guid id, SaveFlightServiceRequest input)
+        {
+            var flight = await ReadAsync(); var employee = Reader.StaffMembers[Owner.StaffMemberId];
+            flight.SaveService(id, new(input.ServiceId, "Planned service"), input.CustomerReferenceNumber,
+                TimeWindow.Create(input.StartUtc, input.EndUtc).Value, input.Notes,
+                input.Performers.Select(item => new FlightServicePerformerInput(
+                    new(employee.Id, employee.FullName, employee.EmployeeId), TimeWindow.Create(item.StartUtc, item.EndUtc).Value, item.Id)).ToList(),
+                Owner.UserId, Now).IsSuccess.ShouldBeTrue();
+            await Db.SaveChangesAsync(); Db.ChangeTracker.Clear();
+        }
+
+        public async Task<Result<FlightDetailDto>> BatchAsync(SaveFlightOperationsBatchRequest input, byte[]? version = null)
+        {
+            var current = version ?? (await Db.Flights.SingleAsync(f => f.Id == FlightId)).RowVersion;
+            return await new SaveFlightOperationsBatchCommandHandler(Writes,
+                new Scope(new(Reader.StationId, Owner.StaffMemberId, Owner.UserId, Now)), new MasterDataResolver(Reader),
+                Reader, new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, Names)
+                .Handle(new(FlightId, input, current), CancellationToken.None);
         }
 
         public async Task<Result<FlightServiceRemovedDto>> DeleteAsync(Guid recordId, Actor? actor = null, byte[]? version = null)
@@ -944,7 +1143,7 @@ public sealed class FlightServiceSaveTests
             Db.ChangeTracker.Clear();
         }
 
-        public static async Task<Fixture> CreateAsync(bool assigned = true)
+        public static async Task<Fixture> CreateAsync(bool assigned = true, bool withArrival = true)
         {
             var db = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -957,16 +1156,24 @@ public sealed class FlightServiceSaveTests
                 new StationSnapshot(reader.StationId, "RUH", "Riyadh"),
                 new OperationTypeSnapshot(Guid.NewGuid(), "Transit"), FlightNumber.Create("SV100", "SV").Value,
                 ScheduledTime.Create(Now.AddHours(-1), Now.AddHours(1)).Value, null,
-                [new ServiceSnapshot(assigned ? reader.ServiceId : WellKnownMasterDataIds.AircraftPerLandingService, "Planned service")],
+                [new ServiceSnapshot(reader.ServiceId, "Planned service")],
                 assigned ? [new StaffMemberSnapshot(owner.StaffMemberId, "Service creator", "E1"),
-                    new StaffMemberSnapshot(other.StaffMemberId, "Other operator", "E2")] : [], owner.UserId, Now).Value;
+                    new StaffMemberSnapshot(other.StaffMemberId, "Other operator", "E2")]
+                    : [new StaffMemberSnapshot(owner.StaffMemberId, "Service creator", "E1")], owner.UserId, Now).Value;
+            if (withArrival)
+            {
+                var employee = new StaffMemberSnapshot(owner.StaffMemberId, "Receiving employee", "E1");
+                flight.SubmitArrival(employee, ArrivalDetails.Create(null, Now.AddHours(-2),
+                    new AircraftTypeSnapshot(Guid.NewGuid(), "Boeing", "737"), "HZ-TEST", employee, null).Value,
+                    owner.UserId, Now.AddHours(-2)).IsSuccess.ShouldBeTrue();
+            }
             db.Flights.Add(flight);
             db.Entry(flight).Property(f => f.RowVersion).CurrentValue = InitialVersion.ToArray();
             await db.SaveChangesAsync();
             return new Fixture
             {
                 Db = db, Writes = new WriteBoundary(db), Storage = new MemoryStorage(), Reader = reader,
-                FlightId = flight.Id, Owner = owner, Other = other,
+                FlightId = flight.Id, Owner = owner, Other = other, RemoveCreatorAssignmentAfterFirstSave = !assigned,
                 Names = new(new Dictionary<Guid, string> { [owner.UserId] = "Original creator account", [other.UserId] = "Assigned editor account" }),
                 Input = new(reader.ServiceId, Now.AddMinutes(-30), null, "REF-1", "Service notes",
                     [new(Guid.NewGuid(), owner.StaffMemberId, Now.AddMinutes(-20))])
@@ -981,6 +1188,7 @@ public sealed class FlightServiceSaveTests
         public Func<CancellationToken, Task<int>>? Save { get; set; }
         public int SaveCalls { get; private set; }
         public DbSet<Flight> Flights => db.Flights;
+        public DbSet<FlightUserActivity> FlightUserActivities => db.FlightUserActivities;
         public DbSet<OutboxMessage> OutboxMessages => db.OutboxMessages;
         public DbSet<InboxMessage> InboxMessages => db.InboxMessages;
         public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion) where TEntity : class =>

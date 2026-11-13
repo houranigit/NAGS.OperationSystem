@@ -33,6 +33,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nags.operations.R
 import com.nags.operations.ui.theme.BrandRed
+import com.nags.operations.ui.components.InlineNotice
+import com.nags.operations.ui.components.InlineNoticeKind
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,7 +68,7 @@ fun AccountScreen(
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding)
-                .verticalScroll(rememberScrollState()).padding(20.dp),
+                .verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             state.profile?.let { profile ->
@@ -79,13 +81,11 @@ fun AccountScreen(
                 CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
             }
             state.error?.let { error ->
-                Text(error, color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = viewModel::refresh, enabled = state.isOnline && !state.isLoading) {
-                    Text(stringResource(R.string.account_refresh))
-                }
+                InlineNotice(error, kind = InlineNoticeKind.Error,
+                    onRetry = if (state.isOnline && !state.isLoading) viewModel::refresh else null)
             }
             if (!state.isOnline) {
-                Text(stringResource(R.string.account_profile_offline), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                InlineNotice(stringResource(R.string.account_profile_offline))
             }
             OutlinedButton(onClick = onOpenSyncCenter) {
                 Icon(Icons.Default.Sync, contentDescription = null)

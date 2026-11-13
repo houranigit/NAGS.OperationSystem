@@ -46,7 +46,7 @@ public sealed class FlightService : Entity<Guid>
             FlightId = flightId,
             ReturnToRampId = returnToRampId,
             Service = new ServiceSnapshot(service!.ServiceId, service.Name),
-            CustomerReferenceNumber = NormalizeOptional(customerReferenceNumber),
+            CustomerReferenceNumber = NormalizeOptional(customerReferenceNumber)?.ToUpperInvariant(),
             Window = window!.Copy(),
             EndedByUserId = window.ToUtc.HasValue ? userId : null,
             Notes = NormalizeOptional(notes),
@@ -73,7 +73,7 @@ public sealed class FlightService : Entity<Guid>
         if (window!.ToUtc is not null && _performers.Any(performer => performer.Window.ToUtc is null))
             return OpenPerformerPeriods();
 
-        var reference = NormalizeOptional(customerReferenceNumber);
+        var reference = NormalizeOptional(customerReferenceNumber)?.ToUpperInvariant();
         var normalizedNotes = NormalizeOptional(notes);
         if (Service == service && Window == window && CustomerReferenceNumber == reference && Notes == normalizedNotes)
             return false;

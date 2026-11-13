@@ -84,12 +84,19 @@ public sealed class FlightDepartureTests
         details.Remarks.ShouldBe(expectedRemarks);
     }
 
+    [Fact]
+    public void DepartureDetails_AllowsAnUnsignedDeparture()
+    {
+        var details = DepartureDetails.Create(TestData.Now, null, TestData.Staff(), null);
+        details.IsSuccess.ShouldBeTrue();
+        details.Value.CustomerSignature.ShouldBeNull();
+    }
+
     [Theory]
     [InlineData("missing-time", "Operations.DepartureDetails.AtdRequired")]
-    [InlineData("missing-signature", "Operations.DepartureDetails.CustomerSignatureRequired")]
     [InlineData("missing-handler", "Operations.DepartureDetails.HandledByEmployeeRequired")]
     [InlineData("unidentified-handler", "Operations.DepartureDetails.HandledByEmployeeRequired")]
-    public void DepartureDetails_RequiresActualTimeSignatureAndIdentifiedHandler(string invalidInput, string errorCode)
+    public void DepartureDetails_RequiresActualTimeAndIdentifiedHandler(string invalidInput, string errorCode)
     {
         var atd = invalidInput == "missing-time" ? default : TestData.Now;
         var signature = invalidInput == "missing-signature" ? null : Signature();

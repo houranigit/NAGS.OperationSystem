@@ -54,6 +54,8 @@ public sealed class GetFlightInvitationOptionsQueryHandler(
             if (access.IsFailure)
                 return access.Error;
         }
+        if (flight.AdHocCreationFingerprint is not null)
+            return Error.Validation("AdHoc flights do not have assigned employees.", "Operations.AdHoc.AssignmentsNotAllowed");
         if (flight.IsPerLanding)
             return PerLandingAssignmentGuard.Error();
 
@@ -120,6 +122,8 @@ public sealed class InviteEmployeesToFlightCommandHandler(
             if (access.IsFailure)
                 return access.Error;
         }
+        if (flight.AdHocCreationFingerprint is not null)
+            return Error.Validation("AdHoc flights do not have assigned employees.", "Operations.AdHoc.AssignmentsNotAllowed");
         if (flight.IsPerLanding)
             return PerLandingAssignmentGuard.Error();
 

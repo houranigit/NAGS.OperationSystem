@@ -35,7 +35,7 @@ public sealed class FlightDepartureSubmissionConfiguration : IEntityTypeConfigur
                 signature.Property(s => s.SizeBytes).HasColumnName("CustomerSignatureSizeBytes").IsRequired();
                 signature.Property(s => s.SignedAtUtc).HasColumnName("CustomerSignedAtUtc").IsRequired();
             });
-            details.Navigation(d => d.CustomerSignature).IsRequired();
+            details.Navigation(d => d.CustomerSignature).IsRequired(false);
 
             details.OwnsOne(d => d.HandledByEmployee, employee =>
             {

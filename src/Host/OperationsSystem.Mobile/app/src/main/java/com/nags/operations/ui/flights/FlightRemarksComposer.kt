@@ -42,6 +42,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.nags.operations.ui.components.InlineNotice
+import com.nags.operations.ui.components.InlineNoticeKind
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberUpdatedState
@@ -172,14 +174,8 @@ internal fun FlightRemarksComposer(
                     }
                 }
                 media.error?.let { message ->
-                    Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(message, Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                        IconButton(onClick = media::dismissError, modifier = Modifier.size(48.dp)) {
-                            Icon(Icons.Outlined.Close, stringResource(R.string.composer_dismiss_error), Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
+                    InlineNotice(message, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        kind = InlineNoticeKind.Error, onDismiss = media::dismissError)
                 }
             }
         }

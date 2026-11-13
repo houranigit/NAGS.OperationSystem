@@ -38,6 +38,8 @@ internal fun FlightServiceSection(
     countOffset: Int = 0,
     showRemoveControls: Boolean = true,
     draftLabels: Boolean = false,
+    completionOnly: (String) -> Boolean = { false },
+    canCompletePerformerEnd: (String, String) -> Boolean = { _, _ -> false },
 ) {
     var selectingService by rememberSaveable { mutableStateOf<String?>(null) }
     var addingService by rememberSaveable { mutableStateOf(false) }
@@ -78,14 +80,16 @@ internal fun FlightServiceSection(
                 }, startEnabled = editable, endEnabled = endEditable,
                     startError = fields["startUtc"]?.let { stringResource(it) },
                     endError = fields["endUtc"]?.let { stringResource(it) }, seedEndNow = true, timeBounds = timeBounds,
-                    endRequired = timeBounds.upperUtc != null,
+                    endRequired = completionOnly(item.id) || timeBounds.upperUtc != null,
                     onStartPickerSessionChanged = { initialBlank -> initialStartStaffIds =
                         if (initialBlank) item.employees.filter { it.period.start.isBlank() }.map { it.id } else emptyList() })
                 FlightFormDivider()
                 FlightWorkEmployeeList(item.employees, catalogs.stationStaff, showRemarks = false, referenceYear = referenceYear, zone = zone,
                     onChange = { employees -> update { it.copy(employees = employees) } }, enabled = editable,
                     errorMessage = fields["performers"]?.let { stringResource(it) }, fieldErrors = fields,
-                    timeBounds = timeBounds.within(item.period, zone))
+                    timeBounds = timeBounds.within(item.period, zone),
+                    canCompleteEnd = { performerId -> enabled && canCompletePerformerEnd(item.id, performerId) },
+                    showEditingControls = !completionOnly(item.id))
                 FlightFormDivider()
                 FlightRemarksComposer(item.remarks, onRemarksChange = { remarks -> update { it.copy(remarks = remarks) } },
                     attachments = item.attachments,

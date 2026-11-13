@@ -21,6 +21,7 @@ public sealed partial class FlightVisibilityScopeTests
         var reader = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view"]);
         using var client = actor.Client; using var readClient = reader.Client; using var anonymous = factory.CreateClient();
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8400", [actor.StaffId, reader.StaffId]);
+        await SeedWorkArrivalAsync(admin, client, id);
         var recordId = Guid.NewGuid(); var input = TaskInput(actor.StaffId);
         var detail = (await client.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
         detail.CanSaveTasks.ShouldBeTrue(); detail.Tasks!.ShouldBeEmpty();
@@ -41,7 +42,7 @@ public sealed partial class FlightVisibilityScopeTests
         using var foreignClient = foreign.Client;
         using (var wrongStation = await SendTaskAsync(client, id, recordId, input with { Performers = [person with { StaffMemberId = foreign.StaffId }] }, detail.RowVersion))
             wrongStation.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        var hidden = await ScheduleFlightAsync(admin, refs.StationId, refs, "8401");
+        var hidden = await ScheduleFlightAsync(admin, await CreateStationAsync(admin, refs.CountryId), refs, "8401");
         using (var deniedScope = await SendTaskAsync(client, hidden, recordId, input, detail.RowVersion)) deniedScope.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         var after = (await client.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
         after.Tasks!.ShouldBeEmpty(); after.RowVersion.ShouldBe(detail.RowVersion);
@@ -55,6 +56,7 @@ public sealed partial class FlightVisibilityScopeTests
         var actor = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
         using var client = actor.Client;
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8410", [actor.StaffId]); var recordId = Guid.NewGuid();
+        await SeedWorkArrivalAsync(admin, client, id);
         var image = new SaveFlightServiceAttachmentRequest(Guid.NewGuid(), 0, "folder/photo.png", "image/png", ServicePng());
         var input = TaskInput(actor.StaffId) with { Notes = " Task notes ", CustomerReferenceNumber = " REF ", Attachments = [image],
             Tools = [new(Guid.NewGuid(), WellKnownMasterDataIds.UnknownTool, StartUtc: DateTimeOffset.UtcNow.AddMinutes(-10), Notes: "Torque wrench")],
@@ -95,6 +97,7 @@ public sealed partial class FlightVisibilityScopeTests
         var reader = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view"]);
         using var client = actor.Client; using var readClient = reader.Client;
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8420", [actor.StaffId, reader.StaffId]); var recordId = Guid.NewGuid();
+        await SeedWorkArrivalAsync(admin, client, id);
         var image = new SaveFlightServiceAttachmentRequest(Guid.NewGuid(), 0, "photo.png", "image/png", ServicePng());
         var detail = (await client.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
         using var create = await SendTaskAsync(client, id, recordId, TaskInput(actor.StaffId) with { Attachments = [image] }, detail.RowVersion);
@@ -118,7 +121,8 @@ public sealed partial class FlightVisibilityScopeTests
         var owner = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
         var closer = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
         using var client = owner.Client; using var other = closer.Client;
-        var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8430", [owner.StaffId, closer.StaffId]); var recordId = Guid.NewGuid();
+        var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8430", [owner.StaffId]); var recordId = Guid.NewGuid();
+        await SeedWorkArrivalAsync(admin, client, id);
         var input = TaskInput(owner.StaffId); var detail = (await client.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
         using (var invalid = await SendTaskAsync(client, id, recordId, input with { EndUtc = DateTimeOffset.UtcNow }, detail.RowVersion))
         {
@@ -128,6 +132,7 @@ public sealed partial class FlightVisibilityScopeTests
         input = input with { Performers = [input.Performers.Single() with { EndUtc = DateTimeOffset.UtcNow.AddMinutes(-2) }] };
         using var create = await SendTaskAsync(client, id, recordId, input, detail.RowVersion); create.StatusCode.ShouldBe(HttpStatusCode.OK);
         var saved = (await create.Content.ReadFromJsonAsync<FlightTaskSavedDto>())!;
+        saved = saved with { RowVersion = (await RemoveRecordedFlightAssignmentsAsync(client, id)).RowVersion };
         input = input with { EndUtc = DateTimeOffset.UtcNow };
         using (var tamper = await SendTaskAsync(other, id, recordId, input with { Notes = "Foreign notes" }, saved.RowVersion)) tamper.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         using var close = await SendTaskAsync(other, id, recordId, input, saved.RowVersion); close.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -145,6 +150,7 @@ public sealed partial class FlightVisibilityScopeTests
         var actor = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
         using var client = actor.Client;
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8440", [actor.StaffId]); var recordId = Guid.NewGuid();
+        await SeedWorkArrivalAsync(admin, client, id);
         var input = TaskInput(actor.StaffId) with { Tools = [new(Guid.NewGuid(), WellKnownMasterDataIds.UnknownTool, StartUtc: DateTimeOffset.UtcNow.AddMinutes(-10), Notes: "Tool")],
             Materials = [new(Guid.NewGuid(), WellKnownMasterDataIds.UnknownMaterial, 1, Notes: "Quantity material")] };
         var detail = (await client.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
@@ -189,6 +195,7 @@ public sealed partial class FlightVisibilityScopeTests
         var actor = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
         using var client = actor.Client;
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8450", [actor.StaffId]); var recordId = Guid.NewGuid();
+        await SeedWorkArrivalAsync(admin, client, id);
         var aircraft = await PostForIdAsync(admin, $"{MasterDataBase}/aircraft-types", new { manufacturer = "Airbus", model = $"Task-{Guid.NewGuid():N}" });
         var input = TaskInput(actor.StaffId); var detail = (await client.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
         using var create = await SendTaskAsync(client, id, recordId, input, detail.RowVersion); create.StatusCode.ShouldBe(HttpStatusCode.OK);

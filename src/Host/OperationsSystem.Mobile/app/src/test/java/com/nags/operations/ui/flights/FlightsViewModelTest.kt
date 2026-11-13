@@ -1265,6 +1265,55 @@ class FlightsViewModelTest {
         assertEquals(1L, vm.state.value.totalCount)
     }
 
+    @Test
+    fun discoveryKeepsUnassignedAndSharedStationFlightsInServerInteractionOrder() {
+        val records = listOf(row("unassigned").copy(isMyFlight = false),
+            row("adhoc").copy(isMyFlight = false, isAdHocFlight = true),
+            row("landing").copy(isMyFlight = false, isPerLanding = true),
+            row("expired").copy(scheduledArrivalUtc = "2026-11-01T00:00:00Z",
+                scheduledDepartureUtc = "2026-11-01T01:00:00Z"))
+        val vm = model(discovery = true, list = { _, _, _ -> FlightPage(records, totalCount = 4) })
+        vm.openSearch()
+        vm.refresh()
+        assertEquals(listOf("unassigned", "adhoc", "landing"), vm.state.value.items.map { it.id })
+        assertEquals(3L, vm.state.value.totalCount)
+    }
+
+    @Test
+    fun discoveryClearingAQueryReloadsRecentSavedWorkInsteadOfRestoringAnOldSnapshot() {
+        val requests = mutableListOf<String?>()
+        var recent = "old-recent"
+        val vm = model(discovery = true, searchDebounce = {}, list = { _, _, query ->
+            requests += query
+            page(query ?: recent).copy(items = listOf(row(query ?: recent).copy(isMyFlight = false)))
+        })
+        vm.openSearch()
+        vm.refresh()
+        vm.setSearch(" 123 ")
+        recent = "newly-saved"
+        vm.setSearch("")
+        assertEquals(listOf(null, "123", null), requests)
+        assertEquals(listOf("newly-saved"), vm.state.value.items.map { it.id })
+        assertTrue(vm.state.value.isSearchOpen)
+    }
+
+    @Test
+    fun discoveryCacheChangesReloadLiveCardsWithoutClaimingNormalOfflinePreparationIsComplete() {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        var reads = 0
+        val vm = model(discovery = true, changes = changes, list = { _, _, _ ->
+            reads++
+            page("live").copy(items = listOf(row("live").copy(isMyFlight = false)))
+        })
+        vm.openSearch()
+        vm.refresh()
+        assertTrue(changes.tryEmit(Unit))
+        assertEquals(2, reads)
+        assertEquals(listOf("live"), vm.state.value.items.map { it.id })
+        assertFalse(vm.state.value.isUsingCachedList)
+        assertNull(vm.state.value.error)
+    }
+
     private fun tabPage(category: FlightCategory, vararg ids: String = arrayOf("$category")) = FlightPage(
         items = ids.map { id -> row(id).copy(isMyFlight = category == FlightCategory.MyFlights,
             isPerLanding = category == FlightCategory.PerLanding, isMyAdHocFlight = category == FlightCategory.AdHoc) },
@@ -1286,6 +1335,7 @@ class FlightsViewModelTest {
         expiryWait: suspend (Long) -> Unit = { delay(it) },
         pruneCache: suspend () -> Unit = {},
         searchDebounce: suspend () -> Unit = { delay(300) },
+        discovery: Boolean = false,
     ) = FlightsViewModel(
         fetchProfile = profile ?: { AuthenticatedUser("user", "staff@example.test", "Staff", "StationStaff", permissions = permissions) },
         fetchFlights = categoryList ?: { _, number, size, search -> list(number, size, search) },
@@ -1293,7 +1343,7 @@ class FlightsViewModelTest {
         sendInvitations = send, coroutineScope = scope, online = online,
         cacheChanges = changes, cacheStatus = cacheStatus, clearCachedFlights = clearCache,
         now = now, waitForExpiryCheck = expiryWait, pruneCachedFlights = pruneCache,
-        waitForSearchDebounce = searchDebounce,
+        waitForSearchDebounce = searchDebounce, isDiscoveryFeed = discovery,
     )
 
     private fun page(id: String) = FlightPage(items = listOf(row(id)), totalCount = 1)

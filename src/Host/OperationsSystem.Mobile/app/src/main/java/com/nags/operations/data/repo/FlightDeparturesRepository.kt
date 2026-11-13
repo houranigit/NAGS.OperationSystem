@@ -59,6 +59,7 @@ class FlightDeparturesRepository(
     private val operationSave: suspend (suspend () -> Unit) -> Unit = operationWrite,
     private val operationGate: FlightOperationsGate = FlightOperationsGate(),
     private val onAttemptRejected: suspend (String, String?) -> Unit = { _, _ -> },
+    private val onLocalSaved: suspend (FlightDetail) -> Unit = {},
 ) {
     private val gate = Mutex()
     private val localWrites = FlightOperationsLocalLock(operationGate)
@@ -109,8 +110,7 @@ class FlightDeparturesRepository(
             val reviewed = if (preserveAttempt) checkNotNull(existing).reviewedDepartureJson else json.encodeToString(latestOwnAcknowledged.second)
             val version = if (preserveAttempt) checkNotNull(existing).rowVersion else latestOwnAcknowledged.first
             val bytes = normalized.signatureContent?.let(::decodeSignature)
-            validate(desired, version, checkNotNull(flight.currentStaffMemberId), reviewed,
-                hasSignature = bytes != null || reusedFile != null)
+            validate(desired, version, hasSignature = bytes != null || reusedFile != null)
             var createdFile: String? = null
             try {
                 createdFile = bytes?.let { signatureStore.save(it) }
@@ -121,6 +121,7 @@ class FlightDeparturesRepository(
                     UUID.randomUUID().toString(), json.encodeToString(desired), version, reviewed, now().toString(), file,
                     needsDepartureComparison = version != flight.rowVersion, reviewSourceInputJson = existing?.reviewSourceInputJson)
                 dao.put(row)
+                onLocalSaved(flight)
                 row.rowVersion
             } finally { reclaimSignatures() }
         }
@@ -172,8 +173,7 @@ class FlightDeparturesRepository(
                 }
                 val hydrated = try {
                     val signature = prepared.attemptSignatureFile?.let { Base64.getEncoder().encodeToString(signatureStore.read(it).also(::checkSignatureBytes)) }
-                    validate(input, checkNotNull(prepared.attemptRowVersion), prepared.staffMemberId,
-                        prepared.reviewedDepartureJson, signature != null)
+                    validate(input, checkNotNull(prepared.attemptRowVersion), signature != null)
                     input.copy(signatureContent = signature)
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (_: Exception) {
@@ -404,18 +404,14 @@ class FlightDeparturesRepository(
 
     private fun checkSignatureBytes(content: ByteArray) = com.nags.operations.data.validateFlightSignatureBytes(content)
 
-    private fun validate(input: SaveFlightDepartureRequest, version: String, staffId: String, reviewedJson: String, hasSignature: Boolean) {
+    private fun validate(input: SaveFlightDepartureRequest, version: String, hasSignature: Boolean) {
         check(runCatching { Base64.getDecoder().decode(version).size == 8 }.getOrDefault(false)) { "Reload the flight before saving departure details." }
         val atd = runCatching { OffsetDateTime.parse(input.atd) }.getOrNull()
         check(atd != null && atd.year in 1..9999 && atd.toInstant() != Instant.parse("0001-01-01T00:00:00Z")) { "Actual departure time is required." }
         check(input.targetSubmissionId == null || validArrivalId(input.targetSubmissionId)) { "Reload the departure submission before saving." }
-        val recorded = json.decodeFromString<List<FlightDepartureSubmission>>(reviewedJson).any {
-            if (input.targetSubmissionId == null) it.submittedByEmployee.staffMemberId.equals(staffId, true)
-            else it.id.equals(input.targetSubmissionId, true)
-        }
         if (hasSignature) {
             val signed = input.signatureSignedAtUtc?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() }
             check(signed != null && signed.year in 1..9999 && signed.toInstant() != Instant.parse("0001-01-01T00:00:00Z")) { "Customer signing time is required." }
-        } else check(recorded && input.signatureSignedAtUtc == null) { "Customer signature is required." }
+        } else check(input.signatureSignedAtUtc == null) { "Signing time requires a customer signature." }
     }
 }

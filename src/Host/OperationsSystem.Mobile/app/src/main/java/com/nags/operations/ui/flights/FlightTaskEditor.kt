@@ -70,6 +70,9 @@ internal fun FlightTaskSection(
     countOffset: Int = 0,
     showRemoveControls: Boolean = true,
     draftLabels: Boolean = false,
+    completionOnly: (String) -> Boolean = { false },
+    canCompletePerformerEnd: (String, String) -> Boolean = { _, _ -> false },
+    canCompleteResourceEnd: (String, FlightWorkResourceKind, String) -> Boolean = { _, _, _ -> false },
 ) {
     var pickerTaskId by rememberSaveable { mutableStateOf<String?>(null) }
     val taskLabel = stringResource(R.string.work_task)
@@ -141,26 +144,34 @@ internal fun FlightTaskSection(
                         startEnabled = editable, endEnabled = enabled && canSetEnd(task.id),
                         startError = fields["startUtc"]?.let { stringResource(it) },
                         endError = fields["endUtc"]?.let { stringResource(it) }, seedEndNow = true, timeBounds = timeBounds,
-                        endRequired = timeBounds.upperUtc != null,
+                        endRequired = completionOnly(task.id) || timeBounds.upperUtc != null,
                         onStartPickerSessionChanged = { initialBlank -> initialStartStaffIds =
                             if (initialBlank) task.employees.filter { it.period.start.isBlank() }.map { it.id } else emptyList() })
                     FlightFormDivider()
                     FlightWorkEmployeeList(task.employees, catalogs.stationStaff, showRemarks = true, referenceYear = referenceYear, zone = zone,
                         onChange = { employees -> updateTask(task.id) { it.copy(employees = employees) } }, enabled = editable,
                         errorMessage = fields["performers"]?.let { stringResource(it) }, fieldErrors = fields, timeBounds = childBounds,
-                        defaultPeriod = task.period.copy(end = "", originalEndUtc = null))
+                        defaultPeriod = task.period.copy(end = "", originalEndUtc = null),
+                        canCompleteEnd = { performerId -> enabled && canCompletePerformerEnd(task.id, performerId) },
+                        showEditingControls = !completionOnly(task.id))
                     FlightFormDivider()
                     FlightWorkResourceList(FlightWorkResourceKind.Tool, task.tools, catalogs.tools, referenceYear, zone,
                         onChange = { tools -> updateTask(task.id) { it.copy(tools = tools) } }, enabled = editable,
-                        fieldErrors = fields, parentPeriod = task.period, timeBounds = childBounds)
+                        fieldErrors = fields, parentPeriod = task.period, timeBounds = childBounds,
+                        canCompleteEnd = { usageId -> enabled && canCompleteResourceEnd(task.id, FlightWorkResourceKind.Tool, usageId) },
+                        showEditingControls = !completionOnly(task.id))
                     FlightFormDivider()
                     FlightWorkResourceList(FlightWorkResourceKind.Material, task.materials, catalogs.materials, referenceYear, zone,
                         onChange = { materials -> updateTask(task.id) { it.copy(materials = materials) } }, enabled = editable,
-                        fieldErrors = fields, parentPeriod = task.period, timeBounds = childBounds)
+                        fieldErrors = fields, parentPeriod = task.period, timeBounds = childBounds,
+                        canCompleteEnd = { usageId -> enabled && canCompleteResourceEnd(task.id, FlightWorkResourceKind.Material, usageId) },
+                        showEditingControls = !completionOnly(task.id))
                     FlightFormDivider()
                     FlightWorkResourceList(FlightWorkResourceKind.GeneralSupport, task.generalSupports, catalogs.generalSupports, referenceYear, zone,
                         onChange = { supports -> updateTask(task.id) { it.copy(generalSupports = supports) } }, enabled = editable,
-                        fieldErrors = fields, parentPeriod = task.period, timeBounds = childBounds)
+                        fieldErrors = fields, parentPeriod = task.period, timeBounds = childBounds,
+                        canCompleteEnd = { usageId -> enabled && canCompleteResourceEnd(task.id, FlightWorkResourceKind.GeneralSupport, usageId) },
+                        showEditingControls = !completionOnly(task.id))
                     FlightFormDivider()
                     FlightRemarksComposer(task.remarks,
                         onRemarksChange = { value -> updateTask(task.id) { it.copy(remarks = value) } },

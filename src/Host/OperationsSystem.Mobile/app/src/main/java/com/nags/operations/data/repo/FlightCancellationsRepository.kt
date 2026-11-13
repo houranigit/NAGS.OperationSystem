@@ -47,6 +47,8 @@ class FlightCancellationsRepository(
     private val now: () -> Instant = Instant::now,
     private val operationGate: FlightOperationsGate = FlightOperationsGate(),
     private val operationWrite: suspend (suspend () -> Unit) -> Unit = { it() },
+    private val onLocalSaved: suspend (FlightDetail) -> Unit = {},
+    private val transaction: suspend (suspend () -> Unit) -> Unit = { it() },
 ) {
     private val gate = Mutex()
     private val localWrites = FlightOperationsLocalLock(operationGate)
@@ -71,7 +73,7 @@ class FlightCancellationsRepository(
         check(!otherWork || normalized.acknowledgeConflictingSubmission) {
             "Another employee reported this flight as arrived or departed. Confirm cancellation before saving."
         }
-        localWrites.withLock {
+        localWrites.withLock { transaction {
             check(accepting && observed == generation && owner == currentOwner()) { "Your session changed. Reopen the flight." }
             val existing = dao.rows(owner).firstOrNull { it.flightId == flight.id }
             check(existing == null || existing.operation != "revert" || existing.status != "pending") {
@@ -82,7 +84,8 @@ class FlightCancellationsRepository(
                     UUID.randomUUID().toString(), "save", json.encodeToString(normalized), flight.ownCancellation()?.id,
                     flight.rowVersion, now().toString())
             dao.put(row)
-        }
+            onLocalSaved(flight)
+        } }
         runCatching { schedule() }
     }
 
@@ -93,14 +96,14 @@ class FlightCancellationsRepository(
         val observed = generation
         check(flight.canSaveCancellation) { "You cannot revert this cancellation." }
         check(flight.isInFlightWindow(now())) { "This flight is outside your current flight window." }
-        localWrites.withLock {
+        localWrites.withLock { transaction {
             check(accepting && observed == generation && owner == currentOwner()) { "Your session changed. Reopen the flight." }
             val existing = dao.rows(owner).firstOrNull { it.flightId == flight.id }
-            if (existing?.operation == "revert" && existing.status == "pending") return@withLock
+            if (existing?.operation == "revert" && existing.status == "pending") return@transaction
             val own = flight.ownCancellation()
             if (own == null && (existing == null || existing.attemptOperation == null || existing.status != "pending")) {
                 existing?.let { dao.delete(owner, it.flightId, it.changeId) }
-                return@withLock
+                return@transaction
             }
             check(validVersion(flight.rowVersion)) { "Reload the flight before reverting your cancellation." }
             val row = if (existing?.status == "pending" && existing.attemptOperation != null) existing.copy(
@@ -108,7 +111,8 @@ class FlightCancellationsRepository(
                 else FlightCancellationPendingEntity(owner, flight.id, flight.flightNumber, checkNotNull(flight.currentStaffMemberId),
                     UUID.randomUUID().toString(), "revert", null, checkNotNull(own).id, flight.rowVersion, now().toString())
             dao.put(row)
-        }
+            onLocalSaved(flight)
+        } }
         runCatching { schedule() }
     }
 

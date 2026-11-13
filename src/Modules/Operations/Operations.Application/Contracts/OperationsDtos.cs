@@ -56,4 +56,11 @@ public sealed record FlightDetailDto(
     bool CanSaveServices = false,
     IReadOnlyList<Guid>? AllowedServiceIds = null,
     IReadOnlyList<FlightTaskDto>? Tasks = null,
-    bool CanSaveTasks = false);
+    bool CanSaveTasks = false,
+    Guid? CreatedByUserId = null,
+    string? CreatedByDisplayName = null,
+    bool CanEditFlightDetails = false,
+    bool IsAdHocFlight = false,
+    bool IsUnassignedSearchFlight = false,
+    bool? CanAddServices = null,
+    bool? CanAddTasks = null);

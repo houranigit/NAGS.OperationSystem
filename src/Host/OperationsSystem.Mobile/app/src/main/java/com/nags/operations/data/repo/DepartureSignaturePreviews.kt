@@ -48,8 +48,25 @@ class DepartureSignaturePreviews(
                     Json.decodeFromString<List<FlightDepartureSubmission>>(row.reviewedDepartureJson)
                         .firstOrNull { it.id.equals(targetSubmissionId, true) }
                 }.getOrNull() }
-        if (submission == null) return null
-        val key = key(owner, flight.id, submission)
+        if (submission == null || !submission.hasSignature) return null
+        return loadSaved(flight.id, submission, owner, observed)
+    }
+
+    /** Unlike a visible preview, complete preparation includes every signed departure submission. */
+    suspend fun prefetch(flight: FlightDetail) {
+        val owner = checkNotNull(currentOwner()) { "Sign in to prepare signatures offline." }
+        val observed = generation
+        for (submission in flight.departureSubmissions.filter { it.hasSignature }) {
+            checkNotNull(loadSaved(flight.id, submission, owner, observed, requireCached = true)) {
+                "The customer signature could not be prepared offline."
+            }
+        }
+        check(owner == currentOwner() && observed == generation) { "Flight access changed during offline preparation." }
+    }
+
+    private suspend fun loadSaved(flightId: String, submission: FlightDepartureSubmission, owner: String,
+        observed: Long, requireCached: Boolean = false): ByteArray? {
+        val key = key(owner, flightId, submission)
         val cached = gate.withLock {
             if (owner != currentOwner() || observed != generation) return@withLock null
             withContext(Dispatchers.IO) {
@@ -60,19 +77,23 @@ class DepartureSignaturePreviews(
         }
         if (cached != null) return cached.takeIf { owner == currentOwner() && generation == observed }
         if (!online() || owner != currentOwner() || observed != generation) return null
-        val bytes = fetch(flight.id, submission.id, submission.updatedAtUtc ?: submission.createdAtUtc) ?: return null
+        val bytes = fetch(flightId, submission.id, submission.updatedAtUtc ?: submission.createdAtUtc) ?: return null
         validate(bytes)
         return gate.withLock {
             if (owner != currentOwner() || observed != generation) return@withLock null
             try { write(key, bytes) }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { /* A valid online preview still works if its private cache cannot be written. */ }
+            catch (error: Exception) {
+                if (requireCached) throw error
+                // A visible online preview remains usable when its replaceable cache cannot be written.
+            }
             bytes.takeIf { owner == currentOwner() && observed == generation }
         }
     }
 
     /** Preserve the exact acknowledged PNG before its queue-owned file is released. */
     suspend fun recordAcknowledged(flightId: String, saved: FlightDepartureSaved, bytes: ByteArray) {
+        if (!saved.submission.hasSignature) return
         val owner = currentOwner() ?: return
         val observed = generation
         validate(bytes)

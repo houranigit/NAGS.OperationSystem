@@ -31,6 +31,7 @@ public sealed partial class FlightVisibilityScopeTests
         using var client = editor.Client;
         var aircraftId = await OperationsBatchAircraftAsync(admin);
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8701", [author.StaffId, editor.StaffId]);
+        await SeedWorkArrivalAsync(admin, authorClient, id);
         var recordId = Guid.NewGuid();
         var originalBytes = Encoding.ASCII.GetBytes("%PDF-original");
         var originalAttachment = new SaveFlightServiceAttachmentRequest(Guid.NewGuid(), (int)AttachmentKind.Document,
@@ -95,6 +96,7 @@ public sealed partial class FlightVisibilityScopeTests
         var actor = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
         using var client = actor.Client;
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8702", [actor.StaffId]);
+        await SeedWorkArrivalAsync(admin, client, id);
         var serviceId = Guid.NewGuid();
         var input = ServiceInput(refs.ServiceId, actor.StaffId);
         var original = await OperationsBatchDetailAsync(client, id);
@@ -119,11 +121,14 @@ public sealed partial class FlightVisibilityScopeTests
         var actor = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
         using var client = actor.Client;
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8703", [actor.StaffId]);
+        await SeedWorkArrivalAsync(admin, client, id);
         var firstId = Guid.NewGuid();
         var secondId = Guid.NewGuid();
         var taskId = Guid.NewGuid();
-        var first = ServiceInput(refs.ServiceId, actor.StaffId);
-        var second = ServiceInput(refs.ServiceId, actor.StaffId) with { Notes = "Separate occurrence of the same catalog service" };
+        var split = DateTimeOffset.UtcNow.AddMinutes(-10);
+        var first = OperationsBatchClosedService(refs.ServiceId, actor.StaffId, split.AddMinutes(-20), split);
+        var second = ServiceInput(refs.ServiceId, actor.StaffId) with { StartUtc = split,
+            Notes = "Separate occurrence of the same catalog service", Performers = [new(Guid.NewGuid(), actor.StaffId, split)] };
         var task = TaskInput(actor.StaffId);
         var before = await OperationsBatchSnapshotAsync(client, id);
         var batch = OperationsBatchInput(services: [new(firstId, first), new(secondId, second)], tasks: [new(taskId, task)]);
@@ -267,6 +272,7 @@ public sealed partial class FlightVisibilityScopeTests
         using var client = actor.Client;
         using var performerClient = performer.Client;
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8709", [actor.StaffId]);
+        await SeedWorkArrivalAsync(admin, client, id);
         var reviewed = await OperationsBatchDetailAsync(client, id);
         var service = ServiceInput(refs.ServiceId, performer.StaffId) with
         {
@@ -316,7 +322,7 @@ public sealed partial class FlightVisibilityScopeTests
             forbidden.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         using (var unauthenticated = await SendOperationsBatchAsync(anonymous, id, batch, before.Detail.RowVersion))
             unauthenticated.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-        var hiddenId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8707");
+        var hiddenId = await ScheduleFlightAsync(admin, await CreateStationAsync(admin, refs.CountryId), refs, "8707");
         using (var hidden = await SendOperationsBatchAsync(client, hiddenId, batch, before.Detail.RowVersion))
             hidden.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         await AssertOperationsBatchUnchangedAsync(client, id, before);
@@ -342,6 +348,20 @@ public sealed partial class FlightVisibilityScopeTests
         using var rejected = await client.SendAsync(request);
         rejected.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
         await AssertOperationsBatchUnchangedAsync(client, id, before);
+    }
+
+    private static async Task SeedWorkArrivalAsync(HttpClient admin, HttpClient client, Guid flightId)
+    {
+        var aircraft = await OperationsBatchAircraftAsync(admin);
+        var detail = await OperationsBatchDetailAsync(client, flightId);
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{flightId}/arrival")
+        {
+            Content = JsonContent.Create(new SaveFlightArrivalRequest(DateTimeOffset.UtcNow.AddHours(-6), aircraft,
+                "HZ-WORK", null, "Arrival prerequisite"))
+        };
+        request.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
+        using var response = await client.SendAsync(request);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     private static SaveFlightOperationsBatchRequest OperationsBatchInput(SaveFlightArrivalRequest? arrival = null,

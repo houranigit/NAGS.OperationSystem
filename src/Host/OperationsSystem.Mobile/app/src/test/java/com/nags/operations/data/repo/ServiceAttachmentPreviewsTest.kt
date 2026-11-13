@@ -48,6 +48,40 @@ class ServiceAttachmentPreviewsTest {
         assertEquals(0, requests)
     }
 
+    @Test fun fullPreparationPersistsEveryMediaKindAndExactVersionAcrossRestart() = runBlocking {
+        val attachments = listOf(
+            FlightServiceAttachmentRecord("photo", 0, "image.jpg", "image/jpeg", content.size.toLong(), uploadedAtUtc = "v1"),
+            FlightServiceAttachmentRecord("document", 2, "document.pdf", "application/pdf", content.size.toLong(), uploadedAtUtc = "v1"),
+            FlightServiceAttachmentRecord("voice", 1, "recording.m4a", "audio/mp4", content.size.toLong(), uploadedAtUtc = "v1"),
+        )
+        previews().prefetch("flight", "service", attachments)
+        assertEquals(3, requests)
+        online = false
+        previews().prefetch("flight", "service", attachments)
+        for (attachment in attachments) assertArrayEquals(content,
+            previews().load("flight", "service", attachment.id, attachment.uploadedAtUtc)!!.readBytes())
+        assertEquals(3, requests)
+        assertTrue(runCatching { previews().prefetch("flight", "service", listOf(attachments.first().copy(uploadedAtUtc = "v2"))) }.isFailure)
+    }
+
+    @Test fun partialDownloadsAndStorageFailuresCannotReportCompletePreparation() = runBlocking {
+        val first = FlightServiceAttachmentRecord("first", 0, "image.jpg", "image/jpeg", content.size.toLong(), uploadedAtUtc = "v1")
+        val missing = first.copy(id = "missing")
+        fetch = { _, _, id, _ -> if (id == missing.id) null else content }
+        assertTrue(runCatching { previews().prefetch("flight", "service", listOf(first, missing)) }.isFailure)
+        online = false
+        assertArrayEquals(content, previews().load("flight", "service", first.id, first.uploadedAtUtc)!!.readBytes())
+        online = true
+        // A truncated same-version cache is not accepted as complete; the declared length is checked.
+        directory.walkTopDown().single { it.isFile }.writeBytes(byteArrayOf(1))
+        fetch = { _, _, _, _ -> byteArrayOf(1) }
+        assertTrue(runCatching { previews().prefetch("flight", "service", listOf(first)) }.isFailure)
+        directory.deleteRecursively()
+        directory.writeText("A file prevents private cache directory creation")
+        fetch = { _, _, _, _ -> content }
+        assertTrue(runCatching { previews().prefetch("flight", "service", listOf(first)) }.isFailure)
+    }
+
     @Test fun clearedOrChangedSessionCannotPublishAnOldInFlightDownload() = runBlocking {
         val started = CompletableDeferred<Unit>()
         val response = CompletableDeferred<ByteArray?>()

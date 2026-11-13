@@ -38,7 +38,7 @@ public sealed class SaveFlightCancellationCommandHandler(
         var resolved = await scope.ResolveAsync(cancellationToken);
         if (resolved.IsFailure) return resolved.Error;
         var actor = resolved.Value;
-        var flight = await MobileFlightQuery.ApplyScope(db.Flights, actor).AsSplitQuery()
+        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights, actor).AsSplitQuery()
             .Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
             .Include(f => f.ArrivalSubmissions).Include(f => f.DepartureSubmissions)
             .Include(f => f.CancellationSubmissions).Include(f => f.ReturnToRamps)
@@ -56,6 +56,9 @@ public sealed class SaveFlightCancellationCommandHandler(
             return Error.Conflict("You already submitted work details for this flight and cannot submit cancellation.",
                 "Operations.Flight.OwnWorkSubmitted");
         var own = flight.CancellationSubmissions.SingleOrDefault(c => c.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
+        if (FlightSearchPolicy.IsUnassignedRegular(flight, actor.StaffMemberId) &&
+            !flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId))
+            return Error.Forbidden("Cancellation is read-only on this unassigned flight.", "Operations.Search.CancellationReadOnly");
         var input = request.Cancellation;
         var details = CancellationDetails.Create(input.CanceledAtUtc, input.Remarks);
         if (details.IsFailure) return details.Error;
@@ -72,6 +75,7 @@ public sealed class SaveFlightCancellationCommandHandler(
         db.SetOriginalRowVersion(flight, request.RowVersion);
         var submitted = flight.SubmitCancellation(staff.Value.Single(), details.Value, actor.UserId, clock.GetUtcNow());
         if (submitted.IsFailure) return submitted.Error;
+        await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), cancellationToken);
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
         catch (DbUpdateException) when (own is null)
@@ -109,8 +113,9 @@ public sealed class RevertFlightCancellationCommandHandler(
     {
         var resolved = await scope.ResolveAsync(cancellationToken);
         if (resolved.IsFailure) return resolved.Error;
-        var flight = await MobileFlightQuery.ApplyScope(db.Flights, resolved.Value)
-            .Include(f => f.CancellationSubmissions).SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
+        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights, resolved.Value)
+            .Include(f => f.CancellationSubmissions).Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
+            .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         if (flight is null) return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
         var own = flight.CancellationSubmissions.SingleOrDefault(c => c.SubmittedByEmployee.StaffMemberId == resolved.Value.StaffMemberId);
         if (own?.Id == request.SubmissionId && !flight.RowVersion.SequenceEqual(request.RowVersion))
@@ -121,6 +126,7 @@ public sealed class RevertFlightCancellationCommandHandler(
         if (own is not null)
         {
             db.SetOriginalRowVersion(flight, request.RowVersion);
+            await FlightActivityRecorder.TouchAsync(db, flight, resolved.Value, clock.GetUtcNow(), cancellationToken);
             try { await db.SaveChangesAsync(cancellationToken); }
             catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
             mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null,

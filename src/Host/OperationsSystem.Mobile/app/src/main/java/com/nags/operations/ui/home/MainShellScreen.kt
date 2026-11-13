@@ -112,6 +112,13 @@ fun MainShellScreen(
                             onOpenFlight = graph.notificationNavigation::publish,
                             onOpenSchedule = graph.notificationNavigation::publish,
                             embedded = true, bottomContentPadding = maxOf(80.dp, navigationHeight + 10.dp))
+                    } else if (selectedPage == 2 || selectedPage == 3) {
+                        val source = if (selectedPage == 2) com.nags.operations.data.FlightDiscoverySource.Search
+                            else com.nags.operations.data.FlightDiscoverySource.History
+                        val sourceFactory = remember(factory, source) { factory.forDiscovery(source) }
+                        val sourceFlights: FlightsViewModel = viewModel(key = "discovery:$subject:${source.key}", factory = sourceFactory)
+                        FlightsScreen(viewModel = sourceFlights, discoverySource = source,
+                            bottomContentPadding = maxOf(80.dp, navigationHeight + 10.dp))
                     } else MainShellPage(page = selectedPage)
                 }
                 if (!flightsSearchOpen) {

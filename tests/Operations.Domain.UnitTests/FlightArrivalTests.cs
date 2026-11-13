@@ -33,7 +33,7 @@ public sealed class FlightArrivalTests
         details.Ata.ShouldBe(TestData.Now);
         details.Ata.Offset.ShouldBe(TimeSpan.Zero);
         details.AircraftType.ShouldBe(aircraft);
-        details.AircraftTailNumber.ShouldBe("hz-AbC");
+        details.AircraftTailNumber.ShouldBe("HZ-ABC");
         details.ReceivedByEmployee.ShouldBe(receiver);
         details.Remarks.ShouldBe("On stand");
     }

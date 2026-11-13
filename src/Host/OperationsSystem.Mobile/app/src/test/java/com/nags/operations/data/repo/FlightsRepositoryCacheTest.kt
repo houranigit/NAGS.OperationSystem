@@ -44,6 +44,7 @@ class FlightsRepositoryCacheTest {
     private val detailReads = mutableListOf<String>()
     private val pageReads = mutableListOf<Pair<Int, Int>>()
     private var detailNumber = "123"
+    private var prepareOffline: suspend (FlightDetail) -> Unit = {}
     private var invitationReads = 0
     private var invitationWrites = 0
     private var logoStore: CustomerLogoStore? = null
@@ -63,7 +64,8 @@ class FlightsRepositoryCacheTest {
         detail(id, detailNumber)
     }
 
-    private fun repository() = FlightsRepository(
+    private fun repository(localAdHocFlights: suspend () -> List<FlightDetail> = { emptyList() },
+        recordAdHoc: suspend (FlightDetail) -> Unit = {}) = FlightsRepository(
         fetchFlights = { page, size, search, category ->
             categoryReads += category
             pageLoader(page, size, search).let { result ->
@@ -78,9 +80,28 @@ class FlightsRepositoryCacheTest {
         fetchFlight = { detailLoader(it) },
         fetchInvitationOptions = { invitationReads++; emptyList() },
         sendInvitation = { _, _, _ -> invitationWrites++ },
-        logoStore = logoStore,
+        logoStore = logoStore, prepareOffline = { prepareOffline(it) },
+        localAdHocFlights = localAdHocFlights, recordAdHoc = recordAdHoc,
         dao = dao, ownerFlow = owner, currentOwner = { owner.value }, isOnline = { online }, now = { clock },
     )
+
+    @Test fun partialWorkAcknowledgmentUpdatesTheLocalCreationFallbackWithoutNormalManifestMembership() = runBlocking {
+        var fallback = detail("local").copy(isAdHocFlight = true, canEditFlightDetails = true,
+            canSaveServices = true, canSaveTasks = true, canAddServices = true, canAddTasks = true)
+        val repository = repository(localAdHocFlights = { listOf(fallback) }, recordAdHoc = { fallback = it })
+        val service = com.nags.operations.data.FlightServiceRecord("service", "service-type", "Service", clock,
+            createdByUserId = "user", createdAtUtc = clock)
+        repository.recordService("local", com.nags.operations.data.FlightServiceSaved(service, "ack"))
+        assertNull(dao.detail(owner.value!!, "local"))
+        online = false
+        val saved = repository.cachedFlight("local")!!
+        assertEquals(listOf(service), saved.services)
+        assertEquals("ack", saved.rowVersion)
+        assertFalse(saved.canEditFlightDetails)
+        assertTrue(saved.canSaveServices && saved.canSaveTasks)
+        assertEquals(true, saved.canAddServices)
+        assertEquals(true, saved.canAddTasks)
+    }
 
     @Test
     fun registerWithoutRequiredStationTimeMetadataUsesTheExistingRefreshPolicy() = runBlocking {
@@ -146,6 +167,7 @@ class FlightsRepositoryCacheTest {
         val repository = repository()
         repository.refreshCache()
         val readsBefore = pageReads.toList()
+        val detailReadsBefore = detailReads.toList()
         pageLoader = { _, _, _ -> throw AssertionError("A notification lookup must not fetch flights") }
         detailLoader = { throw AssertionError("A notification lookup must not fetch details") }
 
@@ -153,8 +175,8 @@ class FlightsRepositoryCacheTest {
         online = false
         assertEquals(setOf(id), repository.syncedMyFlightIds.first { it.isNotEmpty() })
         assertEquals(readsBefore, pageReads)
-        assertTrue(detailReads.isEmpty())
-        assertTrue(dao.details(owner.value!!).isEmpty())
+        assertEquals(detailReadsBefore, detailReads)
+        assertEquals(listOf(id), dao.details(owner.value!!).map { it.flightId })
     }
 
     @Test
@@ -172,6 +194,7 @@ class FlightsRepositoryCacheTest {
         val expected = repository.flights(FlightCategory.MyFlights).items.map { it.id }.toSet()
         assertEquals(setOf("assigned", "my-flight-flag"), expected)
         val readsBefore = pageReads.toList()
+        val detailReadsBefore = detailReads.toList()
         pageLoader = { _, _, _ -> throw AssertionError("Notification membership must not request another page") }
         detailLoader = { throw AssertionError("Notification membership must not fetch details") }
 
@@ -179,7 +202,7 @@ class FlightsRepositoryCacheTest {
         online = false
         assertEquals(expected, repository.syncedMyFlightIds.first { it.isNotEmpty() })
         assertEquals(readsBefore, pageReads)
-        assertTrue(detailReads.isEmpty())
+        assertEquals(detailReadsBefore, detailReads)
     }
 
     @Test
@@ -194,6 +217,7 @@ class FlightsRepositoryCacheTest {
         serverItems = listOf(item(secondId))
         repository.refreshCache()
         val readsBefore = pageReads.toList()
+        val detailReadsBefore = detailReads.toList()
         val observed = MutableStateFlow(emptySet<String>())
         val collector = launch(start = CoroutineStart.UNDISPATCHED) {
             repository.syncedMyFlightIds.collect { observed.value = it }
@@ -205,7 +229,7 @@ class FlightsRepositoryCacheTest {
             owner.value = null
             assertTrue(observed.first { it.isEmpty() }.isEmpty())
             assertEquals(readsBefore, pageReads)
-            assertTrue(detailReads.isEmpty())
+            assertEquals(detailReadsBefore, detailReads)
         } finally { collector.cancel() }
     }
 
@@ -215,6 +239,7 @@ class FlightsRepositoryCacheTest {
         val repository = repository()
         repository.refreshCache()
         val readsBefore = pageReads.toList()
+        val detailReadsBefore = detailReads.toList()
         val observed = MutableStateFlow(emptySet<String>())
         val collector = launch(start = CoroutineStart.UNDISPATCHED) {
             repository.syncedMyFlightIds.collect { observed.value = it }
@@ -226,7 +251,7 @@ class FlightsRepositoryCacheTest {
 
             assertTrue(observed.first { it.isEmpty() }.isEmpty())
             assertEquals(readsBefore, pageReads)
-            assertTrue(detailReads.isEmpty())
+            assertEquals(detailReadsBefore, detailReads)
         } finally { collector.cancel() }
     }
 
@@ -250,7 +275,7 @@ class FlightsRepositoryCacheTest {
             assertNull(dao.snapshot(owner.value!!)?.lastSuccessUtc)
             repository.refreshCache()
             assertEquals(setOf(newId), observed.first { it == setOf(newId) })
-            assertTrue(detailReads.isEmpty())
+            assertEquals(listOf(oldId, newId), detailReads)
         } finally { collector.cancel() }
     }
 
@@ -312,7 +337,7 @@ class FlightsRepositoryCacheTest {
         val repository = repository()
         repository.refreshCache()
         assertEquals(listOf(1 to 100, 2 to 100), pageReads)
-        assertTrue(detailReads.isEmpty())
+        assertEquals(serverItems.map { it.id }, detailReads)
         assertEquals(101, repository.syncStatus.first().itemCount)
         assertEquals(clock, repository.syncStatus.first().lastSuccessUtc)
         online = false
@@ -327,22 +352,21 @@ class FlightsRepositoryCacheTest {
     }
 
     @Test
-    fun onlyOpenedDetailsAreRevalidatedAndLostVisibilityPrunesThem() = runBlocking {
+    fun everyEligibleDetailIsPreparedWithoutOpeningAndLostVisibilityPrunesIt() = runBlocking {
         val repository = repository()
         repository.refreshCache()
-        repository.flight("one")
         detailNumber = "456"
         repository.refreshCache()
-        assertEquals(listOf("one", "one"), detailReads)
+        assertEquals(listOf("one", "two", "one", "two"), detailReads)
         online = false
         val cached = repository.flight("one")
         assertEquals("456", cached.flightNumber)
         assertTrue(cached.fromCache)
-        assertTrue(runCatching { repository.flight("two") }.isFailure)
+        assertEquals("456", repository().flight("two").flightNumber)
         online = true
         serverItems = listOf(item("two"))
         repository.refreshCache()
-        assertEquals(listOf("one", "one"), detailReads)
+        assertEquals(listOf("one", "two", "one", "two", "two"), detailReads)
         online = false
         assertTrue(runCatching { repository.flight("one") }.isFailure)
         assertEquals(listOf("two"), repository.flights().items.map { it.id })
@@ -499,7 +523,7 @@ class FlightsRepositoryCacheTest {
         detailLoader = { id -> if (id == "one") firstDetail.await() else detail(id, "newer") }
         val fullRefresh = launch(start = CoroutineStart.UNDISPATCHED) { repository.refreshCache() }
         val interactive = launch(start = CoroutineStart.UNDISPATCHED) { repository.flight("two") }
-        assertNull(dao.detail(owner.value!!, "two"))
+        assertNotNull(dao.detail(owner.value!!, "two"))
         firstDetail.complete(detail("one"))
         fullRefresh.join()
         interactive.join()
@@ -906,6 +930,7 @@ class FlightsRepositoryCacheTest {
         val employee = com.nags.operations.data.AssignedEmployee("staff", "Employee", "E1")
         val correction = com.nags.operations.data.FlightCancellationSubmission("mine", employee, "2026-11-04T09:10:00Z",
             isAccepted = false, createdAtUtc = clock)
+        dao.deleteDetails(owner.value!!) // A pre-feature snapshot may still lack complete detail evidence.
         repository.recordCancellation("one", com.nags.operations.data.FlightCancellationSaved(correction, "corrected-version"))
         online = false
 
@@ -927,6 +952,9 @@ class FlightsRepositoryCacheTest {
             JsonObject(row.jsonObject - setOf("hasArrivalSubmission", "hasDepartureSubmission", "hasCancellationSubmission"))
         })
         dao.putSnapshot(snapshot.copy(payloadJson = JsonObject(payload + ("items" to oldRows)).toString()))
+        val oneDetail = dao.detail(owner.value!!, "one")!!
+        dao.deleteDetails(owner.value!!) // Older snapshots only retained previously opened details.
+        dao.putDetails(listOf(oneDetail))
         online = false
         val reads = detailReads.toList()
         val legacy = repository.flights().items
@@ -998,6 +1026,105 @@ class FlightsRepositoryCacheTest {
         assertEquals(clock, repository().flights().items.single().latestCancellationAtUtc)
     }
 
+    @Test fun failedMediaPreparationKeepsGoodDataAndDoesNotPublishAnIncompleteManifest() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        val before = dao.snapshot(owner.value!!)!!
+        serverItems = listOf(item("one"), item("new"))
+        detailNumber = "changed"
+        clock = "2026-11-04T10:01:00Z"
+        val prepared = mutableListOf<String>()
+        prepareOffline = { detail ->
+            prepared += detail.id
+            if (detail.id == "new") throw IOException("Attachment download interrupted")
+        }
+
+        repository.refreshCache()
+
+        val after = dao.snapshot(owner.value!!)!!
+        assertEquals(listOf("one", "new"), prepared)
+        assertEquals(before.lastSuccessUtc, after.lastSuccessUtc)
+        assertEquals(clock, after.lastAttemptUtc)
+        assertTrue(after.error!!.contains("incomplete"))
+        online = false
+        // A complete manifest revoked missing membership even though later media failed.
+        assertEquals(listOf("one"), repository().flights().items.map { it.id })
+        assertEquals("123", repository().flight("one").flightNumber)
+        assertTrue(runCatching { repository().flight("two") }.isFailure)
+        assertTrue(runCatching { repository().flight("new") }.isFailure)
+        online = true
+        prepareOffline = { prepared += it.id }
+        repository.refreshCache()
+        online = false
+        assertEquals("changed", repository().flight("new").flightNumber)
+        assertNull(repository.syncStatus.first().error)
+    }
+
+    @Test fun canceledPreparationIsIncompleteAndRetainsThePreviousSuccessfulSnapshot() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        val before = dao.snapshot(owner.value!!)!!
+        val started = CompletableDeferred<Unit>()
+        prepareOffline = { started.complete(Unit); CompletableDeferred<Unit>().await() }
+        clock = "2026-11-04T10:01:00Z"
+        val interrupted = launch(start = CoroutineStart.UNDISPATCHED) { repository.refreshCache() }
+        started.await()
+        interrupted.cancel()
+        interrupted.join()
+
+        assertEquals(before.lastSuccessUtc, repository.syncStatus.first().lastSuccessUtc)
+        assertNotNull(repository.syncStatus.first().error)
+        assertFalse(repository.isSyncing.value)
+        online = false
+        assertEquals("123", repository().flight("two").flightNumber)
+    }
+
+    @Test fun sessionCleanupDuringPreparationCannotPublishNeverOpenedDetails() = runBlocking {
+        val repository = repository()
+        val started = CompletableDeferred<Unit>()
+        val response = CompletableDeferred<Unit>()
+        prepareOffline = { started.complete(Unit); response.await() }
+        val inFlight = launch(start = CoroutineStart.UNDISPATCHED) { repository.refreshCache() }
+        started.await()
+        repository.clearLocal()
+        response.complete(Unit)
+        inFlight.join()
+
+        assertNull(dao.snapshot(owner.value!!)?.lastSuccessUtc)
+        assertTrue(dao.details(owner.value!!).isEmpty())
+        online = false
+        assertTrue(runCatching { repository().flight("one") }.isFailure)
+    }
+
+    @Test fun validatedExistingOfflineScopeRemainsStationAuthorityAfterAnAdditiveDatabaseUpgrade() = runBlocking {
+        repository().refreshCache()
+        online = false
+        assertEquals("station", repository().trustedCachedStation())
+        assertTrue(repository().flight("one").fromCache)
+        val original = dao.snapshot(owner.value!!)!!
+        dao.putSnapshot(original.copy(permissionDenied = true))
+        assertNull(repository().trustedCachedStation())
+        dao.putSnapshot(original.copy(payloadJson = "{\"version\":0,\"items\":[]}"))
+        assertNull(repository().trustedCachedStation())
+        dao.putSnapshot(original)
+        owner.value = "http://other-api/|account"
+        assertNull(repository().trustedCachedStation())
+    }
+
+    @Test fun aLateExternalSourceCannotRestoreThePreviouslyConfirmedStation() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        val old = checkNotNull(repository.beginExternalScopeRead())
+        val oldPage = scoped(FlightPage(serverItems, 1, 20, 2, 1))
+        serverStation = "new-station"
+        val current = scoped(FlightPage(emptyList(), 1, 20, 0, 0))
+        repository.confirmExternalPage(current, repository.beginExternalScopeRead())
+        assertTrue(runCatching { repository.confirmExternalPage(oldPage, old) }.isFailure)
+        assertEquals(serverStation, repository.trustedCachedStation())
+        online = false
+        assertTrue(runCatching { repository.flight("one") }.isFailure)
+    }
+
     private fun scoped(page: FlightPage): FlightPage {
         if (page.stationId != null) return page
         val at = Instant.parse(clock)
@@ -1011,7 +1138,7 @@ class FlightsRepositoryCacheTest {
         stationId = "station", isMyFlight = true, stationTimeZoneId = "Asia/Riyadh",
     )
     private fun detail(id: String, number: String = "123") = FlightDetail(
-        id, number, "customer", "XY", "Airline", "station", "AAA", "Station", "operation", "Scheduled",
+        id, number, "customer", "XY", "Airline", serverStation, "AAA", "Station", "operation", "Scheduled",
         scheduledArrivalUtc = "2026-11-04T10:00:00Z", scheduledDepartureUtc = "2026-11-04T11:00:00Z",
         isPerLanding = false, createdAtUtc = "2026-11-03T10:00:00Z", rowVersion = "version", stationTimeZoneId = "Asia/Riyadh",
     )

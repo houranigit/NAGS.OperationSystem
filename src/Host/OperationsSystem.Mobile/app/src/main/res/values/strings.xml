@@ -46,10 +46,10 @@
     <string name="notifications_title" translatable="false">Notifications</string>
     <string name="notifications_back" translatable="false">Back</string>
     <string name="notifications_archive" translatable="false">Archive notification</string>
-    <string name="notifications_clear_all" translatable="false">Clear inbox</string>
-    <string name="notifications_clear_confirm_title" translatable="false">Clear your inbox?</string>
+    <string name="notifications_clear_all" translatable="false">delete all messages</string>
+    <string name="notifications_clear_confirm_title" translatable="false">Delete all messages?</string>
     <string name="notifications_clear_confirm_body" translatable="false">Notifications will be archived and removed from this list.</string>
-    <string name="notifications_clear_confirm_action" translatable="false">Clear</string>
+    <string name="notifications_clear_confirm_action" translatable="false">Delete</string>
     <string name="notifications_cancel" translatable="false">Cancel</string>
     <string name="notifications_retry" translatable="false">Try again</string>
     <string name="notifications_cached_list" translatable="false">Showing saved notifications. Reconnect to check for changes.</string>

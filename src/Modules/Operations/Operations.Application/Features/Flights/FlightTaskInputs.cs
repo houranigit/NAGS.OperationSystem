@@ -133,7 +133,7 @@ internal static class FlightTaskInputs
 
     internal static bool CoreMatches(FlightTask task, SaveFlightTaskRequest input) =>
         (int)task.TaskType == input.TaskType && task.AtaChapter?.AtaChapterId == input.AtaChapterId && task.Window.FromUtc == input.StartUtc &&
-        task.CustomerReferenceNumber == Normalize(input.CustomerReferenceNumber) && task.Notes == Normalize(input.Notes) &&
+        Normalize(task.CustomerReferenceNumber)?.ToUpperInvariant() == Normalize(input.CustomerReferenceNumber)?.ToUpperInvariant() && task.Notes == Normalize(input.Notes) &&
         task.Performers.Count == input.Performers.Count && task.Performers.All(old => input.Performers.Any(item => item.Id == old.Id &&
             item.StaffMemberId == old.Employee.StaffMemberId && item.StartUtc == old.Window.FromUtc && item.EndUtc == old.Window.ToUtc && Normalize(item.Notes) == old.Notes)) &&
         task.Tools.Count == input.Tools.Count && task.Tools.All(old => input.Tools.Any(item => ResourceMatches(old.Id, old.Tool.ToolId, old.Usage, old.Notes, item))) &&

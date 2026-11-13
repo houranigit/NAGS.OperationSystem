@@ -30,7 +30,7 @@ public sealed class FlightNotificationPersistenceTests(FlightNotificationPersist
         await db.Database.MigrateAsync("20261109153847_Operations_UnifyCustomerSignatures");
         var flight = CreateFlight();
         var assignmentEvent = Assignment(flight);
-        db.Flights.Add(flight);
+        await PreRtrMigrationSeed.InsertFlightOwnerAsync(db, flight, includesReturnToRampSequence: true);
         db.OutboxMessages.Add(OutboxMessage.Create(assignmentEvent));
         await db.SaveChangesAsync();
         var version = flight.RowVersion.ToArray();

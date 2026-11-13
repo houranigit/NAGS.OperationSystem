@@ -15,6 +15,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import com.nags.operations.ui.components.InlineNotice
+import com.nags.operations.ui.components.InlineNoticeKind
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -38,14 +40,14 @@ fun InviteEmployeesDialog(state: FlightsUiState, viewModel: FlightsViewModel) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.flights_invite_hint))
                 if (!state.isOnline || state.detail?.fromCache == true) {
-                    Text(stringResource(R.string.flights_invite_online_required), color = MaterialTheme.colorScheme.error)
+                    InlineNotice(stringResource(R.string.flights_invite_online_required), kind = InlineNoticeKind.Warning)
                 }
                 if (state.invitationStale) {
-                    Text(stringResource(R.string.flights_invite_stale), color = MaterialTheme.colorScheme.error)
+                    InlineNotice(stringResource(R.string.flights_invite_stale), kind = InlineNoticeKind.Warning)
                 }
                 state.invitationError?.let { error ->
                     if (!state.invitationStale || !state.invitationOptionsLoaded) {
-                        Text(error, color = MaterialTheme.colorScheme.error)
+                        InlineNotice(error, kind = InlineNoticeKind.Error)
                     }
                 }
                 if (state.isLoadingInvitations) {

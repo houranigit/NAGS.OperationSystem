@@ -17,6 +17,55 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class FlightOperationsBatchesRepositoryTest {
+    @Test fun planningHoldKeepsMemberStatusPendingAndOnlyAnExactAcknowledgmentReleasesItsVersion() = runBlocking {
+        val f = Fixture()
+        val repository = f.repository()
+        repository.save {
+            f.store.arrivals.put(f.arrival())
+            f.store.services.put(f.service())
+            f.store.tasks.put(f.task())
+        }
+        assertEquals(f.v1, repository.holdForPlanning(f.flightId))
+        repository.adoptLegacyPending()
+        assertEquals("waiting-creation", f.store.batchRows.single().status)
+        assertTrue(f.store.arrivalRows.all { it.status == "pending" })
+        assertTrue(f.store.serviceRows.all { it.status == "pending" })
+        assertTrue(f.store.taskRows.all { it.status == "pending" })
+        f.online = true
+        assertFalse(repository.syncPending())
+        assertTrue(f.sent.isEmpty())
+        val before = f.store.snapshot()
+        assertTrue(runCatching { repository.releaseAfterPlanning(f.flightId, f.v2, f.v3) }.isFailure)
+        assertEquals(before, f.store.snapshot())
+        repository.releaseAfterPlanning(f.flightId, f.v1, f.v2)
+        val released = f.store.batchRows.single()
+        assertEquals("pending", released.status)
+        assertEquals(f.v2, released.rowVersion)
+        assertTrue(released.needsComparison)
+        assertNull(released.attemptInputJson)
+        assertTrue(f.store.arrivalRows.all { it.rowVersion == f.v2 && it.status == "pending" })
+        assertTrue(f.store.serviceRows.all { it.rowVersion == f.v2 && it.status == "pending" })
+        assertTrue(f.store.taskRows.all { it.rowVersion == f.v2 && it.status == "pending" })
+    }
+
+    @Test fun planningCannotHoldReleaseOrDiscardAnUncertainWholeSave() = runBlocking {
+        val f = Fixture()
+        val repository = f.repository()
+        repository.save { f.store.arrivals.put(f.arrival()); f.store.services.put(f.service()) }
+        f.online = true
+        f.loseNextResponse = true
+        assertTrue(repository.syncPending())
+        assertNotNull(f.store.batchRows.single().attemptInputJson)
+        val before = f.store.snapshot()
+        assertTrue(runCatching { repository.holdForPlanning(f.flightId) }.isFailure)
+        assertEquals(before, f.store.snapshot())
+        assertTrue(runCatching { repository.releaseAfterPlanning(f.flightId, f.v1, f.v2) }.isFailure)
+        assertEquals(before, f.store.snapshot())
+        assertTrue(runCatching { repository.removeUnsentPlanningWork(f.flightId) }.isFailure)
+        assertEquals(before, f.store.snapshot())
+        assertEquals(1, f.sent.size)
+    }
+
     @Test fun lateSectionFailureRollsBackEveryQueueAndFormDraftAndPreservesPreviouslyOwnedFiles() = runBlocking {
         val f = Fixture()
         val repository = f.repository()
@@ -732,7 +781,7 @@ class FlightOperationsBatchesRepositoryTest {
         val stagedInput = f.json.decodeFromString<SaveFlightArrivalRequest>(staged.inputJson)
         assertEquals(recorded.id, stagedInput.targetSubmissionId)
         assertEquals("LOCAL", stagedInput.aircraftTailNumber)
-        assertEquals("colleague field three", stagedInput.customerWorkReferenceNumber)
+        assertEquals("COLLEAGUE FIELD THREE", stagedInput.customerWorkReferenceNumber)
         assertEquals(f.v2, staged.rowVersion)
         assertEquals(recorded, f.json.decodeFromString<FlightArrivalSubmission>(checkNotNull(staged.reviewedArrivalJson)))
         assertTrue(f.sent.isEmpty())
@@ -782,13 +831,13 @@ class FlightOperationsBatchesRepositoryTest {
         }
 
         saveReview(mergeArrivalReview(onlineInput(), f.json.decodeFromString(original.inputJson)))
-        assertEquals("A3 inherited online", f.json.decodeFromString<SaveFlightArrivalRequest>(f.store.arrivalRows.single().inputJson).customerWorkReferenceNumber)
+        assertEquals("A3 INHERITED ONLINE", f.json.decodeFromString<SaveFlightArrivalRequest>(f.store.arrivalRows.single().inputJson).customerWorkReferenceNumber)
         assertNull(source(f.store.arrivalRows.single()).customerWorkReferenceNumber)
         rejectAtNextServerReference("C3 changed while Save was pending", f.v3)
 
         // A new coordinator has no in-memory origin information; only durable row metadata may be used.
         val secondMerged = mergeArrivalReview(onlineInput(), source(f.store.arrivalRows.single()))
-        assertEquals("C3 changed while Save was pending", secondMerged.customerWorkReferenceNumber)
+        assertEquals("C3 CHANGED WHILE SAVE WAS PENDING", secondMerged.customerWorkReferenceNumber)
         saveReview(secondMerged)
         assertNull(source(f.store.arrivalRows.single()).customerWorkReferenceNumber)
         assertEquals(1, f.sent.size)
@@ -797,10 +846,10 @@ class FlightOperationsBatchesRepositoryTest {
         val manual = mergeArrivalReview(onlineInput(), source(f.store.arrivalRows.single()))
             .copy(customerWorkReferenceNumber = "D3 explicitly entered by employee")
         saveReview(manual)
-        assertEquals("D3 explicitly entered by employee", source(f.store.arrivalRows.single()).customerWorkReferenceNumber)
+        assertEquals("D3 EXPLICITLY ENTERED BY EMPLOYEE", source(f.store.arrivalRows.single()).customerWorkReferenceNumber)
         rejectAtNextServerReference("F3 latest online value", "AAAAAAAAAAU=")
         val afterRestart = mergeArrivalReview(onlineInput(), source(f.store.arrivalRows.single()))
-        assertEquals("D3 explicitly entered by employee", afterRestart.customerWorkReferenceNumber)
+        assertEquals("D3 EXPLICITLY ENTERED BY EMPLOYEE", afterRestart.customerWorkReferenceNumber)
         assertEquals("QA-BATCH", afterRestart.aircraftTailNumber)
         assertTrue(f.accepted.isEmpty())
     }
@@ -828,7 +877,7 @@ class FlightOperationsBatchesRepositoryTest {
         val edited = f.json.decodeFromString<SaveFlightArrivalRequest>(f.store.arrivalRows.single().inputJson)
             .copy(customerWorkReferenceNumber = "D3 deliberately edited in ordinary editor")
         f.arrivalRepository(recreated).save(f.live, edited)
-        assertEquals("D3 deliberately edited in ordinary editor", source(f.store.arrivalRows.single()).customerWorkReferenceNumber)
+        assertEquals("D3 DELIBERATELY EDITED IN ORDINARY EDITOR", source(f.store.arrivalRows.single()).customerWorkReferenceNumber)
         assertNull(source(f.store.arrivalRows.single()).remarks)
         assertTrue(f.sent.isEmpty())
 
@@ -839,7 +888,7 @@ class FlightOperationsBatchesRepositoryTest {
         f.repository().syncPending()
         assertEquals("conflict", f.store.arrivalRows.single().status)
         val afterRestart = mergeArrivalReview(f.live.arrivalSubmissions.single().input(), source(f.store.arrivalRows.single()))
-        assertEquals("D3 deliberately edited in ordinary editor", afterRestart.customerWorkReferenceNumber)
+        assertEquals("D3 DELIBERATELY EDITED IN ORDINARY EDITOR", afterRestart.customerWorkReferenceNumber)
         assertEquals("C4 latest colleague remarks", afterRestart.remarks)
         assertTrue(f.accepted.isEmpty())
     }
@@ -1271,6 +1320,7 @@ class FlightOperationsBatchesRepositoryTest {
             override suspend fun delete(owner: String, flightId: String, recordId: String, changeId: String) { serviceRows.removeAll { it.ownerSubject == owner && it.flightId == flightId && it.serviceRecordId == recordId && it.changeId == changeId } }
             override suspend fun deleteForFlight(owner: String, flightId: String) { serviceRows.removeAll { it.ownerSubject == owner && it.flightId == flightId } }
             override suspend fun clear() { serviceRows.clear() }
+            override suspend fun deleteDraft(owner: String, flightId: String) { draftRows.removeAll { it.ownerSubject == owner && it.flightId == flightId } }
             override suspend fun clearDrafts() { draftRows.clear() }
         }
         override val tasks = object : FlightTaskDao {

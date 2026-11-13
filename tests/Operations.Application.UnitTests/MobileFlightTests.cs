@@ -127,11 +127,11 @@ public sealed class MobileFlightTests
     }
 
     [Theory]
-    [InlineData(null, 5)]
+    [InlineData(null, 6)]
     [InlineData("MyFlights", 1)]
     [InlineData("PerLanding", 1)]
-    [InlineData("AdHoc", 3)]
-    public async Task Feed_UsesAssignmentCreatorAndAdHocFirstCategories(string? category, int count)
+    [InlineData("AdHoc", 4)]
+    public async Task Feed_UsesAssignmentForScheduledAndStationWideAdHocFirstCategories(string? category, int count)
     {
         await using var db = NewDb();
         var mine = FlightFor("100", assigned: true);
@@ -181,7 +181,7 @@ public sealed class MobileFlightTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task AdHocDetail_AllowsAssignedColleaguesAndDeniesUnassignedNonCreators(bool assigned)
+    public async Task AdHocDetail_AllowsStationColleaguesToOperateWithoutAssignmentOrPlanningAuthority(bool assigned)
     {
         await using var db = NewDb();
         var flight = FlightFor("100", assigned: assigned, adHoc: true, createdBy: Guid.NewGuid());
@@ -191,14 +191,12 @@ public sealed class MobileFlightTests
         var result = await new GetMobileFlightByIdQueryHandler(db, Scope(), new SchedulingMasterDataReader(), new Actor())
             .Handle(new GetMobileFlightByIdQuery(flight.Id), CancellationToken.None);
 
-        result.IsSuccess.ShouldBe(assigned);
-        if (assigned)
-        {
-            result.Value.CanSaveArrival.ShouldBeTrue();
-            result.Value.CanSaveDeparture.ShouldBeTrue();
-        }
-        else
-            result.Error.Code.ShouldBe("Operations.Flight.NotFound");
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.CanSaveArrival.ShouldBeTrue();
+        result.Value.CanSaveDeparture.ShouldBeTrue();
+        result.Value.CanSaveTasks.ShouldBeTrue();
+        result.Value.CanEditFlightDetails.ShouldBeFalse();
+        result.Value.AssignedEmployees.Count.ShouldBe(assigned ? 1 : 0);
     }
 
     [Theory]
@@ -235,13 +233,10 @@ public sealed class MobileFlightTests
     [Theory]
     [InlineData("outdated")]
     [InlineData("other-station")]
-    [InlineData("unassigned")]
-    [InlineData("others-ad-hoc")]
     public async Task HiddenFlights_CannotBeReadByDetailLogoOrInvitationRoutes(string reason)
     {
         await using var db = NewDb();
-        var flight = FlightFor("100", assigned: reason is not ("unassigned" or "others-ad-hoc"),
-            adHoc: reason == "others-ad-hoc", createdBy: Guid.NewGuid(),
+        var flight = FlightFor("100", assigned: reason != "unassigned", createdBy: Guid.NewGuid(),
             stationId: reason == "other-station" ? Guid.NewGuid() : StationId,
             sta: reason == "outdated" ? Now.AddDays(-2) : Now,
             std: reason == "outdated" ? Now.AddDays(-2).AddHours(1) : Now.AddHours(1));
@@ -452,7 +447,7 @@ public sealed class MobileFlightTests
             .UseSqlServer("Server=localhost;Database=translation-only;Integrated Security=true;TrustServerCertificate=true").Options);
 
         var sql = MobileFlightQuery.ProjectListItems(
-                MobileFlightQuery.ApplyScope(db.Flights.AsNoTracking(), Context, category)
+                MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), Context, category)
                     .OrderBy(f => f.Id).Skip(0).Take(20), Context, "Asia/Riyadh")
             .ToQueryString();
 
@@ -497,9 +492,9 @@ public sealed class MobileFlightTests
         var dto = result.Value.Services!.Single(); var task = result.Value.Tasks!.Single();
         dto.Id.ShouldBe(service.Id); dto.CreatedByDisplayName.ShouldBe("True creator account"); dto.EndedByDisplayName.ShouldBe("True creator account");
         task.CreatedByDisplayName.ShouldBe("True creator account"); task.EndedByDisplayName.ShouldBe("True creator account");
-        dto.CanEdit.ShouldBe(assigned); dto.CanSetEnd.ShouldBe(assigned); dto.CanChangeService.ShouldBe(assigned); dto.CanDelete.ShouldBe(assigned);
-        task.CanEdit.ShouldBe(assigned); task.CanSetEnd.ShouldBe(assigned); task.CanChangeType.ShouldBe(assigned); task.CanDelete.ShouldBe(assigned);
-        names.Requests.ShouldHaveSingleItem().ShouldBe(new[] { creator });
+        dto.CanEdit.ShouldBeTrue(); dto.CanSetEnd.ShouldBeTrue(); dto.CanChangeService.ShouldBeTrue(); dto.CanDelete.ShouldBeTrue();
+        task.CanEdit.ShouldBeTrue(); task.CanSetEnd.ShouldBeTrue(); task.CanChangeType.ShouldBeTrue(); task.CanDelete.ShouldBeTrue();
+        names.Requests.ShouldHaveSingleItem().ShouldBe(new[] { creator, flight.CreatedByUserId }, ignoreOrder: true);
     }
 
     private static Flight FlightFor(string number, bool assigned = false, bool perLanding = false,

@@ -13,6 +13,10 @@ data class FlightDepartureSubmission(
     val createdAtUtc: String,
     val updatedAtUtc: String? = null,
     val signatureVersion: String? = null,
+    // Older cached departures required a signature, even before version metadata was available.
+    val hasSignature: Boolean = true,
+    val createdByDisplayName: String? = null,
+    val updatedByDisplayName: String? = null,
 )
 
 fun FlightDetail.visibleDeparture(): FlightDepartureSubmission? = departureSubmissions.firstOrNull {
@@ -44,5 +48,5 @@ fun FlightDetail.departureEditable(): Boolean = canSaveDeparture && validArrival
 fun FlightDetail.canUpdateDepartureSubmission(submissionId: String): Boolean =
     canSaveDeparture && validArrivalId(currentStaffMemberId) && !hasOwnCancellation() &&
         departureSubmissions.any { it.id.equals(submissionId, true) &&
-            (it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true) ||
+            (it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true) || isPerLanding || isAdHocFlight ||
                 assignedEmployees.any { employee -> employee.staffMemberId.equals(currentStaffMemberId, true) }) }

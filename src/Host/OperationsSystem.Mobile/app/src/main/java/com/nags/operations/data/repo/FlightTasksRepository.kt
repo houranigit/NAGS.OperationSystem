@@ -57,6 +57,7 @@ class FlightTasksRepository(
     private val operationSave: suspend (suspend () -> Unit) -> Unit = operationWrite,
     private val operationGate: FlightOperationsGate = FlightOperationsGate(),
     private val onAttemptRejected: suspend (String, String?) -> Unit = { _, _ -> },
+    private val onLocalSaved: suspend (FlightDetail) -> Unit = {},
 ) {
     private val gate = Mutex()
     private val localWrites = FlightOperationsLocalLock(operationGate)
@@ -131,6 +132,7 @@ class FlightTasksRepository(
                 }
                 checkSession(owner, observed)
                 dao.replaceForFlight(owner, flight.id, existingRows.values.toList())
+                if (changes.isNotEmpty()) onLocalSaved(flight)
                 version
             } finally { reclaimFiles() }
         }

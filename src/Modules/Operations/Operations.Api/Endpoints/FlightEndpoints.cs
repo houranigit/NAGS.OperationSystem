@@ -23,6 +23,41 @@ internal static class FlightEndpoints
         var flights = group.MapGroup("/flights").WithTags("Operations.Flights");
 
         var mobile = flights.MapGroup("/mobile");
+        mobile.MapGet("/search", async (ISender sender, CancellationToken ct, string? flightNumber = null,
+            int page = 1, int pageSize = 20) =>
+        {
+            var result = string.IsNullOrWhiteSpace(flightNumber)
+                ? await sender.Send(new GetMobileFlightHistoryQuery(page, pageSize, UsedSearchOnly: true), ct)
+                : await sender.Send(new GetMobileFlightSearchQuery(flightNumber, page, pageSize), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
+        mobile.MapGet("/history", async (ISender sender, CancellationToken ct, int page = 1, int pageSize = 20, string? search = null) =>
+        {
+            var result = await sender.Send(new GetMobileFlightHistoryQuery(page, pageSize, Search: search), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
+        mobile.MapGet("/adhoc/context", async (ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetMobileAdHocFlightContextQuery(), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Operate);
+
+        mobile.MapPut("/adhoc/{id:guid}", async (Guid id, SaveMobileAdHocFlightDetailsRequest request, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new CreateMobileAdHocFlightCommand(id, request), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Operate);
+
+        mobile.MapPut("/adhoc/{id:guid}/details", async (Guid id, SaveMobileAdHocFlightDetailsRequest request,
+            HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion) return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+            var result = await sender.Send(new UpdateMobileAdHocFlightDetailsCommand(id, request, rowVersion), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Operate);
+
         mobile.MapPost("/notification-targets", async (FlightNotificationTargetsRequest request, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new GetFlightNotificationTargetsQuery(request.FlightIds ?? [], MobileOnly: true), ct);

@@ -208,7 +208,7 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         flight.CloseReturnToRamp(unsigned.Id,
             RtrDepartureDetails.Create(Now.AddMinutes(70), null, handler, "No signature provided").Value,
             editor, Now.AddMinutes(71)).IsSuccess.ShouldBeTrue();
-        db.Flights.Add(flight);
+        await PreRtrMigrationSeed.InsertFlightOwnerAsync(db, flight, includesReturnToRampSequence: true);
         // The historical normal-departure schema has only key, MIME, and size. RTR already stores all five fields.
         foreach (var submission in flight.DepartureSubmissions)
             PreRtrMigrationSeed.MarkDepartureUnchanged(db, submission);
@@ -288,7 +288,7 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         var flight = ScheduleFlight();
         var details = Departure();
         var submission = flight.SubmitDeparture(submitter, details, actor, Now).Value;
-        db.Flights.Add(flight);
+        await PreRtrMigrationSeed.InsertFlightOwnerAsync(db, flight, includesReturnToRampSequence: true);
         PreRtrMigrationSeed.MarkDepartureUnchanged(db, submission);
         await db.SaveChangesAsync();
         await PreRtrMigrationSeed.InsertDepartureAsync(db, submission);

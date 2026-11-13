@@ -21,7 +21,7 @@ public sealed class GetMobileFlightServiceAttachmentQueryHandler(IOperationsDbCo
     {
         var actor = await scope.ResolveAsync(cancellationToken);
         if (actor.IsFailure) return actor.Error;
-        var flight = await MobileFlightQuery.ApplyScope(db.Flights.AsNoTracking(), actor.Value)
+        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), actor.Value)
             .Include(f => f.ServiceRecords).ThenInclude(s => s.Attachments)
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         var attachment = flight?.Services.SingleOrDefault(s => s.Id == request.RecordId)?.Attachments.SingleOrDefault(a => a.Id == request.AttachmentId);
@@ -78,7 +78,7 @@ internal static class FlightServiceFiles
                 var referenced = await db.Flights.AsNoTracking().AnyAsync(f =>
                     f.ServiceRecords.Any(s => s.Attachments.Any(a => a.Details.StorageKey == key)) ||
                     f.TaskRecords.Any(t => t.Attachments.Any(a => a.Details.StorageKey == key)) ||
-                    f.DepartureSubmissions.Any(d => d.Details.CustomerSignature.StorageKey == key) ||
+                    f.DepartureSubmissions.Any(d => d.Details.CustomerSignature != null && d.Details.CustomerSignature.StorageKey == key) ||
                     f.ReturnToRamps.Any(r => r.DepartureDetails != null && r.DepartureDetails.CustomerSignature != null &&
                         r.DepartureDetails.CustomerSignature.StorageKey == key), CancellationToken.None);
                 if (!referenced) await storage.DeleteAsync(key, CancellationToken.None);

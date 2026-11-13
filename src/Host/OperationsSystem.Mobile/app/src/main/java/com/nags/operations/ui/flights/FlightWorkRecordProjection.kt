@@ -9,6 +9,7 @@ import com.nags.operations.data.db.entities.FlightServicePendingEntity
 import com.nags.operations.data.db.entities.FlightTaskPendingEntity
 import kotlinx.serialization.json.Json
 import java.time.OffsetDateTime
+import java.time.ZoneId
 
 private val workRecordJson = Json { ignoreUnknownKeys = true }
 
@@ -36,6 +37,10 @@ internal data class FlightWorkRecordMetadata(
     val savedAtUtc: String?,
     val endedByUserId: String? = null,
     val endedByDisplayName: String? = null,
+    val updatedByDisplayName: String? = null,
+    val updatedAtUtc: String? = null,
+    val pendingOperation: String? = null,
+    val canCloseOnly: Boolean = false,
 )
 
 /** Keys classify published/queued occurrences. Unstarted local form drafts are deliberately absent. */
@@ -56,7 +61,10 @@ internal fun flightServiceRecordMetadata(
             original?.createdByDisplayName?.takeIf(String::isNotBlank), original?.createdAtUtc?.takeIf(String::isNotBlank),
             published = original != null, queued = row != null, pendingStatus = row?.status, savedAtUtc = row?.savedAtUtc,
             endedByUserId = original?.endedByUserId?.takeIf { retainsCloser && it.isNotBlank() },
-            endedByDisplayName = original?.endedByDisplayName?.takeIf { retainsCloser && it.isNotBlank() })
+            endedByDisplayName = original?.endedByDisplayName?.takeIf { retainsCloser && it.isNotBlank() },
+            updatedByDisplayName = original?.updatedByDisplayName?.takeIf(String::isNotBlank),
+            updatedAtUtc = original?.updatedAtUtc?.takeIf(String::isNotBlank), pendingOperation = row?.operation,
+            canCloseOnly = original?.canCloseOnly == true)
     }
 }
 
@@ -78,6 +86,35 @@ internal fun flightTaskRecordMetadata(
             original?.createdByDisplayName?.takeIf(String::isNotBlank), original?.createdAtUtc?.takeIf(String::isNotBlank),
             published = original != null, queued = row != null, pendingStatus = row?.status, savedAtUtc = row?.savedAtUtc,
             endedByUserId = original?.endedByUserId?.takeIf { retainsCloser && it.isNotBlank() },
-            endedByDisplayName = original?.endedByDisplayName?.takeIf { retainsCloser && it.isNotBlank() })
+            endedByDisplayName = original?.endedByDisplayName?.takeIf { retainsCloser && it.isNotBlank() },
+            updatedByDisplayName = original?.updatedByDisplayName?.takeIf(String::isNotBlank),
+            updatedAtUtc = original?.updatedAtUtc?.takeIf(String::isNotBlank), pendingOperation = row?.operation,
+            canCloseOnly = original?.canCloseOnly == true)
     }
 }
+
+
+/** Display-only tombstones keep queued deletions reachable without restoring them to the desired graph. */
+internal fun pendingDeletedServiceDrafts(
+    flight: FlightDetail,
+    pending: List<FlightServicePendingEntity>,
+    catalogs: FlightOperationsCatalogs,
+    zone: ZoneId,
+): List<FlightServiceDraft> = pending.filter { it.flightId == flight.id && it.operation == "delete" }
+    .distinctBy { it.serviceRecordId }.map { row ->
+        val recorded = flight.services.firstOrNull { it.id == row.serviceRecordId } ?: row.reviewedRecord()
+        recorded?.input()?.toEditorDraft(row.serviceRecordId, recorded.serviceName, recorded, catalogs, zone)
+            ?: FlightServiceDraft(id = row.serviceRecordId)
+    }
+
+internal fun pendingDeletedTaskDrafts(
+    flight: FlightDetail,
+    pending: List<FlightTaskPendingEntity>,
+    catalogs: FlightOperationsCatalogs,
+    zone: ZoneId,
+): List<FlightTaskDraft> = pending.filter { it.flightId == flight.id && it.operation == "delete" }
+    .distinctBy { it.taskRecordId }.map { row ->
+        val recorded = flight.tasks.firstOrNull { it.id == row.taskRecordId } ?: row.reviewedRecord()
+        recorded?.input()?.toTaskEditorDraft(row.taskRecordId, recorded, catalogs, zone)
+            ?: FlightTaskDraft(id = row.taskRecordId)
+    }

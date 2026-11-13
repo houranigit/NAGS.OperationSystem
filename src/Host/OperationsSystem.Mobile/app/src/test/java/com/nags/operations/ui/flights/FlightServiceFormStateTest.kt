@@ -17,6 +17,7 @@ class FlightServiceFormStateTest {
     private val recordId = "55555555-5555-5555-5555-555555555555"
     private val performerId = "66666666-6666-6666-6666-666666666666"
     private val zone = ZoneId.of("Etc/UTC")
+    private val actualArrival = "2026-11-11T10:00:00Z"
     private val catalog = FlightOperationsCatalogs(
         services = listOf(ServiceCatalogItem(serviceId, "Service", false), ServiceCatalogItem(secondServiceId, "Second", false)),
         stationStaff = listOf(StaffCatalogItem(staffId, "Current employee", "E1", "station", "AAA", "Engineer")))
@@ -111,8 +112,30 @@ class FlightServiceFormStateTest {
         assertEquals(2, state.services.map { it.employees.single().id }.distinct().size)
         assertTrue(serviceEditorChanges(state.services, emptySet(), emptyMap(), emptyList(), emptySet(), emptySet(), zone).isEmpty())
         assertTrue(initialServiceEditorDraft(flight.copy(isPerLanding = true), catalog, emptyList(), null, zone).services.isEmpty())
+        assertTrue(initialServiceEditorDraft(flight.copy(isUnassignedSearchFlight = true, canAddServices = false),
+            catalog, emptyList(), null, zone).services.isEmpty())
         assertEquals(listOf(serviceId), initialServiceEditorDraft(flight.copy(allowedServiceIds = listOf(serviceId)), catalog,
             emptyList(), null, zone).services.map { it.serviceId })
+    }
+
+    @Test fun searchCompletionRetainsAnExistingServiceOutsideTheActorsCatalogAndRequiresAllEnds() {
+        val baseline = record.copy(canCloseOnly = true)
+        val searched = flight.copy(services = listOf(baseline), allowedServiceIds = emptyList(),
+            isUnassignedSearchFlight = true, canAddServices = false)
+        val item = initialServiceEditorDraft(searched, catalog, emptyList(), null, zone).services.single()
+        val openErrors = serviceEditorValidation(item, item.serviceInput(zone), searched,
+            catalog.copy(services = emptyList()), flight.rowVersion, actualArrival, null)
+        assertEquals(R.string.flight_complete_work_end_required, openErrors["endUtc"])
+        assertFalse(openErrors.containsKey("serviceId"))
+        val parentClosed = item.copy(period = item.period.copy(end = "2026-11-11T12:00"))
+        val childErrors = serviceEditorValidation(parentClosed, parentClosed.serviceInput(zone), searched,
+            catalog.copy(services = emptyList()), flight.rowVersion, actualArrival, null)
+        assertEquals(R.string.service_validation_staff_end_required, childErrors["performers.$performerId.endUtc"])
+        val closed = parentClosed.copy(employees = parentClosed.employees.map {
+            it.copy(period = it.period.copy(end = "2026-11-11T12:00"))
+        })
+        assertTrue(serviceEditorValidation(closed, closed.serviceInput(zone), searched,
+            catalog.copy(services = emptyList()), flight.rowVersion, actualArrival, null).isEmpty())
     }
 
     @Test fun savedAndPendingServicesKeepTheirOriginalPerformersAndDoNotCreateAnotherPlannedOccurrence() {
@@ -194,24 +217,35 @@ class FlightServiceFormStateTest {
         assertFalse("performers.$performerId.staffMemberId" in errors)
     }
 
+    @Test fun otherwiseValidNewServiceRequiresAnActualArrivalBeforeWork() {
+        val item = FlightServiceDraft(recordId, serviceId, "Service", period = FlightWorkPeriod("2026-11-11T11:00"),
+            employees = listOf(FlightEmployeeDraft(performerId, staffId, period = FlightWorkPeriod("2026-11-11T11:00"))))
+        val request = item.serviceInput(zone)
+        for (missingArrival in listOf(null, "")) {
+            assertEquals(mapOf("startUtc" to R.string.flight_arrival_before_work),
+                serviceEditorValidation(item, request, flight, catalog, flight.rowVersion, missingArrival, null))
+        }
+        assertTrue(serviceEditorValidation(item, request, flight, catalog, flight.rowVersion, actualArrival, null).isEmpty())
+    }
+
     @Test fun staffHeaderIsReservedForEmptyOrDuplicateAssignments() {
         val employee = FlightEmployeeDraft(performerId, staffId, period = FlightWorkPeriod("2026-11-11T11:00"))
         val item = FlightServiceDraft(recordId, serviceId, "Service", period = FlightWorkPeriod("2026-11-11T11:00"))
-        val emptyErrors = serviceEditorValidation(item, item.serviceInput(zone), flight, catalog, flight.rowVersion, null, null)
+        val emptyErrors = serviceEditorValidation(item, item.serviceInput(zone), flight, catalog, flight.rowVersion, actualArrival, null)
         assertEquals(mapOf("performers" to R.string.service_validation_performers), emptyErrors)
         val duplicate = item.copy(employees = listOf(employee, employee.copy(id = "77777777-7777-7777-7777-777777777777")))
         assertEquals(mapOf("performers" to R.string.service_validation_performers),
-            serviceEditorValidation(duplicate, duplicate.serviceInput(zone), flight, catalog, flight.rowVersion, null, null))
+            serviceEditorValidation(duplicate, duplicate.serviceInput(zone), flight, catalog, flight.rowVersion, actualArrival, null))
     }
 
     @Test fun invalidStaffAndRecordIdentitiesAreAttachedToTheirOwnChooserInsteadOfTheStaffHeader() {
         val item = FlightServiceDraft(recordId, serviceId, "Service", period = FlightWorkPeriod("2026-11-11T11:00"),
             employees = listOf(FlightEmployeeDraft(performerId, "invalid-staff", period = FlightWorkPeriod("2026-11-11T11:00"))))
         assertEquals(mapOf("performers.$performerId.staffMemberId" to R.string.service_validation_staff),
-            serviceEditorValidation(item, item.serviceInput(zone), flight, catalog, flight.rowVersion, null, null))
+            serviceEditorValidation(item, item.serviceInput(zone), flight, catalog, flight.rowVersion, actualArrival, null))
         val badRecord = item.copy(employees = item.employees.map { it.copy(id = "invalid-row", employeeId = staffId) })
         assertEquals(mapOf("performers.invalid-row.staffMemberId" to R.string.service_validation_version),
-            serviceEditorValidation(badRecord, badRecord.serviceInput(zone), flight, catalog, flight.rowVersion, null, null))
+            serviceEditorValidation(badRecord, badRecord.serviceInput(zone), flight, catalog, flight.rowVersion, actualArrival, null))
     }
 
     @Test fun reorderedRequestsKeepInvalidTimesOnTheStableEmployeeRow() {
@@ -225,7 +259,7 @@ class FlightServiceFormStateTest {
         assertEquals(second, request.performers.first().id)
         assertEquals(mapOf("performers.$performerId.startUtc" to R.string.service_validation_staff_period,
             "performers.$performerId.endUtc" to R.string.service_validation_after_atd),
-            serviceEditorValidation(item, request, flight, available, flight.rowVersion, null, "2026-11-11T14:00:00Z"))
+            serviceEditorValidation(item, request, flight, available, flight.rowVersion, actualArrival, "2026-11-11T14:00:00Z"))
     }
 
     @Test fun actualTimeEqualityIncludingFractionalArrivalSecondsIsAllowed() {
@@ -255,11 +289,11 @@ class FlightServiceFormStateTest {
         val available = catalog.copy(stationStaff = catalog.stationStaff + StaffCatalogItem(otherStaffId, "Other employee", "E2", "station", "AAA", "Engineer"))
         assertEquals(mapOf("endUtc" to R.string.service_validation_open_staff,
             "performers.$performerId.endUtc" to R.string.service_validation_staff_end_required),
-            serviceEditorValidation(item, item.serviceInput(zone), flight, available, flight.rowVersion, null, null))
+            serviceEditorValidation(item, item.serviceInput(zone), flight, available, flight.rowVersion, actualArrival, null))
         val closed = item.copy(employees = item.employees.map { it.copy(period = it.period.copy(end = "2026-11-11T13:00")) })
-        assertTrue(serviceEditorValidation(closed, closed.serviceInput(zone), flight, available, flight.rowVersion, null, null).isEmpty())
+        assertTrue(serviceEditorValidation(closed, closed.serviceInput(zone), flight, available, flight.rowVersion, actualArrival, null).isEmpty())
         val reopened = item.copy(period = item.period.copy(end = ""))
-        assertTrue(serviceEditorValidation(reopened, reopened.serviceInput(zone), flight, available, flight.rowVersion, null, null).isEmpty())
+        assertTrue(serviceEditorValidation(reopened, reopened.serviceInput(zone), flight, available, flight.rowVersion, actualArrival, null).isEmpty())
     }
 
     @Test fun departureUsesLatestQueuedAndUnsavedClosuresAndHonorsRemovals() {
@@ -322,13 +356,13 @@ class FlightServiceFormStateTest {
         val closing = record.input().copy(endUtc = "2026-11-11T14:00:00Z",
             performers = record.input().performers.map { it.copy(endUtc = "2026-11-11T13:00:00Z") })
         assertTrue(catalog.stationStaff.none { it.id == otherStaffId })
-        assertTrue(serviceEditorValidation(item, closing, reviewed, catalog, flight.rowVersion, null, null).isEmpty())
+        assertTrue(serviceEditorValidation(item, closing, reviewed, catalog, flight.rowVersion, actualArrival, null).isEmpty())
         val replacementId = "88888888-8888-8888-8888-888888888888"
         val replaced = item.copy(employees = item.employees.map { it.copy(employeeId = replacementId) })
         assertEquals(R.string.service_validation_staff, serviceEditorValidation(replaced, replaced.serviceInput(zone),
-            reviewed, catalog, flight.rowVersion, null, null)["performers.$performerId.staffMemberId"])
+            reviewed, catalog, flight.rowVersion, actualArrival, null)["performers.$performerId.staffMemberId"])
         val recreated = item.copy(employees = item.employees.map { it.copy(id = "99999999-9999-9999-9999-999999999999") })
         assertEquals(R.string.service_validation_staff, serviceEditorValidation(recreated, recreated.serviceInput(zone),
-            reviewed, catalog, flight.rowVersion, null, null)["performers.99999999-9999-9999-9999-999999999999.staffMemberId"])
+            reviewed, catalog, flight.rowVersion, actualArrival, null)["performers.99999999-9999-9999-9999-999999999999.staffMemberId"])
     }
 }

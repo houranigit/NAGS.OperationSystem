@@ -269,6 +269,33 @@ public sealed class FlightDeparturePersistenceTests(FlightDeparturePersistenceTe
             .Details.ShouldBe(thirdDetails);
     }
 
+    [Fact]
+    public async Task Optional_signature_migration_preserves_signed_rows_and_unsigned_departures_roundtrip()
+    {
+        await using var db = fixture.CreateContext();
+        await db.Database.MigrateAsync("20261109164013_Operations_RestoreFlightNotifications");
+        var flight = ScheduleFlight(); var employee = Employee("Handler", "E550");
+        var signed = flight.SubmitDeparture(employee, Departure(handler: employee), Guid.NewGuid(), Now.AddHours(2)).Value;
+        await PreRtrMigrationSeed.InsertFlightOwnerAsync(db, flight, includesReturnToRampSequence: true);
+        await db.SaveChangesAsync();
+        var id = signed.Id; var key = signed.Details.CustomerSignature!.StorageKey;
+        var signedAt = signed.Details.CustomerSignature.SignedAtUtc;
+        var version = flight.RowVersion.ToArray(); db.ChangeTracker.Clear();
+
+        await db.Database.MigrateAsync();
+
+        var reloaded = await LoadFlightAsync(db, flight.Id);
+        var preserved = reloaded.DepartureSubmissions.ShouldHaveSingleItem();
+        preserved.Id.ShouldBe(id); preserved.Details.CustomerSignature.ShouldNotBeNull().StorageKey.ShouldBe(key);
+        preserved.Details.CustomerSignature.SignedAtUtc.ShouldBe(signedAt); reloaded.RowVersion.ShouldBe(version);
+        var unsignedFlight = ScheduleFlight();
+        var unsigned = unsignedFlight.SubmitDeparture(employee,
+            DepartureDetails.Create(Now.AddHours(2), null, employee, "Unsigned").Value, Guid.NewGuid(), Now.AddHours(2)).Value;
+        db.Flights.Add(unsignedFlight); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        var stored = (await LoadFlightAsync(db, unsignedFlight.Id)).DepartureSubmissions.ShouldHaveSingleItem();
+        stored.Id.ShouldBe(unsigned.Id); stored.Details.CustomerSignature.ShouldBeNull(); stored.Details.Remarks.ShouldBe("Unsigned");
+    }
+
     private static Task<Flight> LoadFlightAsync(OperationsDbContext db, Guid flightId) =>
         db.Flights.Include(item => item.DepartureSubmissions).SingleAsync(item => item.Id == flightId);
 

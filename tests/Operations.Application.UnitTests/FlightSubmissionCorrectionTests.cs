@@ -155,31 +155,32 @@ public sealed class FlightSubmissionCorrectionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Unassigned_per_landing_reader_cannot_correct_foreign_submission_or_read_nonvisible_signature(bool departure)
+    public async Task Per_landing_colleague_can_correct_foreign_actuals_and_read_signatures_without_assignment(bool departure)
     {
         await using var fixture = await Fixture.CreateAsync(assigned: false, anotherDeparture: true);
 
         var result = await fixture.CorrectAsync(departure);
 
-        result.Error.Code.ShouldBe(departure ? "Operations.DepartureSubmission.AssignmentRequired" : "Operations.ArrivalSubmission.AssignmentRequired");
-        fixture.Writes.SaveCalls.ShouldBe(0);
-        (await fixture.Db.OutboxMessages.CountAsync()).ShouldBe(0);
-        (await fixture.SignatureAsync(fixture.OtherDepartureId!.Value, Now.AddMinutes(-4))).Error.Code
-            .ShouldBe("Operations.Flight.DepartureSignatureNotFound");
+        result.IsSuccess.ShouldBeTrue();
+        fixture.Writes.SaveCalls.ShouldBe(1);
+        (await fixture.Db.OutboxMessages.CountAsync()).ShouldBe(1);
+        (await fixture.ReadAsync()).AssignedEmployees.ShouldBeEmpty();
+        (await fixture.SignatureAsync(fixture.OtherDepartureId!.Value, Now.AddMinutes(-4))).IsSuccess.ShouldBeTrue();
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Untargeted_peer_correction_requires_assignment(bool departure)
+    public async Task Untargeted_per_landing_peer_correction_uses_station_authority(bool departure)
     {
         await using var fixture = await Fixture.CreateAsync(assigned: false);
 
         var result = await fixture.CorrectAsync(departure, target: false);
 
-        result.Error.Code.ShouldBe(departure ? "Operations.DepartureSubmission.AssignmentRequired" : "Operations.ArrivalSubmission.AssignmentRequired");
-        fixture.Writes.SaveCalls.ShouldBe(0);
-        (await fixture.Db.OutboxMessages.CountAsync()).ShouldBe(0);
+        result.IsSuccess.ShouldBeTrue();
+        fixture.Writes.SaveCalls.ShouldBe(1);
+        (await fixture.Db.OutboxMessages.CountAsync()).ShouldBe(1);
+        (await fixture.ReadAsync()).AssignedEmployees.ShouldBeEmpty();
     }
 
     [Theory]
@@ -264,6 +265,70 @@ public sealed class FlightSubmissionCorrectionTests
         (await fixture.ReadAsync()).DepartureSubmissions.Single().Details.CustomerSignature.SignedAtUtc.ShouldBe(Now);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Frozen_lowercase_arrival_input_acknowledges_old_and_new_canonical_rows_without_an_update(bool oldStoredCase)
+    {
+        await using var f = await Fixture.CreateAsync();
+        if (oldStoredCase)
+        {
+            var details = (await f.ReadAsync()).ArrivalSubmissions.Single().Details;
+            f.Db.Entry(details).Property(item => item.AircraftTailNumber).CurrentValue = "hz-test";
+            f.Db.Entry(details).Property(item => item.CustomerWorkReferenceNumber).CurrentValue = "ref";
+            await f.Db.SaveChangesAsync(); f.Db.ChangeTracker.Clear();
+        }
+        var replay = await f.Arrivals.Handle(new(f.FlightId,
+            new(Now.AddHours(-1), f.AircraftId, "hz-test", "ref", "Arrival", TargetSubmissionId: f.ArrivalId),
+            [9, 0, 0, 0, 0, 0, 0, 0]), CancellationToken.None);
+        replay.IsSuccess.ShouldBeTrue(); replay.Value.Submission.UpdatedAtUtc.ShouldBeNull();
+        replay.Value.Submission.UpdatedByDisplayName.ShouldBeNull(); f.Writes.SaveCalls.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Actual_read_metadata_uses_identity_account_names_and_retains_original_creation(bool departure)
+    {
+        await using var f = await Fixture.CreateAsync();
+        if (departure)
+        {
+            var result = await f.Departures.Handle(new(f.FlightId,
+                new(Now, null, null, "New notes", TargetSubmissionId: f.DepartureId), Version), CancellationToken.None);
+            result.IsSuccess.ShouldBeTrue(); result.Value.Submission.CreatedByDisplayName.ShouldBe("Original account");
+            result.Value.Submission.UpdatedByDisplayName.ShouldBe("Editor account"); result.Value.Submission.UpdatedAtUtc.ShouldBe(Now);
+        }
+        else
+        {
+            var result = await f.Arrivals.Handle(new(f.FlightId,
+                new(Now.AddHours(-1), f.AircraftId, "HZ-TEST", "REF", "New notes", TargetSubmissionId: f.ArrivalId), Version), CancellationToken.None);
+            result.IsSuccess.ShouldBeTrue(); result.Value.Submission.CreatedByDisplayName.ShouldBe("Original account");
+            result.Value.Submission.UpdatedByDisplayName.ShouldBe("Editor account"); result.Value.Submission.UpdatedAtUtc.ShouldBe(Now);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Own_batch_actual_canonicalizes_legacy_employee_once_and_replay_does_not_save_or_touch_history(bool departure)
+    {
+        await using var f = await Fixture.CreateAsync();
+        var input = departure
+            ? new SaveFlightOperationsBatchRequest(Departure: new(Now, null, null, "Departure", TargetSubmissionId: f.DepartureId))
+            : new SaveFlightOperationsBatchRequest(Arrival: new(Now.AddHours(-1), f.AircraftId, "HZ-TEST", "REF", "Arrival", TargetSubmissionId: f.ArrivalId));
+        var first = await f.AuthorBatch.Handle(new(f.FlightId, input, Version), CancellationToken.None);
+        first.IsSuccess.ShouldBeTrue(); f.Writes.SaveCalls.ShouldBe(1);
+        var staffId = departure ? first.Value.DepartureSubmissions!.Single().HandledByEmployee.StaffMemberId
+            : first.Value.ArrivalSubmissions!.Single().ReceivedByEmployee.StaffMemberId;
+        staffId.ShouldBe(f.Author.StaffMemberId);
+        var recorded = (await f.Db.FlightUserActivities.SingleAsync()).LastInteractionAtUtc;
+        f.Db.ChangeTracker.Clear();
+        var replay = await f.AuthorBatch.Handle(new(f.FlightId, input, [9, 0, 0, 0, 0, 0, 0, 0]), CancellationToken.None);
+        replay.IsSuccess.ShouldBeTrue(); f.Writes.SaveCalls.ShouldBe(1);
+        (await f.Db.FlightUserActivities.SingleAsync()).LastInteractionAtUtc.ShouldBe(recorded);
+        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(0);
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         public const string OriginalKey = "private-signatures/original.png";
@@ -283,6 +348,7 @@ public sealed class FlightSubmissionCorrectionTests
         public required SaveFlightDepartureCommandHandler Departures { get; init; }
         public required SaveFlightArrivalCommandHandler AuthorArrivals { get; init; }
         public required SaveFlightDepartureCommandHandler AuthorDepartures { get; init; }
+        public required SaveFlightOperationsBatchCommandHandler AuthorBatch { get; init; }
 
         public async Task<Result> CorrectAsync(bool departure, bool target = true, Guid? targetId = null, byte[]? version = null,
             string remarks = "Corrected remarks", bool asAuthor = false)
@@ -346,14 +412,16 @@ public sealed class FlightSubmissionCorrectionTests
             await db.SaveChangesAsync();
             var writes = new WriteBoundary(db);
             var storage = new MemoryStorage();
+            var names = new WorkUserNames(new Dictionary<Guid, string> { [authorUserId] = "Original account", [actor.UserId] = "Editor account" });
             storage.Files[OriginalKey] = Png;
             return new Fixture { Db = db, Writes = writes, Storage = storage, Actor = actor, Author = author, Receiver = receiver,
                 AuthorUserId = authorUserId, FlightId = flight.Id, AircraftId = aircraft.AircraftTypeId, ArrivalId = arrival.Id, DepartureId = departure.Id,
                 OtherDepartureId = otherDepartureId,
-                Arrivals = new(writes, new Scope(actor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance),
-                Departures = new(writes, new Scope(actor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, storage),
-                AuthorArrivals = new(writes, new Scope(authorActor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance),
-                AuthorDepartures = new(writes, new Scope(authorActor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, storage) };
+                Arrivals = new(writes, new Scope(actor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, names),
+                Departures = new(writes, new Scope(actor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, storage, names),
+                AuthorBatch = new(writes, new Scope(authorActor), new MasterDataResolver(reader), reader, new Clock(), NoopMobileSyncBroadcaster.Instance, storage, names),
+                AuthorArrivals = new(writes, new Scope(authorActor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, names),
+                AuthorDepartures = new(writes, new Scope(authorActor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, storage, names) };
         }
         public ValueTask DisposeAsync() => Db.DisposeAsync();
     }
@@ -364,6 +432,7 @@ public sealed class FlightSubmissionCorrectionTests
         public int EventCountAtSave { get; private set; }
         public Func<CancellationToken, Task<int>>? Save { get; set; }
         public DbSet<Flight> Flights => db.Flights;
+        public DbSet<FlightUserActivity> FlightUserActivities => db.FlightUserActivities;
         public DbSet<OutboxMessage> OutboxMessages => db.OutboxMessages;
         public DbSet<InboxMessage> InboxMessages => db.InboxMessages;
         public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion) where TEntity : class => db.SetOriginalRowVersion(entity, rowVersion);

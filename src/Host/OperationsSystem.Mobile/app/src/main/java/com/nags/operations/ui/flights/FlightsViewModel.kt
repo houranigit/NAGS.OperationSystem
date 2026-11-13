@@ -161,6 +161,9 @@ class FlightsViewModel internal constructor(
     private val loadPendingTaskAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
     private val saveReviewedOperation: suspend (FlightDetail, com.nags.operations.data.FlightOperationReviewTarget, suspend () -> Unit) -> Unit = { _, _, _ -> error("Review saving is unavailable.") },
     private val discardReviewedOperation: suspend (String, com.nags.operations.data.FlightOperationReviewTarget) -> Unit = { _, _ -> error("Review discard is unavailable.") },
+    val adHocRepository: com.nags.operations.data.repo.AdHocFlightsRepository? = null,
+    val adHocCustomers: Flow<List<com.nags.operations.data.CustomerCatalogItem>> = flowOf(emptyList()),
+    private val isDiscoveryFeed: Boolean = false,
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
         sharedCatalogsRepository: SharedCatalogsRepository, arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository,
@@ -176,7 +179,11 @@ class FlightsViewModel internal constructor(
         loadTaskAttachment: suspend (String, String, String, String) -> String? = { _, _, _, _ -> null },
         loadPendingTaskAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
         saveReviewedOperation: suspend (FlightDetail, com.nags.operations.data.FlightOperationReviewTarget, suspend () -> Unit) -> Unit = { _, _, _ -> error("Review saving is unavailable.") },
-        discardReviewedOperation: suspend (String, com.nags.operations.data.FlightOperationReviewTarget) -> Unit = { _, _ -> error("Review discard is unavailable.") }) : this(
+        discardReviewedOperation: suspend (String, com.nags.operations.data.FlightOperationReviewTarget) -> Unit = { _, _ -> error("Review discard is unavailable.") },
+        adHocRepository: com.nags.operations.data.repo.AdHocFlightsRepository? = null,
+        sourcePage: (suspend (Int, Int, String?) -> FlightPage)? = null) : this(
+        adHocRepository = adHocRepository,
+        adHocCustomers = sharedCatalogsRepository.customersFlow(),
         arrivals = arrivalRepository,
         departures = departureRepository,
         cancellations = cancellationRepository,
@@ -193,7 +200,9 @@ class FlightsViewModel internal constructor(
         currentUserDisplayName = currentUserDisplayName,
         loadDepartureSignature = loadDepartureSignature,
         fetchProfile = authRepository::profile,
-        fetchFlights = repository::flights,
+        isDiscoveryFeed = sourcePage != null,
+        fetchFlights = { category, page, size, query -> sourcePage?.invoke(page, size, query)
+            ?: repository.flights(category, page, size, query) },
         fetchFlight = repository::flight,
         fetchInvitationOptions = repository::invitationOptions,
         sendInvitations = repository::invite,
@@ -307,7 +316,7 @@ class FlightsViewModel internal constructor(
         scope.launch {
             cacheChanges.collect {
                 val cached = cacheStatus.first()
-                if (cached.permissionDenied || cached.lastSuccessUtc == null) {
+                if (cached.permissionDenied || cached.lastSuccessUtc == null && !isDiscoveryFeed) {
                     clearVisibleFlights(cached.permissionDenied || _state.value.permissionDenied)
                 } else {
                     val current = _state.value
@@ -373,7 +382,7 @@ class FlightsViewModel internal constructor(
         if (!_state.value.isSearchOpen || search == _state.value.search) return
         if (_state.value.search.isBlank()) rememberNormalTabs()
         listJob?.cancel()
-        if (search.isBlank()) {
+        if (search.isBlank() && !isDiscoveryFeed) {
             expireVisibleFlights()
             restoreNormalTabs(searchOpen = true, query = search)
             return
@@ -464,7 +473,7 @@ class FlightsViewModel internal constructor(
                         fromCache = fromCache || result.fromCache
                     }
                 }
-                val eligible = rows.filter { it.matches(category) && it.isInFlightWindow(now()) }
+                val eligible = rows.filter { (isDiscoveryFeed || it.matches(category)) && it.isInFlightWindow(now()) }
                 val retained = eligible.distinctBy { it.id }
                 _state.update {
                     it.copy(items = retained, stationId = result.stationId ?: it.stationId, hasLoadedList = true,
@@ -511,7 +520,7 @@ class FlightsViewModel internal constructor(
                     loadList()
                     return@launch
                 }
-                val rows = result.items.filter { it.matches(current.category) && it.isInFlightWindow(now()) }
+                val rows = result.items.filter { (isDiscoveryFeed || it.matches(current.category)) && it.isInFlightWindow(now()) }
                 _state.update {
                     it.copy(items = (it.items + rows).distinctBy { flight -> flight.id },
                         page = result.page, totalCount = result.totalCount,

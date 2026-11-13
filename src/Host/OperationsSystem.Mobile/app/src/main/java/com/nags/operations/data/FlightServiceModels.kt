@@ -2,6 +2,7 @@ package com.nags.operations.data
 
 import java.time.OffsetDateTime
 import java.util.Base64
+import java.util.Locale
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
@@ -27,7 +28,7 @@ data class SaveFlightServiceRequest(
     val attachments: List<FlightServiceAttachmentInput>? = null,
 ) {
     fun normalized() = copy(startUtc = canonicalServiceTime(startUtc), endUtc = endUtc?.let(::canonicalServiceTime),
-        customerReferenceNumber = customerReferenceNumber?.trim()?.takeIf(String::isNotEmpty),
+        customerReferenceNumber = customerReferenceNumber?.trim()?.takeIf(String::isNotEmpty)?.uppercase(Locale.ROOT),
         notes = notes?.trim()?.takeIf(String::isNotEmpty), performers = performers.map {
             it.copy(startUtc = canonicalServiceTime(it.startUtc), endUtc = it.endUtc?.let(::canonicalServiceTime))
         }.sortedBy { it.id },
@@ -94,6 +95,8 @@ data class FlightServiceRecord(
     val canChangeService: Boolean? = null, val canDelete: Boolean? = null,
     val createdByDisplayName: String? = null,
     val endedByDisplayName: String? = null,
+    val updatedByDisplayName: String? = null,
+    val canCloseOnly: Boolean = false,
 ) {
     private fun hasOtherUserEnd() =
         endUtc != null && endedByUserId != null && !endedByUserId.equals(createdByUserId, true)

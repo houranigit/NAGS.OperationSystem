@@ -1,6 +1,7 @@
 using BuildingBlocks.Domain.Aggregates;
 using BuildingBlocks.Domain.Auditing;
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Seeding;
 using Operations.Domain.ValueObjects;
 
 namespace Operations.Domain.Flights;
@@ -29,6 +30,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
     public ScheduledTime Schedule { get; private set; } = null!;
     public AircraftTypeSnapshot? AircraftType { get; private set; }
     public Guid CreatedByUserId { get; private set; }
+    public string? AdHocCreationFingerprint { get; private set; }
     public DateTimeOffset CreatedAtUtc { get; private set; }
     public DateTimeOffset? UpdatedAtUtc { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
@@ -86,8 +88,58 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         return flight;
     }
 
+    /// <summary>Creates a station-owned scratch flight without planned services or assignees.</summary>
+    public static Result<Flight> CreateAdHoc(CustomerSnapshot customer, StationSnapshot station,
+        OperationTypeSnapshot operationType, FlightNumber flightNumber, ScheduledTime schedule,
+        Guid createdByUserId, DateTimeOffset now, Guid id, string creationFingerprint)
+    {
+        if (id == Guid.Empty || createdByUserId == Guid.Empty || string.IsNullOrWhiteSpace(creationFingerprint) || creationFingerprint.Length != 64)
+            return Error.Validation("An identified AdHoc creation is required.", "Operations.AdHoc.RequestInvalid");
+        if (operationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType)
+            return Error.Validation("The AdHoc operation type is required.", "Operations.AdHoc.OperationTypeRequired");
+        var number = FlightNumber.CreateAdHoc(flightNumber.Value);
+        if (number.IsFailure) return number.Error;
+        if (schedule.Sta == default || schedule.Std == default)
+            return Error.Validation("Scheduled arrival and departure are required.", "Operations.AdHoc.RequestInvalid");
+        return new Flight
+        {
+            Id = id, Customer = customer, Station = station, OperationType = operationType,
+            FlightNumber = number.Value, Schedule = schedule, CreatedByUserId = createdByUserId,
+            CreatedAtUtc = now.ToUniversalTime(), AdHocCreationFingerprint = creationFingerprint
+        };
+    }
+
+    /// <summary>The application resolves a station-scoped staff actor before allowing these normal-work corrections.</summary>
+    public bool CanCorrectOperationalWork(Guid? staffMemberId) => staffMemberId is { } id && id != Guid.Empty &&
+        (IsPerLanding || OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType ||
+         _assignedEmployees.Any(employee => employee.Employee.StaffMemberId == id));
+
+    public bool CanEditAdHocDetails(Guid userId) => OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
+        CreatedByUserId == userId && !HasOperationalRecords();
+
+    public bool HasOperationalRecords() => _arrivalSubmissions.Count > 0 || _departureSubmissions.Count > 0 ||
+        _cancellationSubmissions.Count > 0 || _services.Count > 0 || _tasks.Count > 0 || _returnToRamps.Count > 0;
+
+    /// <summary>Collections must be loaded so another employee's work locks the same planning details.</summary>
+    public Result UpdateAdHocDetails(CustomerSnapshot customer, FlightNumber number, ScheduledTime schedule,
+        Guid userId, DateTimeOffset now)
+    {
+        if (OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType || CreatedByUserId != userId)
+            return Error.Forbidden("Only its creator can change AdHoc flight details.", "Operations.AdHoc.DetailsReadOnly");
+        if (Customer == customer && FlightNumber == number && Schedule == schedule) return Result.Success();
+        if (HasOperationalRecords())
+            return Error.Conflict("Flight details are locked after operational work is saved.", "Operations.AdHoc.DetailsLocked");
+        var canonical = FlightNumber.CreateAdHoc(number.Value);
+        if (canonical.IsFailure) return canonical.Error;
+        if (schedule.Sta == default || schedule.Std == default)
+            return Error.Validation("Scheduled arrival and departure are required.", "Operations.AdHoc.RequestInvalid");
+        Customer = customer; FlightNumber = canonical.Value; Schedule = schedule; UpdatedAtUtc = now.ToUniversalTime();
+        return Result.Success();
+    }
+
     public Result ChangeFlightNumber(FlightNumber newNumber, DateTimeOffset now)
     {
+        if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType) return AdHocDetailsBoundary();
         var numberCheck = ValidateCustomerFlightNumber(Customer, newNumber);
         if (numberCheck.IsFailure)
             return numberCheck.Error;
@@ -106,6 +158,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         IReadOnlyList<StaffMemberSnapshot>? assignedEmployees,
         DateTimeOffset now)
     {
+        if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType) return AdHocDetailsBoundary();
         var check = PerLandingPolicy.ValidatePlannedServices(plannedServices);
         if (check.IsFailure)
             return check.Error;
@@ -124,6 +177,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
 
     public Result ReplaceAssignedEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
     {
+        if (AdHocCreationFingerprint is not null && employees.Count > 0) return AdHocAssignmentError();
         if (IsPerLanding && employees.Count > 0)
             return PerLandingAssignmentError();
         SetAssignedEmployees(employees);
@@ -133,6 +187,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
 
     public Result InviteEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
     {
+        if (AdHocCreationFingerprint is not null && employees.Count > 0) return AdHocAssignmentError();
         if (IsPerLanding)
             return PerLandingAssignmentError();
 
@@ -230,7 +285,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         if (targetSubmissionId.HasValue && submission is null)
             return Error.NotFound("Arrival submission not found.", "Operations.ArrivalSubmission.NotFound");
         if (submission is not null && submission.SubmittedByEmployee.StaffMemberId != submittedByEmployee.StaffMemberId &&
-            !_assignedEmployees.Any(item => item.Employee.StaffMemberId == submittedByEmployee.StaffMemberId))
+            !CanCorrectOperationalWork(submittedByEmployee.StaffMemberId))
             return Error.Forbidden("Only assigned employees can update another employee's arrival.", "Operations.ArrivalSubmission.AssignmentRequired");
         if (submission is not null)
         {
@@ -279,7 +334,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         if (targetSubmissionId.HasValue && submission is null)
             return Error.NotFound("Departure submission not found.", "Operations.DepartureSubmission.NotFound");
         if (submission is not null && submission.SubmittedByEmployee.StaffMemberId != submittedByEmployee.StaffMemberId &&
-            !_assignedEmployees.Any(item => item.Employee.StaffMemberId == submittedByEmployee.StaffMemberId))
+            !CanCorrectOperationalWork(submittedByEmployee.StaffMemberId))
             return Error.Forbidden("Only assigned employees can update another employee's departure.", "Operations.DepartureSubmission.AssignmentRequired");
         if (submission is not null)
         {
@@ -353,7 +408,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         if (existing?.ReturnToRampId is not null)
             return Error.NotFound("Performed service was not found on this flight.", "Operations.FlightService.NotFound");
         if (existing is not null && service is not null && existing.Service.ServiceId != service.ServiceId && existing.HasOtherUserEnd &&
-            !_assignedEmployees.Any(employee => employee.Employee.StaffMemberId == assignedEditorStaffMemberId))
+            !CanCorrectOperationalWork(assignedEditorStaffMemberId))
             return FlightService.SelectionReadOnly();
         var created = FlightService.Create(Id, service, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), id: recordId);
         if (created.IsFailure) return created.Error;
@@ -924,7 +979,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         if (found.IsFailure)
             return found.Error;
         if (found.Value.HasOtherUserEnd &&
-            !(returnToRampId is null && _assignedEmployees.Any(employee => employee.Employee.StaffMemberId == assignedEditorStaffMemberId)))
+            !(returnToRampId is null && CanCorrectOperationalWork(assignedEditorStaffMemberId)))
             return Error.Forbidden("A service with another employee's end time cannot be deleted.", "Operations.FlightService.DeleteReadOnly");
         if (returnToRampId is { } occurrenceId)
         {
@@ -947,7 +1002,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
         if (found.IsFailure)
             return found.Error;
         if (found.Value.ReturnToRampId is null && found.Value.HasOtherUserEnd &&
-            !(returnToRampId is null && _assignedEmployees.Any(employee => employee.Employee.StaffMemberId == assignedEditorStaffMemberId)))
+            !(returnToRampId is null && CanCorrectOperationalWork(assignedEditorStaffMemberId)))
             return Error.Forbidden("A task with another employee's end time cannot be deleted.", "Operations.FlightTask.DeleteReadOnly");
         if (returnToRampId is { } occurrenceId)
         {
@@ -1042,6 +1097,12 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
 
         return Result.Success();
     }
+
+    private static Error AdHocAssignmentError() => Error.Validation(
+        "AdHoc flights do not have assigned employees.", "Operations.AdHoc.AssignmentsNotAllowed");
+
+    private static Error AdHocDetailsBoundary() => Error.Validation(
+        "Use the creator's AdHoc flight details workflow.", "Operations.AdHoc.DetailsBoundaryRequired");
 
     private static Error PerLandingAssignmentError() => Error.Validation(
         "Per Landing flights are station-wide and cannot have assigned staff.",

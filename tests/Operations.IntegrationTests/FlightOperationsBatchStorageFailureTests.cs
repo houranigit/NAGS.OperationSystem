@@ -22,6 +22,7 @@ public sealed partial class FlightVisibilityScopeTests
         var actor = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
         using var client = actor.Client;
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8710", [actor.StaffId]);
+        await SeedWorkArrivalAsync(admin, client, id);
         var recordId = Guid.NewGuid();
         var originalBytes = Encoding.ASCII.GetBytes("%PDF-original retained service document");
         var originalAttachment = new SaveFlightServiceAttachmentRequest(Guid.NewGuid(), (int)AttachmentKind.Document,

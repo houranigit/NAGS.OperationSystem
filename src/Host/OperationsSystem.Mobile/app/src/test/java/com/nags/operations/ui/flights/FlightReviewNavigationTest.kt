@@ -64,7 +64,7 @@ class FlightReviewNavigationTest {
             .serviceInput(zone, setOf(onlineFile.id, privateFile.id))
 
         assertEquals(merged, roundTrip)
-        assertEquals("online field three", roundTrip.customerReferenceNumber)
+        assertEquals("ONLINE FIELD THREE", roundTrip.customerReferenceNumber)
         assertEquals(end, roundTrip.endUtc)
         assertEquals(id(11), roundTrip.performers.single().id)
         assertEquals(end, roundTrip.performers.single().endUtc)
@@ -87,11 +87,111 @@ class FlightReviewNavigationTest {
             .taskInput(zone, setOf(onlineFile.id))
 
         assertEquals(merged, roundTrip)
-        assertEquals("online field three", roundTrip.customerReferenceNumber)
+        assertEquals("ONLINE FIELD THREE", roundTrip.customerReferenceNumber)
         assertEquals(0, roundTrip.taskType)
         assertEquals(end, roundTrip.tools.single().endUtc)
         assertEquals(id(51), roundTrip.tools.single().id)
         assertEquals("2.5", roundTrip.materials.single().quantity)
         assertEquals("content://selected/task", roundTrip.attachments?.single { it.id == selectedFile.id }?.contentUri)
     }
+
+    @Test fun pendingNavigationSelectsExactQueuedOccurrencesInPhysicalOrderWithoutEnteringReview() {
+        val arrival = FlightArrivalPendingEntity("owner", "flight", "SV100", "arrival-change", "{}", "version", start)
+        val departure = FlightDeparturePendingEntity("owner", "flight", "SV100", "staff", "departure-change", "{}", "version", "[]", start)
+        fun service(record: String, status: String = "pending") = FlightServicePendingEntity("owner", "flight", record,
+            "SV100", "$record-change", "save", "{}", "version", null, start, status = status)
+        fun task(record: String, status: String = "pending") = FlightTaskPendingEntity("owner", "flight", record,
+            "SV100", "$record-change", "save", "{}", "version", null, start, status = status)
+
+        val targets = flightPendingTargets(arrival, departure,
+            listOf(service("first-service"), service("failed-service", "failed"), service("second-service")),
+            listOf(task("conflicted-task", "conflict"), task("queued-task")))
+
+        assertEquals(listOf("arrival", "service:first-service", "service:second-service", "task:queued-task", "departure"),
+            targets.map { it.navigationKey() })
+        assertEquals("second-service-change", targets[2].changeId)
+        assertEquals("second-service", targets[2].recordId)
+        assertTrue(targets.all { !it.useLocalSource && it.stagedInputJson == null })
+        assertEquals("departure", flightPendingTargets(null, departure, emptyList(), emptyList()).first().navigationKey())
+        assertTrue(flightPendingTargets(arrival.copy(status = "conflict"), departure.copy(status = "failed"), emptyList(), emptyList()).isEmpty())
+    }
+
+    @Test fun openingServiceReviewAppliesSparseLocalInputWhilePreservingOnlineReferenceEndsAndSibling() {
+        val recorded = FlightServiceRecord(id(2), id(3), "Recorded service", start, end, "online reference", "recorded notes",
+            createdByUserId = id(90), createdAtUtc = start, performers = listOf(FlightServicePerformerRecord(id(11), id(21), "Recorded employee", "E1", start, end)))
+        val sibling = recorded.copy(id = id(4), notes = "Sibling notes")
+        val flight = FlightDetail(id(1), "SV100", "customer", customerName = "Customer", stationId = "station",
+            stationIata = "AAA", stationName = "Station", operationTypeId = "operation", operationTypeName = "Transit",
+            scheduledArrivalUtc = start, scheduledDepartureUtc = end, isPerLanding = false,
+            createdAtUtc = start, rowVersion = "AAAAAAAAAAE=", stationTimeZoneId = zone.id, services = listOf(recorded, sibling))
+        val source = SaveFlightServiceRequest("", "", notes = "Local notes",
+            performers = listOf(SaveFlightServicePerformerRequest(id(99), id(21), "")))
+        val snapshot = FlightWorkUpdateSnapshot(flight, FlightWorkDrafts(services = listOf(source.toEditorDraft(recorded.id,
+            recorded.serviceName, recorded, FlightOperationsCatalogs(), zone))), isService = true, reviewMode = true)
+
+        val staged = flightWorkReviewDrafts(snapshot, FlightOperationsCatalogs(), zone, serviceSource = source)
+        val input = staged.services.single().serviceInput(zone)
+
+        assertEquals("Local notes", input.notes)
+        assertEquals("ONLINE REFERENCE", input.customerReferenceNumber)
+        assertEquals(start, input.startUtc)
+        assertEquals(end, input.endUtc)
+        assertEquals(id(11), input.performers.single().id)
+        assertEquals(end, input.performers.single().endUtc)
+        assertEquals("Sibling notes", snapshot.flight.services[1].notes)
+        assertEquals("", snapshot.drafts.services.single().serviceId)
+        assertEquals("Local notes", snapshot.drafts.services.single().remarks)
+        assertEquals("", source.startUtc)
+        val restored = Json.decodeFromString<FlightWorkUpdateSnapshot>(Json.encodeToString(snapshot.copy(drafts = staged)))
+        assertEquals(input, restored.drafts.services.single().serviceInput(zone))
+    }
+
+    @Test fun openingTaskReviewKeepsAbsentTaskTypeAndRecordedResourceFieldsAlongsideLocalNotes() {
+        val recorded = FlightTaskRecord(id(2), 1, start, end, customerReferenceNumber = "Online ref", notes = "Recorded notes",
+            createdByUserId = id(90), createdAtUtc = start, tools = listOf(FlightTaskResourceRecord(id(51), id(61), "Recorded tool", 1, startUtc = start, endUtc = end)))
+        val flight = FlightDetail(id(1), "SV100", "customer", customerName = "Customer", stationId = "station",
+            stationIata = "AAA", stationName = "Station", operationTypeId = "operation", operationTypeName = "Transit",
+            scheduledArrivalUtc = start, scheduledDepartureUtc = end, isPerLanding = false,
+            createdAtUtc = start, rowVersion = "AAAAAAAAAAE=", stationTimeZoneId = zone.id, tasks = listOf(recorded))
+        val source = SaveFlightTaskRequest(-1, "", notes = "Local notes",
+            tools = listOf(SaveFlightTaskResourceRequest(id(99), id(61))))
+        val snapshot = FlightWorkUpdateSnapshot(flight, FlightWorkDrafts(tasks = listOf(source.toTaskEditorDraft(recorded.id,
+            recorded, FlightOperationsCatalogs(), zone))), isService = false, reviewMode = true)
+
+        val input = flightWorkReviewDrafts(snapshot, FlightOperationsCatalogs(), zone, taskSource = source)
+            .tasks.single().taskInput(zone)
+
+        assertEquals(1, input.taskType)
+        assertEquals("Local notes", input.notes)
+        assertEquals("ONLINE REF", input.customerReferenceNumber)
+        assertEquals(start, input.startUtc)
+        assertEquals(end, input.endUtc)
+        assertEquals(id(51), input.tools.single().id)
+        assertEquals(end, input.tools.single().endUtc)
+        assertEquals(-1, source.taskType)
+        assertNull(source.tools.single().endUtc)
+    }
+
+
+    @Test fun correctionOverlapUsesSiblingPendingDeletionsAndAdditionsWithoutRestoringOrDroppingTheEditedRecord() {
+        val recorded = FlightServiceRecord(id(2), id(3), "Service", start, end, createdByUserId = id(90), createdAtUtc = start)
+        val overlapping = recorded.copy(id = id(4), startUtc = "2026-11-10T12:05:00Z", endUtc = "2026-11-10T12:15:00Z")
+        val flight = FlightDetail(id(1), "SV100", "customer", customerName = "Customer", stationId = "station",
+            stationIata = "AAA", stationName = "Station", operationTypeId = "operation", operationTypeName = "Transit",
+            scheduledArrivalUtc = start, scheduledDepartureUtc = end, isPerLanding = false,
+            createdAtUtc = start, rowVersion = "AAAAAAAAAAE=", stationTimeZoneId = zone.id, services = listOf(recorded, overlapping))
+        val catalogs = FlightOperationsCatalogs()
+        val edited = recorded.input().toEditorDraft(recorded.id, recorded.serviceName, recorded, catalogs, zone)
+        val deletion = FlightServicePendingEntity("owner", flight.id, overlapping.id, flight.flightNumber,
+            "delete-change", "delete", null, flight.rowVersion, Json.encodeToString(overlapping), start)
+        val addition = deletion.copy(serviceRecordId = id(5), operation = "save", inputJson = Json.encodeToString(overlapping.input()), reviewedServiceJson = null)
+        val staleCurrent = deletion.copy(serviceRecordId = recorded.id, operation = "save", inputJson = Json.encodeToString(overlapping.input()))
+
+        assertTrue(flightServiceCorrectionOverlapErrors(flight, emptyList(), catalogs, zone, edited).containsKey("startUtc"))
+        assertTrue(flightServiceCorrectionOverlapErrors(flight, listOf(deletion, staleCurrent), catalogs, zone, edited).isEmpty())
+        assertTrue(flightServiceCorrectionOverlapErrors(flight.copy(services = listOf(recorded)), listOf(addition), catalogs, zone, edited).containsKey("startUtc"))
+        assertEquals(listOf(recorded.id, overlapping.id), flight.services.map { it.id })
+        assertEquals("delete", deletion.operation)
+    }
+
 }

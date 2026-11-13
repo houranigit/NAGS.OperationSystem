@@ -49,32 +49,45 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nags.operations.R
+import com.nags.operations.data.userMessage
 import com.nags.operations.ui.flights.FlightTabSearchHeader
 
-/** Creation entry point only; flight creation is not implemented by this shell. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** New AdHoc identity and normal operational input share one durable local Save. */
 @Composable
-internal fun AdHocFlightShell(onClose: () -> Unit) {
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.home_create_adhoc),
-                    style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(onClick = onClose) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.home_close_adhoc))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            )
-        },
-    ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding))
+internal fun AdHocFlightShell(graph: com.nags.operations.AppGraph, factory: com.nags.operations.ui.AppViewModelFactory,
+    onClose: () -> Unit, flightId: String? = null) {
+    val id = rememberSaveable(flightId) { flightId ?: java.util.UUID.randomUUID().toString() }
+    val viewModel: com.nags.operations.ui.flights.FlightsViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+        key = "adhoc:$id", factory = factory)
+    var flight by androidx.compose.runtime.remember(id) { mutableStateOf<com.nags.operations.data.FlightDetail?>(null) }
+    var error by androidx.compose.runtime.remember(id) { mutableStateOf<String?>(null) }
+    var retry by rememberSaveable(id) { mutableIntStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(id, retry) {
+        error = null
+        try {
+            if (flightId != null) {
+                flight = graph.adHocFlights.recoveryFlight(id) ?: graph.flightsRepository.flight(id)
+            } else {
+                if (graph.networkMonitor.isOnline.value) try { graph.adHocFlights.refreshContext() }
+                    catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (failure: Exception) { if (graph.adHocFlights.cachedContext() == null) throw failure }
+                val at = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
+                flight = graph.adHocFlights.newFlight(id, com.nags.operations.data.AdHocFlightInput("", "", at.toString(), at.plusSeconds(3600).toString()))
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (failure: Exception) { error = failure.userMessage() }
+    }
+    val loaded = flight
+    if (loaded != null) com.nags.operations.ui.flights.AdHocFlightEditor(viewModel, loaded, onClose)
+    else Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
+        androidx.compose.material3.TextButton(onClick = onClose) { Text("Close") }
+        if (error != null) com.nags.operations.ui.components.InlineNotice(checkNotNull(error),
+            kind = com.nags.operations.ui.components.InlineNoticeKind.Warning, onRetry = { retry++ })
+        else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator() }
     }
 }
 
-/** Presentation-only destinations; their queries do not request or filter any data. */
+/** Invitations retain their current header while their list remains outside this change. */
 @Composable
 internal fun MainShellPage(page: Int) {
     val keyboard = LocalSoftwareKeyboardController.current
@@ -88,8 +101,6 @@ internal fun MainShellPage(page: Int) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
         when (page) {
             1 -> InvitationsShellHeader()
-            2 -> ExpandedShellSearch(page = page, placeholder = stringResource(R.string.home_search_flight_number))
-            3 -> ExpandedShellSearch(page = page, placeholder = stringResource(R.string.home_search_my_work))
         }
     }
 }
@@ -123,26 +134,6 @@ private fun InvitationsShellHeader() {
     ) {
         InvitationsShellTabs(selectedTab = selectedTab, onSelectTab = { selectedTab = it }, enabled = !isSearchOpen)
     }
-}
-
-@Composable
-private fun ExpandedShellSearch(page: Int, placeholder: String) {
-    var query by rememberSaveable(page) { mutableStateOf("") }
-    FlightTabSearchHeader(
-        isSearchOpen = true,
-        query = query,
-        onQueryChange = { query = it },
-        onOpenSearch = {},
-        onCloseSearch = {},
-        searchDescription = placeholder,
-        placeholder = placeholder,
-        showCloseButton = false,
-        autoFocusOnOpen = false,
-        searchIcon = if (page == 2) Icons.AutoMirrored.Filled.ManageSearch else Icons.Default.Search,
-        searchAtPhysicalRight = true,
-        searchSurface = shellSearchSurface(),
-        tabs = {},
-    )
 }
 
 @Composable

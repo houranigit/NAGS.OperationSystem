@@ -22,18 +22,31 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.nags.operations.R
 
 @Composable
 fun ErrorState(
@@ -148,49 +161,68 @@ fun InlineErrorBanner(
     onRetry: (() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
 ) {
+    InlineNotice(message, modifier, InlineNoticeKind.Error, onRetry, onDismiss, icon)
+}
+
+enum class InlineNoticeKind { Info, Warning, Error }
+
+/** Dismissal belongs to this message instance; it never clears the underlying failure or saved work. */
+@Composable
+fun InlineNotice(
+    message: String,
+    modifier: Modifier = Modifier,
+    kind: InlineNoticeKind = InlineNoticeKind.Info,
+    onRetry: (() -> Unit)? = null,
+    onDismiss: (() -> Unit)? = null,
+    icon: ImageVector? = null,
+) {
+    var dismissed by rememberSaveable(message, kind) { mutableStateOf(false) }
+    val accent = when (kind) {
+        InlineNoticeKind.Error -> MaterialTheme.colorScheme.error
+        InlineNoticeKind.Warning -> MaterialTheme.colorScheme.onSurfaceVariant
+        InlineNoticeKind.Info -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val background = when (kind) {
+        InlineNoticeKind.Error -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
+    }
     AnimatedVisibility(
-        visible = message.isNotBlank(),
-        enter = fadeIn(tween(220)) + slideInVertically(tween(220)) { -it / 4 },
-        exit = fadeOut(tween(180)) + slideOutVertically(tween(180)) { -it / 4 },
+        visible = message.isNotBlank() && !dismissed,
+        enter = fadeIn(tween(160)),
+        exit = fadeOut(tween(120)),
     ) {
         Row(
             modifier = modifier
                 .fillMaxWidth()
-                .border(
-                    1.dp,
-                    MaterialTheme.colorScheme.error.copy(alpha = 0.25f),
-                    RoundedCornerShape(12.dp),
-                )
-                .background(
-                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.18f),
-                    RoundedCornerShape(12.dp),
-                )
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .background(background, RoundedCornerShape(12.dp))
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .padding(start = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(
-                icon,
+                icon ?: when (kind) {
+                    InlineNoticeKind.Info -> Icons.Default.Info
+                    InlineNoticeKind.Warning -> Icons.Default.WarningAmber
+                    InlineNoticeKind.Error -> Icons.Default.ErrorOutline
+                },
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.error,
-                modifier = Modifier.size(20.dp),
+                tint = accent,
+                modifier = Modifier.size(16.dp),
             )
             Text(
                 message,
-                modifier = Modifier.padding(end = 4.dp),
-                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(Modifier.width(0.dp))
             if (onRetry != null) {
                 TextButton(onClick = onRetry, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Text("Retry")
+                    Text(stringResource(R.string.notice_retry), style = MaterialTheme.typography.bodySmall)
                 }
             }
-            if (onDismiss != null) {
-                TextButton(onClick = onDismiss, contentPadding = PaddingValues(horizontal = 8.dp)) {
-                    Text("Dismiss")
-                }
+            IconButton(onClick = { dismissed = true; onDismiss?.invoke() }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Default.Close, stringResource(R.string.notice_dismiss), Modifier.size(16.dp), tint = accent)
             }
         }
     }

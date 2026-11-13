@@ -38,7 +38,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -55,6 +54,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
+import com.nags.operations.ui.components.CompactDeleteButton
+import com.nags.operations.ui.components.InlineNotice
+import com.nags.operations.ui.components.InlineNoticeKind
+import com.nags.operations.ui.components.FeedDateHeading
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -157,9 +160,9 @@ fun NotificationsScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { confirmClear = true }, enabled = state.items.isNotEmpty() && !state.isArchivingAll) {
-                            Icon(Icons.Default.Archive, contentDescription = stringResource(R.string.notifications_clear_all))
-                        }
+                        CompactDeleteButton(stringResource(R.string.notifications_delete_all_messages),
+                            onClick = { confirmClear = true }, enabled = state.items.isNotEmpty() && !state.isArchivingAll,
+                            modifier = Modifier.padding(end = 16.dp))
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.White,
@@ -207,18 +210,16 @@ private fun NotificationsTabHeader(clearEnabled: Boolean, onClear: () -> Unit) {
     val foreground = MaterialTheme.colorScheme.onSurface
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
         HorizontalDivider(color = foreground.copy(alpha = 0.1f))
-        Box(Modifier.fillMaxWidth().height(48.dp)) {
+        Box(Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
             HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = foreground.copy(alpha = 0.1f))
-            Text(stringResource(R.string.notifications_title),
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
-                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
-                maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.align(AbsoluteAlignment.CenterLeft).absolutePadding(left = 16.dp, right = 80.dp))
-            IconButton(onClick = onClear, enabled = clearEnabled,
-                modifier = Modifier.align(AbsoluteAlignment.CenterRight).absolutePadding(right = 16.dp).size(48.dp),
-                colors = IconButtonDefaults.iconButtonColors(contentColor = NotificationDeleteRed,
-                    disabledContentColor = NotificationDeleteRed.copy(alpha = 0.38f))) {
-                Icon(Icons.Default.Archive, contentDescription = stringResource(R.string.notifications_clear_all))
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.notifications_title),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
+                    fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
+                CompactDeleteButton(stringResource(R.string.notifications_delete_all_messages), onClear, enabled = clearEnabled)
             }
         }
     }
@@ -257,13 +258,12 @@ private fun NotificationList(
     }
     Column(Modifier.fillMaxSize()) {
         state.actionError?.let { message ->
-            Text(message, style = MaterialTheme.typography.bodySmall, color = NotificationDeleteRed,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+            InlineNotice(message, kind = InlineNoticeKind.Error,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         }
         if (state.isFromCache) {
-            Text(stringResource(R.string.notifications_cached_list), style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
+            InlineNotice(stringResource(R.string.notifications_cached_list),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         }
         PullToRefreshBox(isRefreshing = state.isRefreshing,
             onRefresh = { viewModel.refresh(userInitiated = true) }, modifier = Modifier.weight(1f).fillMaxWidth()
@@ -287,17 +287,14 @@ private fun NotificationList(
                     verticalArrangement = Arrangement.spacedBy(0.dp), modifier = Modifier.fillMaxSize()) {
                     state.error?.let { message ->
                         item(key = "refresh-error") {
-                            Text(message, color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = { viewModel.refresh(userInitiated = true) }) {
-                                Text(stringResource(R.string.notifications_retry))
-                            }
+                            InlineNotice(message, kind = InlineNoticeKind.Error,
+                                onRetry = { viewModel.refresh(userInitiated = true) },
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                         }
                     }
                     items(rows, key = { it.key }, contentType = { if (it is NotificationFeedRow.Heading) "heading" else "notification" }) { row ->
                         when (row) {
-                            is NotificationFeedRow.Heading -> Text(row.label,
-                                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
+                            is NotificationFeedRow.Heading -> FeedDateHeading(row.label)
                             is NotificationFeedRow.Item -> NotificationCard(row.notification, now,
                                 modifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = tween(160),
                                     placementSpec = spring(dampingRatio = 1f, stiffness = 450f)),
@@ -320,10 +317,8 @@ private fun NotificationList(
                     }
                     state.loadMoreError?.let { message ->
                         item(key = "paging-error") {
-                            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(message, color = MaterialTheme.colorScheme.error)
-                                TextButton(onClick = viewModel::loadMore) { Text(stringResource(R.string.notifications_retry)) }
-                            }
+                            InlineNotice(message, kind = InlineNoticeKind.Error, onRetry = viewModel::loadMore,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                         }
                     }
                 }

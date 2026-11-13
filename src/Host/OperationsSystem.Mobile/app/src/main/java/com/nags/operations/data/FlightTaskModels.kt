@@ -3,6 +3,7 @@ package com.nags.operations.data
 import java.math.BigDecimal
 import java.time.OffsetDateTime
 import java.util.Base64
+import java.util.Locale
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -43,7 +44,7 @@ data class SaveFlightTaskRequest(
             quantity = it.quantity?.let(::canonicalTaskQuantity), startUtc = it.startUtc?.let(::canonicalTaskTime),
             endUtc = it.endUtc?.let(::canonicalTaskTime), notes = optional(it.notes)) }.sortedBy { it.id }
         return copy(startUtc = canonicalTaskTime(startUtc), endUtc = endUtc?.let(::canonicalTaskTime),
-            customerReferenceNumber = optional(customerReferenceNumber), notes = optional(notes),
+            customerReferenceNumber = optional(customerReferenceNumber)?.uppercase(Locale.ROOT), notes = optional(notes),
             performers = performers.map { it.copy(startUtc = canonicalTaskTime(it.startUtc), endUtc = it.endUtc?.let(::canonicalTaskTime),
                 notes = optional(it.notes)) }.sortedBy { it.id }, tools = resources(tools), materials = resources(materials),
             generalSupports = resources(generalSupports), attachments = attachments?.map { it.copy(
@@ -152,6 +153,8 @@ data class FlightTaskRecord(val id: String, val taskType: Int, val startUtc: Str
     val canEdit: Boolean = false, val canSetEnd: Boolean = false, val canDelete: Boolean = false, val canChangeType: Boolean = false,
     val createdByDisplayName: String? = null,
     val endedByDisplayName: String? = null,
+    val updatedByDisplayName: String? = null,
+    val canCloseOnly: Boolean = false,
 ) {
     fun input(): SaveFlightTaskRequest {
         fun resources(items: List<FlightTaskResourceRecord>) = items.map {

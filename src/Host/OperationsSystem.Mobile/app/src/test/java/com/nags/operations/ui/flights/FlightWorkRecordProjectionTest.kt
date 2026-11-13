@@ -103,4 +103,62 @@ class FlightWorkRecordProjectionTest {
         assertEquals("Original creator", serviceMetadata.createdByDisplayName)
         assertEquals("Task creator", taskMetadata.createdByDisplayName)
     }
+
+    @Test fun failedLocalCorrectionsRetainOnlyTheLatestPublishedUpdaterAndNeverUseDeviceSaveTimeAsAnUpdate() {
+        val updatedService = service.copy(updatedAtUtc = "2026-11-12T12:20:00Z", updatedByDisplayName = "Service updater")
+        val updatedTask = task.copy(updatedAtUtc = "2026-11-12T12:25:00Z", updatedByDisplayName = "Task updater")
+        val retainedService = pendingService.copy(reviewedServiceJson = Json.encodeToString(updatedService), status = "conflict")
+        val retainedTask = pendingTask.copy(reviewedTaskJson = Json.encodeToString(updatedTask), status = "failed")
+        for (detail in listOf(flight.copy(services = listOf(updatedService), tasks = listOf(updatedTask)),
+            flight.copy(services = emptyList(), tasks = emptyList()))) {
+            val serviceMetadata = flightServiceRecordMetadata(detail, listOf(retainedService)).getValue(service.id)
+            val taskMetadata = flightTaskRecordMetadata(detail, listOf(retainedTask)).getValue(task.id)
+            assertEquals("Original creator", serviceMetadata.createdByDisplayName)
+            assertEquals("Service updater", serviceMetadata.updatedByDisplayName)
+            assertEquals(updatedService.updatedAtUtc, serviceMetadata.updatedAtUtc)
+            assertEquals("Task creator", taskMetadata.createdByDisplayName)
+            assertEquals("Task updater", taskMetadata.updatedByDisplayName)
+            assertEquals(updatedTask.updatedAtUtc, taskMetadata.updatedAtUtc)
+            assertNotEquals(savedAt, taskMetadata.updatedAtUtc)
+        }
+        val newService = pendingService.copy(serviceRecordId = "new-service", reviewedServiceJson = null)
+        val newTask = pendingTask.copy(taskRecordId = "new-task", reviewedTaskJson = null)
+        assertNull(flightServiceRecordMetadata(flight, listOf(newService)).getValue("new-service").updatedAtUtc)
+        assertNull(flightServiceRecordMetadata(flight, listOf(newService)).getValue("new-service").updatedByDisplayName)
+        assertNull(flightTaskRecordMetadata(flight, listOf(newTask)).getValue("new-task").updatedAtUtc)
+        assertNull(flightTaskRecordMetadata(flight, listOf(newTask)).getValue("new-task").updatedByDisplayName)
+    }
+
+
+    @Test fun pendingAndFailedDeletionsHaveExactDisplayCardsWithoutRestoringTheDesiredWorkGraph() {
+        val catalogs = FlightOperationsCatalogs()
+        val zone = ZoneId.of(flight.stationTimeZoneId)
+        for (status in listOf("pending", "conflict")) {
+            val deletedService = pendingService.copy(operation = "delete", inputJson = null, status = status)
+            val deletedTask = pendingTask.copy(operation = "delete", inputJson = null, status = status)
+            for (detail in listOf(flight, flight.copy(services = emptyList(), tasks = emptyList()))) {
+                val desiredServices = initialServiceEditorDraft(detail, catalogs, listOf(deletedService), null, zone).services
+                val desiredTasks = initialTaskEditorDraft(detail, catalogs, listOf(deletedTask), null, zone)
+                val displayedServices = pendingDeletedServiceDrafts(detail,
+                    listOf(deletedService, deletedService, pendingService.copy(flightId = "other")), catalogs, zone)
+                val displayedTasks = pendingDeletedTaskDrafts(detail, listOf(deletedTask, pendingTask), catalogs, zone)
+
+                assertTrue(desiredServices.isEmpty())
+                assertTrue(desiredTasks.isEmpty())
+                assertEquals(listOf(service.id), displayedServices.map { it.id })
+                assertEquals("Recorded service", displayedServices.single().serviceName)
+                assertEquals(listOf(task.id), displayedTasks.map { it.id })
+                assertEquals(start, displayedTasks.single().period.originalStartUtc)
+                assertEquals("delete", flightServiceRecordMetadata(detail, listOf(deletedService)).getValue(service.id).pendingOperation)
+                assertEquals("delete", flightTaskRecordMetadata(detail, listOf(deletedTask)).getValue(task.id).pendingOperation)
+            }
+        }
+        val vanishedService = pendingService.copy(operation = "delete", inputJson = null, reviewedServiceJson = null, serviceRecordId = "vanished-service")
+        val vanishedTask = pendingTask.copy(operation = "delete", inputJson = null, reviewedTaskJson = null, taskRecordId = "vanished-task")
+        assertEquals("vanished-service", pendingDeletedServiceDrafts(flight, listOf(vanishedService), catalogs, zone).single().id)
+        assertEquals("vanished-task", pendingDeletedTaskDrafts(flight, listOf(vanishedTask), catalogs, zone).single().id)
+        assertTrue(pendingDeletedServiceDrafts(flight, listOf(pendingService), catalogs, zone).isEmpty())
+        assertTrue(pendingDeletedTaskDrafts(flight, listOf(pendingTask), catalogs, zone).isEmpty())
+    }
+
 }

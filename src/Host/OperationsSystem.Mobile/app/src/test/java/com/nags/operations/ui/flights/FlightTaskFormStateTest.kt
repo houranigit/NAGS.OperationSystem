@@ -20,6 +20,7 @@ class FlightTaskFormStateTest {
     private val start = "2026-11-11T11:00:00Z"
     private val end = "2026-11-11T12:00:00Z"
     private val zone = ZoneId.of("Etc/UTC")
+    private val actualArrival = "2026-11-11T10:00:00Z"
     private val catalogs = FlightOperationsCatalogs(stationStaff = listOf(StaffCatalogItem(staffId,
         "Current employee", "E1", "station", "AAA", "Engineer")), tools = listOf(ResourceCatalogItem(resourceId, "Tool", "Duration")),
         materials = listOf(ResourceCatalogItem(resourceId, "Material", "Quantity")))
@@ -69,14 +70,44 @@ class FlightTaskFormStateTest {
             parent, zone, FlightWorkTimeBounds()))
     }
 
+    @Test fun otherwiseValidNewTaskRequiresAnActualArrivalBeforeWork() {
+        val item = draft()
+        val newWorkFlight = flight.copy(tasks = emptyList())
+        val request = item.taskInput(zone)
+        for (missingArrival in listOf(null, "")) {
+            assertEquals(mapOf("startUtc" to R.string.flight_arrival_before_work),
+                taskEditorValidation(item, request, newWorkFlight, catalogs, flight.rowVersion, missingArrival, null))
+        }
+        assertTrue(taskEditorValidation(item, request, newWorkFlight, catalogs, flight.rowVersion, actualArrival, null).isEmpty())
+    }
+
+    @Test fun searchTaskCompletionRequiresParentStaffAndDurationResourceEnds() {
+        val baseline = record.copy(canCloseOnly = true, canEdit = false, canDelete = false,
+            tools = listOf(FlightTaskResourceRecord(resourceRecordId, resourceId, "Tool", 1, startUtc = start)))
+        val searched = flight.copy(tasks = listOf(baseline), isUnassignedSearchFlight = true, canAddTasks = false)
+        val item = initialTaskEditorDraft(searched, catalogs, emptyList(), null, zone).single()
+        assertEquals(R.string.flight_complete_work_end_required, taskEditorValidation(item, item.taskInput(zone),
+            searched, catalogs, flight.rowVersion, actualArrival, null)["endUtc"])
+        val parentClosed = item.copy(period = item.period.copy(end = "2026-11-11T12:00"))
+        val errors = taskEditorValidation(parentClosed, parentClosed.taskInput(zone), searched, catalogs,
+            flight.rowVersion, actualArrival, null)
+        assertEquals(R.string.task_validation_staff_end_required, errors["performers.$performerId.endUtc"])
+        assertEquals(R.string.task_validation_resource_end_required, errors["tools.$resourceRecordId.endUtc"])
+        val closed = parentClosed.copy(employees = parentClosed.employees.map {
+            it.copy(period = it.period.copy(end = "2026-11-11T12:00"))
+        }, tools = parentClosed.tools.map { it.copy(period = it.period.copy(end = "2026-11-11T12:00")) })
+        assertTrue(taskEditorValidation(closed, closed.taskInput(zone), searched, catalogs,
+            flight.rowVersion, actualArrival, null).isEmpty())
+    }
+
     @Test fun invalidServiceStyleClosingErrorsStayOnTaskAndOpenStaffFields() {
         val item = draft().copy(period = FlightWorkPeriod("2026-11-11T11:00", "2026-11-11T12:00"))
-        val errors = taskEditorValidation(item, item.taskInput(zone), flight, catalogs, flight.rowVersion, null, null)
+        val errors = taskEditorValidation(item, item.taskInput(zone), flight, catalogs, flight.rowVersion, actualArrival, null)
         assertEquals(R.string.task_validation_open_periods, errors["endUtc"])
         assertEquals(R.string.task_validation_staff_end_required, errors["performers.$performerId.endUtc"])
         assertFalse(errors.containsKey("performers"))
         val closed = item.copy(employees = item.employees.map { it.copy(period = it.period.copy(end = "2026-11-11T12:00")) })
-        assertTrue(taskEditorValidation(closed, closed.taskInput(zone), flight, catalogs, flight.rowVersion, null, null).isEmpty())
+        assertTrue(taskEditorValidation(closed, closed.taskInput(zone), flight, catalogs, flight.rowVersion, actualArrival, null).isEmpty())
     }
 
     @Test fun unchangedSavedSnapshotsRetainChapterAndResourceMetadataAfterCatalogChanges() {
@@ -90,7 +121,7 @@ class FlightTaskFormStateTest {
         assertEquals(1, item.tools.single().calculationType)
         assertEquals(published.input(), item.taskInput(zone))
         assertTrue(taskEditorValidation(item, item.taskInput(zone), flight.copy(tasks = listOf(published)),
-            changedCatalog.copy(ataChapters = emptyList()), flight.rowVersion, null, null).isEmpty())
+            changedCatalog.copy(ataChapters = emptyList()), flight.rowVersion, actualArrival, null).isEmpty())
     }
 
     @Test fun pendingInputRetainsPdfForNullAttachmentListButRespectsExplicitRemovalAndDeletion() {

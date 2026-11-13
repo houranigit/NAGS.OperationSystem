@@ -13,6 +13,7 @@ public sealed class FlightConfiguration : IEntityTypeConfiguration<Flight>
         builder.Property(f => f.Id).ValueGeneratedNever();
 
         builder.Property(f => f.CreatedAtUtc).IsRequired();
+        builder.Property(f => f.AdHocCreationFingerprint).HasMaxLength(64);
         builder.Property(f => f.RowVersion).IsRowVersion();
 
         builder.OwnsOne(f => f.FlightNumber, n =>

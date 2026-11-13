@@ -80,6 +80,10 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AdHocCreationFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("datetimeoffset");
 
@@ -555,6 +559,29 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("CK_flight_task_tools_ResourceUsage", "([CalculationType] = 0 AND [Quantity] IS NOT NULL AND [Quantity] > 0 AND [FromUtc] IS NULL AND [ToUtc] IS NULL) OR ([CalculationType] = 1 AND [Quantity] IS NULL AND [FromUtc] IS NOT NULL AND ([ToUtc] IS NULL OR [ToUtc] >= [FromUtc]))");
                         });
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightUserActivity", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("FlightId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("LastInteractionAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("UsedSearch")
+                        .HasColumnType("bit");
+
+                    b.HasKey("UserId", "FlightId");
+
+                    b.HasIndex("FlightId");
+
+                    b.HasIndex("UserId", "LastInteractionAtUtc", "FlightId");
+
+                    b.ToTable("flight_user_activities", "operations");
                 });
 
             modelBuilder.Entity("Operations.Domain.Flights.PlannedService", b =>
@@ -1163,8 +1190,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                                         .HasForeignKey("DepartureDetailsFlightDepartureSubmissionId");
                                 });
 
-                            b1.Navigation("CustomerSignature")
-                                .IsRequired();
+                            b1.Navigation("CustomerSignature");
 
                             b1.Navigation("HandledByEmployee")
                                 .IsRequired();
@@ -1923,6 +1949,15 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Usage")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightUserActivity", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.Flight", null)
+                        .WithMany()
+                        .HasForeignKey("FlightId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

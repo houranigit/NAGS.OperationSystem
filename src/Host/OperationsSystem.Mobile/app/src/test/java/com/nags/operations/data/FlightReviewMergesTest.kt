@@ -21,11 +21,11 @@ class FlightReviewMergesTest {
         assertEquals(changedStart, merged.ata)
         assertEquals(id(1), merged.aircraftTypeId)
         assertEquals("LOCAL", merged.aircraftTailNumber)
-        assertEquals("online field three", merged.customerWorkReferenceNumber)
+        assertEquals("ONLINE FIELD THREE", merged.customerWorkReferenceNumber)
         assertEquals("local remarks", merged.remarks)
         assertEquals(id(2), merged.targetSubmissionId)
         assertFalse(merged.acknowledgeConflictingSubmission)
-        assertEquals(online, mergeArrivalReview(online, local.copy(ata = "", aircraftTailNumber = " ", remarks = "\n")))
+        assertEquals(online.normalized(), mergeArrivalReview(online, local.copy(ata = "", aircraftTailNumber = " ", remarks = "\n")))
     }
 
     @Test fun departureRetainsOnlineSignatureAndSigningTimeTogetherUnlessLocalSignatureIsProvided() {
@@ -59,7 +59,7 @@ class FlightReviewMergesTest {
         assertEquals(id(1), merged.serviceId)
         assertEquals(changedStart, merged.startUtc)
         assertEquals(end, merged.endUtc)
-        assertEquals("local reference", merged.customerReferenceNumber)
+        assertEquals("LOCAL REFERENCE", merged.customerReferenceNumber)
         assertEquals("online field three", merged.notes)
         assertEquals(setOf(id(11), id(12), id(13)), merged.performers.map { it.id }.toSet())
         assertEquals(retained.copy(startUtc = changedStart), merged.performers.single { it.staffMemberId == id(21) })
@@ -108,7 +108,7 @@ class FlightReviewMergesTest {
         assertEquals(changedStart, merged.startUtc)
         assertEquals(end, merged.endUtc)
         assertEquals(id(41), merged.ataChapterId)
-        assertEquals("online reference", merged.customerReferenceNumber)
+        assertEquals("ONLINE REFERENCE", merged.customerReferenceNumber)
         assertEquals("local notes", merged.notes)
         assertEquals(listOf(performer), merged.performers)
     }

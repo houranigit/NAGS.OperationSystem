@@ -29,7 +29,7 @@ public sealed class GetFlightNotificationTargetsQueryHandler(
             var resolved = await mobileScope.ResolveAsync(cancellationToken);
             if (resolved.IsFailure)
                 return resolved.Error;
-            query = MobileFlightQuery.ApplyScope(query, resolved.Value);
+            query = MobileFlightQuery.ApplyReadScope(query, resolved.Value);
         }
         else
         {

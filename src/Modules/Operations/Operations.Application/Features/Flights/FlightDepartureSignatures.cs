@@ -22,8 +22,8 @@ public sealed class GetMobileFlightDepartureSignatureQueryHandler(
     {
         var resolved = await scope.ResolveAsync(cancellationToken);
         if (resolved.IsFailure) return resolved.Error;
-        var flight = await MobileFlightQuery.ApplyScope(db.Flights.AsNoTracking(), resolved.Value)
-            .Include(f => f.DepartureSubmissions).Include(f => f.AssignedEmployees)
+        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), resolved.Value)
+            .Include(f => f.DepartureSubmissions).Include(f => f.AssignedEmployees).Include(f => f.PlannedServices)
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         if (flight is null) return NotFound();
         var submissions = flight.DepartureSubmissions.OrderBy(d => d.CreatedAtUtc).ThenBy(d => d.Id).ToArray();
@@ -32,13 +32,14 @@ public sealed class GetMobileFlightDepartureSignatureQueryHandler(
         var requested = submissions.SingleOrDefault(d => d.Id == request.SubmissionId);
         if (requested is null || requested.Id != visible?.Id &&
             requested.SubmittedByEmployee.StaffMemberId != resolved.Value.StaffMemberId &&
-            !flight.AssignedEmployees.Any(e => e.Employee.StaffMemberId == resolved.Value.StaffMemberId))
+            !flight.CanCorrectOperationalWork(resolved.Value.StaffMemberId))
             return NotFound();
+        if (requested.Details.CustomerSignature is not { } signature) return NotFound();
         if ((requested.UpdatedAtUtc ?? requested.CreatedAtUtc) != request.ExpectedUpdatedAt)
             return Error.PreconditionFailed("The departure signature changed. Reload the flight and retry.",
                 "Operations.Flight.DepartureSignatureChanged");
         // Storage references remain server-owned and are never sent to the client.
-        var content = await storage.OpenAsync(requested.Details.CustomerSignature.StorageKey, cancellationToken);
+        var content = await storage.OpenAsync(signature.StorageKey, cancellationToken);
         return content is null ? NotFound() : new FlightDepartureSignatureContent(content);
     }
 

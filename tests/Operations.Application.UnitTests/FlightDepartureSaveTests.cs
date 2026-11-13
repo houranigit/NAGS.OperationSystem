@@ -35,6 +35,18 @@ public sealed class FlightDepartureSaveTests
     }
 
     [Fact]
+    public async Task Activity_read_failure_after_signature_staging_cleans_unreferenced_bytes()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Writes.ThrowOnActivityRead = true;
+        await Should.ThrowAsync<IOException>(() => fixture.SaveAsync());
+        fixture.Storage.Files.ShouldBeEmpty();
+        fixture.Storage.DeleteTokens.ShouldHaveSingleItem().CanBeCanceled.ShouldBeFalse();
+        fixture.Db.ChangeTracker.Clear();
+        (await fixture.Db.Flights.Include(item => item.DepartureSubmissions).SingleAsync()).DepartureSubmissions.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task Canceled_save_does_not_cancel_cleanup_of_the_unreferenced_signature()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -109,6 +121,40 @@ public sealed class FlightDepartureSaveTests
         fixture.Storage.Files.Count.ShouldBe(2); // Old-file cleanup is best effort; accepted bytes stay intact.
     }
 
+    [Fact]
+    public async Task Unsigned_departure_roundtrips_and_omission_retains_a_later_signature()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var unsigned = f.Input with { SignatureContent = null, SignatureSignedAtUtc = null };
+        var saved = await f.Handler.Handle(new(f.Flight.Id, unsigned, f.Flight.RowVersion), CancellationToken.None);
+        saved.IsSuccess.ShouldBeTrue(); saved.Value.Submission.HasSignature.ShouldBeFalse();
+        saved.Value.Submission.SignatureVersion.ShouldBeNull(); f.Storage.Files.ShouldBeEmpty();
+        var signed = await f.SaveAsync(); signed.IsSuccess.ShouldBeTrue();
+        signed.Value.Submission.HasSignature.ShouldBeTrue();
+        var corrected = await f.Handler.Handle(new(f.Flight.Id, unsigned with { Remarks = "Updated" }, f.Flight.RowVersion), CancellationToken.None);
+        corrected.IsSuccess.ShouldBeTrue(); corrected.Value.Submission.SignatureVersion.ShouldBe(signed.Value.Submission.SignatureVersion);
+        corrected.Value.Submission.HasSignature.ShouldBeTrue(); f.Storage.Files.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public async Task Departure_requires_arrival_before_signature_upload()
+    {
+        await using var f = await Fixture.CreateAsync(withArrival: false);
+        (await f.SaveAsync()).Error.Code.ShouldBe("Operations.Flight.ArrivalRequired");
+        f.Storage.Files.ShouldBeEmpty(); f.Flight.DepartureSubmissions.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Departure_before_arrival_is_rejected_and_equal_actuals_are_allowed()
+    {
+        await using var f = await Fixture.CreateAsync();
+        var early = f.Input with { Atd = Now.AddHours(-2) };
+        (await f.Handler.Handle(new(f.Flight.Id, early, f.Flight.RowVersion), CancellationToken.None))
+            .Error.Code.ShouldBe("Operations.Flight.DepartureBeforeArrival");
+        var equal = f.Input with { Atd = Now.AddHours(-1), SignatureContent = null, SignatureSignedAtUtc = null };
+        (await f.Handler.Handle(new(f.Flight.Id, equal, f.Flight.RowVersion), CancellationToken.None)).IsSuccess.ShouldBeTrue();
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         public required OperationsDbContext Db { get; init; }
@@ -122,7 +168,7 @@ public sealed class FlightDepartureSaveTests
         public Task<Result<FlightDepartureSavedDto>> SaveAsync(CancellationToken ct = default) =>
             Handler.Handle(new SaveFlightDepartureCommand(Flight.Id, Input, Flight.RowVersion), ct);
 
-        public static async Task<Fixture> CreateAsync()
+        public static async Task<Fixture> CreateAsync(bool withArrival = true)
         {
             var db = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -135,6 +181,13 @@ public sealed class FlightDepartureSaveTests
                 new OperationTypeSnapshot(Guid.NewGuid(), "Transit"), FlightNumber.Create("SV100", "SV").Value,
                 ScheduledTime.Create(Now.AddHours(-1), Now.AddHours(1)).Value, null,
                 [new ServiceSnapshot(reader.ServiceId, "Service")], [new StaffMemberSnapshot(staffId, "Handling employee", "E1")], userId, Now).Value;
+            if (withArrival)
+            {
+                var employee = new StaffMemberSnapshot(staffId, "Handling employee", "E1");
+                flight.SubmitArrival(employee, ArrivalDetails.Create(null, Now.AddHours(-1),
+                    new AircraftTypeSnapshot(Guid.NewGuid(), "Boeing", "737"), "HZ-TEST", employee, null).Value,
+                    userId, Now.AddHours(-1)).IsSuccess.ShouldBeTrue();
+            }
             db.Flights.Add(flight);
             await db.SaveChangesAsync();
             var writes = new WriteBoundary(db);
@@ -151,7 +204,9 @@ public sealed class FlightDepartureSaveTests
     private sealed class WriteBoundary(OperationsDbContext db) : IOperationsDbContext
     {
         public Func<CancellationToken, Task<int>>? Save { get; set; }
+        public bool ThrowOnActivityRead { get; set; }
         public DbSet<Flight> Flights => db.Flights;
+        public DbSet<FlightUserActivity> FlightUserActivities => ThrowOnActivityRead ? throw new IOException("Injected activity read failure") : db.FlightUserActivities;
         public DbSet<OutboxMessage> OutboxMessages => db.OutboxMessages;
         public DbSet<InboxMessage> InboxMessages => db.InboxMessages;
         public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion) where TEntity : class =>

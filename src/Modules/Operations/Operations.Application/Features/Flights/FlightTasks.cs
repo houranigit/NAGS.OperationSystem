@@ -65,12 +65,25 @@ public sealed class SaveFlightTaskCommandHandler(IOperationsDbContext db, IMobil
                 return Error.Validation("Use a new attachment ID to replace a file.", "Operations.FlightTask.AttachmentImmutable");
         }
         var coreMatches = existing is not null && FlightTaskInputs.CoreMatches(existing, input);
-        var assignedCorrection = flight.AssignedEmployees.Any(employee => employee.Employee.StaffMemberId == actor.StaffMemberId);
+        var assignedCorrection = flight.CanCorrectOperationalWork(actor.StaffMemberId);
         var names = await FlightWorkAttribution.NamesAsync(userNames,
-            new Guid?[] { existing?.CreatedByUserId, existing?.EndedByUserId, actor.UserId }, ct);
+            new Guid?[] { existing?.CreatedByUserId, existing?.EndedByUserId, existing?.UpdatedByUserId, actor.UserId }, ct);
         var mediaMatches = existing is not null && await FlightTaskFiles.MatchesAsync(storage, existing, input.Attachments, ct);
         if (existing is not null && coreMatches && existing.Window.ToUtc == input.EndUtc && mediaMatches)
             return FlightTaskWrites.Saved(flight, existing, actor.UserId, assignedCorrection, names);
+        var arrivalRequired = FlightActualRules.RequireArrival(flight, actor.StaffMemberId);
+        if (arrivalRequired.IsFailure) return arrivalRequired.Error;
+        var chronology = FlightActualRules.Chronology(flight, actor.StaffMemberId);
+        if (chronology.IsFailure) return chronology.Error;
+        if (existing is null)
+        {
+            var newWork = FlightSearchPolicy.NewWork(flight, actor.StaffMemberId);
+            if (newWork.IsFailure) return newWork.Error;
+        }
+        var closureOnly = existing is not null && FlightSearchPolicy.IsUnassignedRegular(flight, actor.StaffMemberId) &&
+            FlightSearchPolicy.TaskClosure(existing, input, mediaMatches);
+        if (existing is not null && FlightSearchPolicy.IsUnassignedRegular(flight, actor.StaffMemberId) &&
+            existing.CreatedByUserId != actor.UserId && !closureOnly) return FlightSearchPolicy.ClosureReadOnly();
         var bounds = FlightTaskBounds.Validate(flight, input, actor.StaffMemberId);
         if (bounds.IsFailure) return bounds.Error;
         var completed = FlightTaskBounds.RequireCompletedIfDeparted(flight, input, actor.StaffMemberId);
@@ -79,7 +92,7 @@ public sealed class SaveFlightTaskCommandHandler(IOperationsDbContext db, IMobil
         if (closed.IsFailure) return closed.Error;
         if (existing is not null)
         {
-            if ((!coreMatches || !mediaMatches) && existing.CreatedByUserId != actor.UserId && !assignedCorrection)
+            if ((!coreMatches || !mediaMatches) && existing.CreatedByUserId != actor.UserId && !assignedCorrection && !closureOnly)
                 return Error.Forbidden("Only its creator or an assigned employee can change this task.", "Operations.FlightTask.ReadOnly");
             if (existing.Window.ToUtc != input.EndUtc && existing.Window.ToUtc is not null && existing.EndedByUserId != actor.UserId && !assignedCorrection)
                 return Error.Forbidden("Only its recorded closer or an assigned employee can change or clear End.", "Operations.FlightTask.EndReadOnly");
@@ -139,6 +152,7 @@ public sealed class SaveFlightTaskCommandHandler(IOperationsDbContext db, IMobil
                     UpdatedByDisplayName = names.GetValueOrDefault(actor.UserId) ?? "", OccurredOnUtc = clock.GetUtcNow()
                 });
             db.SetOriginalRowVersion(flight, request.RowVersion);
+            await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), ct);
             await db.SaveChangesAsync(ct);
         }
         catch (DbUpdateConcurrencyException)
@@ -190,7 +204,7 @@ public sealed class DeleteFlightTaskCommandHandler(IOperationsDbContext db, IMob
         if (record?.ReturnToRampId is not null) return FlightTaskWrites.NotFound();
         if (record is not null)
         {
-            var assignedCorrection = flight.AssignedEmployees.Any(employee => employee.Employee.StaffMemberId == resolved.Value.StaffMemberId);
+            var assignedCorrection = flight.CanCorrectOperationalWork(resolved.Value.StaffMemberId);
             if (!assignedCorrection && (record.CreatedByUserId != resolved.Value.UserId || record.Window.ToUtc is not null && record.EndedByUserId != resolved.Value.UserId))
                 return Error.Forbidden("Only its creator can delete a task, and another employee's end time must be retained.", "Operations.FlightTask.DeleteReadOnly");
             if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
@@ -212,6 +226,7 @@ public sealed class DeleteFlightTaskCommandHandler(IOperationsDbContext db, IMob
                 });
             }
             db.SetOriginalRowVersion(flight, request.RowVersion);
+            await FlightActivityRecorder.TouchAsync(db, flight, resolved.Value, clock.GetUtcNow(), ct);
             try { await db.SaveChangesAsync(ct); }
             catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
             catch { await FlightTaskFiles.DeleteUnreferencedAsync(db, storage, keys); throw; }
@@ -229,7 +244,9 @@ internal static class FlightTaskWrites
     {
         var counts = FlightServiceWrites.Counts(flight);
         return new(FlightTaskDto.Map(task, actor, true, assignedCorrection, names.GetValueOrDefault(task.CreatedByUserId),
-            task.EndedByUserId is { } closer ? names.GetValueOrDefault(closer) : null), Convert.ToBase64String(flight.RowVersion), counts.Active, counts.Completed);
+            task.EndedByUserId is { } closer ? names.GetValueOrDefault(closer) : null,
+            task.UpdatedByUserId is { } updater ? names.GetValueOrDefault(updater) : null,
+            closeOnly: !assignedCorrection && task.CreatedByUserId != actor), Convert.ToBase64String(flight.RowVersion), counts.Active, counts.Completed);
     }
     internal static Error NotFound() => Error.NotFound("Flight task not found.", "Operations.FlightTask.NotFound");
     internal static Error Cancellation() => Error.Conflict("A flight with cancellation submissions cannot have tasks.", "Operations.Flight.CancellationSubmitted");

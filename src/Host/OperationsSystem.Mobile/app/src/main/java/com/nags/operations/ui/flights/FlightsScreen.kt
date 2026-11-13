@@ -85,10 +85,18 @@ import com.nags.operations.data.cancellationAtUtcForCard
 import com.nags.operations.data.userMessage
 import com.nags.operations.R
 import com.nags.operations.data.FlightCategory
+import com.nags.operations.data.FlightDiscoverySource
+import com.nags.operations.ui.components.FeedDateHeading
+import androidx.compose.material.icons.automirrored.filled.ManageSearch
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.platform.LocalLocale
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.ui.components.EmptyState
-import com.nags.operations.ui.components.ErrorState
+import com.nags.operations.ui.components.InlineNotice
+import com.nags.operations.ui.components.InlineNoticeKind
 import com.nags.operations.ui.components.FlightCard
 import com.nags.operations.ui.invite.InviteEmployeesDialog
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -109,14 +117,17 @@ fun FlightsScreen(
     selectedTab: Int = 0,
     onSelectTab: (Int) -> Unit = {},
     bottomContentPadding: Dp = 80.dp,
+    discoverySource: FlightDiscoverySource? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var pendingNavigationFlightId by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingNavigationKey by rememberSaveable { mutableStateOf<String?>(null) }
     // Keep each list alive even when the pager disposes an offscreen page.
     val normalListStates = key(state.stationId, state.permissionDenied) {
-        List(FlightCategory.entries.size) { rememberLazyListState() }
+        List(if (discoverySource == null) FlightCategory.entries.size else 1) { rememberLazyListState() }
     }
     val searchListStates = key(state.search, state.stationId, state.permissionDenied) {
-        List(FlightCategory.entries.size) { rememberLazyListState() }
+        List(if (discoverySource == null) FlightCategory.entries.size else 1) { rememberLazyListState() }
     }
     val listStates = if (state.search.isNotBlank()) searchListStates else normalListStates
     val keyboard = LocalSoftwareKeyboardController.current
@@ -126,12 +137,14 @@ fun FlightsScreen(
         focusManager.clearFocus()
         viewModel.closeSearch()
     }
-    BackHandler(enabled = state.isSearchOpen && state.selectedFlightId == null) { closeSearch() }
-    val pagerState = rememberPagerState(initialPage = selectedTab) { FlightCategory.entries.size }
+    BackHandler(enabled = discoverySource == null && state.isSearchOpen && state.selectedFlightId == null) { closeSearch() }
+    val pagerState = rememberPagerState(initialPage = selectedTab) { if (discoverySource == null) FlightCategory.entries.size else 1 }
+    LaunchedEffect(viewModel, discoverySource) { if (discoverySource != null) viewModel.openSearch() }
     val pagerScope = rememberCoroutineScope()
     val notifyTabSelection by rememberUpdatedState(onSelectTab)
     val requestedTab = if (notificationOpenRequest != null) 0 else selectedTab
     LaunchedEffect(viewModel, requestedTab, notificationOpenRequest) {
+        if (discoverySource != null) return@LaunchedEffect
         // A selection echoed by the host must not interrupt the next swipe.
         if (pagerState.settledPage != requestedTab ||
             (notificationOpenRequest != null && pagerState.isScrollInProgress)) {
@@ -141,6 +154,7 @@ fun FlightsScreen(
         viewModel.setCategory(FlightCategory.entries[requestedTab])
     }
     LaunchedEffect(viewModel, pagerState) {
+        if (discoverySource != null) return@LaunchedEffect
         // Restoration is handled above; only a completed swipe or tap selects a new feed.
         snapshotFlow { pagerState.settledPage }.drop(1).distinctUntilChanged().collect { page ->
             viewModel.setCategory(FlightCategory.entries[page])
@@ -170,6 +184,8 @@ fun FlightsScreen(
     }
 
     fun closeFlight() {
+        pendingNavigationFlightId = null
+        pendingNavigationKey = null
         notificationOpenRequest?.let { request ->
             if (request.flightId == state.selectedFlightId) onNotificationHandled(request.notificationId)
         }
@@ -182,25 +198,46 @@ fun FlightsScreen(
                 animationSpec = tween(TAB_SLIDE_MILLIS, easing = FastOutSlowInEasing))
         }
     }
+    fun openPending(flightId: String, targetKey: String) {
+        keyboard?.hide()
+        focusManager.clearFocus()
+        pendingNavigationFlightId = flightId
+        pendingNavigationKey = targetKey
+        viewModel.openFlight(flightId)
+    }
     Column(Modifier.fillMaxSize().imePadding()) {
-        FlightTabSearchHeader(isSearchOpen = state.isSearchOpen, query = state.search,
+        if (discoverySource == null) FlightTabSearchHeader(isSearchOpen = state.isSearchOpen, query = state.search,
             onQueryChange = viewModel::setSearch, onOpenSearch = viewModel::openSearch,
             onCloseSearch = ::closeSearch) {
             FlightsPageTabs(pagerState = pagerState, onSelectTab = selectTab, enabled = !state.isSearchOpen)
         }
-        if (state.isUsingCachedList || !state.isOnline) {
-            Text(stringResource(if (state.isUsingCachedList) R.string.flights_cached_list else R.string.flights_offline_hint),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        else {
+            val placeholder = stringResource(if (discoverySource == FlightDiscoverySource.Search)
+                R.string.home_search_flight_number else R.string.home_search_my_work)
+            FlightTabSearchHeader(isSearchOpen = true, query = state.search,
+                onQueryChange = viewModel::setSearch, onOpenSearch = viewModel::openSearch,
+                onCloseSearch = {}, searchDescription = placeholder, placeholder = placeholder,
+                showCloseButton = false, autoFocusOnOpen = false, searchAtPhysicalRight = true,
+                searchIcon = if (discoverySource == FlightDiscoverySource.Search) Icons.AutoMirrored.Filled.ManageSearch else Icons.Default.Search,
+                tabs = {})
         }
-        HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds()) { page ->
+        if (state.isUsingCachedList || !state.isOnline) {
+            InlineNotice(stringResource(if (state.isUsingCachedList) R.string.flights_cached_list else R.string.flights_offline_hint),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), kind = InlineNoticeKind.Info)
+        }
+        if (discoverySource != null) Box(Modifier.weight(1f).fillMaxWidth()) {
+            FlightListPage(state, viewModel, listStates.first(), bottomContentPadding, active = true,
+                onPendingClick = ::openPending, discoverySource = discoverySource)
+        }
+        else HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds()) { page ->
             val category = FlightCategory.entries[page]
             FlightListPage(state = state.forCategory(category), viewModel = viewModel,
                 listState = listStates[page],
                 bottomContentPadding = bottomContentPadding,
-                active = page == pagerState.settledPage && state.category == category)
+                active = page == pagerState.settledPage && state.category == category,
+                onPendingClick = ::openPending)
         }
-        if (state.isSearchOpen) {
+        if (discoverySource == null && state.isSearchOpen) {
             FlightSearchScopeTabs(selectedTab = pagerState.currentPage, onSelectTab = selectTab,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
         }
@@ -276,14 +313,24 @@ fun FlightsScreen(
         // The open form owns a stable snapshot, including across activity recreation.
         // Background detail updates must not replace the form's original snapshot.
         var recordingFlightSnapshot by rememberSaveable { mutableStateOf<String?>(null) }
+        var recordingInitialNavigationKey by rememberSaveable { mutableStateOf<String?>(null) }
         val recordingFlight = remember(recordingFlightSnapshot) {
             recordingFlightSnapshot?.let { Json.decodeFromString<FlightDetail>(it) }
         }
         val recordingFormState = rememberSaveableStateHolder()
-        fun openRecordingForm(kind: String) {
+        fun openRecordingForm(kind: String, initialNavigationKey: String? = null) {
+            recordingInitialNavigationKey = initialNavigationKey
             recordingFlightSnapshot = state.detail?.let { Json.encodeToString(it) }
             recordingFormSessionId = UUID.randomUUID().toString()
             recordingForm = kind
+        }
+        LaunchedEffect(state.detail, pendingNavigationFlightId, pendingNavigationKey) {
+            if (state.detail?.id == pendingNavigationFlightId && pendingNavigationKey != null) {
+                val target = pendingNavigationKey
+                openRecordingForm(if (target == "cancellation") "cancellation" else "operations", target)
+                pendingNavigationFlightId = null
+                pendingNavigationKey = null
+            }
         }
         val sheetListItem = state.items.firstOrNull { it.id == state.selectedFlightId }
         val sheetWork = remember(state.detail, pendingServices, pendingTasks, sheetCatalogs) {
@@ -319,12 +366,17 @@ fun FlightsScreen(
                 val closeForm = {
                     recordingForm = null
                     recordingFlightSnapshot = null
+                    recordingInitialNavigationKey = null
                     recordingFormState.removeState(activeFormKey)
                 }
                 if (activeForm == "operations") {
                     val catalogs by viewModel.operationsCatalogs.collectAsStateWithLifecycle(initialValue = FlightOperationsCatalogs())
-                    FlightOperationsForm(state.detail ?: flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm, catalogs = catalogs.forStation(flight.stationId),
+                    if ((state.detail ?: flight).isAdHocFlight && viewModel.adHocRepository != null) {
+                        AdHocFlightEditor(viewModel, state.detail ?: flight, closeForm,
+                            initialNavigationKey = recordingInitialNavigationKey, progressStatus = progressStatus)
+                    } else FlightOperationsForm(state.detail ?: flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm, catalogs = catalogs.forStation(flight.stationId),
                         listItem = state.items.firstOrNull { it.id == flight.id },
+                        initialNavigationKey = recordingInitialNavigationKey,
                         pending = pendingArrivals.firstOrNull { it.flightId == flight.id },
                         pendingDeparture = pendingDepartures.firstOrNull { it.flightId == flight.id },
                         pendingServices = pendingServices.filter { it.flightId == flight.id },
@@ -366,6 +418,8 @@ private fun FlightListPage(
     listState: LazyListState,
     bottomContentPadding: Dp,
     active: Boolean,
+    onPendingClick: (flightId: String, navigationKey: String) -> Unit,
+    discoverySource: FlightDiscoverySource? = null,
 ) {
     // Account-scoped durable input updates card badges immediately, without detail HTTP reads.
     val savedArrivals by (viewModel.arrivals?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
@@ -378,6 +432,9 @@ private fun FlightListPage(
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val savedTasks by (viewModel.tasks?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
         .collectAsStateWithLifecycle(initialValue = emptyList())
+    val savedAdHoc by (viewModel.adHocRepository?.pending ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val adHocById = remember(savedAdHoc) { savedAdHoc.associateBy { it.flightId } }
     val workNeedsReviewIds = remember(savedServices, savedTasks) {
         (savedServices.filter { it.status != "pending" }.map { it.flightId } + savedTasks.filter { it.status != "pending" }.map { it.flightId }).toSet()
     }
@@ -414,29 +471,45 @@ private fun FlightListPage(
     }
     val onRefresh: () -> Unit = { if (active) viewModel.refresh() }
     val onLoadMore: () -> Unit = { if (active) viewModel.loadMore() }
+    val feedRows = remember(state.items, discoverySource, state.search, state.totalCount) {
+        flightDiscoveryRows(state.items, discoverySource == FlightDiscoverySource.Search &&
+            state.search.isNotBlank() && (state.totalCount > 1 || state.items.size > 1))
+    }
     PullToRefreshBox(isRefreshing = state.showRefreshIndicator, onRefresh = onRefresh,
         modifier = if (active) Modifier.fillMaxSize() else Modifier.fillMaxSize().clearAndSetSemantics { }) {
         when {
+            discoverySource == FlightDiscoverySource.Search && state.search.isBlank() && state.items.isEmpty() ->
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                    if (state.permissionDenied || state.isOnline) state.error?.let {
+                        InlineNotice(it, kind = InlineNoticeKind.Error, onRetry = onRefresh)
+                    }
+                }
             !state.hasLoadedList && state.items.isEmpty() && (state.isLoading || state.isRefreshing ||
                 (state.hasMore && state.error == null && state.loadMoreError == null)) ->
                 FlightListSkeleton(Modifier.fillMaxSize())
             state.error != null && state.items.isEmpty() -> Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
-                ErrorState(title = stringResource(if (state.permissionDenied) R.string.flights_access else R.string.flights_load_failed),
-                    message = if (state.permissionDenied) stringResource(R.string.flights_view_forbidden) else state.error, onRetry = onRefresh)
+                InlineNotice(message = if (state.permissionDenied) stringResource(R.string.flights_view_forbidden) else state.error,
+                    modifier = Modifier.padding(16.dp), kind = InlineNoticeKind.Error, onRetry = onRefresh)
             }
             state.items.isEmpty() && state.loadMoreError != null -> Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
-                ErrorState(title = stringResource(R.string.flights_load_failed),
-                    message = state.loadMoreError, onRetry = onLoadMore)
+                InlineNotice(message = state.loadMoreError, modifier = Modifier.padding(16.dp),
+                    kind = InlineNoticeKind.Error, onRetry = onLoadMore)
             }
             state.items.isEmpty() -> Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
                 EmptyState(icon = Icons.Default.FlightTakeoff,
                     title = stringResource(if (state.search.isNotBlank()) R.string.flights_no_matches
+                        else if (discoverySource == FlightDiscoverySource.History) R.string.flight_history_empty
                         else when (state.category) {
                             FlightCategory.PerLanding -> R.string.flights_per_landing_empty
                             FlightCategory.AdHoc -> R.string.flights_adhoc_empty
                             FlightCategory.MyFlights -> R.string.flights_empty
                         }),
-                    message = stringResource(if (state.search.isBlank()) R.string.flights_empty_hint else R.string.flights_search_hint))
+                    message = stringResource(when {
+                        discoverySource == FlightDiscoverySource.History && state.search.isBlank() -> R.string.flight_history_empty_hint
+                        discoverySource == FlightDiscoverySource.Search -> R.string.flight_exact_search_empty_hint
+                        state.search.isBlank() -> R.string.flights_empty_hint
+                        else -> R.string.flights_search_hint
+                    }))
             }
             else -> LazyColumn(
                 state = listState,
@@ -446,25 +519,52 @@ private fun FlightListPage(
             ) {
                 state.error?.let { error ->
                     item(key = "list-error") {
-                        Text(error, color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = onRefresh) { Text(stringResource(R.string.flights_retry)) }
+                        InlineNotice(error, kind = InlineNoticeKind.Error, onRetry = onRefresh)
                     }
                 }
-                items(state.items, key = { it.id }, contentType = { "flight" }) { flight ->
+                if (discoverySource == FlightDiscoverySource.Search && state.search.isBlank()) item(key = "recently-viewed") {
+                    FeedDateHeading(stringResource(R.string.flight_recently_viewed), horizontalPadding = 0.dp)
+                }
+                items(feedRows, key = { it.key }, contentType = { if (it is FlightDiscoveryFeedRow.Heading) "heading" else "flight" }) { row ->
+                    if (row is FlightDiscoveryFeedRow.Heading) {
+                        val today = cardNow.atZone(ZoneId.of(row.stationTimeZoneId)).toLocalDate()
+                        val label = when (row.date) {
+                            null -> stringResource(R.string.feed_earlier)
+                            today -> stringResource(R.string.feed_today)
+                            today.minusDays(1) -> stringResource(R.string.feed_yesterday)
+                            else -> row.date.format(DateTimeFormatter.ofPattern(
+                                if (row.date.year == today.year) "MMMM d" else "MMMM d, yyyy", LocalLocale.current.platformLocale))
+                        }
+                        FeedDateHeading(label, horizontalPadding = 0.dp)
+                    } else {
+                    val flight = (row as FlightDiscoveryFeedRow.Flight).flight
                     val pendingProgress = flight.cardPendingProgress(arrivalsById[flight.id], departuresById[flight.id], cancellationsById[flight.id])
                     val needsReview = pendingProgress == FlightProgressStatus.ArrivalNeedsReview ||
-                        pendingProgress == FlightProgressStatus.DepartureNeedsReview || pendingProgress == FlightProgressStatus.CancellationNeedsReview || flight.id in workNeedsReviewIds
+                        pendingProgress == FlightProgressStatus.DepartureNeedsReview || pendingProgress == FlightProgressStatus.CancellationNeedsReview ||
+                        flight.id in workNeedsReviewIds || adHocById[flight.id]?.status?.let { it != "pending" } == true
                     val pendingLabel = when {
                         needsReview -> stringResource(R.string.flight_card_needs_review)
                         pendingProgress == FlightProgressStatus.CancellationRevertPending -> stringResource(R.string.flight_card_revert_pending)
-                        pendingProgress != null || flight.id in pendingWorkIds -> stringResource(R.string.flight_card_pending_sync)
+                        pendingProgress != null || flight.id in pendingWorkIds || flight.id in adHocById -> stringResource(R.string.flight_card_pending_sync)
                         else -> null
                     }
+                    val flightServices = savedServices.filter { it.flightId == flight.id }
+                    val flightTasks = savedTasks.filter { it.flightId == flight.id }
+                    val navigationTarget = (if (needsReview) flightReviewTargets(arrivalsById[flight.id], departuresById[flight.id],
+                        flightServices, flightTasks) else flightPendingTargets(arrivalsById[flight.id], departuresById[flight.id],
+                        flightServices, flightTasks)).firstOrNull()?.navigationKey()
+                        ?: cancellationsById[flight.id]?.let { "cancellation" }
+                        ?: adHocById[flight.id]?.let { "adhoc" }
+                    val navigateToPending: (() -> Unit)? = navigationTarget?.let { target -> {
+                        if (active) onPendingClick(flight.id, target)
+                    } }
                     FlightCard(flight = flight,
                         now = cardNow,
                         reportStatus = flight.cardReportStatus(flight.id in arrivalsById, flight.id in departuresById, flight.id in cancellationIds, cardNow),
                         pendingSyncLabel = pendingLabel,
                         hasSyncError = needsReview,
+                        onReviewClick = navigateToPending,
+                        onPendingClick = navigateToPending,
                         cancellationAtUtc = cancellationsById[flight.id]?.cancellationAtUtcForCard() ?: flight.latestCancellationAtUtc,
                         onClick = {
                         if (active) {
@@ -474,6 +574,7 @@ private fun FlightListPage(
                         }
                     },
                         loadCustomerLogo = viewModel::customerLogo)
+                    }
                 }
                 item(key = "flight-count") {
                     Text(pluralStringResource(R.plurals.flights_showing_count,
@@ -486,10 +587,7 @@ private fun FlightListPage(
                 }
                 state.loadMoreError?.let { error ->
                     item(key = "paging-error") {
-                        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(error, color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = onLoadMore) { Text(stringResource(R.string.flights_retry)) }
-                        }
+                        InlineNotice(error, kind = InlineNoticeKind.Error, onRetry = onLoadMore)
                     }
                 }
             }

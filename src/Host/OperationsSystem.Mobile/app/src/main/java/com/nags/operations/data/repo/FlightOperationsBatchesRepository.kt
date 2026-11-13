@@ -55,6 +55,7 @@ class FlightOperationsBatchesRepository(
     private val schedule: () -> Unit,
     private val json: Json,
     private val onAcknowledged: suspend (String, String, String) -> Unit = { _, _, _ -> },
+    private val mayPublishFlight: suspend (String) -> Boolean = { true },
 ) {
     private class Saving(val repository: FlightOperationsBatchesRepository) : AbstractCoroutineContextElement(Key) {
         companion object Key : CoroutineContext.Key<Saving>
@@ -83,7 +84,14 @@ class FlightOperationsBatchesRepository(
         withContext(Saving(this)) { saveWithinContext(saveSections) }
     }
 
-    private suspend fun saveWithinContext(saveSections: suspend () -> Unit) {
+    /** Planning intent and its never-sent dependent work commit before any file cleanup or scheduling. */
+    suspend fun savePlanning(stageIdentity: suspend () -> Unit, saveSections: suspend () -> Unit,
+        afterStaging: suspend () -> Unit) {
+        check(currentCoroutineContext()[Saving] == null) { "Planning must own the outer flight Save." }
+        withContext(Saving(this)) { saveWithinContext({ stageIdentity(); saveSections() }, afterStaging) }
+    }
+
+    private suspend fun saveWithinContext(saveSections: suspend () -> Unit, afterStaging: suspend () -> Unit = {}) {
         val owner = checkNotNull(currentOwner()) { "Sign in to save this flight." }
         val reviewing = currentCoroutineContext()[Reviewing]
         deferCleanup(true)
@@ -137,6 +145,7 @@ class FlightOperationsBatchesRepository(
                         attemptRowVersion = prior?.attemptRowVersion?.takeIf { preserveAttempt }, needsComparison = needsComparison))
                     putProjections(desired)
                 }
+                afterStaging()
             }
         } catch (failure: Throwable) {
             primaryFailure = failure
@@ -372,12 +381,12 @@ class FlightOperationsBatchesRepository(
                 try { request(desired) }
                 catch (cancelled: CancellationException) { throw cancelled }
                 catch (failure: Exception) { state = "failed"; message = failure.userMessage() }
-                if (state != "pending") desired = status(desired, state, message)
+                if (state != "pending" && state != "waiting-creation") desired = status(desired, state, message)
                 check(owner == currentOwner()) { "Your session changed. Reopen the flight." }
                 dao.put(FlightOperationsBatchEntity(owner, id, prior?.changeId ?: UUID.randomUUID().toString(),
                     json.encodeToString(desired), version, status = state, error = message, needsComparison = compare))
                 // Only adopted unsent projections are changed; legacy frozen rows remain eligible for exact replay.
-                putAdoptedProjections(desired, state, message)
+                if (state != "waiting-creation") putAdoptedProjections(desired, state, message)
             }
         }
     }
@@ -421,6 +430,57 @@ class FlightOperationsBatchesRepository(
             dao.put(it.copy(rowVersion = after, inputJson = json.encodeToString(advanced), needsComparison = true))
         }
     }
+    /** Only local, never-transmitted work can depend on an unmaterialized/planning flight. */
+    suspend fun holdForPlanning(id: String): String? {
+        val owner = checkNotNull(currentOwner())
+        return dao.rows(owner).firstOrNull { it.flightId == id }?.let { row ->
+            check(row.attemptInputJson == null && !legacyPending(owner, id, decode(row.inputJson))) {
+                "Synchronize the previous flight Save before changing Flight details."
+            }
+            dao.put(row.copy(status = "waiting-creation"))
+            row.rowVersion
+        }
+    }
+
+    /** An exact planning ACK may advance only the dependent requests that have never been sent. */
+    suspend fun releaseAfterPlanning(id: String, before: String, after: String) {
+        val owner = checkNotNull(currentOwner())
+        dao.rows(owner).firstOrNull { it.flightId == id }?.let { row ->
+            check(row.attemptInputJson == null && row.rowVersion == before &&
+                !legacyPending(owner, id, decode(row.inputJson))) { "Review the saved flight changes before synchronizing." }
+            val advanced = atVersion(decode(row.inputJson), after)
+            putProjections(advanced)
+            dao.put(row.copy(inputJson = json.encodeToString(advanced), rowVersion = after,
+                status = if (row.status == "waiting-creation") "pending" else row.status, needsComparison = true))
+        }
+    }
+
+    /** A recovered creation receipt does not prove that its current planning/work is still the reviewed empty flight. */
+    suspend fun holdPlanningWorkForReview(id: String, message: String) {
+        val owner = checkNotNull(currentOwner())
+        dao.rows(owner).firstOrNull { it.flightId == id }?.let { row ->
+            val input = decode(row.inputJson)
+            check(row.attemptInputJson == null && !legacyPending(owner, id, input)) { "A transmitted flight Save cannot be retargeted." }
+            val retained = status(input, "conflict", message)
+            putProjections(retained)
+            dao.put(row.copy(inputJson = json.encodeToString(retained), status = "conflict", error = message, needsComparison = true))
+        }
+    }
+
+    /** Used inside the same planning transaction; normal outer cleanup retains rollback ownership. */
+    suspend fun removeUnsentPlanningWork(id: String) {
+        val owner = checkNotNull(currentOwner())
+        dao.rows(owner).firstOrNull { it.flightId == id }?.let { row ->
+            val input = decode(row.inputJson)
+            check(row.attemptInputJson == null && !legacyPending(owner, id, input)) {
+                "This Save may already be recorded online. Retry synchronization before discarding it."
+            }
+            removeProjections(owner, input)
+            dao.delete(owner, id)
+        }
+        store.services.drafts(owner).firstOrNull { it.flightId == id }?.let { store.services.deleteDraft(owner, id) }
+    }
+
     private fun atVersion(input: FlightOperationsBatchInput, version: String) = input.copy(
         arrival = input.arrival?.copy(rowVersion = version), departure = input.departure?.copy(rowVersion = version),
         services = input.services.map { it.copy(rowVersion = version) }, tasks = input.tasks.map { it.copy(rowVersion = version) })
@@ -529,6 +589,11 @@ class FlightOperationsBatchesRepository(
         var retry = false
         for (snapshot in dao.rows(owner).filter { it.status == "pending" }) {
             if (owner != currentOwner()) return false
+            if (!mayPublishFlight(snapshot.flightId)) {
+                check(snapshot.attemptInputJson == null) { "A transmitted flight Save cannot wait for creation." }
+                dao.put(snapshot.copy(status = "waiting-creation"))
+                continue
+            }
             var acknowledged = false
             try {
                 val desired = decode(snapshot.inputJson)

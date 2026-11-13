@@ -54,6 +54,7 @@ class FlightArrivalsRepository(
     private val operationSave: suspend (suspend () -> Unit) -> Unit = operationWrite,
     private val operationGate: FlightOperationsGate = FlightOperationsGate(),
     private val onAttemptRejected: suspend (String, String?) -> Unit = { _, _ -> },
+    private val onLocalSaved: suspend (FlightDetail) -> Unit = {},
 ) {
     // Network sends and session transitions share this gate. A new bearer cannot be
     // published while an old account's request is still using the HTTP client.
@@ -100,6 +101,7 @@ class FlightArrivalsRepository(
                         json.encodeToString(normalized), flight.rowVersion, now().toString(),
                         reviewedArrivalJson = json.encodeToString(reviewedArrival(flight, normalized.targetSubmissionId)), reviewSourceInputJson = retained?.reviewSourceInputJson)
                 dao.put(advanceAcknowledged(desired))
+                onLocalSaved(flight)
             }
         }
         // WorkManager scheduling failure must not turn a completed disk save into a

@@ -619,13 +619,13 @@ internal fun FlightFormModalSheet(title: String, onDismiss: () -> Unit,
 
 @Composable
 internal fun FlightFormRemarks(value: String, onValueChange: (String) -> Unit, description: String, enabled: Boolean = true,
-    heading: String = stringResource(R.string.flight_form_remarks), inGroup: Boolean = false) {
+    heading: String = stringResource(R.string.flight_form_remarks), inGroup: Boolean = false, required: Boolean = false) {
     val remarks: @Composable () -> Unit = {
         Column(Modifier.alpha(if (enabled) 1f else 0.45f).padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(heading, style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
                 color = if (LocalFlightFormCompact.current) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-            FlightFormTextInput(value, onValueChange, if (LocalFlightFormCompact.current) "" else stringResource(R.string.flight_form_remarks_hint), description,
+            FlightFormTextInput(value, onValueChange, if (required) stringResource(R.string.flight_form_required_field) else "", description,
                 multiline = true, textAlign = TextAlign.Left, keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done), enabled = enabled)
         }

@@ -34,7 +34,7 @@ public sealed class FlightTaskSaveTests
         f.Reader.Materials[materialId] = new(materialId, "Material", true, ResourceCalculationType.Quantity);
         f.Reader.GeneralSupports[supportId] = new(supportId, "Support", true, ResourceCalculationType.Quantity);
         var image = Image();
-        var input = f.Input with { Notes = " Corrected ", CustomerReferenceNumber = " REF ", Attachments = [image],
+        var input = f.Input with { Notes = " Corrected ", CustomerReferenceNumber = " ref ", Attachments = [image],
             Tools = [new(Guid.NewGuid(), toolId, StartUtc: Now.AddMinutes(-20))],
             Materials = [new(Guid.NewGuid(), materialId, 9999999999999999.99m)],
             GeneralSupports = [new(Guid.NewGuid(), supportId, 1.25m)] };
@@ -132,21 +132,21 @@ public sealed class FlightTaskSaveTests
     }
 
     [Fact]
-    public async Task Other_employee_can_only_close_and_only_closer_can_change_end_while_creator_keeps_core_fields()
+    public async Task Unassigned_searcher_can_close_foreign_work_while_creator_keeps_ordinary_core_rights()
     {
         await using var f = await Fixture.CreateAsync(assigned: false); var id = Guid.NewGuid(); var input = f.ClosedPerformerInput;
         (await f.SaveAsync(id, input)).IsSuccess.ShouldBeTrue();
-        (await f.SaveAsync(id, input with { Notes = "Foreign edit" }, f.Other)).Error.Code.ShouldBe("Operations.FlightTask.ReadOnly");
+        (await f.SaveAsync(id, input with { Notes = "Foreign edit" }, f.Other)).Error.Code.ShouldBe("Operations.Search.ClosureReadOnly");
         input = input with { EndUtc = Now.AddMinutes(30) };
         var closed = await f.SaveAsync(id, input, f.Other);
-        closed.IsSuccess.ShouldBeTrue(); closed.Value.Task.CanEdit.ShouldBeFalse(); closed.Value.Task.CanSetEnd.ShouldBeTrue();
+        closed.IsSuccess.ShouldBeTrue(); closed.Value.Task.CanEdit.ShouldBeFalse(); closed.Value.Task.CanSetEnd.ShouldBeFalse();
         var mine = await f.SaveAsync(id, input with { Notes = "Owner correction" });
         mine.IsSuccess.ShouldBeTrue(); mine.Value.Task.CanEdit.ShouldBeTrue(); mine.Value.Task.CanSetEnd.ShouldBeFalse(); mine.Value.Task.CanChangeType.ShouldBeTrue();
         (await f.SaveAsync(id, input with { TaskType = 1, Notes = "Owner correction" })).IsSuccess.ShouldBeTrue();
         (await f.SaveAsync(id, input with { EndUtc = null })).Error.Code.ShouldBe("Operations.FlightTask.EndReadOnly");
         (await f.DeleteAsync(id)).Error.Code.ShouldBe("Operations.FlightTask.DeleteReadOnly");
-        (await f.SaveAsync(id, input with { EndUtc = null, TaskType = 1, Notes = "Owner correction" }, f.Other)).IsSuccess.ShouldBeTrue();
-        (await f.DeleteAsync(id)).IsSuccess.ShouldBeTrue();
+        (await f.SaveAsync(id, input with { EndUtc = null, TaskType = 1, Notes = "Owner correction" }, f.Other)).Error.Code.ShouldBe("Operations.Search.ClosureReadOnly");
+        (await f.ReadAsync()).Tasks.Single().Window.ToUtc.ShouldBe(input.EndUtc);
     }
 
     [Fact]
@@ -314,6 +314,14 @@ public sealed class FlightTaskSaveTests
         (await f.ReadAsync()).Tasks.ShouldHaveSingleItem().Id.ShouldBe(id);
     }
 
+    [Fact]
+    public async Task New_task_requires_arrival_without_publishing_work()
+    {
+        await using var f = await Fixture.CreateAsync(withArrival: false);
+        (await f.SaveAsync(Guid.NewGuid())).Error.Code.ShouldBe("Operations.Flight.ArrivalRequired");
+        f.Writes.SaveCalls.ShouldBe(0); (await f.ReadAsync()).Tasks.ShouldBeEmpty();
+    }
+
     private sealed record Actor(Guid StaffMemberId, Guid UserId);
 
     private sealed class Fixture : IAsyncDisposable
@@ -326,6 +334,7 @@ public sealed class FlightTaskSaveTests
         public required Guid FlightId { get; init; }
         public required Actor Owner { get; init; }
         public required Actor Other { get; init; }
+        private bool RemoveCreatorAssignmentAfterFirstSave { get; set; }
         public required SaveFlightTaskRequest Input { get; init; }
         public SaveFlightTaskRequest ClosedPerformerInput => Input with
         {
@@ -340,7 +349,16 @@ public sealed class FlightTaskSaveTests
             var handler = new SaveFlightTaskCommandHandler(Writes,
                 new Scope(new(Reader.StationId, acting.StaffMemberId, acting.UserId, Now)),
                 new MasterDataResolver(Reader), Reader, new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, Names);
-            return await handler.Handle(new SaveFlightTaskCommand(FlightId, recordId, input ?? Input, current), CancellationToken.None);
+            var result = await handler.Handle(new SaveFlightTaskCommand(FlightId, recordId, input ?? Input, current), CancellationToken.None);
+            if (result.IsSuccess && RemoveCreatorAssignmentAfterFirstSave)
+            {
+                // Exercise retained own-record rights after a real scheduling assignment is removed.
+                RemoveCreatorAssignmentAfterFirstSave = false;
+                var flight = await Db.Flights.Include(item => item.AssignedEmployees).SingleAsync(item => item.Id == FlightId);
+                flight.ReplaceAssignedEmployees([], Now).IsSuccess.ShouldBeTrue();
+                await Db.SaveChangesAsync();
+            }
+            return result;
         }
 
         public async Task<Result<FlightTaskRemovedDto>> DeleteAsync(Guid recordId, Actor? actor = null, byte[]? version = null)
@@ -383,7 +401,7 @@ public sealed class FlightTaskSaveTests
             Db.ChangeTracker.Clear();
         }
 
-        public static async Task<Fixture> CreateAsync(bool assigned = true)
+        public static async Task<Fixture> CreateAsync(bool assigned = true, bool withArrival = true)
         {
             var db = new OperationsDbContext(new DbContextOptionsBuilder<OperationsDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
@@ -396,16 +414,24 @@ public sealed class FlightTaskSaveTests
                 new StationSnapshot(reader.StationId, "RUH", "Riyadh"),
                 new OperationTypeSnapshot(Guid.NewGuid(), "Transit"), FlightNumber.Create("SV100", "SV").Value,
                 ScheduledTime.Create(Now.AddHours(-1), Now.AddHours(1)).Value, null,
-                [new ServiceSnapshot(assigned ? reader.ServiceId : WellKnownMasterDataIds.AircraftPerLandingService, "Planned service")],
+                [new ServiceSnapshot(reader.ServiceId, "Planned service")],
                 assigned ? [new StaffMemberSnapshot(owner.StaffMemberId, "Task creator", "E1"),
-                    new StaffMemberSnapshot(other.StaffMemberId, "Other operator", "E2")] : [], owner.UserId, Now).Value;
+                    new StaffMemberSnapshot(other.StaffMemberId, "Other operator", "E2")]
+                    : [new StaffMemberSnapshot(owner.StaffMemberId, "Task creator", "E1")], owner.UserId, Now).Value;
+            if (withArrival)
+            {
+                var employee = new StaffMemberSnapshot(owner.StaffMemberId, "Receiving employee", "E1");
+                flight.SubmitArrival(employee, ArrivalDetails.Create(null, Now.AddHours(-2),
+                    new AircraftTypeSnapshot(Guid.NewGuid(), "Boeing", "737"), "HZ-TEST", employee, null).Value,
+                    owner.UserId, Now.AddHours(-2)).IsSuccess.ShouldBeTrue();
+            }
             db.Flights.Add(flight);
             db.Entry(flight).Property(f => f.RowVersion).CurrentValue = InitialVersion.ToArray();
             await db.SaveChangesAsync();
             return new Fixture
             {
                 Db = db, Writes = new WriteBoundary(db), Storage = new MemoryStorage(), Reader = reader,
-                FlightId = flight.Id, Owner = owner, Other = other,
+                FlightId = flight.Id, Owner = owner, Other = other, RemoveCreatorAssignmentAfterFirstSave = !assigned,
                 Names = new(new Dictionary<Guid, string> { [owner.UserId] = "Original creator account", [other.UserId] = "Assigned editor account" }),
                 Input = new(0, null, Now.AddMinutes(-30), null, "REF-1", "Task notes",
                     [new(Guid.NewGuid(), owner.StaffMemberId, Now.AddMinutes(-20))], [], [], [])
@@ -420,6 +446,7 @@ public sealed class FlightTaskSaveTests
         public Func<CancellationToken, Task<int>>? Save { get; set; }
         public int SaveCalls { get; private set; }
         public DbSet<Flight> Flights => db.Flights;
+        public DbSet<FlightUserActivity> FlightUserActivities => db.FlightUserActivities;
         public DbSet<OutboxMessage> OutboxMessages => db.OutboxMessages;
         public DbSet<InboxMessage> InboxMessages => db.InboxMessages;
         public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion) where TEntity : class =>

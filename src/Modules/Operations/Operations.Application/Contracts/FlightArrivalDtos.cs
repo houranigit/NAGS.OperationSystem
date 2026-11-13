@@ -14,15 +14,18 @@ public sealed record FlightArrivalSubmissionDto(
     string? Remarks,
     bool IsAccepted,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? UpdatedAtUtc)
+    DateTimeOffset? UpdatedAtUtc,
+    string? CreatedByDisplayName = null,
+    string? UpdatedByDisplayName = null)
 {
-    public static FlightArrivalSubmissionDto Map(FlightArrivalSubmission submission) => new(
+    public static FlightArrivalSubmissionDto Map(FlightArrivalSubmission submission, IReadOnlyDictionary<Guid, string>? names = null) => new(
         submission.Id,
         new(submission.SubmittedByEmployee.StaffMemberId, submission.SubmittedByEmployee.FullName, submission.SubmittedByEmployee.EmployeeId),
         submission.Details.Ata, submission.Details.AircraftType.AircraftTypeId, submission.Details.AircraftType.Model,
         submission.Details.AircraftTailNumber, submission.Details.CustomerWorkReferenceNumber,
         new(submission.Details.ReceivedByEmployee.StaffMemberId, submission.Details.ReceivedByEmployee.FullName, submission.Details.ReceivedByEmployee.EmployeeId),
-        submission.Details.Remarks, submission.IsAccepted, submission.CreatedAtUtc, submission.UpdatedAtUtc);
+        submission.Details.Remarks, submission.IsAccepted, submission.CreatedAtUtc, submission.UpdatedAtUtc, names?.GetValueOrDefault(submission.CreatedByUserId),
+        submission.UpdatedByUserId is { } updater ? names?.GetValueOrDefault(updater) : null);
 }
 
 public sealed record SaveFlightArrivalRequest(

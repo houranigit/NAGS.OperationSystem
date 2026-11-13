@@ -176,7 +176,7 @@ private fun SubmittedWorkCard(
                         Column(infoModifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(name, Modifier.semantics { heading() }, style = labelStyle, color = MaterialTheme.colorScheme.onSurface)
                             SubmittedWorkStatus(period.end.isNotBlank())
-                            if (metadata.queued) SubmittedWorkPending(metadata.pendingStatus)
+                            if (metadata.queued) SubmittedWorkPending(metadata.pendingStatus, onUpdate)
                             if (reference.isNotBlank() || chapter.isNotBlank()) Column(
                                 Modifier.padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 if (reference.isNotBlank()) SubmittedMetadata(stringResource(R.string.work_customer_reference), reference)
@@ -250,11 +250,12 @@ private fun SubmittedWorkStatus(done: Boolean) {
 }
 
 @Composable
-private fun SubmittedWorkPending(status: String?) {
+private fun SubmittedWorkPending(status: String?, onClick: (() -> Unit)?) {
     val review = status != null && status != "pending"
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val color = if (review) MaterialTheme.colorScheme.error else if (dark) Color(0xFFFFD18E) else Color(0xFF8B4B00)
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(Modifier.then(if (onClick != null) Modifier.heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onClick) else Modifier),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         Icon(if (review) Icons.Outlined.WarningAmber else Icons.Outlined.Sync, null, Modifier.size(14.dp), tint = color)
         Text(stringResource(if (review) R.string.flight_card_needs_review else R.string.flight_card_pending_sync),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp), color = color)
@@ -395,6 +396,13 @@ private fun SubmittedWorkNote(metadata: FlightWorkRecordMetadata, zone: ZoneId, 
                 value.format(DateTimeFormatter.ofPattern("HH:mm", locale)))
         }.getOrNull() }
     }
+    val updateTimestamp = remember(metadata.updatedAtUtc, zone, locale, template) {
+        metadata.updatedAtUtc?.let { raw -> runCatching {
+            val value = parseInUserZone(raw, zone)
+            String.format(locale, template, value.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)),
+                value.format(DateTimeFormatter.ofPattern("HH:mm", locale)))
+        }.getOrNull() }
+    }
     val prefix = when {
         metadata.published -> stringResource(if (isTask) R.string.work_submitted_note_task else R.string.work_submitted_note_service)
         metadata.queued -> stringResource(R.string.flight_actuals_saved_locally)
@@ -404,12 +412,45 @@ private fun SubmittedWorkNote(metadata: FlightWorkRecordMetadata, zone: ZoneId, 
     val by = stringResource(R.string.work_submitted_note_by)
     val on = stringResource(R.string.flight_submission_note_on)
     val needsReview = metadata.pendingStatus != null && metadata.pendingStatus != "pending"
-    val update = stringResource(if (needsReview) R.string.flight_review_action else if (isTask) R.string.work_submitted_update_task else R.string.work_submitted_update_service)
+    if (metadata.pendingOperation == "delete") {
+        if (metadata.published) SubmittedWorkNote(metadata.copy(pendingStatus = null, pendingOperation = null, queued = false), zone, isTask, onUpdate = null)
+        val message = stringResource(if (needsReview) R.string.flight_work_failed_delete_note else R.string.flight_work_pending_delete_note)
+        val review = stringResource(R.string.flight_review_action)
+        val linkColor = if (needsReview) MaterialTheme.colorScheme.error else if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF70B7FF) else AccentBlue
+        Text(buildAnnotatedString {
+            append(message)
+            if (onUpdate != null) {
+                append(" ")
+                withLink(LinkAnnotation.Clickable("review-deletion", TextLinkStyles(style = SpanStyle(color = linkColor))) { onUpdate() }) { append(review) }
+            }
+        }, Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    if (needsReview) {
+        if (metadata.published) SubmittedWorkNote(metadata.copy(pendingStatus = null), zone, isTask, onUpdate = null)
+        if (onUpdate != null) FlightFailedSubmissionNote(onUpdate)
+        return
+    }
+    val updatedBy = stringResource(R.string.flight_submission_note_updated_by)
+    val update = stringResource(when {
+        metadata.canCloseOnly && isTask -> R.string.flight_complete_task
+        metadata.canCloseOnly -> R.string.flight_complete_service
+        isTask -> R.string.work_submitted_update_task
+        else -> R.string.work_submitted_update_service
+    })
     val linkColor = if (needsReview) MaterialTheme.colorScheme.error else if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF70B7FF) else AccentBlue
     if (prefix.isNotBlank() || onUpdate != null) Text(buildAnnotatedString {
         append(prefix)
         if (author != null) { append(by); withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(author) } }
         if (timestamp != null) { append(on); withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(timestamp) } }
+        if (metadata.published && !metadata.updatedByDisplayName.isNullOrBlank() && updateTimestamp != null) {
+            append(updatedBy)
+            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(metadata.updatedByDisplayName) }
+            append(on)
+            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(updateTimestamp) }
+        }
         if (prefix.isNotBlank()) append(".")
         if (onUpdate != null) {
             if (prefix.isNotBlank()) append(" ")

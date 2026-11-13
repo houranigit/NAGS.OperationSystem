@@ -765,6 +765,7 @@ private class ServiceMemoryDao : FlightServiceDao {
     }
     override suspend fun deleteForFlight(owner: String, flightId: String) { state.value = state.value.filterNot { it.ownerSubject == owner && it.flightId == flightId } }
     override suspend fun clear() { state.value = emptyList() }
+    override suspend fun deleteDraft(owner: String, flightId: String) { drafts.value = drafts.value.filterNot { it.ownerSubject == owner && it.flightId == flightId } }
     override suspend fun clearDrafts() { drafts.value = emptyList() }
 }
 private class ServiceMemoryFiles : ServiceAttachmentStore {

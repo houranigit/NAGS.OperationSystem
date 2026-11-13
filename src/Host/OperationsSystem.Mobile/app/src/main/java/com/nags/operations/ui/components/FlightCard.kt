@@ -82,6 +82,7 @@ fun FlightCard(
     onCompletedWorkClick: (() -> Unit)? = null,
     onFlightNumberPositioned: ((Float, Int) -> Unit)? = null,
     onReviewClick: (() -> Unit)? = null,
+    onPendingClick: (() -> Unit)? = null,
 ) {
     val statusColors = flightStatusColors(reportStatus)
     val content: @Composable ColumnScope.() -> Unit = {
@@ -136,7 +137,7 @@ fun FlightCard(
             FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName,
                 flight.isPerLanding, flight.latestReturnToRampSequence, flight.hasOpenReturnToRamp == true)
             FlightCardSummaryRow(flight, reportStatus, now, pendingSyncLabel, hasSyncError, cancellationAtUtc,
-                onActiveWorkClick, onCompletedWorkClick, onReviewClick)
+                onActiveWorkClick, onCompletedWorkClick, onReviewClick, onPendingClick)
             HorizontalDivider(color = flightCardDividerColor())
             FlightCardScheduleFooter(flight)
         }
@@ -268,7 +269,7 @@ private fun FlightCardField(label: String, value: String, modifier: Modifier = M
 @Composable
 private fun FlightCardSummaryRow(flight: FlightListItem, status: FlightCardReportStatus, now: Instant,
     pendingSyncLabel: String?, hasSyncError: Boolean, cancellationAtUtc: String?,
-    onActiveWorkClick: (() -> Unit)?, onCompletedWorkClick: (() -> Unit)?, onReviewClick: (() -> Unit)?) {
+    onActiveWorkClick: (() -> Unit)?, onCompletedWorkClick: (() -> Unit)?, onReviewClick: (() -> Unit)?, onPendingClick: (() -> Unit)?) {
     val active = flight.activeWorkCount?.takeIf { it >= 0 }
     val done = flight.completedWorkCount?.takeIf { it >= 0 }
     val minutes = flight.cardStaMinutes(now)
@@ -333,7 +334,8 @@ private fun FlightCardSummaryRow(flight: FlightListItem, status: FlightCardRepor
             if (pendingSyncLabel != null) {
                 val syncColor = if (hasSyncError) MaterialTheme.colorScheme.error
                     else flightStatusColors(FlightCardReportStatus.DueSoon).foreground
-                Row(Modifier.widthIn(max = noticeWidth).then(if (hasSyncError && onReviewClick != null) Modifier.clickable(role = Role.Button, onClick = onReviewClick).heightIn(min = 48.dp) else Modifier),
+                val syncAction = if (hasSyncError) onReviewClick ?: onPendingClick else onPendingClick
+                Row(Modifier.widthIn(max = noticeWidth).then(if (syncAction != null) Modifier.clickable(role = Role.Button, onClick = syncAction).heightIn(min = 48.dp) else Modifier),
                     horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (hasSyncError) Icons.Outlined.WarningAmber else Icons.Outlined.Sync, null, Modifier.size(13.dp), tint = syncColor)
                     Text(pendingSyncLabel, style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content), color = syncColor,

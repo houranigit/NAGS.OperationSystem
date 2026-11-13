@@ -1,11 +1,13 @@
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Application.Pagination;
 using BuildingBlocks.Domain.Results;
-using MasterData.Contracts.Seeding;
+using Identity.Contracts;
 using MasterData.Contracts.Readers;
+using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
+using Operations.Application.Common;
 using Operations.Application.Contracts;
 using Operations.Domain.Flights;
 
@@ -79,7 +81,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
 
 public sealed record GetFlightByIdQuery(Guid Id) : IQuery<FlightDetailDto>;
 
-public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperationsScope scope, IMasterDataReader masterData)
+public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperationsScope scope, IMasterDataReader masterData, IUserDisplayNameReader? userNames = null)
     : IQueryHandler<GetFlightByIdQuery, FlightDetailDto>
 {
     public async Task<Result<FlightDetailDto>> Handle(GetFlightByIdQuery request, CancellationToken cancellationToken)
@@ -90,6 +92,7 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
             .Include(f => f.ArrivalSubmissions)
             .Include(f => f.DepartureSubmissions)
             .Include(f => f.CancellationSubmissions)
+            .Include(f => f.ReturnToRamps)
             .Include(f => f.ServiceRecords).ThenInclude(s => s.Performers)
             .Include(f => f.ServiceRecords).ThenInclude(s => s.Attachments)
             .Include(f => f.TaskRecords).ThenInclude(t => t.Performers)
@@ -111,14 +114,29 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
         var station = await masterData.GetStationAsync(flight.Station.StationId, cancellationToken);
         if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
             return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
-        return FlightDetails.Map(flight, station.TimeZoneId);
+        var names = await FlightWorkAttribution.NamesAsync(userNames, FlightWorkAttribution.UserIds(flight), cancellationToken);
+        return FlightDetails.Map(flight, station.TimeZoneId, userDisplayNames: names);
     }
 }
 
 internal static class FlightDetails
 {
-    public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null, bool canSaveTasks = false, bool assignedWorkCorrection = false, IReadOnlyDictionary<Guid, string>? userDisplayNames = null) =>
-        new(flight.Id, flight.FlightNumber.Value,
+    public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null, bool canSaveTasks = false, bool assignedWorkCorrection = false, IReadOnlyDictionary<Guid, string>? userDisplayNames = null, bool canEditFlightDetails = false)
+    {
+        var search = currentStaffMemberId is { } staffId && FlightSearchPolicy.IsUnassignedRegular(flight, staffId);
+        var canAdd = !search || !flight.HasOperationalRecords();
+        var serviceWrites = canSaveServices;
+        var taskWrites = canSaveTasks;
+        if (search)
+        {
+            canSaveArrival &= canAdd || flight.ArrivalSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == currentStaffMemberId);
+            canSaveDeparture &= flight.DepartureSubmissions.Count == 0 || flight.DepartureSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == currentStaffMemberId);
+            canSaveCancellation &= flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == currentStaffMemberId);
+            serviceWrites = canSaveTasks && (canAdd && canSaveServices || flight.Services.Any(item => item.Window.ToUtc is null ||
+                item.CreatedByUserId == currentUserId && allowedServiceIds?.Contains(item.Service.ServiceId) == true));
+            taskWrites &= canAdd || flight.Tasks.Any(item => item.Window.ToUtc is null || item.CreatedByUserId == currentUserId);
+        }
+        return new(flight.Id, flight.FlightNumber.Value,
             flight.Customer.CustomerId, flight.Customer.IataCode, flight.Customer.Name,
             flight.Station.StationId, flight.Station.IataCode, flight.Station.Name,
             flight.OperationType.OperationTypeId, flight.OperationType.Name,
@@ -129,14 +147,22 @@ internal static class FlightDetails
             flight.AssignedEmployees.Select(employee => new AssignedEmployeeDto(employee.Employee.StaffMemberId,
                 employee.Employee.FullName, employee.Employee.EmployeeId)).ToList(),
             flight.CreatedAtUtc, flight.UpdatedAtUtc, Convert.ToBase64String(flight.RowVersion), stationTimeZoneId,
-            flight.ArrivalSubmissions.OrderBy(a => a.CreatedAtUtc).ThenBy(a => a.Id).Select(FlightArrivalSubmissionDto.Map).ToList(),
+            flight.ArrivalSubmissions.OrderBy(a => a.CreatedAtUtc).ThenBy(a => a.Id).Select(item => FlightArrivalSubmissionDto.Map(item, userDisplayNames)).ToList(),
             currentStaffMemberId, canSaveArrival, flight.CancellationSubmissions.Count > 0,
-            flight.DepartureSubmissions.OrderBy(d => d.CreatedAtUtc).ThenBy(d => d.Id).Select(FlightDepartureSubmissionDto.Map).ToList(), canSaveDeparture,
+            flight.DepartureSubmissions.OrderBy(d => d.CreatedAtUtc).ThenBy(d => d.Id).Select(item => FlightDepartureSubmissionDto.Map(item, userDisplayNames)).ToList(), canSaveDeparture,
             flight.CancellationSubmissions.OrderBy(c => c.CreatedAtUtc).ThenBy(c => c.Id).Select(FlightCancellationSubmissionDto.Map).ToList(), canSaveCancellation,
-            flight.Services.OrderBy(s => s.CreatedAtUtc).ThenBy(s => s.Id).Select(s => FlightServiceDto.Map(s, currentUserId, canSaveServices && allowedServiceIds?.Contains(s.Service.ServiceId) == true, assignedWorkCorrection,
-                userDisplayNames?.GetValueOrDefault(s.CreatedByUserId), s.EndedByUserId is { } closer ? userDisplayNames?.GetValueOrDefault(closer) : null)).ToList(),
-            canSaveServices, allowedServiceIds, flight.Tasks.OrderBy(t => t.CreatedAtUtc).ThenBy(t => t.Id).Select(t => FlightTaskDto.Map(t, currentUserId, canSaveTasks, assignedWorkCorrection,
-                userDisplayNames?.GetValueOrDefault(t.CreatedByUserId), t.EndedByUserId is { } closer ? userDisplayNames?.GetValueOrDefault(closer) : null)).ToList(), canSaveTasks);
+            flight.Services.OrderBy(s => s.CreatedAtUtc).ThenBy(s => s.Id).Select(s => FlightServiceDto.Map(s, currentUserId, serviceWrites && (allowedServiceIds?.Contains(s.Service.ServiceId) == true || search && s.Window.ToUtc is null), assignedWorkCorrection,
+                userDisplayNames?.GetValueOrDefault(s.CreatedByUserId), s.EndedByUserId is { } closer ? userDisplayNames?.GetValueOrDefault(closer) : null,
+                s.UpdatedByUserId is { } updater ? userDisplayNames?.GetValueOrDefault(updater) : null,
+                closeOnly: search && (s.CreatedByUserId != currentUserId || allowedServiceIds?.Contains(s.Service.ServiceId) != true))).ToList(),
+            serviceWrites, allowedServiceIds, flight.Tasks.OrderBy(t => t.CreatedAtUtc).ThenBy(t => t.Id).Select(t => FlightTaskDto.Map(t, currentUserId, taskWrites, assignedWorkCorrection,
+                userDisplayNames?.GetValueOrDefault(t.CreatedByUserId), t.EndedByUserId is { } closer ? userDisplayNames?.GetValueOrDefault(closer) : null,
+                t.UpdatedByUserId is { } updater ? userDisplayNames?.GetValueOrDefault(updater) : null,
+                closeOnly: search && t.CreatedByUserId != currentUserId)).ToList(), taskWrites,
+            flight.CreatedByUserId, userDisplayNames?.GetValueOrDefault(flight.CreatedByUserId),
+            canEditFlightDetails && currentUserId is { } userId && flight.CanEditAdHocDetails(userId),
+            flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType, search, canSaveServices && canAdd, canSaveTasks && canAdd);
+    }
 }
 
 internal sealed record FlightListFilter(

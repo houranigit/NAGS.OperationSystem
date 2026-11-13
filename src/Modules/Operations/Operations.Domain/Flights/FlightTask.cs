@@ -54,7 +54,7 @@ public sealed class FlightTask : Entity<Guid>
             ReturnToRampId = returnToRampId,
             TaskType = taskType,
             AtaChapter = CopyAtaChapter(ataChapter),
-            CustomerReferenceNumber = NormalizeOptional(customerReferenceNumber),
+            CustomerReferenceNumber = NormalizeOptional(customerReferenceNumber)?.ToUpperInvariant(),
             Window = window!.Copy(),
             EndedByUserId = window.ToUtc.HasValue ? userId : null,
             Notes = NormalizeOptional(notes),
@@ -101,7 +101,7 @@ public sealed class FlightTask : Entity<Guid>
             if (_tools.Any(item => IsOpenDuration(item.Usage)) || _materials.Any(item => IsOpenDuration(item.Usage)) ||
                 _generalSupports.Any(item => IsOpenDuration(item.Usage))) return OpenResourcePeriods();
         }
-        var reference = NormalizeOptional(customerReferenceNumber);
+        var reference = NormalizeOptional(customerReferenceNumber)?.ToUpperInvariant();
         var normalizedNotes = NormalizeOptional(notes);
         if (TaskType == taskType && AtaChapter == ataChapter && Window == window
             && CustomerReferenceNumber == reference && Notes == normalizedNotes)

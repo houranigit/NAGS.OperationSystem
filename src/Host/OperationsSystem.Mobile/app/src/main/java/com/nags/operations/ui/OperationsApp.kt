@@ -35,6 +35,7 @@ private object Routes {
     const val Account = "account"
     const val SyncCenter = "sync"
     const val AdHoc = "adhoc-create"
+    const val AdHocRecovery = "adhoc-edit/{flightId}"
 }
 
 /** A null UI session means DataStore has not emitted yet, rather than a signed-out account. */
@@ -119,10 +120,14 @@ fun OperationsApp() {
         }
         composable(Routes.SyncCenter) {
             val model: SyncCenterViewModel = viewModel(key = "sync:$subject", factory = factory)
-            SyncCenterScreen(viewModel = model, onBack = { navController.popBackStack() })
+            SyncCenterScreen(viewModel = model, onBack = { navController.popBackStack() },
+                onOpenAdHoc = { id -> navController.navigate("adhoc-edit/$id") })
         }
         composable(Routes.AdHoc) {
-            AdHocFlightShell(onClose = { navController.popBackStack() })
+            AdHocFlightShell(graph, factory, onClose = { navController.popBackStack() })
+        }
+        composable(Routes.AdHocRecovery) { entry ->
+            AdHocFlightShell(graph, factory, onClose = { navController.popBackStack() }, flightId = entry.arguments?.getString("flightId"))
         }
         // Retain the previous inbox destination for restored navigation stacks.
         composable(Routes.Notifications) {

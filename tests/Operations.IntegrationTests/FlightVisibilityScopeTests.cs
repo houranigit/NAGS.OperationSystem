@@ -295,22 +295,28 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         page!.StationId.ShouldBe(refs.StationId);
         page.WindowStartUtc.ShouldBe(page.AsOfUtc.AddHours(-12));
         page.WindowEndUtc.ShouldBe(page.AsOfUtc.AddHours(12));
-        page.Items.Select(f => f.Id).ShouldBe([assignedId, spanning.Id, landing.Id, ownAdHoc.Id, ownMixed.Id], ignoreOrder: true);
+        page.Items.Select(f => f.Id).ShouldBe([assignedId, spanning.Id, landing.Id, ownAdHoc.Id, ownMixed.Id, otherAdHoc.Id, otherMixed.Id], ignoreOrder: true);
         page.Items.ShouldAllBe(f => f.StationId == refs.StationId);
         var mine = await client.GetFromJsonAsync<MobileFlightPageDto>($"{mobile}?category=MyFlights");
         mine!.Items.Select(f => f.Id).ShouldBe([assignedId, spanning.Id], ignoreOrder: true);
         var perLanding = await client.GetFromJsonAsync<MobileFlightPageDto>($"{mobile}?category=PerLanding");
         perLanding!.Items.ShouldHaveSingleItem().Id.ShouldBe(landing.Id);
         var adHoc = await client.GetFromJsonAsync<MobileFlightPageDto>($"{mobile}?category=AdHoc");
-        adHoc!.Items.Select(f => f.Id).ShouldBe([ownAdHoc.Id, ownMixed.Id], ignoreOrder: true);
-        adHoc.Items.ShouldAllBe(f => f.IsMyAdHocFlight && !f.IsMyFlight);
+        adHoc!.Items.Select(f => f.Id).ShouldBe([ownAdHoc.Id, ownMixed.Id, otherAdHoc.Id, otherMixed.Id], ignoreOrder: true);
+        adHoc.Items.ShouldAllBe(f => f.IsAdHocFlight && !f.IsMyFlight);
+        adHoc.Items.Where(item => item.Id == otherAdHoc.Id || item.Id == otherMixed.Id).ShouldAllBe(item => !item.IsMyAdHocFlight);
         (await client.GetAsync($"{mobile}?category=unknown")).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await admin.GetAsync(mobile)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await client.GetAsync($"{mobile}/{spanning.Id}")).StatusCode.ShouldBe(HttpStatusCode.OK);
-        foreach (var id in new[] { outdated.Id, otherStation.Id, otherAdHoc.Id, otherMixed.Id, unassignedId, future.Id })
+        foreach (var id in new[] { outdated.Id, otherStation.Id, future.Id })
         {
             (await client.GetAsync($"{mobile}/{id}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
             (await client.GetAsync($"{mobile}/{id}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        }
+        foreach (var id in new[] { otherAdHoc.Id, otherMixed.Id, unassignedId })
+        {
+            (await client.GetAsync($"{mobile}/{id}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+            // Historical AdHoc rows retain existing invitation behavior; new scratch rows prohibit assignments.
         }
         // A caller cannot widen this surface by attaching the portal's date/station parameters.
         var ignoredFilters = await client.GetFromJsonAsync<MobileFlightPageDto>(
@@ -324,7 +330,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
             otherMixed.Id, spanning.Id, outdated.Id, otherStation.Id, future.Id, Guid.NewGuid(), Guid.Empty, landing.Id };
         using var targets = await client.PostAsJsonAsync($"{mobile}/notification-targets", new { flightIds = targetIds });
         targets.StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await targets.Content.ReadFromJsonAsync<Guid[]>()).ShouldBe(page.Items.Select(item => item.Id), ignoreOrder: true);
+        (await targets.Content.ReadFromJsonAsync<Guid[]>()).ShouldBe(page.Items.Select(item => item.Id).Append(unassignedId), ignoreOrder: true);
         (await admin.PostAsJsonAsync($"{mobile}/notification-targets", new { flightIds = targetIds }))
             .StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
@@ -347,7 +353,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         Guid CountryId, Guid StationId, Guid CustomerId, Guid OperationTypeId, Guid ServiceId, Guid ManpowerTypeId);
 
     [Fact]
-    public async Task Arrival_save_attributes_the_actor_replays_lost_success_and_locks_other_employees()
+    public async Task Arrival_save_attributes_the_actor_replays_lost_success_and_preserves_exact_foreign_acknowledgments()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
@@ -391,7 +397,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         var shared = (await secondClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
         shared.ArrivalSubmissions!.ShouldHaveSingleItem().ShouldBe(saved.Submission);
         using var otherWrite = await Save(secondClient, input, shared.RowVersion);
-        otherWrite.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        otherWrite.StatusCode.ShouldBe(HttpStatusCode.OK);
         var afterOther = (await firstClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
         afterOther.RowVersion.ShouldBe(saved.RowVersion);
         afterOther.AircraftTypeId.ShouldBeNull(); // Actual aircraft never replaces the plan.
@@ -413,8 +419,9 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
             return response.StatusCode;
         }
         var outcomes = await Task.WhenAll(Race(firstClient), Race(secondClient));
-        outcomes.Count(status => status == HttpStatusCode.OK).ShouldBe(1);
-        outcomes.ShouldAllBe(status => status == HttpStatusCode.OK || status == HttpStatusCode.Conflict || status == HttpStatusCode.Forbidden);
+        // A handler that starts after the winner commits may acknowledge the same accepted input.
+        outcomes.Count(status => status == HttpStatusCode.OK).ShouldBeGreaterThanOrEqualTo(1);
+        outcomes.ShouldAllBe(status => status == HttpStatusCode.OK || status == HttpStatusCode.Conflict);
         var afterRace = (await firstClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{concurrentId}"))!;
         afterRace.ArrivalSubmissions!.ShouldHaveSingleItem();
     }
@@ -447,7 +454,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         readDetail.CanSaveArrival.ShouldBeFalse();
         readDetail.ArrivalSubmissions!.ShouldBeEmpty();
         readDetail.RowVersion.ShouldBe(detail.RowVersion);
-        var hiddenId = await ScheduleFlightAsync(admin, refs.StationId, refs, "7201");
+        var hiddenId = await ScheduleFlightAsync(admin, await CreateStationAsync(admin, refs.CountryId), refs, "7201");
         using var hidden = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{hiddenId}/arrival") { Content = JsonContent.Create(input) };
         hidden.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
         (await staffClient.SendAsync(hidden)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -463,6 +470,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         using var firstClient = first.Client;
         using var secondClient = second.Client;
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "7300", [first.StaffId, second.StaffId]);
+        await SeedWorkArrivalAsync(admin, firstClient, id);
         var path = $"{Base}/flights/{id}/departure";
         var detail = (await firstClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
         detail.CanSaveDeparture.ShouldBeTrue();
@@ -497,7 +505,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         }
         using (var wrongSubmission = await firstClient.GetAsync(PreviewUrl(saved.Submission, submissionId: Guid.NewGuid())))
             wrongSubmission.StatusCode.ShouldBe(HttpStatusCode.NotFound);
-        var hiddenId = await ScheduleFlightAsync(admin, refs.StationId, refs, "7301");
+        var hiddenId = await ScheduleFlightAsync(admin, await CreateStationAsync(admin, refs.CountryId), refs, "7301");
         using (var hiddenPreview = await firstClient.GetAsync(PreviewUrl(saved.Submission, flightId: hiddenId)))
             hiddenPreview.StatusCode.ShouldBe(HttpStatusCode.NotFound);
         using (var anonymous = factory.CreateClient())
@@ -530,7 +538,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         var shared = (await secondClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
         shared.DepartureSubmissions!.ShouldHaveSingleItem().ShouldBe(saved.Submission);
         using var otherWrite = await Save(secondClient, input, shared.RowVersion);
-        otherWrite.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        otherWrite.StatusCode.ShouldBe(HttpStatusCode.OK);
         // The owner's ATD/remarks correction reuses the saved signature instead of requiring a redraw.
         using var correction = await Save(firstClient, input with {
             Atd = input.Atd.AddMinutes(10), SignatureContent = null, SignatureSignedAtUtc = null, Remarks = "Corrected"
@@ -572,7 +580,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
     }
 
     [Fact]
-    public async Task Departure_boundary_requires_permission_precondition_atd_and_a_real_signed_png()
+    public async Task Departure_boundary_requires_permission_precondition_atd_and_validates_supplied_signature()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
@@ -581,6 +589,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         using var actorClient = actor.Client;
         using var readerClient = reader.Client;
         var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "7400", [actor.StaffId, reader.StaffId]);
+        await SeedWorkArrivalAsync(admin, actorClient, id);
         var path = $"{Base}/flights/{id}/departure";
         var detail = (await actorClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
         var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=");
@@ -591,7 +600,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         (await anonymous.PutAsJsonAsync(path, input)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         foreach (var invalid in new[] {
             input with { Atd = default },
-            input with { SignatureContent = null, SignatureSignedAtUtc = null },
+            input with { SignatureContent = null },
             input with { SignatureContent = [] },
             input with { SignatureContent = [137, 80, 78, 71] },
             input with { SignatureContent = png[..^1] },
@@ -609,7 +618,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         unchanged.RowVersion.ShouldBe(detail.RowVersion);
         var readDetail = (await readerClient.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/mobile/{id}"))!;
         readDetail.CanSaveDeparture.ShouldBeFalse();
-        var hiddenId = await ScheduleFlightAsync(admin, refs.StationId, refs, "7401");
+        var hiddenId = await ScheduleFlightAsync(admin, await CreateStationAsync(admin, refs.CountryId), refs, "7401");
         using var hidden = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{hiddenId}/departure") { Content = JsonContent.Create(input) };
         hidden.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
         (await actorClient.SendAsync(hidden)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -722,7 +731,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         using var invalid = new HttpRequestMessage(HttpMethod.Put, path) { Content = JsonContent.Create(input with { CanceledAtUtc = default }) };
         invalid.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
         (await actorClient.SendAsync(invalid)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        var hiddenId = await ScheduleFlightAsync(admin, refs.StationId, refs, "7502");
+        var hiddenId = await ScheduleFlightAsync(admin, await CreateStationAsync(admin, refs.CountryId), refs, "7502");
         using var hidden = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{hiddenId}/cancellation") { Content = JsonContent.Create(input) };
         hidden.Headers.TryAddWithoutValidation("If-Match", detail.RowVersion);
         (await actorClient.SendAsync(hidden)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -825,7 +834,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
 
     private static async Task<Guid> ScheduleFlightAsync(
         HttpClient client, Guid stationId, MasterDataRefs refs, string flightNumber,
-        IReadOnlyList<Guid>? assignedStaffIds = null)
+        IReadOnlyList<Guid>? assignedStaffIds = null, bool perLanding = false)
     {
         var response = await client.PostAsJsonAsync($"{Base}/flights", new
         {
@@ -836,7 +845,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
             scheduledArrivalUtc = DateTimeOffset.UtcNow.AddHours(2),
             scheduledDepartureUtc = DateTimeOffset.UtcNow.AddHours(4),
             aircraftTypeId = (Guid?)null,
-            plannedServiceIds = new[] { refs.ServiceId },
+            plannedServiceIds = new[] { perLanding ? WellKnownMasterDataIds.AircraftPerLandingService : refs.ServiceId },
             assignedStaffMemberIds = assignedStaffIds ?? []
         });
         response.StatusCode.ShouldBe(HttpStatusCode.Created);

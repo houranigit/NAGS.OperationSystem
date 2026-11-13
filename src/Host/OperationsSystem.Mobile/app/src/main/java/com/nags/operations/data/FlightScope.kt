@@ -10,9 +10,9 @@ enum class FlightCategory { MyFlights, PerLanding, AdHoc }
 /** Membership comes from the server; operation display names never determine a tab. */
 fun FlightListItem.matches(category: FlightCategory?): Boolean = when (category) {
     FlightCategory.MyFlights -> isMyFlight
-    FlightCategory.PerLanding -> isPerLanding && !isMyAdHocFlight
-    FlightCategory.AdHoc -> isMyAdHocFlight
-    null -> isMyFlight || isPerLanding || isMyAdHocFlight
+    FlightCategory.PerLanding -> isPerLanding && !isMyAdHocFlight && !isAdHocFlight
+    FlightCategory.AdHoc -> isAdHocFlight || isMyAdHocFlight
+    null -> isMyFlight || isPerLanding || isAdHocFlight || isMyAdHocFlight
 }
 
 fun FlightListItem.isInFlightWindow(at: Instant): Boolean =

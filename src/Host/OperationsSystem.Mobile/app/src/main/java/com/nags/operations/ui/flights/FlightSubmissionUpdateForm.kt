@@ -2,7 +2,6 @@ package com.nags.operations.ui.flights
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,6 +37,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nags.operations.R
+import com.nags.operations.ui.components.InlineNotice
+import com.nags.operations.ui.components.InlineNoticeKind
 import com.nags.operations.data.FlightOperationReviewTarget
 import com.nags.operations.data.mergeArrivalReview
 import com.nags.operations.data.mergeDepartureReview
@@ -58,6 +59,7 @@ import com.nags.operations.data.db.entities.FlightArrivalPendingEntity
 import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
 import com.nags.operations.data.userMessage
 import com.nags.operations.data.validationErrors
+import com.nags.operations.data.requiresArrivalRemarks
 import com.nags.operations.ui.theme.AccentBlue
 import com.nags.operations.ui.util.operationLocalTime
 import com.nags.operations.ui.util.stationTimeZone
@@ -79,7 +81,8 @@ import kotlinx.serialization.json.Json
 
 /** Attribution describes the original submission, independently of its operational ATA/ATD. */
 @Composable
-internal fun FlightSubmissionNote(name: String, submittedAt: String, zone: ZoneId, onUpdate: (() -> Unit)? = null, updateLabel: String? = null, needsReview: Boolean = false) {
+internal fun FlightSubmissionNote(name: String, submittedAt: String, zone: ZoneId, onUpdate: (() -> Unit)? = null, updateLabel: String? = null,
+    needsReview: Boolean = false, updatedByDisplayName: String? = null, updatedAtUtc: String? = null) {
     val locale = LocalLocale.current.platformLocale
     val timestampTemplate = stringResource(R.string.flight_submission_timestamp)
     val timestamp = remember(submittedAt, zone, locale, timestampTemplate) {
@@ -90,6 +93,15 @@ internal fun FlightSubmissionNote(name: String, submittedAt: String, zone: ZoneI
                 value.format(DateTimeFormatter.ofPattern("HH:mm", locale)))
         }.getOrDefault(submittedAt)
     }
+    val updateTimestamp = remember(updatedAtUtc, zone, locale, timestampTemplate) {
+        updatedAtUtc?.let { raw -> runCatching {
+            val value = OffsetDateTime.parse(raw).atZoneSameInstant(zone)
+            String.format(locale, timestampTemplate,
+                value.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)),
+                value.format(DateTimeFormatter.ofPattern("HH:mm", locale)))
+        }.getOrNull() }
+    }
+    val updatedBy = stringResource(R.string.flight_submission_note_updated_by)
     val prefix = stringResource(R.string.flight_submission_note_prefix)
     val on = stringResource(R.string.flight_submission_note_on)
     val update = updateLabel ?: stringResource(R.string.flight_submission_update)
@@ -99,6 +111,12 @@ internal fun FlightSubmissionNote(name: String, submittedAt: String, zone: ZoneI
         withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(name) }
         append(on)
         withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(timestamp) }
+        if (!updatedByDisplayName.isNullOrBlank() && updateTimestamp != null) {
+            append(updatedBy)
+            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(updatedByDisplayName) }
+            append(on)
+            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(updateTimestamp) }
+        }
         append(".")
         if (onUpdate != null) {
             append(" ")
@@ -144,22 +162,27 @@ internal fun FlightSubmissionUpdateForm(
     val zone = remember(flight.stationTimeZoneId) { stationTimeZone(flight.stationTimeZoneId) }
     val reviewing = reviewMode || (if (isArrival) arrivalPending?.status else departurePending?.status)?.let { it != "pending" } == true
     var localDiscarded by rememberSaveable { mutableStateOf(false) }
-    var localApplied by rememberSaveable { mutableStateOf(false) }
-    var stagedSignatureContent by remember { mutableStateOf<String?>(null) }
-    var applyLocalSignature by rememberSaveable { mutableStateOf(false) }
-    val initialTime = if (isArrival) (if (reviewing) null else arrivalInput?.ata) ?: arrival?.ata
-        else (if (reviewing) null else departureInput?.atd) ?: departure?.atd
+    var localApplied by rememberSaveable { mutableStateOf(reviewing) }
+    val onlineArrivalInput = arrival?.let { SaveFlightArrivalRequest(it.ata, it.aircraftTypeId, it.aircraftTailNumber,
+        it.customerWorkReferenceNumber, it.remarks, targetSubmissionId = submissionId.takeIf(String::isNotBlank)) }
+        ?: SaveFlightArrivalRequest("", "", "", targetSubmissionId = submissionId.takeIf(String::isNotBlank))
+    val onlineDepartureInput = departure?.let { SaveFlightDepartureRequest(it.atd, remarks = it.remarks,
+        targetSubmissionId = submissionId.takeIf(String::isNotBlank)) }
+        ?: SaveFlightDepartureRequest("", targetSubmissionId = submissionId.takeIf(String::isNotBlank))
+    val initialArrival = if (reviewing && arrivalInput != null) mergeArrivalReview(onlineArrivalInput, arrivalInput)
+        else arrivalInput ?: onlineArrivalInput
+    val initialDeparture = if (reviewing && departureInput != null) mergeDepartureReview(onlineDepartureInput, departureInput)
+        else departureInput ?: onlineDepartureInput
+    var applyLocalSignature by rememberSaveable { mutableStateOf(!isArrival && departurePending?.signatureFile != null) }
+    val initialTime = if (isArrival) initialArrival.ata else initialDeparture.atd
     var originalTime by rememberSaveable { mutableStateOf(initialTime) }
-    var time by rememberSaveable { mutableStateOf(initialTime?.let { operationLocalTime(it, zone) }.orEmpty()) }
-    var aircraftId by rememberSaveable { mutableStateOf((if (reviewing) null else arrivalInput?.aircraftTypeId) ?: arrival?.aircraftTypeId.orEmpty()) }
-    var tail by rememberSaveable { mutableStateOf((if (reviewing) null else arrivalInput?.aircraftTailNumber) ?: arrival?.aircraftTailNumber.orEmpty()) }
-    var reference by rememberSaveable { mutableStateOf(if (!reviewing && arrivalInput != null) arrivalInput.customerWorkReferenceNumber.orEmpty()
-        else arrival?.customerWorkReferenceNumber.orEmpty()) }
-    var remarks by rememberSaveable { mutableStateOf(if (isArrival) {
-        if (!reviewing && arrivalInput != null) arrivalInput.remarks.orEmpty() else arrival?.remarks.orEmpty()
-    } else if (!reviewing && departureInput != null) departureInput.remarks.orEmpty() else departure?.remarks.orEmpty()) }
+    var time by rememberSaveable { mutableStateOf(initialTime.takeIf(String::isNotBlank)?.let { operationLocalTime(it, zone) }.orEmpty()) }
+    var aircraftId by rememberSaveable { mutableStateOf(initialArrival.aircraftTypeId) }
+    var tail by rememberSaveable { mutableStateOf(initialArrival.aircraftTailNumber.uppercase(java.util.Locale.ROOT)) }
+    var reference by rememberSaveable { mutableStateOf(initialArrival.customerWorkReferenceNumber.orEmpty().uppercase(java.util.Locale.ROOT)) }
+    var remarks by rememberSaveable { mutableStateOf(if (isArrival) initialArrival.remarks.orEmpty() else initialDeparture.remarks.orEmpty()) }
     var signature by rememberSaveable { mutableStateOf("") }
-    var signedAt by rememberSaveable { mutableStateOf<String?>(null) }
+    var signedAt by rememberSaveable { mutableStateOf(departureInput?.signatureSignedAtUtc.takeIf { applyLocalSignature }) }
     var reviewedJson by rememberSaveable { mutableStateOf(Json.encodeToString(flight.let { original ->
         if (!reviewing && isArrival && arrivalPending != null) {
             val reviewed = arrivalPending.reviewedArrivalJson?.let { runCatching { Json.decodeFromString<FlightArrivalSubmission?>(it) }.getOrNull() }
@@ -172,6 +195,16 @@ internal fun FlightSubmissionUpdateForm(
     })) }
     val reviewed = remember(reviewedJson) { Json.decodeFromString<FlightDetail>(reviewedJson) }
     val inputTime = arrivalInputTime(time, originalTime, zone)
+    val queuedArrivalTime = remember(pendingArrival?.inputJson, pendingArrival?.status, pendingArrival?.rowVersion) {
+        pendingArrival?.takeIf { it.status == "pending" }?.let { row -> runCatching {
+            Json.decodeFromString<SaveFlightArrivalRequest>(row.inputJson).takeIf { it.validationErrors(row.rowVersion).isEmpty() }?.ata
+        }.getOrNull() }
+    }
+    val actualArrivalTime = queuedArrivalTime ?: reviewed.visibleArrival()?.ata
+    val departureBeforeArrival = !isArrival && runCatching {
+        OffsetDateTime.parse(inputTime).toInstant() < OffsetDateTime.parse(actualArrivalTime).toInstant()
+    }.getOrDefault(false)
+    val departureMissingArrival = !isArrival && actualArrivalTime.isNullOrBlank()
     fun arrivalValue() = SaveFlightArrivalRequest(inputTime, aircraftId, tail, reference, remarks,
         targetSubmissionId = submissionId.takeIf { it.isNotBlank() }).normalized()
     fun departureValue() = SaveFlightDepartureRequest(inputTime, remarks = remarks, targetSubmissionId = submissionId.takeIf { it.isNotBlank() }).normalized()
@@ -217,24 +250,24 @@ internal fun FlightSubmissionUpdateForm(
     }
     val errors = if (attempted && isArrival) arrivalValue().validationErrors(reviewed.rowVersion) else emptySet()
     val aircraftAvailable = aircraftTypes.any { it.id.equals(aircraftId, true) }
+    val requiredRemarksMissing = isArrival && reviewed.requiresArrivalRemarks() && remarks.isBlank()
     var savedPreview by remember { mutableStateOf<ByteArray?>(null) }
     var previewLoading by remember { mutableStateOf(false) }
-    var localSignaturePreview by remember { mutableStateOf<ByteArray?>(null) }
-    LaunchedEffect(reviewing, departurePending?.changeId, departurePending?.signatureFile) {
-        if (reviewing && !isArrival && departurePending?.signatureFile != null) {
-            try { localSignaturePreview = loadSignature(reviewed, departurePending) }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { localSignaturePreview = null }
-        }
-    }
-
+    var onlineSignaturePreview by remember { mutableStateOf<ByteArray?>(null) }
     var previewRetry by remember { mutableIntStateOf(0) }
     val reviewedDeparture = if (submissionId.isBlank()) reviewed.visibleDeparture() else reviewed.departureSubmissions.firstOrNull { it.id.equals(submissionId, true) }
-    LaunchedEffect(reviewedDeparture, departurePending?.signatureFile, previewRetry, localApplied) {
-        if (!isArrival && (reviewedDeparture != null || localApplied && departurePending?.signatureFile != null)) {
+    LaunchedEffect(reviewedDeparture, previewRetry) {
+        if (reviewing && !isArrival && reviewedDeparture?.hasSignature == true) {
+            try { onlineSignaturePreview = loadSignature(reviewed.copy(departureSubmissions = listOf(reviewedDeparture)), null) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { onlineSignaturePreview = null }
+        }
+    }
+    LaunchedEffect(reviewedDeparture, departurePending?.signatureFile, previewRetry, applyLocalSignature) {
+        if (!isArrival && (reviewedDeparture?.hasSignature == true || applyLocalSignature)) {
             previewLoading = true
             savedPreview = null
-            try { savedPreview = loadSignature(reviewed.copy(departureSubmissions = listOfNotNull(reviewedDeparture)), if (reviewing && !localApplied) null else departurePending) }
+            try { savedPreview = loadSignature(reviewed.copy(departureSubmissions = listOfNotNull(reviewedDeparture)), if (reviewing && !applyLocalSignature) null else departurePending) }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { /* A missing preview never removes the saved signature. */ }
             finally { previewLoading = false }
@@ -245,7 +278,8 @@ internal fun FlightSubmissionUpdateForm(
     fun save(acknowledge: Boolean) {
         attempted = true
         if (!enabled) return
-        if (inputTime.isBlank() || isArrival && (errors.isNotEmpty() || !aircraftAvailable || arrivalValue().validationErrors(reviewed.rowVersion).isNotEmpty())) {
+        if (inputTime.isBlank() || departureBeforeArrival || departureMissingArrival || requiredRemarksMissing ||
+            isArrival && (errors.isNotEmpty() || !aircraftAvailable || arrivalValue().validationErrors(reviewed.rowVersion).isNotEmpty())) {
             validationRequest++
             return
         }
@@ -257,13 +291,14 @@ internal fun FlightSubmissionUpdateForm(
         val departureSave = departureValue().copy(acknowledgeConflictingSubmission = acknowledge)
         val ink = signature
         val inkSignedAt = signedAt
+        val retainedSignaturePreview = savedPreview.takeIf { applyLocalSignature }
         scope.launch {
             try {
                 // Review may replace the old queue row inside its transaction. Load its private PNG first,
                 // including after recreation when only the saved local-signature choice remains in UI state.
                 val preparedDeparture = if (!isArrival) {
                     val png = if (ink.isNotBlank()) withContext(Dispatchers.Default) { signaturePngContent(ink) } else if (applyLocalSignature) {
-                        stagedSignatureContent ?: loadSignature(reviewed, departurePending)?.let { Base64.getEncoder().encodeToString(it) }
+                        (retainedSignaturePreview ?: loadSignature(reviewed, departurePending))?.let { Base64.getEncoder().encodeToString(it) }
                             ?: error("The saved signature is unavailable. Select it again before saving.")
                     } else null
                     departureSave.copy(signatureContent = png, signatureSignedAtUtc = if (png != null) inkSignedAt else null)
@@ -287,12 +322,11 @@ internal fun FlightSubmissionUpdateForm(
         onRequestClose = close, saveEnabled = enabled && (changed || localApplied || reviewing && !localDiscarded || reviewedChangeId != null), saveLoading = saving,
         onSave = { save(false) }, compact = true, validationState = validationState, identityContent = {},
         navigationIcon = Icons.AutoMirrored.Filled.ArrowBack, navigationDescription = stringResource(R.string.account_back), headerTitle = title) {
-        saveError?.let { FlightFormValidation(it, modifier = Modifier.flightFormNavigationTarget("submission-save-error"), registerError = false) {} }
+        saveError?.let { InlineNotice(it, modifier = Modifier.flightFormNavigationTarget("submission-save-error"), kind = InlineNoticeKind.Error) }
         if (needsReview && !reviewing) {
-            Text(stringResource(if (isArrival) R.string.arrival_sync_review else R.string.departure_sync_review),
-                Modifier.padding(horizontal = 14.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            InlineNotice(stringResource(if (isArrival) R.string.arrival_sync_review else R.string.departure_sync_review), kind = InlineNoticeKind.Warning)
             (if (isArrival) arrivalPending?.error else departurePending?.error)?.let {
-                Text(it, Modifier.padding(horizontal = 14.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                InlineNotice(it, kind = InlineNoticeKind.Error)
             }
             TextButton(enabled = !saving, onClick = {
                 saving = true
@@ -309,16 +343,29 @@ internal fun FlightSubmissionUpdateForm(
         }
         if (reviewing) {
             FlightReviewOnlineHeading(cachedReview || flight.fromCache)
-            if (isArrival && arrival == null || !isArrival && departure == null)
-                Text(stringResource(R.string.flight_review_empty_online), Modifier.padding(horizontal = 14.dp), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (isArrival && arrival != null) {
+                FlightSavedDetailsCard { FlightArrivalSummary(arrival, zone) }
+                FlightSubmissionNote(arrival.createdByDisplayName ?: arrival.submittedByEmployee.fullName, arrival.createdAtUtc, zone,
+                    updatedByDisplayName = arrival.updatedByDisplayName, updatedAtUtc = arrival.updatedAtUtc)
+            } else if (!isArrival && departure != null) {
+                FlightSavedDetailsCard { FlightDepartureSummary(departure, zone, onlineSignaturePreview) }
+                FlightSubmissionNote(departure.createdByDisplayName ?: departure.submittedByEmployee.fullName, departure.createdAtUtc, zone,
+                    updatedByDisplayName = departure.updatedByDisplayName, updatedAtUtc = departure.updatedAtUtc)
+            } else Text(stringResource(R.string.flight_review_empty_online), Modifier.padding(horizontal = 14.dp),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!localDiscarded) FlightReviewLocalHeading()
         }
         FlightFormSectionTitle(stringResource(if (isArrival) R.string.operations_arrival else R.string.operations_departure))
         FlightFormFieldGroup {
             Column {
                 FlightFormDateTimeField(time, stringResource(if (isArrival) R.string.operations_actual_arrival else R.string.operations_actual_departure),
                     stringResource(if (isArrival) R.string.arrival_choose_ata else R.string.operations_choose_atd), enabled = enabled,
-                    errorMessage = if (attempted && inputTime.isBlank()) stringResource(if (isArrival) R.string.arrival_ata_required else R.string.departure_atd_required) else null,
+                    errorMessage = if (attempted) when {
+                        inputTime.isBlank() -> stringResource(if (isArrival) R.string.arrival_ata_required else R.string.departure_atd_required)
+                        departureMissingArrival -> stringResource(R.string.flight_arrival_before_work)
+                        departureBeforeArrival -> stringResource(R.string.flight_departure_before_arrival)
+                        else -> null
+                    } else null,
                     leadingPadding = 0.dp, displayPattern = "dd/MM/yy HH:mm", prominentLabel = true,
                     leadingContent = { FlightActualTimeIcon(if (isArrival) Icons.Filled.FlightLand else Icons.Filled.FlightTakeoff) }, onClick = { picker = "time" })
                 FlightFormDivider()
@@ -330,77 +377,44 @@ internal fun FlightSubmissionUpdateForm(
                         errorMessage = if (attempted && !aircraftAvailable) stringResource(R.string.arrival_aircraft_unavailable) else null,
                         onClick = { picker = "aircraft" })
                     FlightFormDivider()
-                    FlightFormTextRow(stringResource(R.string.arrival_tail_number), tail, { tail = it }, stringResource(R.string.flight_form_required_field),
+                    FlightFormTextRow(stringResource(R.string.arrival_tail_number), tail.uppercase(java.util.Locale.ROOT), { tail = it.uppercase(java.util.Locale.ROOT) }, stringResource(R.string.flight_form_required_field),
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Next), enabled = enabled,
                         errorMessage = if (ArrivalInputError.TailRequired in errors) stringResource(R.string.arrival_tail_required) else null)
                     FlightFormDivider()
-                    FlightFormTextRow(stringResource(R.string.arrival_reference), reference, { reference = it }, "", enabled = enabled)
-                } else FlightSignatureField(signature, hasSavedSignature = reviewedDeparture != null || applyLocalSignature, savedPreview = savedPreview, loading = previewLoading,
+                    FlightFormTextRow(stringResource(R.string.arrival_reference), reference.uppercase(java.util.Locale.ROOT), { reference = it.uppercase(java.util.Locale.ROOT) }, "", enabled = enabled)
+                } else FlightSignatureField(signature, hasSavedSignature = reviewedDeparture?.hasSignature == true || applyLocalSignature, savedPreview = savedPreview, loading = previewLoading,
                     enabled = enabled, onOpen = { picker = "signature" })
                 FlightFormDivider()
-                FlightFormRemarks(remarks, { remarks = it }, stringResource(if (isArrival) R.string.operations_arrival_remarks else R.string.operations_departure_remarks), enabled = enabled,
-                    heading = stringResource(if (isArrival) R.string.operations_arrival_remarks_heading else R.string.operations_departure_remarks_heading), inGroup = true)
+                FlightFormValidation(if (attempted && requiredRemarksMissing) stringResource(R.string.flight_unknown_customer_arrival_remarks) else null) {
+                    FlightFormRemarks(remarks, { remarks = it }, stringResource(if (isArrival) R.string.operations_arrival_remarks else R.string.operations_departure_remarks), enabled = enabled,
+                        heading = stringResource(if (isArrival) R.string.operations_arrival_remarks_heading else R.string.operations_departure_remarks_heading), inGroup = true,
+                        required = isArrival && reviewed.requiresArrivalRemarks())
+                }
             }
         }
+        if (isArrival && reviewed.requiresArrivalRemarks()) Text(stringResource(R.string.flight_unknown_customer_arrival_remarks),
+            Modifier.padding(horizontal = 14.dp), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (reviewing && !localDiscarded && reviewCardChangeId != null) {
-            FlightReviewLocalCard(localApplied, !saving, onDiscard = {
+            FlightReviewActions(!saving, onDiscard = {
                 saving = true; saveError = null
                 scope.launch {
                     try {
                         onDiscardReviewed(FlightOperationReviewTarget(if (isArrival) "arrival" else "departure", changeId = reviewCardChangeId))
-                        localDiscarded = true; localApplied = false; applyLocalSignature = false; stagedSignatureContent = null; signature = ""; signedAt = null
+                        localDiscarded = true; localApplied = false; applyLocalSignature = false; signature = ""; signedAt = null
                         val onlineArrival = reviewed.arrivalSubmissions.firstOrNull { it.id == submissionId } ?: reviewed.visibleArrival()
                         val onlineDeparture = reviewed.departureSubmissions.firstOrNull { it.id == submissionId } ?: reviewed.visibleDeparture()
-                        originalTime = if (isArrival) onlineArrival?.ata else onlineDeparture?.atd
-                        time = originalTime?.let { operationLocalTime(it, zone) }.orEmpty()
+                        originalTime = if (isArrival) onlineArrival?.ata.orEmpty() else onlineDeparture?.atd.orEmpty()
+                        time = originalTime.takeIf(String::isNotBlank)?.let { operationLocalTime(it, zone) }.orEmpty()
                         aircraftId = onlineArrival?.aircraftTypeId.orEmpty(); tail = onlineArrival?.aircraftTailNumber.orEmpty()
                         reference = onlineArrival?.customerWorkReferenceNumber.orEmpty()
                         remarks = if (isArrival) onlineArrival?.remarks.orEmpty() else onlineDeparture?.remarks.orEmpty()
-                        val resetTime = arrivalInputTime(time, originalTime, zone)
-                        baseline = if (isArrival) Json.encodeToString(arrivalValue().copy(ata = resetTime))
-                            else Json.encodeToString(departureValue().copy(atd = resetTime))
+                        baseline = if (isArrival) Json.encodeToString(arrivalValue()) else Json.encodeToString(departureValue())
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (error: Exception) { saveError = error.userMessage(); validationRequest++ }
                     finally { saving = false }
                 }
-            }, onOverwrite = {
-                saving = true; saveError = null
-                scope.launch {
-                    try {
-                        if (isArrival && arrivalInput != null) {
-                            val merged = mergeArrivalReview(arrivalValue(), arrivalInput)
-                            originalTime = merged.ata; time = operationLocalTime(merged.ata, zone)
-                            aircraftId = merged.aircraftTypeId; tail = merged.aircraftTailNumber
-                            reference = merged.customerWorkReferenceNumber.orEmpty(); remarks = merged.remarks.orEmpty()
-                        } else if (!isArrival && departureInput != null) {
-                            val bytes = if (departurePending?.signatureFile != null) loadSignature(reviewed, departurePending)
-                                ?: error("The saved signature is unavailable. Select it again before saving.") else null
-                            val local = departureInput.copy(signatureContent = bytes?.let { Base64.getEncoder().encodeToString(it) })
-                            val merged = mergeDepartureReview(departureValue(), local)
-                            originalTime = merged.atd; time = operationLocalTime(merged.atd, zone); remarks = merged.remarks.orEmpty()
-                            if (bytes != null) {
-                                stagedSignatureContent = merged.signatureContent; applyLocalSignature = true; signedAt = merged.signatureSignedAtUtc
-                                signature = ""
-                            }
-                        }
-                        localApplied = true
-                    } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (error: Exception) { saveError = error.userMessage(); validationRequest++ }
-                    finally { saving = false }
-                }
-            }) {
-                if (isArrival && arrivalInput != null) {
-                    FlightReviewValue(stringResource(R.string.operations_actual_arrival), operationLocalTime(arrivalInput.ata, zone))
-                    FlightReviewValue(stringResource(R.string.arrival_aircraft), aircraftTypes.firstOrNull { it.id == arrivalInput.aircraftTypeId }?.model ?: arrival?.takeIf { it.aircraftTypeId == arrivalInput.aircraftTypeId }?.aircraftTypeModel ?: stringResource(R.string.arrival_aircraft_unavailable))
-                    FlightReviewValue(stringResource(R.string.arrival_tail_number), arrivalInput.aircraftTailNumber)
-                    FlightReviewValue(stringResource(R.string.arrival_reference), arrivalInput.customerWorkReferenceNumber)
-                    FlightReviewValue(stringResource(R.string.operations_arrival_remarks), arrivalInput.remarks)
-                } else if (departureInput != null) {
-                    FlightReviewValue(stringResource(R.string.operations_actual_departure), operationLocalTime(departureInput.atd, zone))
-                    FlightReviewValue(stringResource(R.string.operations_departure_remarks), departureInput.remarks)
-                    if (departurePending?.signatureFile != null) FlightSignatureField("", true, localSignaturePreview, enabled = false, onOpen = {})
-                }
-            }
+            })
         }
         if (ArrivalInputError.VersionRequired in errors) FlightFormValidation(stringResource(R.string.arrival_reload_required)) {}
     }
@@ -410,8 +424,8 @@ internal fun FlightSubmissionUpdateForm(
     if (picker == "aircraft") FlightWorkPicker(title = stringResource(R.string.arrival_aircraft_type), searchLabel = stringResource(R.string.arrival_search_aircraft),
         emptyLabel = stringResource(R.string.arrival_no_aircraft), options = aircraftTypes.sortedBy { it.model }.map { FlightWorkChoice(it.id, it.model, it.manufacturer) },
         selectedId = aircraftId, onDismiss = { picker = null }, onSelect = { aircraftId = it })
-    if (picker == "signature") FlightSignatureSheet(signature, reviewedDeparture != null || applyLocalSignature, savedPreview, previewLoading, onRetry = { previewRetry++ },
-        onValueChange = { signature = it; stagedSignatureContent = null; applyLocalSignature = false; signedAt = if (it.isBlank()) null else Instant.now().toString() }, onDismiss = { picker = null })
+    if (picker == "signature") FlightSignatureSheet(signature, reviewedDeparture?.hasSignature == true || applyLocalSignature, savedPreview, previewLoading, onRetry = { previewRetry++ },
+        onValueChange = { signature = it; applyLocalSignature = false; signedAt = if (it.isBlank()) null else Instant.now().toString() }, onDismiss = { picker = null })
     if (confirmDiscard) FlightFormDiscardDialog(stringResource(R.string.operations_discard_title), onDismiss = { confirmDiscard = false }, onDiscard = onClose)
     if (confirmCanceled) FlightSubmissionConfirmation(stringResource(R.string.submission_canceled_warning_title), stringResource(R.string.submission_canceled_warning),
         stringResource(R.string.submission_save_anyway), onConfirm = { confirmCanceled = false; save(true) }, onDismiss = { confirmCanceled = false })

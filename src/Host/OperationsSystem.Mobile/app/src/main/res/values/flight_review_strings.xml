@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="flight_submission_note_updated_by">\u0020and updated by\u0020</string>
+    <string name="flight_review_failed_note">Your changes are saved on this device and need review before syncing.</string>
+    <string name="flight_review_edit_hint">Your provided values are applied below. Online values are kept where you had no input. Review, then Save.</string>
+    <string name="flight_work_pending_delete_note">Deletion saved on this device. Pending sync.</string>
+    <string name="flight_work_failed_delete_note">Your deletion is saved on this device and needs review before syncing.</string>
+</resources>

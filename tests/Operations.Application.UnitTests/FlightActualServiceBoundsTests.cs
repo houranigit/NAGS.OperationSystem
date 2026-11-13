@@ -365,6 +365,7 @@ public sealed class FlightActualServiceBoundsTests
     {
         public int SaveCalls { get; private set; }
         public DbSet<Flight> Flights => db.Flights;
+        public DbSet<FlightUserActivity> FlightUserActivities => db.FlightUserActivities;
         public DbSet<OutboxMessage> OutboxMessages => db.OutboxMessages;
         public DbSet<InboxMessage> InboxMessages => db.InboxMessages;
         public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion) where TEntity : class =>

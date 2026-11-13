@@ -51,7 +51,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nags.operations.BuildConfig
@@ -59,6 +58,8 @@ import com.nags.operations.R
 import com.nags.operations.data.SharedCatalog
 import com.nags.operations.data.sync.SyncTarget
 import com.nags.operations.data.realtime.RealtimeChannelState
+import com.nags.operations.ui.components.InlineNotice
+import com.nags.operations.ui.components.InlineNoticeKind
 import com.nags.operations.ui.theme.BrandRed
 import com.nags.operations.ui.theme.BrandRedDark
 import com.nags.operations.ui.theme.BrandRedLight
@@ -70,7 +71,16 @@ import java.util.Date
 fun SyncCenterScreen(
     viewModel: SyncCenterViewModel,
     onBack: () -> Unit,
+    onOpenAdHoc: (String) -> Unit = {},
 ) {
+    val pendingAdHoc by viewModel.pendingAdHoc.collectAsStateWithLifecycle()
+    val adHocActionError by viewModel.adHocActionError.collectAsStateWithLifecycle()
+    var discardAdHocId by rememberSaveable { mutableStateOf<String?>(null) }
+    if (discardAdHocId != null) AlertDialog(onDismissRequest = { discardAdHocId = null },
+        title = { Text("Discard saved AdHoc input?") },
+        text = { Text("Remove this device's retained Flight details and dependent operational input, including its local media?") },
+        confirmButton = { TextButton(onClick = { discardAdHocId?.let(viewModel::discardAdHoc); discardAdHocId = null }) { Text("Discard") } },
+        dismissButton = { TextButton(onClick = { discardAdHocId = null }) { Text("Keep") } })
     val pendingArrivals by viewModel.pendingArrivals.collectAsStateWithLifecycle()
     val arrivalActionError by viewModel.arrivalActionError.collectAsStateWithLifecycle()
     val pendingCancellations by viewModel.pendingCancellations.collectAsStateWithLifecycle()
@@ -165,15 +175,40 @@ fun SyncCenterScreen(
                     onClick = { viewModel.refreshNow() },
                 )
             }
+            if (pendingAdHoc.isNotEmpty()) {
+                item { Text("AdHoc flights", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                items(pendingAdHoc, key = { "adhoc:${it.flightId}" }) { row ->
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val input = androidx.compose.runtime.remember(row.inputJson) {
+                            com.nags.operations.data.api.HttpClientFactory.json.decodeFromString<com.nags.operations.data.AdHocFlightInput>(row.inputJson)
+                        }
+                        Text(input.flightNumber, fontWeight = FontWeight.Bold)
+                        InlineNotice(row.error ?: "Saved on this device. Waiting to synchronize Flight details.",
+                            kind = if (row.status == "pending") InlineNoticeKind.Info else InlineNoticeKind.Warning)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { onOpenAdHoc(row.flightId) }) { Text("Review") }
+                            TextButton(onClick = { viewModel.retryAdHoc(row.flightId) }, enabled = isOnline) { Text("Retry") }
+                            TextButton(onClick = { discardAdHocId = row.flightId }, enabled = row.attemptInputJson == null || row.attemptRejected) { Text("Discard") }
+                        }
+                    }
+                }
+            }
+            adHocActionError?.let { message -> item { InlineNotice(message, kind = InlineNoticeKind.Error) } }
             if (pendingArrivals.isNotEmpty()) {
                 item { Text(stringResource(R.string.arrival_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                 items(pendingArrivals, key = { "arrival:${it.flightId}" }) { row ->
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
                         .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
-                        Text(stringResource(if (row.status == "pending") R.string.arrival_pending else R.string.arrival_sync_review),
-                            style = MaterialTheme.typography.bodyMedium)
-                        row.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                        InlineNotice(
+                            message = row.error ?: stringResource(if (row.status == "pending") R.string.arrival_pending else R.string.arrival_sync_review),
+                            kind = when {
+                                row.error != null -> InlineNoticeKind.Error
+                                row.status == "pending" -> InlineNoticeKind.Info
+                                else -> InlineNoticeKind.Warning
+                            },
+                        )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = { viewModel.retryArrival(row.flightId) }, enabled = isOnline) {
                                 Text(stringResource(R.string.arrival_sync_retry))
@@ -185,16 +220,21 @@ fun SyncCenterScreen(
                     }
                 }
             }
-            arrivalActionError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
+            arrivalActionError?.let { message -> item { InlineNotice(message, kind = InlineNoticeKind.Error) } }
             if (pendingServices.isNotEmpty()) {
                 item { Text(stringResource(R.string.service_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                 items(pendingServices, key = { "service:${it.flightId}:${it.serviceRecordId}" }) { row ->
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
                         .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
-                        Text(stringResource(if (row.status == "pending") R.string.service_pending else R.string.service_sync_review),
-                            style = MaterialTheme.typography.bodyMedium)
-                        row.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                        InlineNotice(
+                            message = row.error ?: stringResource(if (row.status == "pending") R.string.service_pending else R.string.service_sync_review),
+                            kind = when {
+                                row.error != null -> InlineNoticeKind.Error
+                                row.status == "pending" -> InlineNoticeKind.Info
+                                else -> InlineNoticeKind.Warning
+                            },
+                        )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = { viewModel.retryService(row.flightId, row.serviceRecordId) }, enabled = isOnline) {
                                 Text(stringResource(R.string.arrival_sync_retry))
@@ -207,16 +247,21 @@ fun SyncCenterScreen(
                     }
                 }
             }
-            if (serviceActionFailed) item { Text(stringResource(R.string.service_sync_action_failed), color = MaterialTheme.colorScheme.error) }
+            if (serviceActionFailed) item { InlineNotice(stringResource(R.string.service_sync_action_failed), kind = InlineNoticeKind.Error) }
             if (pendingTasks.isNotEmpty()) {
                 item { Text(stringResource(R.string.task_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                 items(pendingTasks, key = { "task:${it.flightId}:${it.taskRecordId}" }) { row ->
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
                         .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
-                        Text(stringResource(if (row.status == "pending") R.string.task_pending else R.string.task_sync_review),
-                            style = MaterialTheme.typography.bodyMedium)
-                        row.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                        InlineNotice(
+                            message = row.error ?: stringResource(if (row.status == "pending") R.string.task_pending else R.string.task_sync_review),
+                            kind = when {
+                                row.error != null -> InlineNoticeKind.Error
+                                row.status == "pending" -> InlineNoticeKind.Info
+                                else -> InlineNoticeKind.Warning
+                            },
+                        )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = { viewModel.retryTask(row.flightId, row.taskRecordId) }, enabled = isOnline) {
                                 Text(stringResource(R.string.arrival_sync_retry))
@@ -229,16 +274,21 @@ fun SyncCenterScreen(
                     }
                 }
             }
-            if (taskActionFailed) item { Text(stringResource(R.string.task_sync_action_failed), color = MaterialTheme.colorScheme.error) }
+            if (taskActionFailed) item { InlineNotice(stringResource(R.string.task_sync_action_failed), kind = InlineNoticeKind.Error) }
             if (pendingDepartures.isNotEmpty()) {
                 item { Text(stringResource(R.string.departure_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                 items(pendingDepartures, key = { "departure:${it.flightId}" }) { row ->
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
                         .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.departure_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
-                        Text(stringResource(if (row.status == "pending") R.string.departure_pending else R.string.departure_sync_review),
-                            style = MaterialTheme.typography.bodyMedium)
-                        row.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                        InlineNotice(
+                            message = row.error ?: stringResource(if (row.status == "pending") R.string.departure_pending else R.string.departure_sync_review),
+                            kind = when {
+                                row.error != null -> InlineNoticeKind.Error
+                                row.status == "pending" -> InlineNoticeKind.Info
+                                else -> InlineNoticeKind.Warning
+                            },
+                        )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = { viewModel.retryDeparture(row.flightId) }, enabled = isOnline) {
                                 Text(stringResource(R.string.departure_sync_retry))
@@ -250,19 +300,25 @@ fun SyncCenterScreen(
                     }
                 }
             }
-            if (departureActionFailed) item { Text(stringResource(R.string.departure_sync_action_failed), color = MaterialTheme.colorScheme.error) }
+            if (departureActionFailed) item { InlineNotice(stringResource(R.string.departure_sync_action_failed), kind = InlineNoticeKind.Error) }
             if (pendingCancellations.isNotEmpty()) {
                 item { Text(stringResource(R.string.cancellation_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
                 items(pendingCancellations, key = { "cancellation:${it.flightId}" }) { row ->
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
                         .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
-                        Text(stringResource(when {
-                            row.status != "pending" -> R.string.cancellation_sync_review
-                            row.operation == "revert" -> R.string.cancellation_revert_pending_message
-                            else -> R.string.cancellation_pending_message
-                        }), style = MaterialTheme.typography.bodyMedium)
-                        row.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                        InlineNotice(
+                            message = row.error ?: stringResource(when {
+                                row.status != "pending" -> R.string.cancellation_sync_review
+                                row.operation == "revert" -> R.string.cancellation_revert_pending_message
+                                else -> R.string.cancellation_pending_message
+                            }),
+                            kind = when {
+                                row.error != null -> InlineNoticeKind.Error
+                                row.status == "pending" -> InlineNoticeKind.Info
+                                else -> InlineNoticeKind.Warning
+                            },
+                        )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TextButton(onClick = { viewModel.retryCancellation(row.flightId) }, enabled = isOnline) { Text(stringResource(R.string.arrival_sync_retry)) }
                             TextButton(onClick = { discardCancellationId = row.flightId }, enabled = row.attemptOperation == null || row.status != "pending") {
@@ -272,7 +328,7 @@ fun SyncCenterScreen(
                     }
                 }
             }
-            if (cancellationActionFailed) item { Text(stringResource(R.string.cancellation_sync_action_failed), color = MaterialTheme.colorScheme.error) }
+            if (cancellationActionFailed) item { InlineNotice(stringResource(R.string.cancellation_sync_action_failed), kind = InlineNoticeKind.Error) }
             item {
                 Text(
                     text = stringResource(R.string.sync_center_cached_data),
@@ -600,25 +656,12 @@ private fun SyncRowCard(row: SyncRowState) {
         }
 
         if (row.lastError != null || row.permissionDenied) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f))
-                    .padding(12.dp),
-            ) {
-                Text(
-                    text = stringResource(when {
-                        row.permissionDenied -> R.string.catalog_sync_denied
-                        row.target == SyncTarget.Flights -> R.string.flights_sync_failed
-                        else -> R.string.catalog_sync_failed
-                    }),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            InlineNotice(
+                message = if (row.permissionDenied) stringResource(R.string.catalog_sync_denied)
+                    else row.lastError ?: stringResource(if (row.target == SyncTarget.Flights)
+                        R.string.flights_sync_failed else R.string.catalog_sync_failed),
+                kind = InlineNoticeKind.Error,
+            )
         }
     }
 }

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="flight_submission_note_updated_by">\u0020وتم تحديثه بواسطة\u0020</string>
+    <string name="flight_review_failed_note">تغييراتك محفوظة على هذا الجهاز وتحتاج إلى مراجعة قبل المزامنة.</string>
+    <string name="flight_review_edit_hint">تم تطبيق القيم التي أدخلتها أدناه، مع الاحتفاظ بالقيم المحفوظة عبر الإنترنت للحقول التي لم تُدخلها. راجع ثم اضغط حفظ.</string>
+    <string name="flight_work_pending_delete_note">الحذف محفوظ على هذا الجهاز وبانتظار المزامنة.</string>
+    <string name="flight_work_failed_delete_note">الحذف محفوظ على هذا الجهاز ويحتاج إلى مراجعة قبل المزامنة.</string>
+</resources>

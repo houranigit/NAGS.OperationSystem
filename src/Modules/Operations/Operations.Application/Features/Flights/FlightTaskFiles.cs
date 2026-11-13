@@ -21,7 +21,7 @@ public sealed class GetMobileFlightTaskAttachmentQueryHandler(IOperationsDbConte
     {
         var actor = await scope.ResolveAsync(cancellationToken);
         if (actor.IsFailure) return actor.Error;
-        var flight = await MobileFlightQuery.ApplyScope(db.Flights.AsNoTracking(), actor.Value)
+        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), actor.Value)
             .Include(f => f.TaskRecords).ThenInclude(s => s.Attachments)
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         var attachment = flight?.Tasks.SingleOrDefault(s => s.Id == request.RecordId)?.Attachments.SingleOrDefault(a => a.Id == request.AttachmentId);

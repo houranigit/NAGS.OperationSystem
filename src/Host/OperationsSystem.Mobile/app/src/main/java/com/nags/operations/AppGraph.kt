@@ -14,6 +14,7 @@ import com.nags.operations.data.hasOwnWork
 import com.nags.operations.data.taskCalculationType
 
 import android.content.Context
+import androidx.room.withTransaction
 import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.work.WorkManager
@@ -94,7 +95,19 @@ class AppGraph private constructor(context: Context) {
         },
         online = networkMonitor.isOnline, scope = appScope,
     )
-    val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline, customerLogos)
+    val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline, customerLogos,
+        prepareOffline = ::prepareFlightOffline,
+        localAdHocFlights = { adHocFlights.localFlights() }, unmaterializedAdHoc = { adHocFlights.isUnmaterialized(it) },
+        reconcileAdHoc = { ids, complete -> adHocFlights.reconcileManifest(ids, complete) },
+        revokeAdHoc = { owner, id -> adHocFlights.revokeForOwner(owner, id) }, recordAdHoc = { adHocFlights.recordAcknowledged(it) },
+        confirmAdHocStation = { adHocFlights.confirmStation(it) },
+        additionalCachedFlight = { discoveryFlights.cachedFlight(it) },
+        beginAdditionalDetailRead = { discoveryFlights.detailRevision(it) },
+        recordAdditionalFetched = { detail, revision -> discoveryFlights.recordFetched(detail, revision) },
+        recordAdditionalAcknowledged = { discoveryFlights.recordAcknowledged(it) },
+        prepareAdditionalOffline = { discoveryFlights.refreshKnownAndPrepare() },
+        confirmAdditionalStation = { discoveryFlights.confirmStation(it) }, revokeAdditional = { owner, id -> discoveryFlights.revokeForOwner(owner, id) },
+        additionalLogoFlights = { discoveryFlights.logoFlights() })
     private val flightOperationsSyncMutex = FlightOperationsGate()
     private val flightSubmissionGate = Mutex()
     private var flightWriteAcknowledgments = 0L
@@ -112,12 +125,13 @@ class AppGraph private constructor(context: Context) {
         groupedRetry = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.retry("arrival", id, recordId) } },
         groupedDiscard = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.discard("arrival", id, recordId) } },
         online = { networkMonitor.isOnline.value }, send = operationsApi::saveArrival,
-        accepted = { id, saved -> flightsRepository.recordArrival(id, saved); flightOperationsBatches.legacyArrivalAccepted(id, saved) },
+        accepted = { id, saved -> flightsRepository.recordArrival(id, saved); discoveryFlights.recordArrival(id, saved); flightOperationsBatches.legacyArrivalAccepted(id, saved) },
         schedule = {
             FlightArrivalSyncWorker.schedule(appContext)
             appScope.launch { syncFlightOperations() }
         },
         json = HttpClientFactory.json,
+        onLocalSaved = { discoveryFlights.recordLocalSave(it) },
         fetchFlight = flightsRepository::flight,
         hasUnacknowledgedOtherWork = { id -> flightServices.hasUnacknowledgedAttempt(id) || flightTasks.hasUnacknowledgedAttempt(id) || flightDepartures.hasUnacknowledgedAttempt(id) },
         hasSavedServices = { id -> flightServices.hasSavedInput(id) || flightTasks.hasSavedInput(id) },
@@ -155,7 +169,7 @@ class AppGraph private constructor(context: Context) {
         batchFiles = { flightOperationsBatches.fileReferences("service") },
         sendSave = { id, recordId, input, version -> flightArrivals.withCurrentSession { operationsApi.saveService(id, recordId, input, version) } },
         sendDelete = { id, recordId, version -> flightArrivals.withCurrentSession { operationsApi.removeService(id, recordId, version) } },
-        acceptedSave = { id, saved -> flightsRepository.recordService(id, saved); flightOperationsBatches.legacyServiceAccepted(id, saved) }, acceptedDelete = { id, saved -> flightsRepository.recordServiceDeleted(id, saved); flightOperationsBatches.legacyServiceDeleted(id, saved.id) },
+        acceptedSave = { id, saved -> flightsRepository.recordService(id, saved); discoveryFlights.recordService(id, saved); flightOperationsBatches.legacyServiceAccepted(id, saved) }, acceptedDelete = { id, saved -> flightsRepository.recordServiceDeleted(id, saved); discoveryFlights.recordServiceDeleted(id, saved); flightOperationsBatches.legacyServiceDeleted(id, saved.id) },
         schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } },
         json = HttpClientFactory.json,
         hasSavedArrival = { id -> flightArrivals.mustSyncBeforeServices(id) },
@@ -178,6 +192,7 @@ class AppGraph private constructor(context: Context) {
             flightDepartures.onPriorWriteAcknowledged(id, before, after)
         },
         onAttachmentsAcknowledged = serviceAttachmentPreviews::recordAcknowledged,
+        onLocalSaved = { discoveryFlights.recordLocalSave(it) },
     )
     val taskAttachmentPreviews = TaskAttachmentPreviews(
         directory = File(appContext.filesDir, "flight-task-attachment-previews"),
@@ -206,7 +221,7 @@ class AppGraph private constructor(context: Context) {
         batchFiles = { flightOperationsBatches.fileReferences("task") },
         sendSave = { id, recordId, input, version -> flightArrivals.withCurrentSession { operationsApi.saveTask(id, recordId, input, version) } },
         sendDelete = { id, recordId, version -> flightArrivals.withCurrentSession { operationsApi.removeTask(id, recordId, version) } },
-        acceptedSave = { id, saved -> flightsRepository.recordTask(id, saved); flightOperationsBatches.legacyTaskAccepted(id, saved) }, acceptedDelete = { id, saved -> flightsRepository.recordTaskDeleted(id, saved); flightOperationsBatches.legacyTaskDeleted(id, saved.id) },
+        acceptedSave = { id, saved -> flightsRepository.recordTask(id, saved); discoveryFlights.recordTask(id, saved); flightOperationsBatches.legacyTaskAccepted(id, saved) }, acceptedDelete = { id, saved -> flightsRepository.recordTaskDeleted(id, saved); discoveryFlights.recordTaskDeleted(id, saved); flightOperationsBatches.legacyTaskDeleted(id, saved.id) },
         schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } },
         json = HttpClientFactory.json,
         hasSavedArrival = { id -> flightArrivals.mustSyncBeforeServices(id) },
@@ -240,6 +255,7 @@ class AppGraph private constructor(context: Context) {
             flightDepartures.onPriorWriteAcknowledged(id, before, after)
         },
         onAttachmentsAcknowledged = taskAttachmentPreviews::recordAcknowledged,
+        onLocalSaved = { discoveryFlights.recordLocalSave(it) },
     )
     val flightDepartures: FlightDeparturesRepository = FlightDeparturesRepository(
         dao = catalogDatabase.flightDepartureDao(), ownerFlow = logoOwners,
@@ -256,12 +272,13 @@ class AppGraph private constructor(context: Context) {
         groupedDiscard = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.discard("departure", id, recordId) } },
         batchFiles = { flightOperationsBatches.fileReferences("departure") },
         online = { networkMonitor.isOnline.value }, send = operationsApi::saveDeparture,
-        accepted = { id, saved -> flightsRepository.recordDeparture(id, saved); flightOperationsBatches.legacyDepartureAccepted(id, saved) },
+        accepted = { id, saved -> flightsRepository.recordDeparture(id, saved); discoveryFlights.recordDeparture(id, saved); flightOperationsBatches.legacyDepartureAccepted(id, saved) },
         schedule = {
             FlightArrivalSyncWorker.schedule(appContext)
             appScope.launch { syncFlightOperations() }
         },
         json = HttpClientFactory.json,
+        onLocalSaved = { discoveryFlights.recordLocalSave(it) },
         signatureStore = DiskDepartureSignatureStore(File(appContext.noBackupFilesDir, "flight-departure-signatures")),
         hasSavedArrival = { id -> flightArrivals.mustSyncBeforeServices(id) },
         hasSavedServices = { id -> flightServices.hasSavedInput(id) || flightTasks.hasSavedInput(id) },
@@ -286,7 +303,9 @@ class AppGraph private constructor(context: Context) {
             else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
         },
         online = { networkMonitor.isOnline.value }, send = operationsApi::saveCancellation, revert = operationsApi::revertCancellation,
-        accepted = flightsRepository::recordCancellation, onReverted = flightsRepository::recordCancellationReverted,
+        accepted = { id, saved -> flightsRepository.recordCancellation(id, saved); discoveryFlights.recordCancellation(id, saved) },
+        onReverted = { id, saved -> flightsRepository.recordCancellationReverted(id, saved); discoveryFlights.recordCancellationReverted(id, saved) },
+        onLocalSaved = { discoveryFlights.recordLocalSave(it) }, transaction = { work -> catalogDatabase.withTransaction { work() } },
         schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } },
         json = HttpClientFactory.json, submissionGate = flightSubmissionGate,
         hasSavedWork = { id -> flightArrivals.hasSavedInput(id) || flightServices.hasSavedInput(id) || flightTasks.hasSavedInput(id) || flightDepartures.hasSavedInput(id) ||
@@ -335,12 +354,69 @@ class AppGraph private constructor(context: Context) {
             deferCleanup = { deferred -> flightServices.batchCleanupDeferred = deferred; flightTasks.batchCleanupDeferred = deferred; flightDepartures.batchCleanupDeferred = deferred },
             cleanup = { flightServices.cleanupAfterBatch(); flightTasks.cleanupAfterBatch(); flightDepartures.cleanupAfterBatch() },
             schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } }, json = HttpClientFactory.json,
+            mayPublishFlight = { id -> !adHocFlights.hasPendingIdentity(id) },
             onAcknowledged = { id, before, after ->
                 flightArrivals.onPriorWriteAcknowledged(id, before, after)
                 flightServices.onPriorWriteAcknowledged(id, before, after)
                 flightTasks.onPriorWriteAcknowledged(id, before, after)
                 flightDepartures.onPriorWriteAcknowledged(id, before, after)
             })
+    }
+
+    val adHocFlights: com.nags.operations.data.repo.AdHocFlightsRepository by lazy {
+        val api = com.nags.operations.data.api.AdHocFlightsApi(httpClient)
+        com.nags.operations.data.repo.AdHocFlightsRepository(catalogDatabase.adHocFlightDao(), logoOwners,
+            currentOwner = { if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject()) },
+            currentUser = tokenStore::getSessionSubject, currentDisplayName = tokenStore::getDisplayName,
+            online = { networkMonitor.isOnline.value }, fetchContext = {
+                val read = flightsRepository.beginExternalScopeRead()
+                api.context().also { context -> flightsRepository.confirmExternalPage(FlightPage(emptyList(), stationId = context.stationId,
+                    asOfUtc = context.asOfUtc, windowStartUtc = context.windowStartUtc, windowEndUtc = context.windowEndUtc), read) }
+            }, create = api::create, update = api::update,
+            gate = flightOperationsSyncMutex, commit = flightOperationsBatches::savePlanning,
+            holdWork = flightOperationsBatches::holdForPlanning, releaseWork = flightOperationsBatches::releaseAfterPlanning,
+            holdWorkForReview = flightOperationsBatches::holdPlanningWorkForReview,
+            onLocalSaved = { discoveryFlights.recordLocalSave(it) }, onAcknowledgedDetail = { discoveryFlights.recordAcknowledged(it) },
+            removeWork = flightOperationsBatches::removeUnsentPlanningWork,
+            hasWork = { id ->
+                val owner = if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
+                owner != null && (catalogDatabase.flightArrivalDao().rows(owner).any { it.flightId == id } ||
+                    catalogDatabase.flightServiceDao().rows(owner).any { it.flightId == id } ||
+                    catalogDatabase.flightTaskDao().rows(owner).any { it.flightId == id } ||
+                    catalogDatabase.flightDepartureDao().rows(owner).any { it.flightId == id })
+            }, transaction = { work -> catalogDatabase.withTransaction { work() } },
+            schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } },
+            onPlanningAcknowledged = { id, before, after ->
+                flightArrivals.onPriorWriteAcknowledged(id, before, after)
+                flightDepartures.onPriorWriteAcknowledged(id, before, after)
+                flightServices.onPriorWriteAcknowledged(id, before, after)
+                flightTasks.onPriorWriteAcknowledged(id, before, after)
+                flightWriteAcknowledgments++
+            })
+    }
+
+    val discoveryFlights: com.nags.operations.data.repo.DiscoveryFlightsRepository by lazy {
+        val api = com.nags.operations.data.api.DiscoveryFlightsApi(httpClient)
+        com.nags.operations.data.repo.DiscoveryFlightsRepository(catalogDatabase.flightDiscoveryDao(), logoOwners,
+            currentOwner = { if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject()) },
+            online = { networkMonitor.isOnline.value }, fetchPage = api::page, fetchDetail = operationsApi::flight,
+            prepareOffline = ::prepareFlightOffline, transaction = { work -> catalogDatabase.withTransaction { work() } },
+            beginScopeRead = flightsRepository::beginExternalScopeRead, confirmScopeRead = flightsRepository::confirmExternalPage,
+            localStationAuthority = { station -> flightsRepository.trustedCachedStation() == station || adHocFlights.cachedContext()?.stationId == station },
+            hasPendingWork = { id -> id in pendingFlightOperationIds() }, isUnmaterializedLocalFlight = { adHocFlights.isUnmaterialized(it) },
+            onFlightAccessLost = flightsRepository::recordExternalAccessLoss,
+            beginLogoRead = customerLogos::beginMetadataRead,
+            reconcileLogos = { items, read -> customerLogos.reconcileFlights(items.mapNotNull { item -> item.customerId?.let { it to item.customerLogoVersion } }.toMap(), read, complete = false) },
+            prepareLogos = customerLogos::prefetch)
+    }
+
+    private suspend fun pendingFlightOperationIds(): Set<String> {
+        val owner = if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
+        if (owner == null) return emptySet()
+        return (catalogDatabase.flightArrivalDao().rows(owner).map { it.flightId } + catalogDatabase.flightDepartureDao().rows(owner).map { it.flightId } +
+            catalogDatabase.flightServiceDao().rows(owner).map { it.flightId } + catalogDatabase.flightTaskDao().rows(owner).map { it.flightId } +
+            catalogDatabase.flightCancellationDao().rows(owner).map { it.flightId } + catalogDatabase.adHocFlightDao().rows(owner)
+                .filter { it.status != "acknowledged" }.map { it.flightId }).toSet()
     }
 
     val notificationsRepository: NotificationsRepository =
@@ -359,6 +435,9 @@ class AppGraph private constructor(context: Context) {
         },
         appScope = appScope,
         refreshFlightCache = {
+            try { adHocFlights.refreshContext() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { /* The prior granted context remains usable unless access was denied. */ }
             syncFlightOperations()
             flightsRepository.refreshCache()
         },
@@ -406,6 +485,8 @@ class AppGraph private constructor(context: Context) {
     )
 
     init {
+        appScope.launch { adHocFlights.localChanges.collect { flightsRepository.notifyLocalChanges() } }
+        appScope.launch { discoveryFlights.changes.collect { flightsRepository.notifyLocalChanges() } }
         appScope.launch {
             combine(networkMonitor.isOnline, tokenStore.sessionSubjectFlow) { online, subject -> online to subject }
                 .distinctUntilChanged().collect { (online, subject) ->
@@ -431,6 +512,8 @@ class AppGraph private constructor(context: Context) {
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
+            adHocFlights.clear()
+            discoveryFlights.clear()
             flightOperationsBatches.clear()
             flightArrivals.clear()
             flightServices.clear()
@@ -475,6 +558,7 @@ class AppGraph private constructor(context: Context) {
                 flightOperationsBatches.adoptLegacyPending()
                 return drain()
             }
+            val adHocPending = adHocFlights.syncPending()
             var previousAcknowledgments: Long
             do {
                 previousAcknowledgments = flightWriteAcknowledgments
@@ -486,7 +570,7 @@ class AppGraph private constructor(context: Context) {
                 val departuresPending = legacyDrain { flightDepartures.syncPending() }
                 val batchesPending = flightOperationsBatches.syncPending()
                 val cancellationsPending = legacyDrain { flightCancellations.syncPending() }
-                if (arrivalsPending || servicesPending || tasksPending || departuresPending || batchesPending || cancellationsPending) return@withLock true
+                if (adHocPending || arrivalsPending || servicesPending || tasksPending || departuresPending || batchesPending || cancellationsPending) return@withLock true
             } while (previousAcknowledgments != flightWriteAcknowledgments)
             false
         }
@@ -512,6 +596,13 @@ class AppGraph private constructor(context: Context) {
             version = next
         }
         return version
+    }
+
+    /** Persist replaceable remote media separately from the durable upload queues. */
+    private suspend fun prepareFlightOffline(flight: FlightDetail) {
+        for (service in flight.services) serviceAttachmentPreviews.prefetch(flight.id, service.id, service.attachments)
+        for (task in flight.tasks) taskAttachmentPreviews.prefetch(flight.id, task.id, task.attachments)
+        departureSignaturePreviews.prefetch(flight)
     }
 
     suspend fun loadServiceAttachment(flightId: String, serviceId: String, attachmentId: String, uploadedAtUtc: String): String? =
@@ -585,6 +676,8 @@ class AppGraph private constructor(context: Context) {
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
+            adHocFlights.clear()
+            discoveryFlights.clear()
             flightOperationsBatches.clear()
             flightArrivals.clear()
             flightServices.clear()

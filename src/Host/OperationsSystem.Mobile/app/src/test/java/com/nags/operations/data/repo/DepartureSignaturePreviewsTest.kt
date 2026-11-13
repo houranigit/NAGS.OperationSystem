@@ -112,6 +112,36 @@ class DepartureSignaturePreviewsTest {
         assertFalse(folder.walkTopDown().any { it.isFile })
     }
 
+    @Test fun completePreparationIncludesEverySignedSubmissionAndSkipsExplicitlyUnsigned() = runBlocking {
+        val legacy = submission.copy(id = "legacy", signatureVersion = null)
+        val other = submission.copy(id = "other", submittedByEmployee = employee.copy(staffMemberId = "other"))
+        val unsigned = submission.copy(id = "unsigned", signatureVersion = null, hasSignature = false)
+        val all = flight.copy(departureSubmissions = listOf(legacy, other, unsigned))
+        val requested = mutableListOf<String>()
+        fetch = { _, id, _ -> requested += id; png }
+        store().prefetch(all)
+        assertEquals(listOf("legacy", "other"), requested)
+        online = false
+        store().prefetch(all)
+        assertArrayEquals(png, store().load(flight.copy(departureSubmissions = listOf(legacy)), null))
+        assertArrayEquals(png, store().load(flight.copy(departureSubmissions = listOf(other)), null))
+        assertNull(store().load(flight.copy(departureSubmissions = listOf(unsigned)), null))
+        assertEquals(2, reads)
+    }
+
+    @Test fun missingOrUnpersistedSignatureCannotCompleteOfflinePreparation() = runBlocking {
+        fetch = { _, _, _ -> null }
+        assertTrue(runCatching { store().prefetch(flight) }.isFailure)
+        fetch = { _, _, _ -> png }
+        folder.deleteRecursively()
+        folder.writeText("A file prevents private cache directory creation")
+        // An online preview can still be seen, but preparation requires a successful durable write.
+        assertArrayEquals(png, store().load(flight, null))
+        assertTrue(runCatching { store().prefetch(flight) }.isFailure)
+        online = false
+        assertNull(store().load(flight, null))
+    }
+
     @Test fun aCorruptCachedPreviewIsRepairedWhenOnline() = runBlocking {
         val preview = store()
         preview.load(flight, null)

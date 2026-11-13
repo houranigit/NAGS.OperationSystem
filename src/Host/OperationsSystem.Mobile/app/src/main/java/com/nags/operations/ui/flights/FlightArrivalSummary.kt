@@ -48,9 +48,9 @@ internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId
                 Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.arrival_actual_details), style = labelStyle,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("${arrival.aircraftTypeModel} | ${arrival.aircraftTailNumber}", style = valueStyle)
+                    Text("${arrival.aircraftTypeModel} | ${arrival.aircraftTailNumber.uppercase(java.util.Locale.ROOT)}", style = valueStyle)
                     val packageLabel = stringResource(R.string.flight_submission_work_package)
-                    val reference = arrival.customerWorkReferenceNumber?.takeIf { it.isNotBlank() } ?: "—"
+                    val reference = arrival.customerWorkReferenceNumber?.uppercase(java.util.Locale.ROOT)?.takeIf { it.isNotBlank() } ?: "—"
                     Text(buildAnnotatedString {
                         append(packageLabel)
                         append(" ")

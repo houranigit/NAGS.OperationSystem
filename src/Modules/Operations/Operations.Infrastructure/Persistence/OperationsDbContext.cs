@@ -1,6 +1,7 @@
 using System.Reflection;
 using BuildingBlocks.Application.Messaging;
 using BuildingBlocks.Infrastructure.Messaging;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Operations.Application.Abstractions;
@@ -16,6 +17,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public const string Schema = "operations";
 
     public DbSet<Flight> Flights => Set<Flight>();
+    public DbSet<FlightUserActivity> FlightUserActivities => Set<FlightUserActivity>();
     public DbSet<FlightReminderSchedule> FlightReminderSchedules => Set<FlightReminderSchedule>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
@@ -27,14 +29,28 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         EnsureSubmissionConcurrencyChecks();
-        return base.SaveChanges(acceptAllChangesOnSuccess);
+        try { return base.SaveChanges(acceptAllChangesOnSuccess); }
+        catch (DbUpdateException error) when (IsActivityInsertCollision(error))
+        {
+            throw new DbUpdateConcurrencyException("Another work interaction changed this flight. Reload and retry.", error);
+        }
     }
 
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         EnsureSubmissionConcurrencyChecks();
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        try { return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+        catch (DbUpdateException error) when (IsActivityInsertCollision(error))
+        {
+            throw new DbUpdateConcurrencyException("Another work interaction changed this flight. Reload and retry.", error);
+        }
     }
+
+    private static bool IsActivityInsertCollision(DbUpdateException error) =>
+        // EF can report every entry in a failed batch, including unrelated inserts.
+        error.Entries.Any(entry => entry.Entity is FlightUserActivity && entry.State == EntityState.Added) &&
+        error.InnerException is SqlException sql && sql.Errors.Cast<SqlError>().Any(detail =>
+            detail.Number is 2601 or 2627 && detail.Message.Contains($"{Schema}.flight_user_activities", StringComparison.Ordinal));
 
     private void EnsureSubmissionConcurrencyChecks()
     {

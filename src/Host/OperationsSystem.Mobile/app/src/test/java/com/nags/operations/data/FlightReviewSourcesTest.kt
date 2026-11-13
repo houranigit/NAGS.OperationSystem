@@ -35,8 +35,8 @@ class FlightReviewSourcesTest {
 
         assertEquals("", retained.ata)
         assertEquals("", retained.aircraftTypeId)
-        assertEquals("same", retained.customerWorkReferenceNumber)
-        assertEquals("same", mergeArrivalReview(online.copy(customerWorkReferenceNumber = "colleague"), retained).customerWorkReferenceNumber)
+        assertEquals("SAME", retained.customerWorkReferenceNumber)
+        assertEquals("SAME", mergeArrivalReview(online.copy(customerWorkReferenceNumber = "colleague"), retained).customerWorkReferenceNumber)
     }
 
     @Test fun customStagedBaselineCapturesManualChangesBeforeOverwriteWithoutPromotingOtherOnlineValues() {
@@ -47,7 +47,7 @@ class FlightReviewSourcesTest {
 
         val retained = arrivalReviewSourceAfterSave(online, source, final, expectedStaged)
 
-        assertEquals("manual before overwrite", retained.customerWorkReferenceNumber)
+        assertEquals("MANUAL BEFORE OVERWRITE", retained.customerWorkReferenceNumber)
         assertNull(retained.remarks)
         assertEquals("", retained.ata)
     }

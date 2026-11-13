@@ -5,6 +5,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.Base64
 import java.util.UUID
+import java.util.Locale
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -21,6 +22,8 @@ data class FlightArrivalSubmission(
     val isAccepted: Boolean,
     val createdAtUtc: String,
     val updatedAtUtc: String? = null,
+    val createdByDisplayName: String? = null,
+    val updatedByDisplayName: String? = null,
 ) {
     fun input() = SaveFlightArrivalRequest(ata, aircraftTypeId, aircraftTailNumber, customerWorkReferenceNumber, remarks)
 }
@@ -36,8 +39,8 @@ data class SaveFlightArrivalRequest(
     val targetSubmissionId: String? = null,
 ) {
     fun withoutAcknowledgement() = copy(acknowledgeConflictingSubmission = false)
-    fun normalized() = copy(aircraftTailNumber = aircraftTailNumber.trim(),
-        customerWorkReferenceNumber = customerWorkReferenceNumber?.trim()?.takeIf(String::isNotEmpty),
+    fun normalized() = copy(aircraftTailNumber = aircraftTailNumber.trim().uppercase(Locale.ROOT),
+        customerWorkReferenceNumber = customerWorkReferenceNumber?.trim()?.takeIf(String::isNotEmpty)?.uppercase(Locale.ROOT),
         remarks = remarks?.trim()?.takeIf(String::isNotEmpty))
 }
 
@@ -76,14 +79,19 @@ fun FlightDetail.visibleArrival(): FlightArrivalSubmission? = arrivalSubmissions
     it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, ignoreCase = true)
 } ?: arrivalSubmissions.firstOrNull { it.isAccepted } ?: arrivalSubmissions.firstOrNull()
 
+/** These seeded IDs are business identities; translated operation/customer names are never authorization. */
+fun FlightDetail.requiresArrivalRemarks(): Boolean =
+    operationTypeId.equals("30000000-0000-0000-0000-000000000001", true) &&
+        customerId.equals("50000000-0000-0000-0000-000000000001", true)
+
 fun FlightDetail.arrivalEditable(): Boolean = canSaveArrival && validArrivalId(currentStaffMemberId) &&
     !hasOwnCancellation() && (arrivalSubmissions.isEmpty() || arrivalSubmissions.any {
         it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, ignoreCase = true)
     })
 
-/** Explicit corrections preserve the recorded employee; assignment permits correcting another employee's report. */
+/** Corrections preserve attribution; station-wide categories share assigned employees' operational authority. */
 fun FlightDetail.canUpdateArrivalSubmission(submissionId: String): Boolean =
     canSaveArrival && validArrivalId(currentStaffMemberId) && !hasOwnCancellation() &&
         arrivalSubmissions.any { it.id.equals(submissionId, true) &&
-            (it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true) ||
+            (it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true) || isPerLanding || isAdHocFlight ||
                 assignedEmployees.any { employee -> employee.staffMemberId.equals(currentStaffMemberId, true) }) }

@@ -35,5 +35,7 @@ interface FlightServiceDao {
         if (draft != null) putDraft(draft)
     }
     @Query("DELETE FROM flight_service_pending") suspend fun clear()
+    @Query("DELETE FROM flight_service_form_drafts WHERE ownerSubject = :owner AND flightId = :flightId")
+    suspend fun deleteDraft(owner: String, flightId: String)
     @Query("DELETE FROM flight_service_form_drafts") suspend fun clearDrafts()
 }

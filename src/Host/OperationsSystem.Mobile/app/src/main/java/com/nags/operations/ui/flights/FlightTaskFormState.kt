@@ -147,6 +147,8 @@ internal fun taskEditorValidation(item: FlightTaskDraft, request: SaveFlightTask
     catalogs: FlightOperationsCatalogs, rowVersion: String, actualArrival: String?, actualDeparture: String?): Map<String, Int> = buildMap {
     val baseline = flight.tasks.firstOrNull { it.id == item.id }
     val errors = request.validationErrors(rowVersion, actualArrival, actualDeparture, taskResourceCatalogs(catalogs), baseline)
+    if (actualArrival.isNullOrBlank()) put("startUtc", R.string.flight_arrival_before_work)
+    if (baseline?.canCloseOnly == true && request.endUtc == null) put("endUtc", R.string.flight_complete_work_end_required)
     val general = mapOf("taskType" to R.string.task_validation_type, "ataChapterId" to R.string.task_validation_ata,
         "startUtc" to R.string.task_validation_start, "endUtc" to R.string.task_validation_end,
         "customerReferenceNumber" to R.string.task_validation_reference, "notes" to R.string.task_validation_notes,

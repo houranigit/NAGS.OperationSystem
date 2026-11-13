@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notice_dismiss">إخفاء الرسالة</string>
+    <string name="notice_retry">إعادة المحاولة</string>
+    <string name="notifications_delete_all_messages">حذف جميع الرسائل</string>
+    <string name="flight_arrival_before_work">أضف تفاصيل الوصول قبل إضافة الأعمال أو المغادرة.</string>
+    <string name="flight_service_overlap">تتداخل فترة هذه الخدمة مع فترة أخرى. أغلقها أو اختر فترة مختلفة.</string>
+    <string name="flight_departure_before_arrival">لا يمكن أن يسبق وقت المغادرة الفعلي وقت الوصول الفعلي.</string>
+    <string name="flight_unknown_customer_arrival_remarks">ملاحظات الوصول مطلوبة للعميل غير المعروف.</string>
+    <string name="flight_complete_service">إكمال الخدمة…</string>
+    <string name="flight_complete_task">إكمال المهمة…</string>
+    <string name="flight_complete_work_end_required">حدد وقت الانتهاء لإكمال هذا العمل.</string>
+    <string name="flight_search_work_limits">يمكنك إكمال الخدمات والمهام المفتوحة وإضافة تفاصيل المغادرة الناقصة.</string>
+    <string name="flight_work_no_longer_editable">لم يعد تعديل هذا العمل متاحًا. تم الاحتفاظ بمدخلاتك المحفوظة للمراجعة.</string>
+    <string name="flight_recently_viewed">تم عرضها مؤخرًا</string>
+    <string name="flight_history_empty">لا توجد أعمال بعد</string>
+    <string name="flight_history_empty_hint">ستظهر هنا الرحلات التي تحفظها أو تعدلها أو تكمل أعمالها.</string>
+    <string name="flight_exact_search_empty_hint">أدخل رقم الرحلة كاملًا للبحث في محطتك ضمن الفترة الحالية البالغة 12 ساعة قبل الوقت الحالي وبعده.</string>
+    <string name="feed_today">اليوم</string>
+    <string name="feed_yesterday">أمس</string>
+    <string name="feed_earlier">سابقًا</string>
+    <string name="adhoc_created_by">أنشأ هذه الرحلة\u0020</string>
+    <string name="adhoc_pending_details">محفوظ على هذا الجهاز. بانتظار مزامنة تفاصيل الرحلة.</string>
+    <string name="adhoc_retained_scope_notice">هذه الرحلة المحفوظة خارج محطتك الحالية أو الفترة المتاحة. أعد المحاولة أو تجاهل الإدخال المحفوظ من مركز المزامنة.</string>
+    <string name="adhoc_flight_details">تفاصيل الرحلة</string>
+    <string name="adhoc_customer">العميل</string>
+    <string name="adhoc_choose_customer">اختر العميل</string>
+    <string name="adhoc_customer_required">اختر عميلًا.</string>
+    <string name="adhoc_flight_number_required">أدخل رقم الرحلة.</string>
+    <string name="adhoc_flight_number_length">يجب ألا يتجاوز رقم الرحلة 12 حرفًا.</string>
+    <string name="adhoc_choose_sta">اختر الوصول المجدول</string>
+    <string name="adhoc_choose_std">اختر المغادرة المجدولة</string>
+    <string name="adhoc_sta_invalid">اختر وقت وصول مجدولًا واضحًا.</string>
+    <string name="adhoc_window_hint">اختر أوقاتًا ضمن الفترة الحالية للرحلات.</string>
+    <string name="adhoc_std_invalid">لا يمكن أن تسبق المغادرة المجدولة الوصول المجدول.</string>
+    <string name="adhoc_verify_station">اتصل وتحقق من محطتك الحالية قبل الحفظ.</string>
+    <string name="adhoc_window_error">يجب أن تتداخل أوقات الرحلة المخصصة مع الفترة الحالية للرحلات.</string>
+    <string name="adhoc_search_customers">ابحث عن العملاء</string>
+    <string name="adhoc_customers_empty">لا يوجد عملاء محفوظون.</string>
+</resources>

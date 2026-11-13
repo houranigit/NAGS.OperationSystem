@@ -27,7 +27,7 @@ public sealed class FlightTaskClosureTests
         }
         flight.UpdateTask(task.Id, task.TaskType, null, "Rejected", closed, null, actor, TestData.Now)
             .Error.Code.ShouldBe("Operations.FlightTask.OpenResourcePeriods");
-        task.Window.ShouldBe(open); task.CustomerReferenceNumber.ShouldBe("Original");
+        task.Window.ShouldBe(open); task.CustomerReferenceNumber.ShouldBe("ORIGINAL");
         void Update(ResourceUsage value)
         {
             Result result = kind switch

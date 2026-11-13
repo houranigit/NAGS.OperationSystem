@@ -118,7 +118,7 @@ internal fun FlightSignatureField(value: String, hasSavedSignature: Boolean = fa
                     } else if (loading) {
                         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
-                        FlightFormValueText(stringResource(if (hasSavedSignature) R.string.operations_signature_captured else R.string.flight_form_required_field),
+                        FlightFormValueText(if (hasSavedSignature) stringResource(R.string.operations_signature_captured) else "",
                             Modifier.weight(1f), isPlaceholder = !hasSavedSignature)
                     }
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.padding(start = 4.dp).size(18.dp),

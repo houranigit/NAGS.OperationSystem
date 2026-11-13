@@ -60,6 +60,28 @@ class FlightDeparturesRepositoryTest {
         fetchFlight = { fetches++; live }, now = { at },
         onSignatureAcknowledged = { id, saved, bytes -> previewAcknowledged(id, saved, bytes) })
 
+    @Test fun unsignedDepartureSurvivesRestartAndSyncWithoutCreatingSignatureFiles() = runBlocking {
+        val unsigned = input.copy(signatureContent = null, signatureSignedAtUtc = null)
+        val withArrival = flight.copy(arrivalSubmissions = listOf(FlightArrivalSubmission(
+            "55555555-5555-5555-5555-555555555555", employee, at.toString(),
+            "33333333-3333-3333-3333-333333333333", "A320", "HZ-TEST", receivedByEmployee = employee,
+            isAccepted = true, createdAtUtc = at.toString())))
+        repository().save(withArrival, unsigned)
+        assertNull(dao.rows(owner.value!!).single().signatureFile)
+        assertTrue(files.files.isEmpty())
+        send = { _, value, version ->
+            sent += value to version
+            assertNull(value.signatureContent)
+            assertNull(value.signatureSignedAtUtc)
+            FlightDepartureSaved(submitted.copy(hasSignature = false), "AAAAAAAAAAI=")
+        }
+        online = true
+        assertFalse(repository().syncPending())
+        assertEquals(1, sent.size)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+        assertTrue(files.files.isEmpty())
+    }
+
     @Test fun targetedAssignedCorrectionReusesOnlyTheRecordedTargetsSignature() = runBlocking {
         val author = employee.copy(staffMemberId = "22222222-2222-2222-2222-222222222222", fullName = "Original author")
         val original = submitted.copy(id = "66666666-6666-6666-6666-666666666666", submittedByEmployee = author,

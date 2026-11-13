@@ -1,5 +1,7 @@
 package com.nags.operations.ui.sync
 
+import com.nags.operations.data.userMessage
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nags.operations.data.CatalogSyncStatus
@@ -38,6 +40,7 @@ class SyncCenterViewModel internal constructor(
     private val cancellations: com.nags.operations.data.repo.FlightCancellationsRepository? = null,
     private val services: com.nags.operations.data.repo.FlightServicesRepository? = null,
     private val tasks: com.nags.operations.data.repo.FlightTasksRepository? = null,
+    private val adHoc: com.nags.operations.data.repo.AdHocFlightsRepository? = null,
 ) : ViewModel() {
     constructor(
         catalogs: SharedCatalogsRepository,
@@ -52,6 +55,7 @@ class SyncCenterViewModel internal constructor(
         cancellationRepository: com.nags.operations.data.repo.FlightCancellationsRepository? = null,
         serviceRepository: com.nags.operations.data.repo.FlightServicesRepository? = null,
         taskRepository: com.nags.operations.data.repo.FlightTasksRepository? = null,
+        adHocRepository: com.nags.operations.data.repo.AdHocFlightsRepository? = null,
     ) : this(
         statuses = catalogs.observeStatus(),
         isSyncing = syncing,
@@ -64,7 +68,7 @@ class SyncCenterViewModel internal constructor(
         departures = departureRepository,
         cancellations = cancellationRepository,
         services = serviceRepository,
-        tasks = taskRepository,
+        tasks = taskRepository, adHoc = adHocRepository,
     )
 
     private val scope = coroutineScope ?: viewModelScope
@@ -77,6 +81,20 @@ class SyncCenterViewModel internal constructor(
 
     val rows: StateFlow<List<SyncRowState>> = combine(statuses, flightStatuses, nowTick, ::mobileSyncRows)
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), mobileSyncRows(emptyList(), FlightSyncStatus(), clock()))
+
+    val pendingAdHoc = (adHoc?.pending ?: flowOf(emptyList()))
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+    val adHocActionError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    fun retryAdHoc(id: String) { scope.launch {
+        try { adHoc?.retry(id); adHocActionError.value = null }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (failure: Exception) { adHocActionError.value = failure.userMessage() }
+    } }
+    fun discardAdHoc(id: String) { scope.launch {
+        try { adHoc?.discard(id); adHocActionError.value = null }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (failure: Exception) { adHocActionError.value = failure.userMessage() }
+    } }
 
     val pendingArrivals = (arrivals?.changes ?: flowOf(emptyList()))
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), emptyList())

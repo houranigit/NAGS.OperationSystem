@@ -48,6 +48,10 @@ data class FlightListItem(
     val activeWorkCount: Int? = null,
     val completedWorkCount: Int? = null,
     val latestCancellationAtUtc: String? = null,
+    val isAdHocFlight: Boolean = false,
+    val createdByUserId: String? = null,
+    val createdByDisplayName: String? = null,
+    val lastInteractionAtUtc: String? = null,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
 }
@@ -103,6 +107,13 @@ data class FlightDetail(
     val allowedServiceIds: List<String>? = null,
     val tasks: List<FlightTaskRecord> = emptyList(),
     val canSaveTasks: Boolean = false,
+    val isAdHocFlight: Boolean = operationTypeId.equals(ADHOC_OPERATION_TYPE_ID, ignoreCase = true),
+    val createdByUserId: String? = null,
+    val createdByDisplayName: String? = null,
+    val canEditFlightDetails: Boolean = false,
+    val isUnassignedSearchFlight: Boolean = false,
+    val canAddServices: Boolean? = null,
+    val canAddTasks: Boolean? = null,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
 }

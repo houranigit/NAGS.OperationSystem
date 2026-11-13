@@ -33,7 +33,8 @@ public sealed class GetMobileFlightsQueryHandler(
     IOperationsDbContext db,
     IMobileFlightScope scope,
     ICustomerLogoReader logos,
-    IMasterDataReader masterData) : IQueryHandler<GetMobileFlightsQuery, MobileFlightPageDto>
+    IMasterDataReader masterData,
+    IUserDisplayNameReader? userNames = null) : IQueryHandler<GetMobileFlightsQuery, MobileFlightPageDto>
 {
     public async Task<Result<MobileFlightPageDto>> Handle(GetMobileFlightsQuery request, CancellationToken cancellationToken)
     {
@@ -69,8 +70,10 @@ public sealed class GetMobileFlightsQueryHandler(
 
             var customerIds = items.Select(item => item.CustomerId).Distinct().ToArray();
             var versions = await logos.GetLogoVersionsAsync(customerIds, cancellationToken);
+            var names = await FlightWorkAttribution.NamesAsync(userNames, items.Select(item => item.CreatedByUserId), cancellationToken);
             items = items.Select(item => item with
             {
+                CreatedByDisplayName = item.CreatedByUserId is { } creator ? names.GetValueOrDefault(creator) : null,
                 CustomerLogoVersion = versions.TryGetValue(item.CustomerId, out var version)
                     ? version : CustomerLogoVersions.None
             }).ToList();
@@ -92,9 +95,9 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
         if (resolved.IsFailure)
             return resolved.Error;
 
-        var flight = await MobileFlightQuery.ApplyScope(db.Flights.AsNoTracking(), resolved.Value)
+        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), resolved.Value)
             .AsSplitQuery().Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
-            .Include(f => f.ArrivalSubmissions).Include(f => f.DepartureSubmissions).Include(f => f.CancellationSubmissions)
+            .Include(f => f.ArrivalSubmissions).Include(f => f.DepartureSubmissions).Include(f => f.CancellationSubmissions).Include(f => f.ReturnToRamps)
             .Include(f => f.ServiceRecords).ThenInclude(s => s.Performers)
             .Include(f => f.ServiceRecords).ThenInclude(s => s.Attachments)
             .Include(f => f.TaskRecords).ThenInclude(t => t.Performers)
@@ -109,6 +112,7 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
         if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
             return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
         var staffId = resolved.Value.StaffMemberId;
+        var assigned = flight.CanCorrectOperationalWork(staffId);
         var canOperate = user?.HasPermission(OperationsPermissions.Flights.Operate) == true;
         var ownCancellation = flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee.StaffMemberId == staffId);
         var ownWork = flight.ArrivalSubmissions.Any(a => a.SubmittedByEmployee.StaffMemberId == staffId) ||
@@ -116,12 +120,11 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
         var allowed = await new MasterDataResolver(masterData).AllowedServiceIdsForStaffAsync(staffId, flight.Station.StationId, cancellationToken);
         var allowedIds = allowed.IsSuccess ? allowed.Value : [];
         var names = await FlightWorkAttribution.NamesAsync(userNames,
-            flight.Services.SelectMany(item => new Guid?[] { item.CreatedByUserId, item.EndedByUserId })
-                .Concat(flight.Tasks.SelectMany(item => new Guid?[] { item.CreatedByUserId, item.EndedByUserId })), cancellationToken);
+            FlightWorkAttribution.UserIds(flight), cancellationToken);
         return FlightDetails.Map(flight, station.TimeZoneId, staffId,
             canOperate && !ownCancellation, canOperate && !ownCancellation, canOperate && !ownWork && flight.ServiceRecords.Count == 0 && flight.TaskRecords.Count == 0,
             canOperate && flight.CancellationSubmissions.Count == 0 && allowedIds.Count > 0, resolved.Value.UserId, allowedIds, canOperate && flight.CancellationSubmissions.Count == 0,
-            flight.AssignedEmployees.Any(employee => employee.Employee.StaffMemberId == staffId), names);
+            assigned, names, canEditFlightDetails: canOperate);
     }
 }
 
@@ -140,7 +143,7 @@ public sealed class GetMobileFlightCustomerLogoQueryHandler(
         if (resolved.IsFailure)
             return resolved.Error;
 
-        if (!await MobileFlightQuery.ApplyScope(db.Flights.AsNoTracking(), resolved.Value)
+        if (!await MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), resolved.Value)
                 .AnyAsync(f => f.Customer.CustomerId == request.CustomerId, cancellationToken))
             return LogoNotFound();
 
@@ -187,7 +190,13 @@ internal static class MobileFlightQuery
             row.Flight.TaskRecords.Count(t => t.ReturnToRampId == row.LatestReturnToRampId && t.Window.ToUtc == null),
             row.Flight.ServiceRecords.Count(s => s.ReturnToRampId == row.LatestReturnToRampId && s.Window.ToUtc != null) +
             row.Flight.TaskRecords.Count(t => t.ReturnToRampId == row.LatestReturnToRampId && t.Window.ToUtc != null),
-            row.Flight.CancellationSubmissions.Select(c => (DateTimeOffset?)c.Details.CanceledAtUtc).Max()));
+            row.Flight.CancellationSubmissions.Select(c => (DateTimeOffset?)c.Details.CanceledAtUtc).Max(),
+            row.Flight.CreatedByUserId, row.Flight.CreatedAtUtc, null,
+            row.Flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType));
+
+    public static IQueryable<Flight> ApplyReadScope(IQueryable<Flight> query, MobileFlightScopeContext scope,
+        MobileFlightCategory? category = null) => category.HasValue ? ApplyScope(query, scope, category) : query.Where(f =>
+            f.Station.StationId == scope.StationId && f.Schedule.Sta <= scope.WindowEndUtc && f.Schedule.Std >= scope.WindowStartUtc);
 
     public static IQueryable<Flight> ApplyScope(
         IQueryable<Flight> query,
@@ -196,7 +205,6 @@ internal static class MobileFlightQuery
     {
         var stationId = scope.StationId;
         var staffId = scope.StaffMemberId;
-        var userId = scope.UserId;
         var fromUtc = scope.WindowStartUtc;
         var toUtc = scope.WindowEndUtc;
         query = query.Where(f => f.Station.StationId == stationId &&
@@ -212,11 +220,9 @@ internal static class MobileFlightQuery
                 f.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
                 f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)),
             MobileFlightCategory.AdHoc => query.Where(f =>
-                f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
-                (f.CreatedByUserId == userId || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId))),
+                f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType),
             _ => query.Where(f =>
-                (f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
-                 (f.CreatedByUserId == userId || f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId))) ||
+                f.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType ||
                 (f.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
                  (f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) ||
                   f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId))))

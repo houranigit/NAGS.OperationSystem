@@ -47,6 +47,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.nags.operations.ui.components.InlineNotice
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -159,6 +160,8 @@ internal fun FlightDetailsSheet(
             var servicesExpanded by rememberSaveable { mutableStateOf(false) }
             val isPerLanding = state.detail?.isPerLanding
                 ?: state.items.firstOrNull { it.id == state.selectedFlightId }?.isPerLanding ?: false
+            val sharedStationFlight = isPerLanding || state.detail?.isAdHocFlight == true ||
+                state.items.any { it.id == state.selectedFlightId && (it.isAdHocFlight || it.isMyAdHocFlight) }
             val actions: @Composable (Boolean) -> Unit = { loading ->
                 FlightRecordingActions(loading = loading, availableActions = availableActions, metrics = actionMetrics, expandedAction = expandedAction,
                     onExpandedActionChange = { expandedAction = it; expandedActionBounds = null },
@@ -185,17 +188,15 @@ internal fun FlightDetailsSheet(
                     .padding(start = 12.dp, end = 12.dp, bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.invitationSent) {
-                        Text(stringResource(R.string.flights_invite_sent), modifier = Modifier.padding(bottom = 8.dp),
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        InlineNotice(stringResource(R.string.flights_invite_sent))
                     }
                     when {
-                        state.isLoadingDetail && state.detail == null -> FlightDetailsSkeleton(showPeople = !isPerLanding, metrics = actionMetrics, actions = { actions(true) })
+                        state.isLoadingDetail && state.detail == null -> FlightDetailsSkeleton(showPeople = !sharedStationFlight, metrics = actionMetrics, actions = { actions(true) })
                         state.detailError != null && state.detail == null -> ErrorState(message = state.detailError, onRetry = onRetry)
                         state.detail != null -> {
                             val flight = state.detail
                             if (flight.fromCache) {
-                                Text(stringResource(R.string.flights_cached_detail), modifier = Modifier.padding(bottom = 8.dp),
-                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                InlineNotice(stringResource(R.string.flights_cached_detail))
                             }
                             FlightSheetGroup {
                                 FlightIdentity(flight, reportStatus, listItem, loadCustomerLogo, metrics = actionMetrics, actions = { actions(false) })
@@ -214,7 +215,7 @@ internal fun FlightDetailsSheet(
                                 }
                             }
                             FlightSheetWork(flight.id, workItems, stationTimeZone(flight.stationTimeZoneId))
-                            if (!flight.isPerLanding) FlightSheetGroup {
+                            if (!flight.isPerLanding && !flight.isAdHocFlight) FlightSheetGroup {
                                 DetailPeopleRow(
                                     title = stringResource(R.string.flights_planned_services), icon = Icons.Outlined.Layers,
                                     names = flight.plannedServices.map { it.name },

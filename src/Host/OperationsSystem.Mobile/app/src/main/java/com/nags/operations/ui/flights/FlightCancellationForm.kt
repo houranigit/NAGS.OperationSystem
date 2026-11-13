@@ -1,6 +1,5 @@
 package com.nags.operations.ui.flights
 
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -14,6 +13,8 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import com.nags.operations.R
+import com.nags.operations.ui.components.InlineNotice
+import com.nags.operations.ui.components.InlineNoticeKind
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.SaveFlightCancellationRequest
 import com.nags.operations.data.arrivalInputTime
@@ -95,10 +96,9 @@ internal fun FlightCancellationForm(
     }
     FlightRecordingFormScaffold(flight, stringResource(R.string.cancellation_title), stringResource(R.string.cancellation_save),
         loadCustomerLogo, requestClose, saveEnabled = enabled, saveLoading = saving, onSave = { save(false) }, progressStatus = progressStatus) {
-        saveError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        saveError?.let { InlineNotice(it, kind = InlineNoticeKind.Error) }
         if (needsReview) {
-            Text(stringResource(R.string.cancellation_sync_review), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            pending?.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            InlineNotice(pending?.error ?: stringResource(R.string.cancellation_sync_review), kind = InlineNoticeKind.Warning)
             TextButton(enabled = !saving, onClick = {
                 saving = true
                 scope.launch {

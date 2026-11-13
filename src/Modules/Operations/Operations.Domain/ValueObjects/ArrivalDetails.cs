@@ -34,10 +34,10 @@ public sealed class ArrivalDetails : ValueObject
 
         return new ArrivalDetails
         {
-            CustomerWorkReferenceNumber = string.IsNullOrWhiteSpace(customerWorkReferenceNumber) ? null : customerWorkReferenceNumber.Trim(),
+            CustomerWorkReferenceNumber = string.IsNullOrWhiteSpace(customerWorkReferenceNumber) ? null : customerWorkReferenceNumber.Trim().ToUpperInvariant(),
             Ata = ata.ToUniversalTime(),
             AircraftType = new AircraftTypeSnapshot(aircraftType.AircraftTypeId, aircraftType.Manufacturer, aircraftType.Model),
-            AircraftTailNumber = aircraftTailNumber.Trim(),
+            AircraftTailNumber = aircraftTailNumber.Trim().ToUpperInvariant(),
             ReceivedByEmployee = new StaffMemberSnapshot(receivedByEmployee.StaffMemberId, receivedByEmployee.FullName, receivedByEmployee.EmployeeId),
             Remarks = string.IsNullOrWhiteSpace(remarks) ? null : remarks.Trim()
         };

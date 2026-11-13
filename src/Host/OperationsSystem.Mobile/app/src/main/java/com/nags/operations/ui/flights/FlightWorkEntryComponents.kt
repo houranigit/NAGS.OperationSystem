@@ -31,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.nags.operations.ui.components.CompactDeleteButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -170,15 +171,16 @@ internal fun FlightWorkRemovableEntry(
         }
         Box(Modifier.weight(1f).clipToBounds()) {
             if (removeOpen) Box(Modifier.align(Alignment.TopEnd).width(80.dp).heightIn(min = 48.dp), contentAlignment = Alignment.TopEnd) {
-                Button(onClick = onRemove, enabled = enabled,
-                    modifier = if (compactDelete) Modifier.align(Alignment.Center).width(64.dp).height(34.dp)
-                        else Modifier.width(80.dp).heightIn(min = 48.dp),
-                    shape = RoundedCornerShape(if (compactDelete) 10.dp else 12.dp),
+                if (compactDelete) CompactDeleteButton(stringResource(R.string.work_delete), onRemove,
+                    modifier = Modifier.align(Alignment.Center).width(64.dp), enabled = enabled)
+                else Button(onClick = onRemove, enabled = enabled,
+                    modifier = Modifier.width(80.dp).heightIn(min = 48.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentRed, contentColor = Color.White),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = if (compactDelete) 6.dp else 10.dp, vertical = if (compactDelete) 0.dp else 8.dp)) {
+                        horizontal = 10.dp, vertical = 8.dp)) {
                     Text(stringResource(R.string.work_delete),
-                        style = if (compactDelete) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
@@ -281,6 +283,7 @@ internal fun FlightWorkNotes(
 @Composable
 internal fun FlightWorkReferenceRow(reference: String, onChange: (String) -> Unit,
     enabled: Boolean = true, errorMessage: String? = null) {
-    FlightFormTextRow(stringResource(R.string.work_customer_reference), reference, onChange,
+    FlightFormTextRow(stringResource(R.string.work_customer_reference), reference.uppercase(java.util.Locale.ROOT),
+        { onChange(it.uppercase(java.util.Locale.ROOT)) },
         "", enabled = enabled, errorMessage = errorMessage)
 }
