@@ -32,6 +32,58 @@ class SharedCatalogsRepositoryTest {
     private var durationMs = 25L
 
     @Test
+    fun taskResourceValidationReadsOneOwnerScopedSnapshotWithoutAnObservableSubscription() = runBlocking {
+        val repository = repository()
+        repository.refresh(setOf(SharedCatalog.Tools, SharedCatalog.Materials, SharedCatalog.GeneralSupports))
+        dao.put(SharedCatalogSnapshotEntity("account-b", "tools", """[{"id":"foreign","name":"Foreign","calculationType":"Quantity"}]"""))
+        val subscriptions = dao.observations
+        val reads = dao.snapshotReads
+
+        val catalogs = repository.taskResourceCatalogs()
+
+        assertEquals(mapOf("tool" to 1), catalogs.tools)
+        assertEquals(mapOf("material" to 0), catalogs.materials)
+        assertEquals(mapOf("support" to 0), catalogs.generalSupports)
+        assertEquals(subscriptions, dao.observations)
+        assertEquals(reads + 1, dao.snapshotReads)
+        owner.value = "account-b"
+        assertEquals(mapOf("foreign" to 0), repository.taskResourceCatalogs().tools)
+        assertTrue(repository.taskResourceCatalogs().materials.isEmpty())
+        owner.value = null
+        assertTrue(repository.taskResourceCatalogs().tools.isEmpty())
+    }
+
+    @Test
+    fun taskResourceValidationOmitsDeniedMissingAndUnknownTypesWhileRetainingUsableOfflineData() = runBlocking {
+        val repository = repository { throw IOException("Offline") }
+        dao.put(SharedCatalogSnapshotEntity("account-a", "tools", payload(SharedCatalog.Tools), permissionDenied = true))
+        dao.put(SharedCatalogSnapshotEntity("account-a", "materials",
+            """[{"id":"numeric","name":"Numeric","calculationType":"1"},{"id":"unsupported","name":"Unsupported","calculationType":"Future"}]""",
+            error = "Transient refresh failed", lastSuccessUtc = clock))
+        dao.put(SharedCatalogSnapshotEntity("account-b", "general-supports", payload(SharedCatalog.GeneralSupports)))
+
+        val catalogs = repository.taskResourceCatalogs()
+
+        assertTrue(catalogs.tools.isEmpty())
+        assertEquals(mapOf("numeric" to 1), catalogs.materials)
+        assertTrue(catalogs.generalSupports.isEmpty())
+    }
+
+    @Test
+    fun taskResourceSnapshotCannotReturnRowsAfterAnAccountSwitchOrLocalCacheRevocation() = runBlocking {
+        val repository = repository()
+        for (switchOwner in listOf(true, false)) {
+            owner.value = "account-a"
+            dao.put(SharedCatalogSnapshotEntity("account-a", "tools", payload(SharedCatalog.Tools)))
+            dao.afterSnapshotRead = { if (switchOwner) owner.value = "account-b" else repository.clearLocal() }
+
+            assertTrue(repository.taskResourceCatalogs().tools.isEmpty())
+
+            dao.afterSnapshotRead = {}
+        }
+    }
+
+    @Test
     fun legacyUnscopedStaffCacheIsHiddenUntilFreshScopedSyncAndThenSurvivesRestart() = runBlocking {
         val oldRows = Json.parseToJsonElement(payload(SharedCatalog.StationStaff)).jsonObject.getValue("items").toString()
         dao.put(SharedCatalogSnapshotEntity("account-a", "staff-members", oldRows, 1,
@@ -436,9 +488,20 @@ class SharedCatalogsRepositoryTest {
 private class MemoryCatalogDao : SharedCatalogDao {
     val rows = MutableStateFlow<List<SharedCatalogSnapshotEntity>>(emptyList())
     val writes = mutableListOf<SharedCatalogSnapshotEntity>()
+    var observations = 0
+    var snapshotReads = 0
+    var afterSnapshotRead: suspend () -> Unit = {}
 
-    override fun observe(ownerSubject: String): Flow<List<SharedCatalogSnapshotEntity>> = rows.map { snapshots ->
-        snapshots.filter { it.ownerSubject == ownerSubject }
+    override fun observe(ownerSubject: String): Flow<List<SharedCatalogSnapshotEntity>> {
+        observations++
+        return rows.map { snapshots -> snapshots.filter { it.ownerSubject == ownerSubject } }
+    }
+
+    override suspend fun snapshots(ownerSubject: String): List<SharedCatalogSnapshotEntity> {
+        snapshotReads++
+        val result = rows.value.filter { it.ownerSubject == ownerSubject }
+        afterSnapshotRead()
+        return result
     }
 
     override suspend fun snapshot(ownerSubject: String, catalog: String): SharedCatalogSnapshotEntity? =

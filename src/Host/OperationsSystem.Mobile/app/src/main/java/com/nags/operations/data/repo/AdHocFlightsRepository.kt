@@ -243,13 +243,13 @@ class AdHocFlightsRepository(
     }
 
     /** Keep an ACK fallback until the complete prepared manifest owns this flight's current detail. */
-    suspend fun reconcileManifest(ids: Set<String>, complete: Boolean) {
+    suspend fun reconcileManifest(ids: Set<String>, complete: Boolean, materializedAtReadStart: Set<String>? = null) {
         val owner = currentOwner() ?: return
         transaction {
             if (owner != currentOwner()) return@transaction
             for (row in dao.rows(owner).filter { it.materializedDetailJson != null }) {
                 if (complete && row.status == "acknowledged" && row.flightId in ids) dao.delete(owner, row.flightId)
-                else if (row.flightId !in ids) dao.put(row.copy(viewRevoked = true))
+                else if (row.flightId !in ids && (materializedAtReadStart == null || row.flightId in materializedAtReadStart)) dao.put(row.copy(viewRevoked = true))
             }
         }
     }

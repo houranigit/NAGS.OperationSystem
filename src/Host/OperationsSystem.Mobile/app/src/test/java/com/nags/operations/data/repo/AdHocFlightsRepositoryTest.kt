@@ -338,6 +338,22 @@ class AdHocFlightsRepositoryTest {
         }
     }
 
+    @Test fun anOlderManifestCanRevokeOnlyFallbacksAlreadyMaterializedWhenItsReadBegan() = runBlocking {
+        val f = Fixture()
+        val repo = f.repository()
+        repo.refreshContext()
+        repo.save(repo.newFlight(f.id, f.input), f.input) {}
+        repo.syncPending()
+        assertNotNull(repo.localFlight(f.id))
+        repo.reconcileManifest(emptySet(), false, materializedAtReadStart = emptySet())
+        assertNotNull(repo.localFlight(f.id))
+        assertFalse(repo.row(f.id)!!.viewRevoked)
+        repo.reconcileManifest(emptySet(), true, materializedAtReadStart = setOf(f.id))
+        assertNull(repo.localFlight(f.id))
+        assertNotNull(repo.row(f.id)) // Confirmed loss hides the fallback; retained input remains recoverable.
+        assertTrue(repo.row(f.id)!!.viewRevoked)
+    }
+
     private class Fixture {
         val firstOwner = "api|account"
         val owner = MutableStateFlow<String?>(firstOwner)

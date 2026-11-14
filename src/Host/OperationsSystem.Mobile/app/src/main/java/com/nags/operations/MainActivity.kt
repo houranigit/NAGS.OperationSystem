@@ -11,7 +11,17 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nags.operations.ui.theme.AppAppearance
+import com.nags.operations.ui.theme.AppAppearancePreferences
+import com.nags.operations.ui.theme.AppThemeMode
+import com.nags.operations.ui.theme.LocalAppAppearance
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
@@ -42,7 +52,7 @@ class MainActivity : ComponentActivity() {
         )
         SystemNotificationManager(applicationContext).ensureChannel()
 
-        // Transparent scrim + light status icons so clocks/notifications read on red headers.
+        // Set the initial edge-to-edge window; the resolved appearance updates both system bars below.
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.light(
                 Color.Transparent.toArgb(),
@@ -51,12 +61,27 @@ class MainActivity : ComponentActivity() {
         )
 
         setContent {
-            OperationsTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    OperationsApp()
+            val appearance = remember { AppAppearancePreferences(applicationContext) }
+            val themeMode by appearance.mode.collectAsStateWithLifecycle()
+            val dark = when (themeMode) {
+                AppThemeMode.System -> isSystemInDarkTheme()
+                AppThemeMode.Light -> false
+                AppThemeMode.Dark -> true
+            }
+            SideEffect {
+                enableEdgeToEdge(statusBarStyle = if (dark) SystemBarStyle.dark(Color.Transparent.toArgb())
+                    else SystemBarStyle.light(Color.Transparent.toArgb(), Color.Transparent.toArgb()),
+                    navigationBarStyle = if (dark) SystemBarStyle.dark(Color.Transparent.toArgb())
+                    else SystemBarStyle.light(Color.Transparent.toArgb(), Color.Transparent.toArgb()))
+            }
+            CompositionLocalProvider(LocalAppAppearance provides AppAppearance(themeMode, appearance::setMode)) {
+                OperationsTheme(darkTheme = dark) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
+                        OperationsApp()
+                    }
                 }
             }
         }

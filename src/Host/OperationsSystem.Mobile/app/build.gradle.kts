@@ -177,6 +177,20 @@ android {
                 "proguard-rules.pro",
             )
         }
+        // Optimized local device testing uses the development endpoint and existing app identity.
+        create("performance") {
+            initWith(getByName("release"))
+            isDebuggable = false
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            buildConfigField("String", "API_BASE_URL", buildConfigString(debugApiBaseUrl))
+        }
+    }
+
+    sourceSets.getByName("performance") {
+        manifest.srcFile("src/debug/AndroidManifest.xml")
+        res.srcDir("src/debug/res")
     }
 
     compileOptions {

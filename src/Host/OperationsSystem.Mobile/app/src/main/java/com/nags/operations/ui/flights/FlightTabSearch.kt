@@ -47,6 +47,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -83,9 +84,11 @@ internal fun FlightTabSearchHeader(
     openSearchDescription: String = stringResource(R.string.flights_search_open),
     showCloseButton: Boolean = true,
     autoFocusOnOpen: Boolean = true,
+    interactionEnabled: Boolean = true,
     searchIcon: ImageVector = Icons.Default.Search,
     searchAtPhysicalRight: Boolean = false,
-    searchSurface: Color = SearchSurface,
+    searchSurface: Color = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+        MaterialTheme.colorScheme.surfaceContainerHigh else SearchSurface,
     tabs: @Composable () -> Unit,
 ) {
     val transition = updateTransition(isSearchOpen, label = "Flight search")
@@ -106,7 +109,7 @@ internal fun FlightTabSearchHeader(
             delay(SEARCH_MOTION_MILLIS.toLong())
             focusRequester.requestFocus()
             keyboard?.show()
-        } else if (!isSearchOpen) {
+        } else {
             keyboard?.hide()
             focusManager.clearFocus()
         }
@@ -162,7 +165,7 @@ internal fun FlightTabSearchHeader(
                         if (fieldVisible) {
                             BasicTextField(value = query,
                                 onValueChange = { if (isSearchOpen) onQueryChange(it) },
-                                enabled = isSearchOpen, singleLine = true,
+                                enabled = isSearchOpen && interactionEnabled, singleLine = true,
                                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = foreground),
                                 cursorBrush = SolidColor(accent),
                                 keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Search),
@@ -226,8 +229,11 @@ internal fun FlightSearchScopeTabs(
         stringResource(R.string.flights_tab_per_landing), stringResource(R.string.flights_tab_adhoc))
     val secondary = MaterialTheme.colorScheme.onSurfaceVariant
     val accent = MaterialTheme.colorScheme.primary
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    val scopeSurface = if (dark) MaterialTheme.colorScheme.surfaceContainerHigh else SearchSurface
+    val selectedSurface = if (dark) MaterialTheme.colorScheme.surfaceContainerHighest else Color.White
     Box(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-        Row(Modifier.fillMaxWidth().background(SearchSurface, RoundedCornerShape(26.dp))
+        Row(Modifier.fillMaxWidth().background(scopeSurface, RoundedCornerShape(26.dp))
             .padding(horizontal = 4.dp).selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
             labels.forEachIndexed { index, label ->
                 val selected = index == selectedTab
@@ -235,7 +241,7 @@ internal fun FlightSearchScopeTabs(
                     .selectable(selected, onClick = { onSelectTab(index) }, role = Role.Tab),
                     contentAlignment = Alignment.Center) {
                     Box(Modifier.fillMaxSize().padding(vertical = 4.dp)
-                        .background(if (selected) Color.White else Color.Transparent, RoundedCornerShape(22.dp)))
+                        .background(if (selected) selectedSurface else Color.Transparent, RoundedCornerShape(22.dp)))
                     Text(label, modifier = Modifier.padding(horizontal = 8.dp), color = if (selected) accent else secondary,
                         style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
                         fontWeight = FontWeight.Bold,

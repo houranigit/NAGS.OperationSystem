@@ -273,6 +273,263 @@ class DiscoveryFlightsRepositoryTest {
         }
     }
 
+    @Test fun fullStationIndexFindsNeverSearchedFlightsOfflineWithoutAddingThemToRecentOrHistory() = runBlocking {
+        val f = Fixture()
+        val rows = listOf(f.row("never-searched").copy(flightNumber = "NX999"),
+            f.row("first-date").copy(flightNumber = "SV123"), f.row("second-date").copy(flightNumber = "SV123"))
+        f.offlineFetch = { number, size -> f.page(rows, number, size) }
+        f.fetch = { _, _, number, size -> f.page(emptyList(), number, size) }
+        f.readDetail = { id -> f.detail(id).copy(flightNumber = rows.first { it.id == id }.flightNumber,
+            isUnassignedSearchFlight = true, canAddServices = false, canAddTasks = false) }
+        val repo = f.repository()
+        repo.refreshKnownAndPrepare()
+        assertEquals(rows.map { it.id }.toSet(), f.prepared.toSet())
+        assertTrue(f.dao.interactions(f.firstOwner).isEmpty())
+        assertFalse(f.dao.queries(f.firstOwner).any { it.query == "NX999" })
+        f.online = false
+        val neverSearched = repo.page(FlightDiscoverySource.Search, " nx999 ")
+        assertTrue(neverSearched.fromCache)
+        assertEquals("never-searched", neverSearched.items.single().id)
+        val detail = repo.cachedFlight("never-searched")!!
+        assertTrue(detail.isUnassignedSearchFlight)
+        assertEquals(false, detail.canAddServices)
+        assertTrue(detail.assignedEmployees.isEmpty())
+        assertEquals(2L, repo.page(FlightDiscoverySource.Search, "SV123", pageSize = 1).totalCount)
+        assertEquals("second-date", repo.page(FlightDiscoverySource.Search, "SV123", page = 2, pageSize = 1).items.single().id)
+        assertTrue(repo.page(FlightDiscoverySource.Search, "UNKNOWN").items.isEmpty())
+        assertTrue(repo.page(FlightDiscoverySource.Search).items.isEmpty())
+        assertTrue(repo.page(FlightDiscoverySource.History).items.isEmpty())
+        assertNotNull(f.repository().cachedFlight("never-searched"))
+    }
+
+    @Test fun offlineHistoryFiltersItsCompleteDefaultRegisterWithoutCreatingSearchMembership() = runBlocking {
+        val f = Fixture()
+        val rows = listOf(f.row("newer").copy(flightNumber = "NX999", lastInteractionAtUtc = f.time),
+            f.row("older").copy(flightNumber = "NX999", lastInteractionAtUtc = "2026-11-13T09:00:00Z"),
+            f.row("other").copy(flightNumber = "ZZ123", customerName = "Different customer"))
+        f.fetch = { source, _, number, size -> f.page(if (source == FlightDiscoverySource.History) rows else emptyList(), number, size) }
+        f.readDetail = { id -> f.detail(id).copy(flightNumber = rows.first { it.id == id }.flightNumber) }
+        val repo = f.repository()
+        repo.refreshKnownAndPrepare()
+        f.online = false
+        val filtered = repo.page(FlightDiscoverySource.History, " nx999 ", pageSize = 1)
+        assertTrue(filtered.fromCache)
+        assertEquals(2L, filtered.totalCount)
+        assertEquals("newer", filtered.items.single().id)
+        assertEquals("older", repo.page(FlightDiscoverySource.History, "NX999", page = 2, pageSize = 1).items.single().id)
+        assertEquals(2L, repo.page(FlightDiscoverySource.History, "airline").totalCount)
+        assertTrue(repo.page(FlightDiscoverySource.History, "missing").items.isEmpty())
+        assertTrue(repo.page(FlightDiscoverySource.Search).items.isEmpty())
+        assertTrue(f.dao.interactions(f.firstOwner).isEmpty())
+        assertFalse(f.dao.queries(f.firstOwner).any { it.source == "history" && it.query.isNotEmpty() })
+        f.online = true
+        f.fetch = { _, _, _, _ -> throw ApiException(403, "History access denied") }
+        assertTrue(runCatching { repo.page(FlightDiscoverySource.History) }.exceptionOrNull() is ApiException)
+        f.online = false
+        assertTrue(runCatching { repo.page(FlightDiscoverySource.History, "NX999") }.exceptionOrNull() is ApiException)
+        f.owner.value = "other-account"
+        assertTrue(runCatching { repo.page(FlightDiscoverySource.History, "NX999") }.isFailure)
+    }
+
+    @Test fun aBackgroundFullRefreshDoesNotCancelAnInFlightExactSearchForTheSameAccount() = runBlocking {
+        val f = Fixture()
+        val repo = f.repository()
+        repo.page(FlightDiscoverySource.Search, "SV123")
+        val started = CompletableDeferred<Unit>()
+        val response = CompletableDeferred<FlightPage>()
+        var requests = 0
+        f.fetch = { source, term, number, size ->
+            if (source == FlightDiscoverySource.Search && term == "SV123") {
+                if (++requests == 1) { started.complete(Unit); response.await() }
+                else f.page(listOf(f.row("background")), number, size)
+            } else f.page(emptyList(), number, size)
+        }
+        val search = async { runCatching { repo.page(FlightDiscoverySource.Search, "SV123") } }
+        started.await()
+        repo.refreshKnownAndPrepare()
+        response.complete(f.page(listOf(f.row("foreground"))))
+        val result = search.await().getOrThrow()
+        assertFalse(result.fromCache)
+        assertEquals("foreground", result.items.single().id)
+        f.online = false
+        assertEquals("foreground", repo.page(FlightDiscoverySource.Search, "SV123").items.single().id)
+    }
+
+    @Test fun backgroundSourceDenialDefeatsAnEarlierStillPendingForegroundResponse() = runBlocking {
+        val f = Fixture()
+        val repo = f.repository()
+        repo.page(FlightDiscoverySource.Search, "SV123")
+        repo.recordFetched(f.detail("one"), 0)
+        val started = CompletableDeferred<Unit>()
+        val response = CompletableDeferred<FlightPage>()
+        var requests = 0
+        f.fetch = { source, term, number, size ->
+            if (source == FlightDiscoverySource.Search && term == "SV123") {
+                if (++requests == 1) { started.complete(Unit); response.await() }
+                else throw ApiException(403, "Authoritative denial")
+            } else f.page(emptyList(), number, size)
+        }
+        val search = async { runCatching { repo.page(FlightDiscoverySource.Search, "SV123") } }
+        started.await()
+        repo.refreshKnownAndPrepare()
+        response.complete(f.page(listOf(f.row("one"))))
+        assertTrue(search.await().isFailure)
+        f.online = false
+        assertNull(repo.cachedFlight("one"))
+        assertTrue(runCatching { repo.page(FlightDiscoverySource.Search, "SV123") }.exceptionOrNull() is ApiException)
+        assertTrue(repo.page(FlightDiscoverySource.History).items.isEmpty())
+    }
+
+    @Test fun aNewForegroundSequenceStillPreventsAnOlderBackgroundManifestFromPublishing() = runBlocking {
+        val f = Fixture()
+        val repo = f.repository()
+        repo.page(FlightDiscoverySource.Search, "SV123")
+        val started = CompletableDeferred<Unit>()
+        val response = CompletableDeferred<FlightPage>()
+        var requests = 0
+        f.fetch = { source, term, number, size ->
+            if (source == FlightDiscoverySource.Search && term == "SV123") {
+                if (++requests == 1) { started.complete(Unit); response.await() }
+                else f.page(listOf(f.row("foreground")), number, size)
+            } else f.page(emptyList(), number, size)
+        }
+        val background = async { runCatching { repo.refreshKnownAndPrepare() } }
+        started.await()
+        assertEquals("foreground", repo.page(FlightDiscoverySource.Search, "SV123").items.single().id)
+        response.complete(f.page(listOf(f.row("old-background")), size = 100))
+        assertTrue(background.await().isFailure)
+        f.online = false
+        assertEquals("foreground", repo.page(FlightDiscoverySource.Search, "SV123").items.single().id)
+        assertNull(repo.cachedFlight("old-background"))
+    }
+
+    @Test fun incompleteOrInvalidStationIndexPreservesOnlyItsPriorValidatedRegister() = runBlocking {
+        val f = Fixture()
+        f.fetch = { _, _, number, size -> f.page(emptyList(), number, size) }
+        f.offlineFetch = { number, size -> f.page(listOf(f.row("ready")), number, size) }
+        val repo = f.repository()
+        repo.refreshKnownAndPrepare()
+        val before = f.dao.queries(f.firstOwner).first { it.source == "search-offline" }.payloadJson
+        f.offlineFetch = { number, size ->
+            if (number == 1) f.page(listOf(f.row("partial")), number, size, total = 101, hasNext = true)
+            else throw IOException("Connection interrupted")
+        }
+        assertTrue(runCatching { repo.refreshKnownAndPrepare() }.isFailure)
+        assertEquals(before, f.dao.queries(f.firstOwner).first { it.source == "search-offline" }.payloadJson)
+        assertFalse("partial" in f.prepared)
+        for (invalid in listOf(f.row("assigned").copy(isMyFlight = true), f.row("landing").copy(isPerLanding = true),
+            f.row("adhoc").copy(isAdHocFlight = true), f.row("other-station").copy(stationId = "other-station"))) {
+            f.offlineFetch = { number, size -> f.page(listOf(invalid), number, size) }
+            assertTrue(runCatching { repo.refreshKnownAndPrepare() }.isFailure)
+            assertEquals(before, f.dao.queries(f.firstOwner).first { it.source == "search-offline" }.payloadJson)
+        }
+        f.online = false
+        assertEquals(listOf("ready"), repo.page(FlightDiscoverySource.Search, "SV123").items.map { it.id })
+        assertNull(repo.cachedFlight("partial"))
+    }
+
+    @Test fun fullIndexAccessDenialDoesNotGrantOfflineSearchOrDestroySeparateHistoryAndSavedInput() = runBlocking {
+        val f = Fixture()
+        f.fetch = { source, _, number, size -> f.page(if (source == FlightDiscoverySource.History) listOf(f.row("history")) else emptyList(), number, size) }
+        f.offlineFetch = { number, size -> f.page(listOf(f.row("search-only").copy(flightNumber = "NX999")), number, size) }
+        f.readDetail = { id -> f.detail(id).copy(flightNumber = if (id == "search-only") "NX999" else "SV123") }
+        val repo = f.repository()
+        repo.refreshKnownAndPrepare()
+        f.pending = true
+        repo.recordLocalSave(f.detail("history"))
+        f.offlineFetch = { _, _ -> throw ApiException(403, "Search denied") }
+        repo.refreshKnownAndPrepare()
+        f.online = false
+        assertTrue(runCatching { repo.page(FlightDiscoverySource.Search, "NX999") }.exceptionOrNull() is ApiException)
+        assertNull(repo.cachedFlight("search-only"))
+        assertNotNull(repo.cachedFlight("history"))
+        assertEquals(listOf("history"), repo.page(FlightDiscoverySource.History).items.map { it.id })
+        assertEquals(1, f.dao.interactions(f.firstOwner).size)
+    }
+
+    @Test fun unsupportedOfflineEndpointIsIncompleteInsteadOfReportingFullReadinessOrDeletingReadyData() = runBlocking {
+        val f = Fixture()
+        f.fetch = { _, _, number, size -> f.page(emptyList(), number, size) }
+        f.offlineFetch = { number, size -> f.page(listOf(f.row("ready")), number, size) }
+        val repo = f.repository()
+        repo.refreshKnownAndPrepare()
+        f.offlineFetch = { _, _ -> throw ApiException(404, "Route unavailable") }
+        assertTrue(runCatching { repo.refreshKnownAndPrepare() }.exceptionOrNull() is IOException)
+        val catalog = f.dao.queries(f.firstOwner).first { it.source == "search-offline" }
+        assertFalse(catalog.denied)
+        assertNotNull(catalog.error)
+        f.online = false
+        assertEquals("ready", repo.page(FlightDiscoverySource.Search, "SV123").items.single().id)
+    }
+
+    @Test fun fullIndexCannotResurrectAFlightRevokedDuringItsBulkPreparation() = runBlocking {
+        val f = Fixture()
+        f.fetch = { _, _, number, size -> f.page(emptyList(), number, size) }
+        f.offlineFetch = { number, size -> f.page(listOf(f.row("one"), f.row("two")), number, size) }
+        val repo = f.repository()
+        f.prepare = { detail -> if (detail.id == "one") repo.revoke("two") }
+        repo.refreshKnownAndPrepare()
+        f.online = false
+        assertEquals(listOf("one"), repo.page(FlightDiscoverySource.Search, "SV123").items.map { it.id })
+        assertNull(repo.cachedFlight("two"))
+        f.online = true
+        f.prepare = {}
+        repo.refreshKnownAndPrepare()
+        assertNotNull(repo.cachedFlight("two"))
+    }
+
+    @Test fun acknowledgmentDuringIndexMediaPreparationKeepsItsNewerDataAndMarksPreparationIncomplete() = runBlocking {
+        val f = Fixture()
+        f.fetch = { _, _, number, size -> f.page(emptyList(), number, size) }
+        f.offlineFetch = { number, size -> f.page(listOf(f.row("one")), number, size) }
+        val repo = f.repository()
+        f.prepare = { repo.recordAcknowledged(it.copy(rowVersion = "confirmed-ack")) }
+        assertTrue(runCatching { repo.refreshKnownAndPrepare() }.isFailure)
+        assertEquals("confirmed-ack", repo.cachedFlight("one")!!.rowVersion)
+        assertTrue(f.dao.interactions(f.firstOwner).single().acknowledged)
+    }
+
+    @Test fun offlineIndexCoverageReportsCachedCountAndErrorsWithoutClaimingMediaReadiness() = runBlocking {
+        val f = Fixture()
+        f.fetch = { _, _, number, size -> f.page(emptyList(), number, size) }
+        f.offlineFetch = { number, size -> f.page(listOf(f.row("one"), f.row("two")), number, size) }
+        val repo = f.repository()
+        f.prepare = { throw IOException("Media unavailable") }
+        assertTrue(runCatching { repo.refreshKnownAndPrepare() }.isFailure)
+        val cached = repo.offlineSearchStatus.first()
+        assertEquals(2, cached.itemCount)
+        assertNotNull(cached.lastSuccessUtc) // Membership only: media failure must remain visible.
+        assertNotNull(cached.error)
+        assertNull(repo.cachedFlight("one"))
+        f.owner.value = "other-api|other-user"
+        val other = repo.offlineSearchStatus.first()
+        assertEquals(0, other.itemCount)
+        assertNull(other.lastSuccessUtc)
+    }
+
+    @Test fun stationIndexStressKeepsPreparationManifestReadsBoundedAndWarmExactSearchesLocal() = runBlocking {
+        val f = Fixture()
+        val rows = (1..2500).map { id -> f.row("index-$id").copy(flightNumber = "NX$id") }
+        f.offlineFetch = { number, size -> f.page(rows.drop((number - 1) * size).take(size), number, size,
+            total = rows.size.toLong(), hasNext = number * size < rows.size) }
+        f.fetch = { _, _, number, size -> f.page(emptyList(), number, size) }
+        f.readDetail = { id -> f.detail(id).copy(flightNumber = "NX" + id.removePrefix("index-"), isUnassignedSearchFlight = true) }
+        val repo = f.repository()
+        val started = System.nanoTime()
+        repo.refreshKnownAndPrepare()
+        val syncMs = (System.nanoTime() - started) / 1_000_000L
+        assertEquals(2500, f.prepared.size)
+        assertTrue("Full manifest reads grew with individual flights: ${f.dao.fullQueryReads}", f.dao.fullQueryReads < 50)
+        f.online = false
+        val lookupStarted = System.nanoTime()
+        repeat(500) { index ->
+            assertEquals("index-${index + 1}", repo.page(FlightDiscoverySource.Search, "nx${index + 1}").items.single().id)
+        }
+        val lookupsMs = (System.nanoTime() - lookupStarted) / 1_000_000L
+        assertTrue(f.dao.interactions(f.firstOwner).isEmpty())
+        println("OFFLINE_SEARCH_STRESS flights=2500 fullManifestReads=${f.dao.fullQueryReads} prepareMs=$syncMs warmLookups=500 lookupMs=$lookupsMs")
+    }
+
     private class Fixture {
         val firstOwner = "api|account"
         val owner = MutableStateFlow<String?>(firstOwner)
@@ -286,6 +543,7 @@ class DiscoveryFlightsRepositoryTest {
         var fetch: suspend (FlightDiscoverySource, String, Int, Int) -> FlightPage = { _, _, number, size -> page(listOf(row("one")), number, size) }
         var readDetail: suspend (String) -> FlightDetail = { detail(it) }
         var prepare: suspend (FlightDetail) -> Unit = {}
+        var offlineFetch: (suspend (Int, Int) -> FlightPage)? = null
         fun row(id: String) = FlightListItem(id, "SV123", customerName = "Airline", stationIataCode = "AAA",
             operationTypeName = "Transit", scheduledArrivalUtc = "2026-11-13T09:00:00Z", scheduledDepartureUtc = "2026-11-13T11:00:00Z",
             isPerLanding = false, stationId = station, stationTimeZoneId = "Etc/UTC")
@@ -309,7 +567,7 @@ class DiscoveryFlightsRepositoryTest {
         fun repository() = DiscoveryFlightsRepository(dao, owner, { owner.value }, { online },
             { source, query, number, size -> fetch(source, query, number, size) }, { readDetail(it) },
             { prepared += it.id; prepare(it) }, { transaction(it) }, localStationAuthority = { it == trustedStation },
-            hasPendingWork = { pending }, now = { time })
+            hasPendingWork = { pending }, now = { time }, fetchOfflinePage = offlineFetch?.let { { page, size -> checkNotNull(offlineFetch).invoke(page, size) } })
     }
 }
 
@@ -318,12 +576,20 @@ private class MemoryDiscoveryDao : FlightDiscoveryDao {
     val detailRows = linkedMapOf<Pair<String, String>, FlightDiscoveryDetailEntity>()
     val stationRows = linkedMapOf<String, FlightDiscoveryStationEntity>()
     val interactionRows = MutableStateFlow<List<FlightLocalInteractionEntity>>(emptyList())
-    override suspend fun queries(owner: String) = queryRows.value.filter { it.ownerSubject == owner }
+    var fullQueryReads = 0
+    override suspend fun queries(owner: String): List<FlightDiscoveryQueryEntity> {
+        fullQueryReads++
+        return queryRows.value.filter { it.ownerSubject == owner }
+    }
+    override suspend fun query(owner: String, source: String, query: String) = queryRows.value.firstOrNull { it.ownerSubject == owner && it.source == source && it.query == query }
+    override suspend fun sourceDenied(owner: String, source: String) = queryRows.value.any { it.ownerSubject == owner && it.source == source && it.denied }
     override fun observeQueries(owner: String) = queryRows.map { rows -> rows.filter { it.ownerSubject == owner } }
     override suspend fun putQuery(row: FlightDiscoveryQueryEntity) { queryRows.value = queryRows.value.filterNot { it.ownerSubject == row.ownerSubject && it.source == row.source && it.query == row.query } + row }
     override suspend fun deleteQueries(owner: String) { queryRows.value = queryRows.value.filterNot { it.ownerSubject == owner } }
     override suspend fun detail(owner: String, id: String) = detailRows[owner to id]
     override suspend fun details(owner: String) = detailRows.values.filter { it.ownerSubject == owner }
+    override suspend fun maxDetailRevision(owner: String) = detailRows.values.filter { it.ownerSubject == owner }.maxOfOrNull { it.revision } ?: 0L
+    override suspend fun detailsNewerThan(owner: String, revision: Long) = detailRows.values.filter { it.ownerSubject == owner && it.revision > revision }
     override suspend fun putDetail(row: FlightDiscoveryDetailEntity) { detailRows[row.ownerSubject to row.flightId] = row }
     override suspend fun deleteDetail(owner: String, id: String) { detailRows.remove(owner to id); Unit }
     override suspend fun deleteDetails(owner: String) { detailRows.entries.removeAll { it.key.first == owner } }
@@ -332,6 +598,7 @@ private class MemoryDiscoveryDao : FlightDiscoveryDao {
     override suspend fun deleteStation(owner: String) { stationRows.remove(owner); Unit }
     override suspend fun interactions(owner: String) = interactionRows.value.filter { it.ownerSubject == owner }
     override fun observeInteractions(owner: String) = interactionRows.map { rows -> rows.filter { it.ownerSubject == owner } }
+    override suspend fun interaction(owner: String, id: String) = interactionRows.value.firstOrNull { it.ownerSubject == owner && it.flightId == id }
     override suspend fun putInteraction(row: FlightLocalInteractionEntity) { interactionRows.value = interactionRows.value.filterNot { it.ownerSubject == row.ownerSubject && it.flightId == row.flightId } + row }
     override suspend fun deleteInteraction(owner: String, id: String) { interactionRows.value = interactionRows.value.filterNot { it.ownerSubject == owner && it.flightId == id } }
     override suspend fun deleteInteractions(owner: String) { interactionRows.value = interactionRows.value.filterNot { it.ownerSubject == owner } }

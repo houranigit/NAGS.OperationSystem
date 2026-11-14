@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
+using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Operations.Infrastructure.Persistence;
 using Operations.Application.Contracts;
+using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
 using Shouldly;
 
@@ -12,6 +15,70 @@ namespace Operations.IntegrationTests;
 
 public sealed partial class FlightVisibilityScopeTests
 {
+    [Fact]
+    public async Task Offline_search_index_pages_never_searched_unassigned_flights_without_granting_assignment_or_history()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync(); var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view"]);
+        using var client = staff.Client;
+        var firstId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8881");
+        var secondId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8882");
+        var assignedId = await ScheduleFlightAsync(admin, refs.StationId, refs, "8883", [staff.StaffId]);
+        await ScheduleFlightAsync(admin, refs.StationId, refs, "8884", perLanding: true);
+        var now = DateTimeOffset.UtcNow;
+        Flight Seed(string number, Guid station, bool adHoc = false, int hours = 0) => Flight.ScheduleNew(
+            new(refs.CustomerId, null, "Index customer"), new(station, "TST", "Index station"),
+            new(adHoc ? WellKnownMasterDataIds.AdHocOperationType : refs.OperationTypeId, "Operation"),
+            FlightNumber.Create(number).Value, ScheduledTime.Create(now.AddHours(hours), now.AddHours(hours + 1)).Value,
+            null, [new(refs.ServiceId, "Service")], [], Guid.NewGuid(), now).Value;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            db.Flights.AddRange(Seed("8885", refs.StationId, adHoc: true), Seed("8886", Guid.NewGuid()),
+                Seed("8887", refs.StationId, hours: 13), Seed("8888", refs.StationId, hours: -14));
+            await db.SaveChangesAsync();
+        }
+        var path = $"{Base}/flights/mobile/search/offline";
+        var all = (await client.GetFromJsonAsync<MobileFlightPageDto>($"{path}?pageSize=100&stationId={Guid.NewGuid()}&fromUtc=2000-01-01&toUtc=2100-01-01"))!;
+        all.Items.Select(item => item.Id).ShouldBe([firstId, secondId], ignoreOrder: true);
+        all.TotalCount.ShouldBe(2); all.StationId.ShouldBe(refs.StationId);
+        all.WindowStartUtc.ShouldBe(all.AsOfUtc.AddHours(-12)); all.WindowEndUtc.ShouldBe(all.AsOfUtc.AddHours(12));
+        all.Items.ShouldAllBe(item => item.StationId == refs.StationId && !item.IsMyFlight && !item.IsAdHocFlight && !item.IsPerLanding);
+        all.Items.ShouldAllBe(item => !string.IsNullOrWhiteSpace(item.StationTimeZoneId) && item.CustomerLogoVersion != null);
+        var first = (await client.GetFromJsonAsync<MobileFlightPageDto>($"{path}?pageSize=1"))!;
+        var second = (await client.GetFromJsonAsync<MobileFlightPageDto>($"{path}?page=2&pageSize=1"))!;
+        first.HasNextPage.ShouldBeTrue(); second.HasPreviousPage.ShouldBeTrue(); second.HasNextPage.ShouldBeFalse();
+        first.Items.Concat(second.Items).Select(item => item.Id).ShouldBe(all.Items.Select(item => item.Id));
+        var empty = (await client.GetFromJsonAsync<MobileFlightPageDto>($"{path}?page=3&pageSize=1"))!;
+        empty.Items.ShouldBeEmpty(); empty.TotalCount.ShouldBe(2); empty.StationId.ShouldBe(refs.StationId);
+        var detail = await OperationsBatchDetailAsync(client, firstId);
+        detail.AssignedEmployees.ShouldBeEmpty(); detail.IsUnassignedSearchFlight.ShouldBeTrue();
+        detail.CanSaveArrival.ShouldBeFalse(); detail.CanSaveServices.ShouldBeFalse(); detail.CanSaveTasks.ShouldBeFalse();
+        (await client.GetFromJsonAsync<MobileFlightPageDto>($"{Base}/flights/mobile?category=MyFlights"))!.Items.ShouldHaveSingleItem().Id.ShouldBe(assignedId);
+        (await client.GetFromJsonAsync<MobileFlightPageDto>($"{Base}/flights/mobile/history"))!.Items.ShouldBeEmpty();
+        (await client.GetFromJsonAsync<MobileFlightPageDto>($"{Base}/flights/mobile/search"))!.Items.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Offline_search_index_requires_view_permission_active_linked_station_and_authenticated_account()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync(); var refs = await SetupMasterDataAsync(admin);
+        var permitted = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view"]);
+        var forbidden = await CreateStaffLoginAsync(admin, refs, []);
+        using var client = permitted.Client; using var noView = forbidden.Client; using var anonymous = factory.CreateClient();
+        var path = $"{Base}/flights/mobile/search/offline";
+        await ScheduleFlightAsync(admin, refs.StationId, refs, "8889");
+        (await anonymous.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await noView.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await admin.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await client.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var station = await admin.GetFromJsonAsync<JsonElement>($"{MasterDataBase}/stations/{refs.StationId}");
+        using var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{MasterDataBase}/stations/{refs.StationId}/deactivate");
+        deactivate.Headers.TryAddWithoutValidation("If-Match", station.GetProperty("rowVersion").GetString());
+        using var deactivated = await admin.SendAsync(deactivate); deactivated.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await client.GetAsync(path)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
     private async Task<FlightDetailDto> RemoveRecordedFlightAssignmentsAsync(HttpClient client, Guid id)
     {
         await using var scope = factory.Services.CreateAsyncScope();

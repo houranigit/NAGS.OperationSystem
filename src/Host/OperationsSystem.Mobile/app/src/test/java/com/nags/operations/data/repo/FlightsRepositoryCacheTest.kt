@@ -3,6 +3,7 @@ package com.nags.operations.data.repo
 import com.nags.operations.data.CustomerLogoDownload
 
 import com.nags.operations.data.ApiException
+import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.FlightCategory
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
@@ -19,6 +20,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import java.nio.file.Files
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -30,6 +36,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -65,7 +72,11 @@ class FlightsRepositoryCacheTest {
     }
 
     private fun repository(localAdHocFlights: suspend () -> List<FlightDetail> = { emptyList() },
-        recordAdHoc: suspend (FlightDetail) -> Unit = {}) = FlightsRepository(
+        recordAdHoc: suspend (FlightDetail) -> Unit = {},
+        unmaterializedAdHoc: suspend (String) -> Boolean = { false },
+        reconcileAdHoc: suspend (Set<String>, Boolean, Set<String>) -> Unit = { _, _, _ -> },
+        onPreparationFailure: (Exception) -> Unit = {},
+        additionalCachedFlight: suspend (String) -> FlightDetail? = { null }) = FlightsRepository(
         fetchFlights = { page, size, search, category ->
             categoryReads += category
             pageLoader(page, size, search).let { result ->
@@ -81,9 +92,76 @@ class FlightsRepositoryCacheTest {
         fetchInvitationOptions = { invitationReads++; emptyList() },
         sendInvitation = { _, _, _ -> invitationWrites++ },
         logoStore = logoStore, prepareOffline = { prepareOffline(it) },
-        localAdHocFlights = localAdHocFlights, recordAdHoc = recordAdHoc,
+        localAdHocFlights = localAdHocFlights, recordAdHoc = recordAdHoc, unmaterializedAdHoc = unmaterializedAdHoc,
+        reconcileAdHoc = reconcileAdHoc, onPreparationFailure = onPreparationFailure, additionalCachedFlight = additionalCachedFlight,
         dao = dao, ownerFlow = owner, currentOwner = { owner.value }, isOnline = { online }, now = { clock },
     )
+
+    @Test fun cancellationValidationInsideRoomDoesNotWaitForACacheMutationThatIsWaitingForRoom() = runBlocking {
+        val repository = repository()
+        detailLoader = { detail(it).copy(hasCancellationSubmission = true) }
+        repository.refreshCache()
+        val roomTransaction = Mutex()
+        val backgroundWaitingForRoom = CompletableDeferred<Unit>()
+        roomTransaction.lock()
+        dao.beforeSnapshotRead = {
+            if (currentCoroutineContext()[CoroutineName]?.name != "local-save") {
+                backgroundWaitingForRoom.complete(Unit)
+                roomTransaction.withLock { }
+            }
+        }
+        val background = launch(CoroutineName("cache-update"), start = CoroutineStart.UNDISPATCHED) { repository.pruneExpired() }
+        backgroundWaitingForRoom.await()
+        try {
+            withContext(CoroutineName("local-save")) {
+                assertTrue(withTimeout(1_000) { repository.hasCachedCancellationForSave("one") })
+            }
+        } finally {
+            roomTransaction.unlock()
+            background.join()
+            dao.beforeSnapshotRead = {}
+        }
+    }
+
+    @Test fun cancellationEvidenceUsesOnlyAuthorizedCurrentWindowMembershipWithoutPruningOrCrossingOwners() = runBlocking {
+        val repository = repository()
+        detailLoader = { detail(it).copy(hasCancellationSubmission = true) }
+        repository.refreshCache()
+        val snapshot = dao.snapshot(owner.value!!)!!
+        val cached = dao.detail(owner.value!!, "one")!!
+        assertTrue(repository.hasCachedCancellationForSave("one"))
+        dao.putDetails(listOf(cached.copy(flightId = "orphan", payloadJson = Json.encodeToString(detail("orphan").copy(hasCancellationSubmission = true)))))
+        assertFalse(repository.hasCachedCancellationForSave("orphan"))
+        dao.putSnapshot(snapshot.copy(permissionDenied = true))
+        assertFalse(repository.hasCachedCancellationForSave("one"))
+        dao.putSnapshot(snapshot)
+        dao.putDetails(listOf(cached.copy(payloadJson = Json.encodeToString(detail("one").copy(stationId = "foreign", hasCancellationSubmission = true)))))
+        assertFalse(repository.hasCachedCancellationForSave("one"))
+        dao.putDetails(listOf(cached))
+        clock = "2026-11-05T01:00:00Z"
+        assertFalse(repository.hasCachedCancellationForSave("one"))
+        assertEquals(snapshot, dao.snapshot(owner.value!!))
+        assertEquals(cached, dao.detail(owner.value!!, "one"))
+        clock = "2026-11-04T10:00:00Z"
+        dao.beforeSnapshotRead = { owner.value = "different-account" }
+        assertTrue(runCatching { repository.hasCachedCancellationForSave("one") }.isFailure)
+        dao.beforeSnapshotRead = {}
+        assertFalse(repository.hasCachedCancellationForSave("one"))
+        owner.value = null
+        assertFalse(repository.hasCachedCancellationForSave("one"))
+    }
+
+    @Test fun cancellationEvidenceIncludesAdHocAndDiscoveryFallbacksButRejectsSessionRevocationDuringTheirRead() = runBlocking {
+        val local = detail("local").copy(isAdHocFlight = true, hasCancellationSubmission = true)
+        val discovered = detail("discovered").copy(isUnassignedSearchFlight = true, hasCancellationSubmission = true)
+        val repository = repository(localAdHocFlights = { listOf(local) }, additionalCachedFlight = { if (it == discovered.id) discovered else null })
+        assertTrue(repository.hasCachedCancellationForSave(local.id))
+        assertTrue(repository.hasCachedCancellationForSave(discovered.id))
+        assertNull(dao.snapshot(owner.value!!)) // This read cannot initialize or broaden normal membership.
+        lateinit var revoked: FlightsRepository
+        revoked = repository(localAdHocFlights = { revoked.clearLocal(); listOf(local) })
+        assertTrue(runCatching { revoked.hasCachedCancellationForSave(local.id) }.isFailure)
+    }
 
     @Test fun partialWorkAcknowledgmentUpdatesTheLocalCreationFallbackWithoutNormalManifestMembership() = runBlocking {
         var fallback = detail("local").copy(isAdHocFlight = true, canEditFlightDetails = true,
@@ -515,14 +593,15 @@ class FlightsRepositoryCacheTest {
     }
 
     @Test
-    fun openingAnotherDetailDuringFullSyncWaitsAndPreservesTheNewDetail() = runBlocking {
+    fun openingAnotherDetailDuringFullSyncIsImmediateAndPreservesTheNewDetail() = runBlocking {
         val repository = repository()
         repository.refreshCache()
         repository.flight("one")
         val firstDetail = CompletableDeferred<FlightDetail>()
         detailLoader = { id -> if (id == "one") firstDetail.await() else detail(id, "newer") }
         val fullRefresh = launch(start = CoroutineStart.UNDISPATCHED) { repository.refreshCache() }
-        val interactive = launch(start = CoroutineStart.UNDISPATCHED) { repository.flight("two") }
+        val interactive = async(start = CoroutineStart.UNDISPATCHED) { repository.flight("two") }
+        assertEquals("newer", withTimeout(1_000) { interactive.await() }.flightNumber)
         assertNotNull(dao.detail(owner.value!!, "two"))
         firstDetail.complete(detail("one"))
         fullRefresh.join()
@@ -1125,6 +1204,194 @@ class FlightsRepositoryCacheTest {
         assertTrue(runCatching { repository.flight("one") }.isFailure)
     }
 
+    @Test fun blockedFullMediaPreparationDoesNotBlockAnUncachedFreshReadOrWriteAcknowledgment() = runBlocking {
+        var current = detail("one")
+        detailLoader = { id -> if (id == "one") current else detail(id) }
+        val failures = mutableListOf<Exception>()
+        val repository = repository(onPreparationFailure = { failures += it })
+        repository.refreshCache()
+        val before = repository.syncStatus.first().lastSuccessUtc
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var blocked = false
+        prepareOffline = { if (!blocked) { blocked = true; started.complete(Unit); release.await() } }
+        clock = "2026-11-04T10:01:00Z"
+        val sync = launch(start = CoroutineStart.UNDISPATCHED) { repository.refreshCache() }
+        started.await()
+        val fresh = withTimeout(1_000) { repository.flight("uncached") }
+        assertEquals("uncached", fresh.id)
+        assertFalse(fresh.fromCache)
+        assertNull(dao.detail(owner.value!!, "uncached")) // A live read is not new offline membership.
+        current = current.copy(rowVersion = "ack-version")
+        withTimeout(1_000) { repository.recordOperationsBatch(current) }
+        assertEquals("ack-version", Json.decodeFromString<FlightDetail>(dao.detail(owner.value!!, "one")!!.payloadJson).rowVersion)
+        assertEquals(before, repository.syncStatus.first().lastSuccessUtc)
+        release.complete(Unit)
+        withTimeout(2_000) { sync.join() }
+        assertTrue(failures.isNotEmpty())
+        online = false
+        assertEquals("ack-version", repository.flight("one").rowVersion)
+        assertNull(repository.syncStatus.first().error)
+    }
+
+    @Test fun olderDetailSuccessOrDenialCannotUndoAnArrivalCorrectionWithUnchangedBadgeFlags() = runBlocking {
+        val employee = AssignedEmployee("staff", "Employee", "E1")
+        val original = com.nags.operations.data.FlightArrivalSubmission("arrival", employee, clock, "aircraft", "A320", "OLD",
+            receivedByEmployee = employee, isAccepted = false, createdAtUtc = clock)
+        serverItems = listOf(item("one").copy(hasArrivalSubmission = true))
+        detailLoader = { detail(it).copy(arrivalSubmissions = listOf(original)) }
+        val repository = repository()
+        repository.refreshCache()
+        for (deny in listOf(false, true)) {
+            val response = CompletableDeferred<FlightDetail>()
+            detailLoader = { response.await() }
+            val get = async(start = CoroutineStart.UNDISPATCHED) { repository.flight("one") }
+            val corrected = original.copy(aircraftTailNumber = if (deny) "TAIL-B" else "TAIL-A", remarks = "Changed remarks")
+            repository.recordArrival("one", com.nags.operations.data.FlightArrivalSaved(corrected, "corrected-$deny"))
+            if (deny) response.completeExceptionally(ApiException(403, "Old denial"))
+            else response.complete(detail("one").copy(arrivalSubmissions = listOf(original)))
+            val resolved = withTimeout(1_000) { get.await() }
+            assertEquals("corrected-$deny", resolved.rowVersion)
+            assertEquals(corrected.aircraftTailNumber, resolved.arrivalSubmissions.single().aircraftTailNumber)
+            assertEquals(true, repository.flights().items.single().hasArrivalSubmission)
+        }
+    }
+
+    @Test fun merelyStartingANewerGetCannotSuppressAnAuthoritativeOlderDenial() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        val older = CompletableDeferred<FlightDetail>()
+        val newer = CompletableDeferred<FlightDetail>()
+        var reads = 0
+        detailLoader = { if (++reads == 1) older.await() else newer.await() }
+        val oldGet = async(start = CoroutineStart.UNDISPATCHED) { runCatching { repository.flight("one") } }
+        val newGet = async(start = CoroutineStart.UNDISPATCHED) { runCatching { repository.flight("one") } }
+        older.completeExceptionally(ApiException(403, "Authoritative access loss"))
+        assertTrue(oldGet.await().isFailure)
+        assertNull(dao.detail(owner.value!!, "one"))
+        newer.complete(detail("one"))
+        assertTrue(newGet.await().isFailure) // It began before the confirmed access loss.
+        online = false
+        assertTrue(runCatching { repository.flight("one") }.isFailure)
+        assertFalse(repository.flights().items.any { it.id == "one" })
+    }
+
+    @Test fun aNewerDetailResponseWinsEvenWhenAnOlderHttpReadFinishesLast() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        val first = CompletableDeferred<FlightDetail>()
+        val second = CompletableDeferred<FlightDetail>()
+        var reads = 0
+        detailLoader = { if (++reads == 1) first.await() else second.await() }
+        val oldRead = async(start = CoroutineStart.UNDISPATCHED) { repository.flight("one") }
+        val newRead = async(start = CoroutineStart.UNDISPATCHED) { repository.flight("one") }
+        second.complete(detail("one").copy(rowVersion = "newer", customerName = "Current name"))
+        assertEquals("newer", newRead.await().rowVersion)
+        first.complete(detail("one").copy(rowVersion = "older", customerName = "Old name"))
+        assertEquals("newer", oldRead.await().rowVersion)
+        online = false
+        assertEquals("Current name", repository.flight("one").customerName)
+    }
+
+    @Test fun anOldFullDetailCannotReplaceANewerAckOrClaimItsUnpreparedGraphIsReady() = runBlocking {
+        val employee = AssignedEmployee("staff", "Employee", "E1")
+        val original = com.nags.operations.data.FlightArrivalSubmission("arrival", employee, clock, "aircraft", "A320", "OLD",
+            receivedByEmployee = employee, isAccepted = false, createdAtUtc = clock)
+        var current = detail("one").copy(arrivalSubmissions = listOf(original))
+        serverItems = listOf(item("one").copy(hasArrivalSubmission = true))
+        detailLoader = { current }
+        val repository = repository()
+        repository.refreshCache()
+        val before = repository.syncStatus.first().lastSuccessUtc
+        val response = CompletableDeferred<FlightDetail>()
+        val started = CompletableDeferred<Unit>()
+        var first = true
+        detailLoader = { if (first) { first = false; started.complete(Unit); response.await() } else current }
+        clock = "2026-11-04T10:01:00Z"
+        val sync = launch(start = CoroutineStart.UNDISPATCHED) { repository.refreshCache() }
+        started.await()
+        val corrected = original.copy(aircraftTailNumber = "NEW", remarks = "Newest saved remarks")
+        current = current.copy(rowVersion = "ack", arrivalSubmissions = listOf(corrected))
+        repository.recordArrival("one", com.nags.operations.data.FlightArrivalSaved(corrected, "ack"))
+        prepareOffline = { if (it.rowVersion == "ack") throw IOException("New graph media is not ready") }
+        response.complete(detail("one").copy(arrivalSubmissions = listOf(original)))
+        withTimeout(2_000) { sync.join() }
+        assertEquals(before, repository.syncStatus.first().lastSuccessUtc)
+        assertNotNull(repository.syncStatus.first().error)
+        online = false
+        assertEquals("NEW", repository.flight("one").arrivalSubmissions.single().aircraftTailNumber)
+        assertEquals("ack", repository.flight("one").rowVersion)
+    }
+
+    @Test fun repeatedRefreshHintsCoalesceInsteadOfQueueingAHundredFullPreparations() = runBlocking {
+        val repository = repository()
+        repository.refreshCache()
+        val pagesBefore = pageReads.size
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var blocked = false
+        prepareOffline = { if (!blocked) { blocked = true; started.complete(Unit); release.await() } }
+        val sync = launch(start = CoroutineStart.UNDISPATCHED) { repository.refreshCache() }
+        started.await()
+        withTimeout(1_000) { repeat(100) { repository.refreshCache() } }
+        assertEquals(pagesBefore + 1, pageReads.size)
+        release.complete(Unit)
+        withTimeout(2_000) { sync.join() }
+        assertEquals(pagesBefore + 2, pageReads.size)
+        assertNull(repository.syncStatus.first().error)
+    }
+
+    @Test fun planningAckRefreshesOfflineCardAndAnOlderListCannotRestoreItsOldIdentity() = runBlocking {
+        serverItems = listOf(item("one").copy(isMyFlight = false, isMyAdHocFlight = true, isAdHocFlight = true))
+        detailLoader = { detail(it).copy(isAdHocFlight = true) }
+        val repository = repository()
+        repository.refreshCache()
+        val response = CompletableDeferred<FlightPage>()
+        pageLoader = { _, _, _ -> response.await() }
+        val oldList = async(start = CoroutineStart.UNDISPATCHED) { repository.flights(FlightCategory.AdHoc) }
+        val updated = detail("one", "AD-NEW").copy(isAdHocFlight = true, customerName = "New customer",
+            scheduledArrivalUtc = "2026-11-04T10:15:00Z", scheduledDepartureUtc = "2026-11-04T11:15:00Z", rowVersion = "planning-ack")
+        repository.recordPlanningAcknowledged(updated)
+        response.complete(FlightPage(serverItems, 1, 20, 1, 1))
+        assertEquals("AD-NEW", oldList.await().items.single().flightNumber)
+        online = false
+        val card = repository.flights(FlightCategory.AdHoc).items.single()
+        assertEquals("New customer", card.customerName)
+        assertEquals(updated.scheduledArrivalUtc, card.scheduledArrivalUtc)
+        assertEquals("planning-ack", repository.flight("one").rowVersion)
+    }
+
+    @Test fun aMaterializedCreationIsNeverRevokedByAManifestThatStartedWhileItWasLocal() = runBlocking {
+        var fallback = detail("created").copy(isAdHocFlight = true, rowVersion = "local")
+        var revoked = false
+        val observedSets = mutableListOf<Set<String>>()
+        val repository = repository(localAdHocFlights = { if (revoked) emptyList() else listOf(fallback) },
+            unmaterializedAdHoc = { fallback.rowVersion == "local" },
+            recordAdHoc = { fallback = it }, reconcileAdHoc = { ids, _, observed ->
+                observedSets += observed
+                if (fallback.rowVersion != "local" && fallback.id !in ids && fallback.id in observed) revoked = true
+            })
+        val response = CompletableDeferred<FlightPage>()
+        val started = CompletableDeferred<Unit>()
+        var first = true
+        pageLoader = { page, size, _ ->
+            if (first) { first = false; started.complete(Unit); response.await() }
+            else FlightPage(listOf(item("created").copy(isMyFlight = false, isMyAdHocFlight = true, isAdHocFlight = true)), page, size, 1, 1)
+        }
+        detailLoader = { fallback }
+        val sync = launch(start = CoroutineStart.UNDISPATCHED) { repository.refreshCache() }
+        started.await()
+        // Models the gap between durable creation ACK and its normal-cache notification hook.
+        fallback = fallback.copy(rowVersion = "created-ack")
+        response.complete(FlightPage(emptyList(), 1, 100, 0, 0))
+        withTimeout(2_000) { sync.join() }
+        assertFalse(revoked)
+        assertFalse("created" in observedSets.first())
+        assertTrue(observedSets.any { "created" in it })
+        online = false
+        assertEquals("created-ack", repository.flight("created").rowVersion)
+    }
+
     private fun scoped(page: FlightPage): FlightPage {
         if (page.stationId != null) return page
         val at = Instant.parse(clock)
@@ -1148,7 +1415,11 @@ private class MemoryFlightCacheDao : FlightCacheDao {
     private val snapshots = MutableStateFlow<Map<String, FlightSnapshotEntity>>(emptyMap())
     private val details = mutableMapOf<Pair<String, String>, FlightDetailCacheEntity>()
     override fun observe(ownerSubject: String): Flow<FlightSnapshotEntity?> = snapshots.map { it[ownerSubject] }
-    override suspend fun snapshot(ownerSubject: String) = snapshots.value[ownerSubject]
+    var beforeSnapshotRead: suspend () -> Unit = {}
+    override suspend fun snapshot(ownerSubject: String): FlightSnapshotEntity? {
+        beforeSnapshotRead()
+        return snapshots.value[ownerSubject]
+    }
     override suspend fun details(ownerSubject: String) = details.values.filter { it.ownerSubject == ownerSubject }
     override suspend fun detail(ownerSubject: String, flightId: String) = details[ownerSubject to flightId]
     override suspend fun putSnapshot(snapshot: FlightSnapshotEntity) {

@@ -118,6 +118,41 @@ public sealed class FlightInvitationTests
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task AdHoc_RejectsOptionsAndInvitationIncludingLegacyFlights(bool mobileOnly, bool withFingerprint)
+    {
+        await using var db = NewDb();
+        var reader = new SchedulingMasterDataReader();
+        var original = Staff(reader.StationId, "Existing legacy employee");
+        var flight = withFingerprint
+            ? Flight.CreateAdHoc(new CustomerSnapshot(Guid.NewGuid(), "SV", "Saudia"),
+                new StationSnapshot(reader.StationId, "RUH", "Riyadh"),
+                new OperationTypeSnapshot(WellKnownMasterDataIds.AdHocOperationType, "AdHoc"), FlightNumber.CreateAdHoc("AD100").Value,
+                ScheduledTime.Create(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1)).Value,
+                Guid.NewGuid(), DateTimeOffset.UtcNow, Guid.NewGuid(), new string('A', 64)).Value
+            : FlightFor(reader.StationId, [Snapshot(original)], adHoc: true);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        var scope = new StaticScope(new OperationsScopeContext(UserType.StationStaff, reader.StationId, Guid.NewGuid(), true));
+        var roster = flight.AssignedEmployees.ToArray();
+
+        var options = await new GetFlightInvitationOptionsQueryHandler(db, scope, reader, MobileScope(scope))
+            .Handle(new GetFlightInvitationOptionsQuery(flight.Id, mobileOnly), CancellationToken.None);
+        var invitation = await Handler(db, reader, scope).Handle(new InviteEmployeesToFlightCommand(
+            flight.Id, [Guid.NewGuid()], flight.RowVersion, mobileOnly), CancellationToken.None);
+
+        options.Error.Code.ShouldBe("Operations.AdHoc.AssignmentsNotAllowed");
+        invitation.Error.Code.ShouldBe("Operations.AdHoc.AssignmentsNotAllowed");
+        flight.AssignedEmployees.ShouldBe(roster);
+        flight.UpdatedAtUtc.ShouldBeNull();
+        (await db.OutboxMessages.CountAsync()).ShouldBe(0);
+        db.ChangeTracker.HasChanges().ShouldBeFalse();
+    }
+
+    [Theory]
     [InlineData(UserType.ViewerOnly)]
     [InlineData(UserType.StationStaff)]
     public async Task ViewerOrOutOfScopeStaff_CannotReadOptionsOrInvite(UserType userType)
@@ -160,9 +195,9 @@ public sealed class FlightInvitationTests
 
     private static StaffMemberSnapshot Snapshot(StaffMemberReadSnapshot staff) => new(staff.Id, staff.FullName, staff.EmployeeId);
 
-    private static Flight FlightFor(Guid stationId, IReadOnlyList<StaffMemberSnapshot> staff, bool perLanding = false) =>
+    private static Flight FlightFor(Guid stationId, IReadOnlyList<StaffMemberSnapshot> staff, bool perLanding = false, bool adHoc = false) =>
         Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), "SV", "Saudia"),
-            new StationSnapshot(stationId, "RUH", "Riyadh"), new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
+            new StationSnapshot(stationId, "RUH", "Riyadh"), new OperationTypeSnapshot(adHoc ? WellKnownMasterDataIds.AdHocOperationType : Guid.NewGuid(), "Transit"),
             FlightNumber.Create("SV200", "SV").Value,
             ScheduledTime.Create(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1)).Value,
             null, [new ServiceSnapshot(perLanding ? WellKnownMasterDataIds.AircraftPerLandingService : Guid.NewGuid(), "Planned service")],

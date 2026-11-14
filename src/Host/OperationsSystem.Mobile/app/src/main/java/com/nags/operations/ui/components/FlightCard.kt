@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -335,7 +334,8 @@ private fun FlightCardSummaryRow(flight: FlightListItem, status: FlightCardRepor
                 val syncColor = if (hasSyncError) MaterialTheme.colorScheme.error
                     else flightStatusColors(FlightCardReportStatus.DueSoon).foreground
                 val syncAction = if (hasSyncError) onReviewClick ?: onPendingClick else onPendingClick
-                Row(Modifier.widthIn(max = noticeWidth).then(if (syncAction != null) Modifier.clickable(role = Role.Button, onClick = syncAction).heightIn(min = 48.dp) else Modifier),
+                // Clickable expands its touch bounds without forcing a tall visual summary row.
+                Row(Modifier.widthIn(max = noticeWidth).then(if (syncAction != null) Modifier.clickable(role = Role.Button, onClick = syncAction) else Modifier),
                     horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (hasSyncError) Icons.Outlined.WarningAmber else Icons.Outlined.Sync, null, Modifier.size(13.dp), tint = syncColor)
                     Text(pendingSyncLabel, style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content), color = syncColor,

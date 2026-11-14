@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="profile_menu_open">Open profile menu</string>
+    <string name="profile_menu_close">Close profile menu</string>
+    <string name="profile_sync_hub">Sync Hub</string>
+    <string name="profile_sync_description">Saved work and offline data</string>
+    <string name="profile_password">Manage password</string>
+    <string name="profile_notifications">Notification settings</string>
+    <string name="profile_appearance">Appearance</string>
+    <string name="profile_theme_system">System</string>
+    <string name="profile_theme_light">Light</string>
+    <string name="profile_theme_dark">Dark</string>
+    <string name="profile_sign_out_warning">Sync your work before signing out. Sign out clears this account’s saved work and cached data from this device.</string>
+    <string name="password_change_notice">Updating your password signs out all sessions, including this device. Sign in again with the new password. Saved work stays on this device.</string>
+    <string name="password_offline">Connect to update your password. Your saved flight work is unchanged.</string>
+    <string name="password_current">Current password</string>
+    <string name="password_new">New password</string>
+    <string name="password_confirm">Confirm new password</string>
+    <string name="password_current_required">Enter your current password.</string>
+    <string name="password_policy">Use 8–128 characters with an uppercase letter, a lowercase letter, a number and a symbol.</string>
+    <string name="password_mismatch">The new passwords must match.</string>
+    <string name="password_update">Update password</string>
+    <string name="password_show">Show password</string>
+    <string name="password_hide">Hide password</string>
+    <string name="password_changed_sign_in">Password updated. Sign in again with your new password. Your saved work is still on this device.</string>
+    <string name="sync_hub_discard_adhoc">Discard saved AdHoc input?</string>
+    <string name="sync_hub_discard_planning_message">Discard only this device’s saved Flight details changes? Existing flight work stays saved.</string>
+    <string name="sync_hub_discard_new_flight_message">Discard this device’s new flight and its dependent saved input and local media? This does not delete online submissions.</string>
+    <string name="sync_hub_adhoc">AdHoc flights</string>
+    <string name="sync_hub_offline_data">Offline data</string>
+    <string name="sync_hub_syncing">Syncing your data…</string>
+    <string name="sync_hub_attention">Some data needs attention</string>
+    <string name="sync_hub_prepared">Data saved for offline use</string>
+    <string name="sync_hub_saved_available">Saved data available</string>
+    <string name="sync_hub_prepare">Prepare offline access</string>
+    <string name="sync_hub_overview_online">Sync flight data, reference lists and your saved work.</string>
+    <string name="sync_hub_overview_offline">Saved work stays on this device and retries when you reconnect.</string>
+    <string name="sync_hub_no_saved_work">No saved work waiting to upload.</string>
+    <string name="sync_hub_live_updates">Live updates</string>
+    <string name="sync_hub_collapse">Hide details</string>
+    <string name="sync_hub_expand">Show details</string>
+    <string name="sync_hub_last_live_update">Last update: %1$s</string>
+    <string name="sync_hub_live_fallback">Sync now and regular refreshes still check for changes.</string>
+    <string name="sync_hub_offline_waiting">Live updates resume when you reconnect.</string>
+    <string name="sync_hub_sync_now">Sync now</string>
+    <string name="sync_hub_updated">Updated %1$s</string>
+    <string name="sync_hub_last_success">Last successful sync: %1$s</string>
+    <plurals name="sync_hub_waiting"><item quantity="one">%d section waiting</item><item quantity="other">%d sections waiting</item></plurals>
+    <plurals name="sync_hub_review"><item quantity="one">%d section needs review</item><item quantity="other">%d sections need review</item></plurals>
+    <string name="sync_hub_other_flights">Other station flights</string>
+    <string name="sync_hub_search_prepare">Sync once while online to prepare offline search.</string>
+    <plurals name="sync_hub_searchable"><item quantity="one">%d flight searchable offline</item><item quantity="other">%d flights searchable offline</item></plurals>
+</resources>

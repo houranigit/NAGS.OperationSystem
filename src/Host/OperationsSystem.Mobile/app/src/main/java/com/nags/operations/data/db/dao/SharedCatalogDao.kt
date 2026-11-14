@@ -11,6 +11,9 @@ interface SharedCatalogDao {
     @Query("SELECT * FROM shared_catalog_snapshots WHERE ownerSubject = :ownerSubject")
     fun observe(ownerSubject: String): Flow<List<SharedCatalogSnapshotEntity>>
 
+    @Query("SELECT * FROM shared_catalog_snapshots WHERE ownerSubject = :ownerSubject")
+    suspend fun snapshots(ownerSubject: String): List<SharedCatalogSnapshotEntity>
+
     @Query("SELECT * FROM shared_catalog_snapshots WHERE ownerSubject = :ownerSubject AND catalog = :catalog")
     suspend fun snapshot(ownerSubject: String, catalog: String): SharedCatalogSnapshotEntity?
 

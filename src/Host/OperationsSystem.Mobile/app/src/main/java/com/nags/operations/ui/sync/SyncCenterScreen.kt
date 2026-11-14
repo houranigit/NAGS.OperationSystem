@@ -1,53 +1,51 @@
 package com.nags.operations.ui.sync
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.semantics.Role
+import com.nags.operations.ui.account.ProfilePageHeader
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.PowerOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,9 +58,6 @@ import com.nags.operations.data.sync.SyncTarget
 import com.nags.operations.data.realtime.RealtimeChannelState
 import com.nags.operations.ui.components.InlineNotice
 import com.nags.operations.ui.components.InlineNoticeKind
-import com.nags.operations.ui.theme.BrandRed
-import com.nags.operations.ui.theme.BrandRedDark
-import com.nags.operations.ui.theme.BrandRedLight
 import java.text.SimpleDateFormat
 import java.util.Date
 
@@ -72,15 +67,17 @@ fun SyncCenterScreen(
     viewModel: SyncCenterViewModel,
     onBack: () -> Unit,
     onOpenAdHoc: (String) -> Unit = {},
+    onReviewFlight: (String, String) -> Unit = { _, _ -> },
 ) {
     val pendingAdHoc by viewModel.pendingAdHoc.collectAsStateWithLifecycle()
     val adHocActionError by viewModel.adHocActionError.collectAsStateWithLifecycle()
     var discardAdHocId by rememberSaveable { mutableStateOf<String?>(null) }
     if (discardAdHocId != null) AlertDialog(onDismissRequest = { discardAdHocId = null },
-        title = { Text("Discard saved AdHoc input?") },
-        text = { Text("Remove this device's retained Flight details and dependent operational input, including its local media?") },
-        confirmButton = { TextButton(onClick = { discardAdHocId?.let(viewModel::discardAdHoc); discardAdHocId = null }) { Text("Discard") } },
-        dismissButton = { TextButton(onClick = { discardAdHocId = null }) { Text("Keep") } })
+        title = { Text(stringResource(R.string.sync_hub_discard_adhoc)) },
+        text = { Text(stringResource(if (pendingAdHoc.firstOrNull { it.flightId == discardAdHocId }?.materializedDetailJson != null)
+            R.string.sync_hub_discard_planning_message else R.string.sync_hub_discard_new_flight_message)) },
+        confirmButton = { TextButton(onClick = { discardAdHocId?.let(viewModel::discardAdHoc); discardAdHocId = null }) { Text(stringResource(R.string.flight_form_discard)) } },
+        dismissButton = { TextButton(onClick = { discardAdHocId = null }) { Text(stringResource(R.string.flights_cancel)) } })
     val pendingArrivals by viewModel.pendingArrivals.collectAsStateWithLifecycle()
     val arrivalActionError by viewModel.arrivalActionError.collectAsStateWithLifecycle()
     val pendingCancellations by viewModel.pendingCancellations.collectAsStateWithLifecycle()
@@ -141,6 +138,7 @@ fun SyncCenterScreen(
         } },
         dismissButton = { TextButton(onClick = { discardArrivalId = null }) { Text(stringResource(R.string.flights_cancel)) } })
     val rows by viewModel.rows.collectAsStateWithLifecycle()
+    val offlineSearch by viewModel.offlineSearchStatus.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
     val realtimeState by viewModel.realtimeState.collectAsStateWithLifecycle()
@@ -152,55 +150,50 @@ fun SyncCenterScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        SyncCenterHeader(onBack = onBack, isOnline = isOnline)
+        ProfilePageHeader(stringResource(R.string.profile_sync_hub), onBack) {
+            ConnectivityPill(isOnline)
+        }
 
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .navigationBarsPadding(),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                LiveChannelCard(
-                    state = realtimeState,
-                    lastEventAt = lastRealtimeEventAt,
-                    now = now,
-                )
+            item(key = "sync-overview") {
+                val pendingStatuses = pendingAdHoc.map { it.status } + pendingArrivals.map { it.status } +
+                    pendingServices.map { it.status } + pendingTasks.map { it.status } +
+                    pendingDepartures.map { it.status } + pendingCancellations.map { it.status }
+                SyncOverview(rows, offlineSearch, pendingStatuses, isSyncing, isOnline, viewModel::refreshNow)
             }
-            item {
-                RefreshNowButton(
-                    isSyncing = isSyncing,
-                    isOnline = isOnline,
-                    onClick = { viewModel.refreshNow() },
-                )
-            }
+            item(key = "connection") { ConnectionDetails(isOnline, realtimeState, lastRealtimeEventAt, now) }
             if (pendingAdHoc.isNotEmpty()) {
-                item { Text("AdHoc flights", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                item { SyncSectionTitle(stringResource(R.string.sync_hub_adhoc)) }
                 items(pendingAdHoc, key = { "adhoc:${it.flightId}" }) { row ->
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
-                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         val input = androidx.compose.runtime.remember(row.inputJson) {
                             com.nags.operations.data.api.HttpClientFactory.json.decodeFromString<com.nags.operations.data.AdHocFlightInput>(row.inputJson)
                         }
-                        Text(input.flightNumber, fontWeight = FontWeight.Bold)
-                        InlineNotice(row.error ?: "Saved on this device. Waiting to synchronize Flight details.",
+                        Text(input.flightNumber, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                        InlineNotice(row.error ?: stringResource(R.string.adhoc_pending_details),
                             kind = if (row.status == "pending") InlineNoticeKind.Info else InlineNoticeKind.Warning)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = { onOpenAdHoc(row.flightId) }) { Text("Review") }
-                            TextButton(onClick = { viewModel.retryAdHoc(row.flightId) }, enabled = isOnline) { Text("Retry") }
-                            TextButton(onClick = { discardAdHocId = row.flightId }, enabled = row.attemptInputJson == null || row.attemptRejected) { Text("Discard") }
+                            TextButton(onClick = { onOpenAdHoc(row.flightId) }) { Text(stringResource(R.string.flight_review_action)) }
+                            TextButton(onClick = { viewModel.retryAdHoc(row.flightId) }, enabled = isOnline) { Text(stringResource(R.string.arrival_sync_retry)) }
+                            TextButton(onClick = { discardAdHocId = row.flightId }, enabled = row.attemptInputJson == null || row.attemptRejected) { Text(stringResource(R.string.flight_form_discard)) }
                         }
                     }
                 }
             }
             adHocActionError?.let { message -> item { InlineNotice(message, kind = InlineNoticeKind.Error) } }
             if (pendingArrivals.isNotEmpty()) {
-                item { Text(stringResource(R.string.arrival_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                item { SyncSectionTitle(stringResource(R.string.arrival_sync_title)) }
                 items(pendingArrivals, key = { "arrival:${it.flightId}" }) { row ->
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
-                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                         InlineNotice(
                             message = row.error ?: stringResource(if (row.status == "pending") R.string.arrival_pending else R.string.arrival_sync_review),
                             kind = when {
@@ -210,6 +203,9 @@ fun SyncCenterScreen(
                             },
                         )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (syncNeedsReview(row.status)) TextButton(onClick = { onReviewFlight(row.flightId, "arrival") }) {
+                                Text(stringResource(R.string.flight_review_action), color = MaterialTheme.colorScheme.error)
+                            }
                             TextButton(onClick = { viewModel.retryArrival(row.flightId) }, enabled = isOnline) {
                                 Text(stringResource(R.string.arrival_sync_retry))
                             }
@@ -222,11 +218,11 @@ fun SyncCenterScreen(
             }
             arrivalActionError?.let { message -> item { InlineNotice(message, kind = InlineNoticeKind.Error) } }
             if (pendingServices.isNotEmpty()) {
-                item { Text(stringResource(R.string.service_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                item { SyncSectionTitle(stringResource(R.string.service_sync_title)) }
                 items(pendingServices, key = { "service:${it.flightId}:${it.serviceRecordId}" }) { row ->
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
-                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                         InlineNotice(
                             message = row.error ?: stringResource(if (row.status == "pending") R.string.service_pending else R.string.service_sync_review),
                             kind = when {
@@ -236,6 +232,9 @@ fun SyncCenterScreen(
                             },
                         )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (syncNeedsReview(row.status)) TextButton(onClick = { onReviewFlight(row.flightId, "service:${row.serviceRecordId}") }) {
+                                Text(stringResource(R.string.flight_review_action), color = MaterialTheme.colorScheme.error)
+                            }
                             TextButton(onClick = { viewModel.retryService(row.flightId, row.serviceRecordId) }, enabled = isOnline) {
                                 Text(stringResource(R.string.arrival_sync_retry))
                             }
@@ -249,11 +248,11 @@ fun SyncCenterScreen(
             }
             if (serviceActionFailed) item { InlineNotice(stringResource(R.string.service_sync_action_failed), kind = InlineNoticeKind.Error) }
             if (pendingTasks.isNotEmpty()) {
-                item { Text(stringResource(R.string.task_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                item { SyncSectionTitle(stringResource(R.string.task_sync_title)) }
                 items(pendingTasks, key = { "task:${it.flightId}:${it.taskRecordId}" }) { row ->
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
-                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                         InlineNotice(
                             message = row.error ?: stringResource(if (row.status == "pending") R.string.task_pending else R.string.task_sync_review),
                             kind = when {
@@ -263,6 +262,9 @@ fun SyncCenterScreen(
                             },
                         )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (syncNeedsReview(row.status)) TextButton(onClick = { onReviewFlight(row.flightId, "task:${row.taskRecordId}") }) {
+                                Text(stringResource(R.string.flight_review_action), color = MaterialTheme.colorScheme.error)
+                            }
                             TextButton(onClick = { viewModel.retryTask(row.flightId, row.taskRecordId) }, enabled = isOnline) {
                                 Text(stringResource(R.string.arrival_sync_retry))
                             }
@@ -276,11 +278,11 @@ fun SyncCenterScreen(
             }
             if (taskActionFailed) item { InlineNotice(stringResource(R.string.task_sync_action_failed), kind = InlineNoticeKind.Error) }
             if (pendingDepartures.isNotEmpty()) {
-                item { Text(stringResource(R.string.departure_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                item { SyncSectionTitle(stringResource(R.string.departure_sync_title)) }
                 items(pendingDepartures, key = { "departure:${it.flightId}" }) { row ->
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
-                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.departure_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.departure_sync_item, row.flightNumber), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                         InlineNotice(
                             message = row.error ?: stringResource(if (row.status == "pending") R.string.departure_pending else R.string.departure_sync_review),
                             kind = when {
@@ -290,6 +292,9 @@ fun SyncCenterScreen(
                             },
                         )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (syncNeedsReview(row.status)) TextButton(onClick = { onReviewFlight(row.flightId, "departure") }) {
+                                Text(stringResource(R.string.flight_review_action), color = MaterialTheme.colorScheme.error)
+                            }
                             TextButton(onClick = { viewModel.retryDeparture(row.flightId) }, enabled = isOnline) {
                                 Text(stringResource(R.string.departure_sync_retry))
                             }
@@ -302,11 +307,11 @@ fun SyncCenterScreen(
             }
             if (departureActionFailed) item { InlineNotice(stringResource(R.string.departure_sync_action_failed), kind = InlineNoticeKind.Error) }
             if (pendingCancellations.isNotEmpty()) {
-                item { Text(stringResource(R.string.cancellation_sync_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+                item { SyncSectionTitle(stringResource(R.string.cancellation_sync_title)) }
                 items(pendingCancellations, key = { "cancellation:${it.flightId}" }) { row ->
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface)
-                        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.Bold)
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.arrival_sync_item, row.flightNumber), fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                         InlineNotice(
                             message = row.error ?: stringResource(when {
                                 row.status != "pending" -> R.string.cancellation_sync_review
@@ -320,6 +325,9 @@ fun SyncCenterScreen(
                             },
                         )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (syncNeedsReview(row.status)) TextButton(onClick = { onReviewFlight(row.flightId, "cancellation") }) {
+                                Text(stringResource(R.string.flight_review_action), color = MaterialTheme.colorScheme.error)
+                            }
                             TextButton(onClick = { viewModel.retryCancellation(row.flightId) }, enabled = isOnline) { Text(stringResource(R.string.arrival_sync_retry)) }
                             TextButton(onClick = { discardCancellationId = row.flightId }, enabled = row.attemptOperation == null || row.status != "pending") {
                                 Text(stringResource(R.string.cancellation_sync_discard))
@@ -329,14 +337,18 @@ fun SyncCenterScreen(
                 }
             }
             if (cancellationActionFailed) item { InlineNotice(stringResource(R.string.cancellation_sync_action_failed), kind = InlineNoticeKind.Error) }
-            item {
-                Text(
-                    text = stringResource(R.string.sync_center_cached_data),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+            item(key = "offline-heading") { SyncSectionTitle(stringResource(R.string.sync_hub_offline_data)) }
+            item(key = "other-station-flights") {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(stringResource(R.string.sync_hub_other_flights), style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold)
+                    Text(when {
+                        offlineSearch.permissionDenied -> stringResource(R.string.catalog_sync_denied)
+                        offlineSearch.lastSuccessUtc == null -> stringResource(R.string.sync_hub_search_prepare)
+                        else -> pluralStringResource(R.plurals.sync_hub_searchable, offlineSearch.itemCount, offlineSearch.itemCount)
+                    }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             items(rows, key = { it.target.storageKey }) { row ->
                 SyncRowCard(row)
@@ -353,383 +365,177 @@ fun SyncCenterScreen(
 }
 
 @Composable
-private fun AppVersionFooter(
-    versionName: String,
-    versionCode: Int,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp, bottom = 4.dp),
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = stringResource(R.string.sync_center_version, versionName, versionCode),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/**
- * Surfaces the SignalR push channel so operators can tell at a glance whether
- * they're actually receiving live updates. Three pieces of information:
- *
- *  • Coarse session state ([RealtimeChannelState]) as the headline word + dot.
- *  • Wall-clock and "Xs ago" for the most recent received catalog event — the proof
- *    that the channel isn't just _claiming_ to be connected.
- *  • A short subtitle calling out what the channel is for (so the surrounding
- *    rows are obviously the safety-net polling layer underneath).
- */
-@Composable
-private fun LiveChannelCard(
-    state: RealtimeChannelState,
-    lastEventAt: Long?,
-    now: Long,
-) {
-    val (label, dotColor) = when (state) {
-        is RealtimeChannelState.Connected -> stringResource(R.string.sync_center_connected) to Color(0xFF35C271)
-        is RealtimeChannelState.Connecting -> stringResource(R.string.sync_center_connecting) to Color(0xFFE0A93B)
-        is RealtimeChannelState.Reconnecting -> stringResource(R.string.sync_center_reconnecting) to Color(0xFFE0A93B)
-        is RealtimeChannelState.Disconnected -> stringResource(R.string.sync_center_disconnected) to Color(0xFFC44848)
-    }
-    val icon = when (state) {
-        is RealtimeChannelState.Connected -> Icons.Default.Bolt
-        is RealtimeChannelState.Connecting,
-        is RealtimeChannelState.Reconnecting -> Icons.Default.Sync
-        is RealtimeChannelState.Disconnected -> Icons.Default.PowerOff
-    }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(
-                1.dp,
-                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                RoundedCornerShape(18.dp),
-            )
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(dotColor.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = null, tint = dotColor, modifier = Modifier.size(22.dp))
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = stringResource(R.string.sync_center_live_channel),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = stringResource(R.string.sync_center_live_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            // Pill mirrors the connectivity pill in the header so the two
-            // statuses read as a paired "transport / push" diagnostic.
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(dotColor.copy(alpha = 0.16f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(dotColor),
-                )
-                Text(
-                    label,
-                    color = dotColor,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            MetadataPair(stringResource(R.string.sync_center_last_event), formatLastEvent(lastEventAt, now))
-            MetadataPair(stringResource(R.string.sync_center_source), "SignalR")
-        }
-    }
-}
-
-/**
- * Hybrid display matching [formatLastSync] — absolute clock + relative age —
- * so the live channel and per-table rows read consistently.
- */
-@Composable
-private fun formatLastEvent(lastEventAt: Long?, now: Long): String {
-    val ts = lastEventAt ?: return stringResource(R.string.sync_center_awaiting_event)
-    val absolute = SimpleDateFormat("HH:mm:ss", LocalConfiguration.current.locales[0]).format(Date(ts))
-    val age = (now - ts).coerceAtLeast(0)
-    return "$absolute · ${humanizeAge(age)}"
+private fun SyncSectionTitle(title: String) {
+    Text(title, Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, bottom = 2.dp),
+        style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
-private fun SyncCenterHeader(onBack: () -> Unit, isOnline: Boolean) {
-    val brandGradient = Brush.verticalGradient(
-        colors = listOf(BrandRedDark, BrandRed, BrandRedLight),
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp))
-            .background(brandGradient),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.account_back),
-                    tint = Color.White,
-                )
+private fun SyncOverview(rows: List<SyncRowState>, offlineSearch: com.nags.operations.data.FlightSyncStatus,
+    pendingStatuses: List<String>, syncing: Boolean,
+    online: Boolean, onRefresh: () -> Unit) {
+    val failed = rows.any { it.lastError != null || it.permissionDenied }
+    val hasSavedData = rows.any { it.lastSyncedAt != null }
+    val prepared = offlineDataPrepared(rows, offlineSearch)
+    val reviewCount = pendingStatuses.count(::syncNeedsReview)
+    val waitingCount = pendingStatuses.size - reviewCount
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)
+        .padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(when {
+            syncing -> R.string.sync_hub_syncing
+            failed -> R.string.sync_hub_attention
+            prepared -> R.string.sync_hub_prepared
+            hasSavedData -> R.string.sync_hub_saved_available
+            else -> R.string.sync_hub_prepare
+        }), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(stringResource(if (online) R.string.sync_hub_overview_online else R.string.sync_hub_overview_offline),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (pendingStatuses.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (waitingCount > 0) SummaryCount(Icons.Default.Sync,
+                pluralStringResource(R.plurals.sync_hub_waiting, waitingCount, waitingCount), false)
+            if (reviewCount > 0) SummaryCount(Icons.Default.ErrorOutline,
+                pluralStringResource(R.plurals.sync_hub_review, reviewCount, reviewCount), true)
+        } else Text(stringResource(R.string.sync_hub_no_saved_work), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        RefreshNowButton(syncing, online, onRefresh)
+    }
+}
+
+@Composable
+private fun SummaryCount(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, error: Boolean) {
+    val color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(icon, null, Modifier.size(16.dp), tint = color)
+        Text(text, style = MaterialTheme.typography.bodySmall, color = color, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun ConnectionDetails(online: Boolean, state: RealtimeChannelState, lastEventAt: Long?, now: Long) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val label = stringResource(when (state) {
+        is RealtimeChannelState.Connected -> R.string.sync_center_connected
+        is RealtimeChannelState.Connecting -> R.string.sync_center_connecting
+        is RealtimeChannelState.Reconnecting -> R.string.sync_center_reconnecting
+        is RealtimeChannelState.Disconnected -> R.string.sync_center_disconnected
+    })
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(role = Role.Button) { expanded = !expanded }
+            .padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Default.Bolt, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(stringResource(R.string.sync_hub_live_updates), style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold)
+                Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 4.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.sync_center_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                )
-                Text(
-                    text = stringResource(R.string.sync_center_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.85f),
-                )
-            }
-            ConnectivityPill(isOnline = isOnline)
+            Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                stringResource(if (expanded) R.string.sync_hub_collapse else R.string.sync_hub_expand), Modifier.size(18.dp))
+        }
+        if (expanded) Column(Modifier.padding(start = 40.dp, end = 14.dp, bottom = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.sync_hub_last_live_update, formatLastEvent(lastEventAt, now)),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(if (online) R.string.sync_hub_live_fallback else R.string.sync_hub_offline_waiting),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
 private fun ConnectivityPill(isOnline: Boolean) {
-    val (label, bg) = if (isOnline) stringResource(R.string.sync_center_online) to Color.White.copy(alpha = 0.22f)
-    else stringResource(R.string.sync_center_offline) to Color.Black.copy(alpha = 0.28f)
-    Row(
-        modifier = Modifier
-            .padding(end = 8.dp)
-            .clip(RoundedCornerShape(50))
-            .background(bg)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(if (isOnline) Color(0xFF8AFFA0) else Color(0xFFFFD0D0)),
-        )
-        Text(label, color = Color.White, style = MaterialTheme.typography.labelMedium)
-    }
+    val foreground = if (isOnline) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+    Text(stringResource(if (isOnline) R.string.sync_center_online else R.string.sync_center_offline),
+        Modifier.padding(end = 8.dp).background(foreground.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = foreground)
 }
 
 @Composable
-private fun RefreshNowButton(
-    isSyncing: Boolean,
-    isOnline: Boolean,
-    onClick: () -> Unit,
-) {
-    Button(
-        onClick = onClick,
-        enabled = !isSyncing && isOnline,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp),
-        shape = RoundedCornerShape(14.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = BrandRed,
-            contentColor = Color.White,
-        ),
-    ) {
-        if (isSyncing) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(20.dp),
-                color = Color.White,
-                strokeWidth = 2.dp,
-            )
-            Text(
-                stringResource(R.string.sync_center_refreshing),
-                modifier = Modifier.padding(start = 12.dp),
-                fontWeight = FontWeight.SemiBold,
-            )
-        } else {
-            Icon(Icons.Default.Refresh, contentDescription = null)
-            Text(
-                stringResource(if (isOnline) R.string.sync_center_refresh_now else R.string.sync_center_refresh_offline),
-                modifier = Modifier.padding(start = 8.dp),
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
+private fun RefreshNowButton(isSyncing: Boolean, isOnline: Boolean, onClick: () -> Unit) {
+    Button(onClick, enabled = !isSyncing && isOnline, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        shape = RoundedCornerShape(12.dp)) {
+        if (isSyncing) CircularProgressIndicator(Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+        else Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
+        Text(stringResource(when {
+            isSyncing -> R.string.sync_center_refreshing
+            isOnline -> R.string.sync_hub_sync_now
+            else -> R.string.sync_center_refresh_offline
+        }), Modifier.padding(start = 8.dp), fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
 private fun SyncRowCard(row: SyncRowState) {
-    val borderColor =
-        if (row.lastError != null || row.permissionDenied) MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
-        else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, borderColor, RoundedCornerShape(18.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            StatusBadge(row)
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = stringResource(targetName(row.target)),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = pluralStringResource(R.plurals.sync_center_rows_cached, row.rowCount, row.rowCount),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+    var expanded by rememberSaveable(row.target.storageKey) { mutableStateOf(row.lastError != null || row.permissionDenied) }
+    LaunchedEffect(row.lastError, row.permissionDenied) { if (row.lastError != null || row.permissionDenied) expanded = true }
+    val error = row.lastError != null || row.permissionDenied
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 58.dp).clickable(role = Role.Button) { expanded = !expanded }
+            .padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(when {
+                error -> Icons.Default.ErrorOutline
+                row.lastSyncedAt != null -> Icons.Default.CheckCircle
+                else -> Icons.Default.CloudOff
+            }, null, Modifier.size(18.dp), tint = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(stringResource(targetName(row.target)), style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold)
+                Text(when {
+                    error -> stringResource(R.string.sync_hub_attention)
+                    row.lastSyncedAt == null -> stringResource(R.string.sync_center_never)
+                    else -> stringResource(R.string.sync_hub_updated, formatClock(row.lastSyncedAt))
+                }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Text(row.rowCount.toString(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                stringResource(if (expanded) R.string.sync_hub_collapse else R.string.sync_hub_expand), Modifier.size(18.dp))
         }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            MetadataPair(stringResource(R.string.sync_center_last_sync), formatLastSync(row))
-            MetadataPair(
-                stringResource(R.string.sync_center_duration),
-                row.lastDurationMs?.let { stringResource(R.string.sync_center_duration_ms, it) } ?: "—",
-            )
-        }
-
-        if (row.lastError != null || row.permissionDenied) {
-            InlineNotice(
-                message = if (row.permissionDenied) stringResource(R.string.catalog_sync_denied)
-                    else row.lastError ?: stringResource(if (row.target == SyncTarget.Flights)
-                        R.string.flights_sync_failed else R.string.catalog_sync_failed),
-                kind = InlineNoticeKind.Error,
-            )
+        if (expanded) Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Text(pluralStringResource(R.plurals.sync_center_rows_cached, row.rowCount, row.rowCount),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.sync_hub_last_success, formatLastSync(row)), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            row.lastDurationMs?.let { Text(stringResource(R.string.sync_center_duration_ms, it),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (error) InlineNotice(if (row.permissionDenied) stringResource(R.string.catalog_sync_denied)
+                else row.lastError ?: stringResource(R.string.catalog_sync_failed), kind = InlineNoticeKind.Error)
         }
     }
 }
 
 @Composable
-private fun StatusBadge(row: SyncRowState) {
-    val (icon, tint, bg) = when {
-        row.lastError != null || row.permissionDenied -> Triple(
-            Icons.Default.ErrorOutline,
-            MaterialTheme.colorScheme.error,
-            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
-        )
-        row.lastSyncedAt == null -> Triple(
-            Icons.Default.CloudOff,
-            MaterialTheme.colorScheme.onSurfaceVariant,
-            MaterialTheme.colorScheme.surfaceVariant,
-        )
-        else -> Triple(
-            Icons.Default.CheckCircle,
-            BrandRed,
-            BrandRed.copy(alpha = 0.12f),
-        )
-    }
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .background(bg),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
-    }
+private fun AppVersionFooter(versionName: String, versionCode: Int) {
+    Text(stringResource(R.string.sync_center_version, versionName, versionCode),
+        Modifier.fillMaxWidth().padding(vertical = 12.dp), style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
 }
 
 @Composable
-private fun MetadataPair(label: String, value: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
+private fun formatClock(timestamp: Long): String {
+    val locale = LocalConfiguration.current.locales[0]
+    return remember(timestamp, locale) { SimpleDateFormat("MMM d, HH:mm", locale).format(Date(timestamp)) }
 }
 
-/**
- * Hybrid display: shows the absolute clock for the most recent sync plus a
- * coarse "X ago" suffix that ticks once per second courtesy of the ViewModel's
- * ticker flow.
- */
 @Composable
 private fun formatLastSync(row: SyncRowState): String {
-    val ts = row.lastSyncedAt ?: return stringResource(R.string.sync_center_never)
-    val absolute = SimpleDateFormat("HH:mm:ss", LocalConfiguration.current.locales[0]).format(Date(ts))
-    val age = row.ageMs ?: return absolute
-    val relative = humanizeAge(age)
-    return "$absolute · $relative"
+    val timestamp = row.lastSyncedAt ?: return stringResource(R.string.sync_center_never)
+    return "${formatClock(timestamp)} · ${humanizeAge(row.ageMs ?: 0L)}"
 }
+
+@Composable
+private fun formatLastEvent(lastEventAt: Long?, now: Long): String = if (lastEventAt == null)
+    stringResource(R.string.sync_center_awaiting_event) else "${formatClock(lastEventAt)} · ${humanizeAge((now - lastEventAt).coerceAtLeast(0L))}"
 
 @Composable
 private fun humanizeAge(ms: Long): String = when {
-    ms < 5_000 -> stringResource(R.string.sync_center_just_now)
-    ms < 60_000 -> stringResource(R.string.sync_center_seconds_ago, ms / 1000)
+    ms < 60_000 -> stringResource(R.string.sync_center_just_now)
     ms < 3_600_000 -> stringResource(R.string.sync_center_minutes_ago, ms / 60_000)
     ms < 86_400_000 -> stringResource(R.string.sync_center_hours_ago, ms / 3_600_000)
     else -> stringResource(R.string.sync_center_days_ago, ms / 86_400_000)
@@ -750,3 +556,6 @@ private fun catalogName(kind: SharedCatalog): Int = when (kind) {
     SharedCatalog.AtaChapters -> R.string.catalog_ata_chapters
     SharedCatalog.StationStaff -> R.string.catalog_station_staff
 }
+
+/** A creation dependency is waiting, rather than a rejected submission needing user correction. */
+private fun syncNeedsReview(status: String): Boolean = status != "pending" && status != "waiting-creation"

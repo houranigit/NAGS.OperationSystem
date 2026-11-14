@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,6 +33,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nags.operations.R
@@ -53,6 +53,7 @@ fun AppHeader(
     val greeting = if (friendlyName == null) stringResource(R.string.home_greeting_fallback)
         else stringResource(R.string.home_greeting, friendlyName)
     val createDescription = stringResource(R.string.home_create_adhoc)
+    val profileDescription = stringResource(R.string.profile_menu_open)
 
     Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).statusBarsPadding()) {
         Row(
@@ -61,12 +62,9 @@ fun AppHeader(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             IconButton(onClick = onProfileClick, modifier = Modifier.size(48.dp)) {
-                Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-                    contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.AccountCircle,
-                        contentDescription = stringResource(R.string.account_open),
-                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
-                }
+                AppProfileAvatar(displayName, modifier = Modifier.semantics {
+                    contentDescription = profileDescription
+                })
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(stringResource(R.string.home_welcome_back),
@@ -97,5 +95,16 @@ fun AppHeader(
                 }
             }
         }
+    }
+}
+
+/** The same restrained initials treatment identifies the operator in the header and side menu. */
+@Composable
+fun AppProfileAvatar(displayName: String?, modifier: Modifier = Modifier, size: Dp = 36.dp) {
+    Box(modifier.size(size).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+        contentAlignment = Alignment.Center) {
+        Text(avatarInitials(displayName.orEmpty()), modifier = Modifier.clearAndSetSemantics {}, style = MaterialTheme.typography.titleSmall.copy(
+            fontSize = if (size >= 48.dp) 20.sp else 13.sp, fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1, softWrap = false)
     }
 }

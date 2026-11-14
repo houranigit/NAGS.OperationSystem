@@ -77,6 +77,32 @@ class SyncCenterViewModelTest {
     }
 
     @Test
+    fun oldCompletedCacheCannotClaimSearchPreparedBeforeItsFirstIndexSnapshot() {
+        val success = "2026-11-03T19:59:00Z"
+        val rows = mobileSyncRows(SharedCatalog.entries.map { CatalogSyncStatus(it, lastSuccessUtc = success) },
+            FlightSyncStatus(lastSuccessUtc = success), now)
+        assertFalse(offlineDataPrepared(rows, FlightSyncStatus()))
+        assertTrue(offlineDataPrepared(rows, FlightSyncStatus(lastSuccessUtc = success)))
+    }
+
+    @Test
+    fun completedSearchMembershipDoesNotHideAFailedFullFlightMediaRefresh() {
+        val success = "2026-11-03T19:59:00Z"
+        val rows = mobileSyncRows(SharedCatalog.entries.map { CatalogSyncStatus(it, lastSuccessUtc = success) },
+            FlightSyncStatus(lastSuccessUtc = success, error = "media download failed"), now)
+        assertFalse(offlineDataPrepared(rows, FlightSyncStatus(lastSuccessUtc = success)))
+    }
+
+    @Test
+    fun failedOrDeniedSearchRefreshCannotReuseAnOldSnapshotToClaimPrepared() {
+        val success = "2026-11-03T19:59:00Z"
+        val rows = mobileSyncRows(SharedCatalog.entries.map { CatalogSyncStatus(it, lastSuccessUtc = success) },
+            FlightSyncStatus(lastSuccessUtc = success), now)
+        assertFalse(offlineDataPrepared(rows, FlightSyncStatus(lastSuccessUtc = success, error = "refresh failed")))
+        assertFalse(offlineDataPrepared(rows, FlightSyncStatus(lastSuccessUtc = success, permissionDenied = true)))
+    }
+
+    @Test
     fun restoredRefreshControlsRespectOfflineAndBusyStatesWhileMetadataRemainsVisible() {
         val statuses = MutableStateFlow(listOf(CatalogSyncStatus(SharedCatalog.Customers, itemCount = 3)))
         val online = MutableStateFlow(false)

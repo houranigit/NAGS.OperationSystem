@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -39,18 +41,21 @@ class TokenStore internal constructor(
     private val stationCodeKey = stringPreferencesKey("station_code")
     private val sessionSubjectKey = stringPreferencesKey("session_subject")
 
+    // Keystore reads can block on hardware/Binder; collectors may run on the UI thread.
     val accessTokenFlow: Flow<String?> = context.dataStore.data.map { prefs ->
         prefs[accessKey]?.let(::unprotectOrNull)
-    }
+    }.flowOn(Dispatchers.IO)
     val userIdFlow: Flow<String?> = context.dataStore.data.map { it[userIdKey] }
     val displayNameFlow: Flow<String?> = context.dataStore.data.map { it[displayNameKey] }
     val sessionSubjectFlow: Flow<String?> = context.dataStore.data.map { it[sessionSubjectKey] }
 
     suspend fun getAccessToken(): String? = context.dataStore.data
         .map { prefs -> prefs[accessKey]?.let(::unprotectOrNull) }
+        .flowOn(Dispatchers.IO)
         .first()
     suspend fun getRefreshToken(): String? = context.dataStore.data
         .map { prefs -> prefs[refreshKey]?.let(::unprotectOrNull) }
+        .flowOn(Dispatchers.IO)
         .first()
     suspend fun getUserId(): String? = context.dataStore.data.map { it[userIdKey] }.first()
     suspend fun getDisplayName(): String? = context.dataStore.data.map { it[displayNameKey] }.first()

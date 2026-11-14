@@ -11,7 +11,6 @@ import com.nags.operations.data.hasOwnCancellation
 import com.nags.operations.data.visibleArrival
 import com.nags.operations.data.visibleDeparture
 import com.nags.operations.data.hasOwnWork
-import com.nags.operations.data.taskCalculationType
 
 import android.content.Context
 import androidx.room.withTransaction
@@ -57,7 +56,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
@@ -98,7 +96,7 @@ class AppGraph private constructor(context: Context) {
     val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline, customerLogos,
         prepareOffline = ::prepareFlightOffline,
         localAdHocFlights = { adHocFlights.localFlights() }, unmaterializedAdHoc = { adHocFlights.isUnmaterialized(it) },
-        reconcileAdHoc = { ids, complete -> adHocFlights.reconcileManifest(ids, complete) },
+        reconcileAdHoc = { ids, complete, observed -> adHocFlights.reconcileManifest(ids, complete, observed) },
         revokeAdHoc = { owner, id -> adHocFlights.revokeForOwner(owner, id) }, recordAdHoc = { adHocFlights.recordAcknowledged(it) },
         confirmAdHocStation = { adHocFlights.confirmStation(it) },
         additionalCachedFlight = { discoveryFlights.cachedFlight(it) },
@@ -233,14 +231,7 @@ class AppGraph private constructor(context: Context) {
                 flightDepartures.pendingInput(flight.id)?.atd ?: flight.visibleDeparture()?.atd,
             )
         },
-        resourceCatalogs = {
-            fun types(items: List<com.nags.operations.data.ResourceCatalogItem>) = items.mapNotNull {
-                val type = it.taskCalculationType()
-                type?.let { value -> it.id to value }
-            }.toMap()
-            com.nags.operations.data.FlightTaskResourceCatalogs(types(sharedCatalogsRepository.toolsFlow().first()),
-                types(sharedCatalogsRepository.materialsFlow().first()), types(sharedCatalogsRepository.generalSupportsFlow().first()))
-        },
+        resourceCatalogs = { sharedCatalogsRepository.taskResourceCatalogs() },
         legacyDraftAttachment = { flightId, taskId, attachmentId ->
             withContext(Dispatchers.IO) { flightServices.attachmentPreview(flightId, taskId, attachmentId)?.readBytes() }
         },
@@ -376,7 +367,7 @@ class AppGraph private constructor(context: Context) {
             gate = flightOperationsSyncMutex, commit = flightOperationsBatches::savePlanning,
             holdWork = flightOperationsBatches::holdForPlanning, releaseWork = flightOperationsBatches::releaseAfterPlanning,
             holdWorkForReview = flightOperationsBatches::holdPlanningWorkForReview,
-            onLocalSaved = { discoveryFlights.recordLocalSave(it) }, onAcknowledgedDetail = { discoveryFlights.recordAcknowledged(it) },
+            onLocalSaved = { discoveryFlights.recordLocalSave(it) }, onAcknowledgedDetail = flightsRepository::recordPlanningAcknowledged,
             removeWork = flightOperationsBatches::removeUnsentPlanningWork,
             hasWork = { id ->
                 val owner = if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
@@ -399,7 +390,7 @@ class AppGraph private constructor(context: Context) {
         val api = com.nags.operations.data.api.DiscoveryFlightsApi(httpClient)
         com.nags.operations.data.repo.DiscoveryFlightsRepository(catalogDatabase.flightDiscoveryDao(), logoOwners,
             currentOwner = { if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject()) },
-            online = { networkMonitor.isOnline.value }, fetchPage = api::page, fetchDetail = operationsApi::flight,
+            online = { networkMonitor.isOnline.value }, fetchPage = api::page, fetchDetail = operationsApi::flight, fetchOfflinePage = api::offlinePage,
             prepareOffline = ::prepareFlightOffline, transaction = { work -> catalogDatabase.withTransaction { work() } },
             beginScopeRead = flightsRepository::beginExternalScopeRead, confirmScopeRead = flightsRepository::confirmExternalPage,
             localStationAuthority = { station -> flightsRepository.trustedCachedStation() == station || adHocFlights.cachedContext()?.stationId == station },
@@ -527,7 +518,7 @@ class AppGraph private constructor(context: Context) {
     }
 
     private suspend fun hasCancellationIntent(id: String): Boolean =
-        flightCancellations.hasSavedInput(id) || flightsRepository.cachedFlight(id)?.hasOwnCancellation() == true
+        flightCancellations.hasSavedInput(id) || flightsRepository.hasCachedCancellationForSave(id)
 
     private suspend fun cacheAcknowledgedSignature(id: String, saved: com.nags.operations.data.FlightDepartureSaved, bytes: ByteArray) {
         departureSignaturePreviews.recordAcknowledged(id, saved, bytes)

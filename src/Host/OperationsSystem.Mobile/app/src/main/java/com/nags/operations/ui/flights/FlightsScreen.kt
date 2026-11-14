@@ -118,6 +118,10 @@ fun FlightsScreen(
     onSelectTab: (Int) -> Unit = {},
     bottomContentPadding: Dp = 80.dp,
     discoverySource: FlightDiscoverySource? = null,
+    externalPendingFlightId: String? = null,
+    externalPendingNavigationKey: String? = null,
+    onExternalPendingHandled: () -> Unit = {},
+    interactionEnabled: Boolean = true,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pendingNavigationFlightId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -137,7 +141,7 @@ fun FlightsScreen(
         focusManager.clearFocus()
         viewModel.closeSearch()
     }
-    BackHandler(enabled = discoverySource == null && state.isSearchOpen && state.selectedFlightId == null) { closeSearch() }
+    BackHandler(enabled = interactionEnabled && discoverySource == null && state.isSearchOpen && state.selectedFlightId == null) { closeSearch() }
     val pagerState = rememberPagerState(initialPage = selectedTab) { if (discoverySource == null) FlightCategory.entries.size else 1 }
     LaunchedEffect(viewModel, discoverySource) { if (discoverySource != null) viewModel.openSearch() }
     val pagerScope = rememberCoroutineScope()
@@ -205,10 +209,24 @@ fun FlightsScreen(
         pendingNavigationKey = targetKey
         viewModel.openFlight(flightId)
     }
+    LaunchedEffect(viewModel, externalPendingFlightId, externalPendingNavigationKey) {
+        val flightId = externalPendingFlightId
+        val targetKey = externalPendingNavigationKey
+        if (flightId != null && targetKey != null) {
+            openPending(flightId, targetKey)
+            onExternalPendingHandled()
+        }
+    }
+    val cacheNotice = if (state.isUsingCachedList || !state.isOnline)
+        stringResource(if (state.isUsingCachedList) R.string.flights_cached_list else R.string.flights_offline_hint) else null
+    var cacheNoticeDismissed by rememberSaveable(cacheNotice, state.stationId) { mutableStateOf(false) }
+    val cacheNoticeVisible = cacheNotice != null && !cacheNoticeDismissed
+    val listTopPadding = if (cacheNoticeVisible) 0.dp else 16.dp
     Column(Modifier.fillMaxSize().imePadding()) {
         if (discoverySource == null) FlightTabSearchHeader(isSearchOpen = state.isSearchOpen, query = state.search,
             onQueryChange = viewModel::setSearch, onOpenSearch = viewModel::openSearch,
-            onCloseSearch = ::closeSearch) {
+            onCloseSearch = ::closeSearch, autoFocusOnOpen = interactionEnabled,
+            interactionEnabled = interactionEnabled) {
             FlightsPageTabs(pagerState = pagerState, onSelectTab = selectTab, enabled = !state.isSearchOpen)
         }
         else {
@@ -217,17 +235,18 @@ fun FlightsScreen(
             FlightTabSearchHeader(isSearchOpen = true, query = state.search,
                 onQueryChange = viewModel::setSearch, onOpenSearch = viewModel::openSearch,
                 onCloseSearch = {}, searchDescription = placeholder, placeholder = placeholder,
-                showCloseButton = false, autoFocusOnOpen = false, searchAtPhysicalRight = true,
+                showCloseButton = false, autoFocusOnOpen = false, interactionEnabled = interactionEnabled,
+                searchAtPhysicalRight = true,
                 searchIcon = if (discoverySource == FlightDiscoverySource.Search) Icons.AutoMirrored.Filled.ManageSearch else Icons.Default.Search,
                 tabs = {})
         }
-        if (state.isUsingCachedList || !state.isOnline) {
-            InlineNotice(stringResource(if (state.isUsingCachedList) R.string.flights_cached_list else R.string.flights_offline_hint),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), kind = InlineNoticeKind.Info)
+        if (cacheNoticeVisible) {
+            InlineNotice(checkNotNull(cacheNotice), onDismiss = { cacheNoticeDismissed = true },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), kind = InlineNoticeKind.Info)
         }
         if (discoverySource != null) Box(Modifier.weight(1f).fillMaxWidth()) {
             FlightListPage(state, viewModel, listStates.first(), bottomContentPadding, active = true,
-                onPendingClick = ::openPending, discoverySource = discoverySource)
+                onPendingClick = ::openPending, discoverySource = discoverySource, topContentPadding = listTopPadding)
         }
         else HorizontalPager(state = pagerState, modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds()) { page ->
             val category = FlightCategory.entries[page]
@@ -235,7 +254,7 @@ fun FlightsScreen(
                 listState = listStates[page],
                 bottomContentPadding = bottomContentPadding,
                 active = page == pagerState.settledPage && state.category == category,
-                onPendingClick = ::openPending)
+                onPendingClick = ::openPending, topContentPadding = listTopPadding)
         }
         if (discoverySource == null && state.isSearchOpen) {
             FlightSearchScopeTabs(selectedTab = pagerState.currentPage, onSelectTab = selectTab,
@@ -420,6 +439,7 @@ private fun FlightListPage(
     active: Boolean,
     onPendingClick: (flightId: String, navigationKey: String) -> Unit,
     discoverySource: FlightDiscoverySource? = null,
+    topContentPadding: Dp = 16.dp,
 ) {
     // Account-scoped durable input updates card badges immediately, without detail HTTP reads.
     val savedArrivals by (viewModel.arrivals?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
@@ -513,7 +533,9 @@ private fun FlightListPage(
             }
             else -> LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = bottomContentPadding),
+                contentPadding = PaddingValues(start = 16.dp,
+                    top = if (state.error != null) minOf(topContentPadding, 8.dp) else topContentPadding,
+                    end = 16.dp, bottom = bottomContentPadding),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {

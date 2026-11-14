@@ -12,9 +12,10 @@ using Operations.Application.Contracts;
 
 namespace Operations.Application.Features.Flights;
 
-public sealed record GetMobileFlightSearchQuery(string FlightNumber, int Page = 1, int PageSize = 20) : IQuery<MobileFlightPageDto>;
+public sealed record GetMobileFlightSearchQuery(string FlightNumber, int Page = 1, int PageSize = 20,
+    bool UnassignedIndex = false) : IQuery<MobileFlightPageDto>;
 
-/// <summary>Exact discovery of regular flights; the normal feed remains assigned-only for this category.</summary>
+/// <summary>Regular-flight discovery and its bounded unassigned offline index; the normal feed stays assigned-only.</summary>
 public sealed class GetMobileFlightSearchQueryHandler(IOperationsDbContext db, IMobileFlightScope scope,
     ICustomerLogoReader logos, IMasterDataReader masterData, IUserDisplayNameReader? userNames = null)
     : IQueryHandler<GetMobileFlightSearchQuery, MobileFlightPageDto>
@@ -26,12 +27,14 @@ public sealed class GetMobileFlightSearchQueryHandler(IOperationsDbContext db, I
         var actor = resolved.Value;
         var number = request.FlightNumber?.Trim().ToUpperInvariant();
         var paging = PageRequest.From(request.Page, request.PageSize);
-        if (string.IsNullOrEmpty(number)) return new MobileFlightPageDto([], paging.Page, paging.PageSize, 0,
+        if (!request.UnassignedIndex && string.IsNullOrEmpty(number)) return new MobileFlightPageDto([], paging.Page, paging.PageSize, 0,
             actor.StationId, actor.AsOfUtc, actor.WindowStartUtc, actor.WindowEndUtc);
         var query = MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), actor).Where(flight =>
             flight.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
-            !flight.PlannedServices.Any(item => item.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) &&
-            flight.FlightNumber.Value.Trim().ToUpper() == number);
+            !flight.PlannedServices.Any(item => item.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService));
+        query = request.UnassignedIndex
+            ? query.Where(flight => !flight.AssignedEmployees.Any(item => item.Employee.StaffMemberId == actor.StaffMemberId))
+            : query.Where(flight => flight.FlightNumber.Value.Trim().ToUpper() == number);
         var total = await query.LongCountAsync(ct);
         List<MobileFlightListItemDto> items = [];
         if (!paging.IsOutOfRange(total))

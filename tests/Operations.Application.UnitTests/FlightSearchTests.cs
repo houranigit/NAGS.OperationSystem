@@ -39,6 +39,55 @@ public sealed class FlightSearchTests
     }
 
     [Fact]
+    public async Task Offline_search_index_pages_every_unassigned_regular_flight_inside_the_inclusive_station_window()
+    {
+        await using var f = new Fixture();
+        var current = f.NewFlight("101");
+        var pastEdge = f.NewFlight("102", sta: Now.AddHours(-14), std: Now.AddHours(-12));
+        var futureEdge = f.NewFlight("103", sta: Now.AddHours(12), std: Now.AddHours(13));
+        var otherAssigned = f.NewFlight("104");
+        otherAssigned.ReplaceAssignedEmployees([new(Guid.NewGuid(), "Colleague", "E2")], Now).IsSuccess.ShouldBeTrue();
+        var ownAssigned = f.NewFlight("105");
+        ownAssigned.ReplaceAssignedEmployees([new(f.Actor.StaffMemberId, "Searcher", "E1")], Now).IsSuccess.ShouldBeTrue();
+        f.Db.Flights.AddRange(current, pastEdge, futureEdge, otherAssigned, ownAssigned,
+            f.NewFlight("106", perLanding: true), f.NewFlight("107", adHoc: true),
+            f.NewFlight("108", station: Guid.NewGuid()),
+            f.NewFlight("109", sta: Now.AddHours(-14), std: Now.AddHours(-12).AddTicks(-1)),
+            f.NewFlight("110", sta: Now.AddHours(12).AddTicks(1), std: Now.AddHours(13)));
+        await f.Db.SaveChangesAsync(); f.Db.ChangeTracker.Clear();
+        var handler = new GetMobileFlightSearchQueryHandler(f.Db, f.Scope, NoopCustomerLogoReader.Instance, f.Reader);
+        var first = await handler.Handle(new("", PageSize: 2, UnassignedIndex: true), CancellationToken.None);
+        var second = await handler.Handle(new("", Page: 2, PageSize: 2, UnassignedIndex: true), CancellationToken.None);
+        var expected = new[] { current, pastEdge, futureEdge, otherAssigned }.OrderByDescending(item => item.Schedule.Sta)
+            .ThenBy(item => item.Id).Select(item => item.Id).ToArray();
+        first.IsSuccess.ShouldBeTrue(); second.IsSuccess.ShouldBeTrue();
+        first.Value.Items.Concat(second.Value.Items).Select(item => item.Id).ShouldBe(expected);
+        first.Value.TotalCount.ShouldBe(4); first.Value.HasNextPage.ShouldBeTrue(); second.Value.HasNextPage.ShouldBeFalse();
+        first.Value.StationId.ShouldBe(f.Actor.StationId); first.Value.AsOfUtc.ShouldBe(Now);
+        first.Value.WindowStartUtc.ShouldBe(Now.AddHours(-12)); first.Value.WindowEndUtc.ShouldBe(Now.AddHours(12));
+        first.Value.Items.Concat(second.Value.Items).ShouldAllBe(item => !item.IsMyFlight && !item.IsAdHocFlight && !item.IsPerLanding);
+        f.Db.ChangeTracker.Entries<Flight>().ShouldBeEmpty();
+        (await f.Db.FlightUserActivities.CountAsync()).ShouldBe(0);
+        var empty = await handler.Handle(new("", Page: 3, PageSize: 2, UnassignedIndex: true), CancellationToken.None);
+        empty.Value.Items.ShouldBeEmpty(); empty.Value.TotalCount.ShouldBe(4); empty.Value.StationId.ShouldBe(f.Actor.StationId);
+        (await handler.Handle(new(""), CancellationToken.None)).Value.Items.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Offline_search_index_rejects_revoked_scope_and_missing_station_metadata()
+    {
+        await using var f = new Fixture(); await f.PersistAsync(f.NewFlight());
+        var denied = await new GetMobileFlightSearchQueryHandler(f.Db, new DeniedScope(), NoopCustomerLogoReader.Instance, f.Reader)
+            .Handle(new("", UnassignedIndex: true), CancellationToken.None);
+        denied.Error.Code.ShouldBe("Operations.Scope.StationInactive");
+        f.Reader.StationExists = false;
+        var missing = await new GetMobileFlightSearchQueryHandler(f.Db, f.Scope, NoopCustomerLogoReader.Instance, f.Reader)
+            .Handle(new("", UnassignedIndex: true), CancellationToken.None);
+        missing.Error.Code.ShouldBe("Operations.Flight.StationDataUnavailable");
+        (await f.Db.FlightUserActivities.CountAsync()).ShouldBe(0);
+    }
+
+    [Fact]
     public async Task First_combined_arrival_service_and_task_can_publish_together_but_later_additions_are_denied()
     {
         await using var f = new Fixture(); var flight = await f.PersistAsync(f.NewFlight());
@@ -214,6 +263,7 @@ public sealed class FlightSearchTests
         public ValueTask DisposeAsync() => Db.DisposeAsync();
     }
     private sealed class Scope(MobileFlightScopeContext actor) : IMobileFlightScope { public Task<Result<MobileFlightScopeContext>> ResolveAsync(CancellationToken ct) => Task.FromResult(Result.Success(actor)); }
+    private sealed class DeniedScope : IMobileFlightScope { public Task<Result<MobileFlightScopeContext>> ResolveAsync(CancellationToken ct) => Task.FromResult(Result.Failure<MobileFlightScopeContext>(Error.Forbidden("Station is inactive.", "Operations.Scope.StationInactive"))); }
     private sealed class Clock : TimeProvider { public override DateTimeOffset GetUtcNow() => Now; }
     private sealed class User(Guid id) : IUserContext
     {

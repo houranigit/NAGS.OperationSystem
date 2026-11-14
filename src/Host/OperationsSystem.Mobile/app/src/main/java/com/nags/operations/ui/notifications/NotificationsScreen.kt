@@ -76,6 +76,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
@@ -119,6 +122,22 @@ private val NotificationDeleteRed = Color(0xFFD92D3F)
 private val NotificationInk = Color(0xFF111827)
 private val NotificationSecondaryInk = Color(0xFF576170)
 private val NotificationNewFill = Color(0xFFF0F6FF)
+
+@Composable
+private fun notificationInk() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+    MaterialTheme.colorScheme.onSurface else NotificationInk
+
+@Composable
+private fun notificationSecondaryInk() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+    MaterialTheme.colorScheme.onSurfaceVariant else NotificationSecondaryInk
+
+@Composable
+private fun notificationGround() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+    MaterialTheme.colorScheme.background else FlightFormGround
+
+@Composable
+private fun notificationUnreadFill() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+    MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f).compositeOver(MaterialTheme.colorScheme.surface) else NotificationNewFill
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -165,19 +184,20 @@ fun NotificationsScreen(
                             modifier = Modifier.padding(end = 16.dp))
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.White,
-                        scrolledContainerColor = Color.White,
-                        titleContentColor = NotificationInk,
-                        navigationIconContentColor = NotificationInk,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                        titleContentColor = notificationInk(),
+                        navigationIconContentColor = notificationInk(),
                         actionIconContentColor = NotificationDeleteRed,
                     ),
                 )
             },
-            containerColor = FlightFormGround,
+            containerColor = notificationGround(),
             contentWindowInsets = if (embedded) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
-                if (!embedded) HorizontalDivider(color = Color(0xFFE3E6EB))
+                if (!embedded) HorizontalDivider(color = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+                    MaterialTheme.colorScheme.outlineVariant else Color(0xFFE3E6EB))
                 val listState = rememberLazyListState()
                 NotificationList(state, viewModel, listState,
                     embedded = embedded, bottomContentPadding = bottomContentPadding,
@@ -187,7 +207,7 @@ fun NotificationsScreen(
         if (confirmClear) {
             AlertDialog(
                 onDismissRequest = { confirmClear = false },
-                containerColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.surface,
                 tonalElevation = 0.dp,
                 title = { Text(stringResource(R.string.notifications_clear_confirm_title)) },
                 text = { Text(stringResource(R.string.notifications_clear_confirm_body)) },
@@ -382,7 +402,7 @@ private fun NotificationCard(notification: NotificationDto, now: Instant, isNew:
         }
         val offset = swipe.requireOffset()
         val busy = deleteRequested || archiving
-        Box(Modifier.matchParentSize().background(FlightFormGround), contentAlignment = Alignment.CenterEnd) {
+        Box(Modifier.matchParentSize().background(notificationGround()), contentAlignment = Alignment.CenterEnd) {
             if (offset < -1f) Box(Modifier.width(80.dp), contentAlignment = Alignment.Center) {
                 Button(onClick = requestDelete, enabled = !busy,
                     modifier = Modifier.width(64.dp).height(34.dp), shape = RoundedCornerShape(10.dp),
@@ -400,11 +420,12 @@ private fun NotificationCard(notification: NotificationDto, now: Instant, isNew:
             .anchoredDraggable(swipe, orientation = Orientation.Horizontal, enabled = !busy,
                 flingBehavior = fling)
             .semantics { customActions = listOf(CustomAccessibilityAction(deleteLabel) { requestDelete(); true }) }
-            .background(if (isNew) NotificationNewFill else Color.White)
+            .background(if (isNew) notificationUnreadFill() else MaterialTheme.colorScheme.surface)
             .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             val appearance = notificationAppearance(notification.kind)
-            val accent = Color(appearance.accentArgb)
+            val baseAccent = Color(appearance.accentArgb)
+            val accent = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) lerp(baseAccent, Color.White, 0.45f) else baseAccent
             Box(Modifier.size(40.dp).background(accent.copy(alpha = 0.1f), RoundedCornerShape(20.dp)),
                 contentAlignment = Alignment.Center) {
                 Icon(painterResource(appearance.iconResource), contentDescription = null,
@@ -412,8 +433,9 @@ private fun NotificationCard(notification: NotificationDto, now: Instant, isNew:
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 val flightNumber = notification.payload["flightNumber"]
-                val flightStyle = SpanStyle(color = Color.Black, fontWeight = FontWeight.Bold)
-                val title = remember(notification.titleEn, flightNumber) {
+                val flightStyle = SpanStyle(color = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
+                    MaterialTheme.colorScheme.onSurface else Color.Black, fontWeight = FontWeight.Bold)
+                val title = remember(notification.titleEn, flightNumber, flightStyle) {
                     buildAnnotatedString {
                         append(notification.titleEn)
                         notificationFlightNumberRanges(notification.titleEn, flightNumber).forEach { range ->
@@ -421,7 +443,7 @@ private fun NotificationCard(notification: NotificationDto, now: Instant, isNew:
                         }
                     }
                 }
-                Text(title, style = MaterialTheme.typography.titleSmall, color = NotificationInk,
+                Text(title, style = MaterialTheme.typography.titleSmall, color = notificationInk(),
                     fontWeight = if (isNew) FontWeight.SemiBold else FontWeight.Medium,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val age = relativeNotificationAge(notification.createdAtUtc, now)
@@ -434,7 +456,7 @@ private fun NotificationCard(notification: NotificationDto, now: Instant, isNew:
                         append("  ")
                         withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(age) }
                     }
-                }, style = MaterialTheme.typography.bodySmall, color = NotificationSecondaryInk)
+                }, style = MaterialTheme.typography.bodySmall, color = notificationSecondaryInk())
             }
             if (canOpen) Box(Modifier.width(64.dp).height(48.dp).clip(RoundedCornerShape(8.dp))
                 .clickable(enabled = !busy, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {

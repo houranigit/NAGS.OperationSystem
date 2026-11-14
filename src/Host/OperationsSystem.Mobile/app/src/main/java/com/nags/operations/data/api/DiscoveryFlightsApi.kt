@@ -8,6 +8,11 @@ import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 
 class DiscoveryFlightsApi(private val client: HttpClient) {
+    suspend fun offlinePage(page: Int, size: Int): FlightPage = client.get(
+        HttpClientFactory.url("api/v1/operations/flights/mobile/search/offline")) {
+        parameter("page", page); parameter("pageSize", size)
+    }.bodyOrThrow()
+
     suspend fun page(source: FlightDiscoverySource, query: String, page: Int, size: Int): FlightPage = client.get(
         HttpClientFactory.url("api/v1/operations/flights/mobile/${source.key}")) {
         parameter(if (source == FlightDiscoverySource.Search) "flightNumber" else "search", query)

@@ -28,6 +28,14 @@ class AuthRepository(
 ) {
     suspend fun profile(): AuthenticatedUser = api.me()
 
+    suspend fun changePassword(currentPassword: String, newPassword: String) = api.changePassword(currentPassword, newPassword)
+
+    /** Identity revokes every session after a password change. Keep the remembered owner and all offline work. */
+    suspend fun requireSignInAfterPasswordChange() {
+        api.clearBearerTokenCache()
+        tokenStore.clearTokens()
+    }
+
     suspend fun login(email: String, password: String): LoginOutcome {
         val response = api.login(email, password)
 

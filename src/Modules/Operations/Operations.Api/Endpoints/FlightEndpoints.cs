@@ -23,6 +23,13 @@ internal static class FlightEndpoints
         var flights = group.MapGroup("/flights").WithTags("Operations.Flights");
 
         var mobile = flights.MapGroup("/mobile");
+        mobile.MapGet("/search/offline", async (ISender sender, CancellationToken ct,
+            int page = 1, int pageSize = 100) =>
+        {
+            var result = await sender.Send(new GetMobileFlightSearchQuery(string.Empty, page, pageSize, UnassignedIndex: true), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
         mobile.MapGet("/search", async (ISender sender, CancellationToken ct, string? flightNumber = null,
             int page = 1, int pageSize = 20) =>
         {

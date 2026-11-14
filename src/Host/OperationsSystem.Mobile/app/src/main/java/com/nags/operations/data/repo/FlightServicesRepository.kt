@@ -338,7 +338,8 @@ class FlightServicesRepository(
         }
         val arrival = if (localActuals == null) flight?.visibleArrival()?.ata else localActuals.arrivalUtc
         val departure = if (localActuals == null) flight?.visibleDeparture()?.atd else localActuals.departureUtc
-        check(input.validationErrors(version, arrival, departure, eligible, requireClosedPerformers = !replayingFrozenAttempt).isEmpty()) {
+        val completionOnly = baseline?.let { it.canCloseOnly && it.canSetEnd && input.withoutBytes().closesOnlyMissingEnds(it.input()) } == true
+        check(input.validationErrors(version, arrival, departure, if (completionOnly) null else eligible, requireClosedPerformers = !replayingFrozenAttempt).isEmpty()) {
             "Complete the required service fields and review employee periods."
         }
         if (baseline != null) {
@@ -348,7 +349,7 @@ class FlightServicesRepository(
                 "The selected service cannot change after another employee has entered its End time."
             }
             if (input.endUtc != old.endUtc) check(baseline.canSetEnd) { "Only the employee who entered the service end can change it." }
-            if (!baseline.canEdit) check(baseline.canSetEnd && input.withoutBytes().copy(endUtc = old.endUtc) == old) {
+            if (!baseline.canEdit) check(baseline.canSetEnd && (input.withoutBytes().copy(endUtc = old.endUtc) == old || completionOnly)) {
                 "Only the service creator can change its details. Other employees may record the end."
             }
             input.attachments.orEmpty().forEach { attachment ->
@@ -358,6 +359,15 @@ class FlightServicesRepository(
                 }
             }
         }
+    }
+
+    /** Restore only newly completed Ends before comparing all immutable service input. */
+    private fun SaveFlightServiceRequest.closesOnlyMissingEnds(old: SaveFlightServiceRequest): Boolean {
+        if (old.endUtc != null || endUtc == null || performers.any { it.endUtc == null }) return false
+        return copy(endUtc = old.endUtc, performers = performers.map { person ->
+            val original = old.performers.firstOrNull { it.id == person.id && it.staffMemberId == person.staffMemberId }
+            if (original != null && original.endUtc == null) person.copy(endUtc = null) else person
+        }) == old
     }
 
     private suspend fun importAttachments(input: SaveFlightServiceRequest, existing: FlightServicePendingEntity?, baseline: FlightServiceRecord?): Map<String, String> {

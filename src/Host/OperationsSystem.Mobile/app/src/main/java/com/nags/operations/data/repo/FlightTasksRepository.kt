@@ -322,7 +322,8 @@ class FlightTasksRepository(
                 "Only the employee who created the task can change its type."
             }
             if (input.endUtc != old.endUtc) check(baseline.canSetEnd) { "Only the employee who entered the task end can change it." }
-            if (!baseline.canEdit) check(baseline.canSetEnd && input.withoutBytes().copy(endUtc = old.endUtc) == old) {
+            if (!baseline.canEdit) check(baseline.canSetEnd && (input.withoutBytes().copy(endUtc = old.endUtc) == old ||
+                    baseline.canCloseOnly && input.withoutBytes().closesOnlyMissingEnds(old, baseline))) {
                 "Only the task creator can change its details. Other employees may record the end."
             }
             input.attachments.orEmpty().forEach { attachment ->
@@ -332,6 +333,23 @@ class FlightTasksRepository(
                 }
             }
         }
+    }
+
+    /** Closing work may fill missing staff/duration Ends; recorded Ends and every other field stay fixed. */
+    private fun SaveFlightTaskRequest.closesOnlyMissingEnds(old: SaveFlightTaskRequest, baseline: FlightTaskRecord): Boolean {
+        if (old.endUtc != null || endUtc == null || performers.any { it.endUtc == null }) return false
+        fun restore(values: List<SaveFlightTaskResourceRequest>, recorded: List<FlightTaskResourceRecord>): List<SaveFlightTaskResourceRequest>? = values.map { value ->
+            val original = recorded.firstOrNull { it.id == value.id && it.resourceId == value.resourceId }
+            if (original?.calculationType == 1 && value.endUtc == null) return null
+            if (original?.calculationType == 1 && original.endUtc == null) value.copy(endUtc = null) else value
+        }
+        val tools = restore(tools, baseline.tools) ?: return false
+        val materials = restore(materials, baseline.materials) ?: return false
+        val support = restore(generalSupports, baseline.generalSupports) ?: return false
+        return copy(endUtc = old.endUtc, performers = performers.map { person ->
+            val original = old.performers.firstOrNull { it.id == person.id && it.staffMemberId == person.staffMemberId }
+            if (original != null && original.endUtc == null) person.copy(endUtc = null) else person
+        }, tools = tools, materials = materials, generalSupports = support) == old
     }
 
     private suspend fun importAttachments(input: SaveFlightTaskRequest, existing: FlightTaskPendingEntity?, baseline: FlightTaskRecord?): Map<String, String> {

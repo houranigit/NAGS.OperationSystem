@@ -35,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,7 +48,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.nags.operations.data.TokenStore
 import com.nags.operations.ui.components.InlineErrorBanner
 import com.nags.operations.ui.components.NagsLogo
 import com.nags.operations.ui.theme.BrandRed
@@ -56,22 +56,24 @@ import com.nags.operations.ui.theme.BrandRedLight
 
 /**
  * NAGS-branded sign-in screen. Shows the portal logo on a brand-red gradient
- * header, skips straight to home if a refresh token is already on disk, and
+ * header, enters home when the current decrypted access token becomes available, and
  * surfaces server errors as a soft inline banner instead of raw HTTP text.
  */
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel,
-    tokenStore: TokenStore,
+    accessTokenAvailable: Boolean,
     onLoggedIn: () -> Unit,
+    noticeMessage: String? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var passwordVisible by remember { mutableStateOf(false) }
+    val currentOnLoggedIn by rememberUpdatedState(onLoggedIn)
 
-    LaunchedEffect(Unit) {
-        if (tokenStore.getAccessToken() != null) {
-            onLoggedIn()
-        }
+    // An explicit login/MFA attempt owns navigation until profile/session setup has completed.
+    val canResumeSession = accessTokenAvailable && !state.isLoading && state.mfaToken == null
+    LaunchedEffect(canResumeSession) {
+        if (canResumeSession) currentOnLoggedIn()
     }
 
     val brandGradient = Brush.verticalGradient(
@@ -218,6 +220,7 @@ fun LoginScreen(
                 )
             }
 
+            noticeMessage?.let { com.nags.operations.ui.components.InlineNotice(it) }
             InlineErrorBanner(
                 message = state.error.orEmpty(),
                 onDismiss = { viewModel.clearError() },

@@ -31,11 +31,11 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = BrandRedLight,
+    primary = Color(0xFFF3AAA9),
     onPrimary = Color(0xFF2A0606),
     primaryContainer = BrandRedDark,
     onPrimaryContainer = Color(0xFFFFD8D8),
-    secondary = BrandRedLight,
+    secondary = Color(0xFFF3AAA9),
     onSecondary = Color(0xFF2A0606),
     tertiary = Color(0xFF8FB6FF),
     background = Color(0xFF1A0F11),

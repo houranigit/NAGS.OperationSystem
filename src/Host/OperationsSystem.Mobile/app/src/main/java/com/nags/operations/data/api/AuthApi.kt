@@ -16,6 +16,9 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
+import io.ktor.client.statement.bodyAsText
+import kotlinx.serialization.Serializable
 
 /**
  * Thin wrapper over the Identity module's mobile auth endpoints
@@ -61,7 +64,19 @@ class AuthApi(
         }
     }
 
+    /** Existing Identity endpoint; credentials stay in request memory and are never queued. */
+    suspend fun changePassword(currentPassword: String, newPassword: String) {
+        val response = client.post(url("api/v1/identity/auth/change-password")) {
+            contentType(ContentType.Application.Json)
+            setBody(ChangePasswordBody(currentPassword, newPassword))
+        }
+        if (!response.status.isSuccess()) throw com.nags.operations.data.ApiException(response.status.value, response.bodyAsText())
+    }
+
     fun clearBearerTokenCache() {
         client.authProvider<BearerAuthProvider>()?.clearToken()
     }
 }
+
+@Serializable
+private data class ChangePasswordBody(val currentPassword: String, val newPassword: String)

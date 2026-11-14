@@ -6,6 +6,7 @@ using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
 using FluentValidation;
 using MasterData.Contracts.Readers;
+using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
@@ -54,7 +55,7 @@ public sealed class GetFlightInvitationOptionsQueryHandler(
             if (access.IsFailure)
                 return access.Error;
         }
-        if (flight.AdHocCreationFingerprint is not null)
+        if (flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType)
             return Error.Validation("AdHoc flights do not have assigned employees.", "Operations.AdHoc.AssignmentsNotAllowed");
         if (flight.IsPerLanding)
             return PerLandingAssignmentGuard.Error();
@@ -122,7 +123,7 @@ public sealed class InviteEmployeesToFlightCommandHandler(
             if (access.IsFailure)
                 return access.Error;
         }
-        if (flight.AdHocCreationFingerprint is not null)
+        if (flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType)
             return Error.Validation("AdHoc flights do not have assigned employees.", "Operations.AdHoc.AssignmentsNotAllowed");
         if (flight.IsPerLanding)
             return PerLandingAssignmentGuard.Error();

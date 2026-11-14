@@ -322,6 +322,50 @@ class FlightTasksRepositoryTest {
         assertEquals(1, dao.rows(owner.value!!).size)
     }
 
+    @Test fun closeOnlyTaskCanFillMissingStaffAndDurationEndsWhileKeepingRecordedEndsQuantitiesAndCore() = runBlocking {
+        val otherPerson = FlightTaskPerformerRecord(second, flight.id, "Other", "E2", now.toString(), now.plusSeconds(30).toString(), "Retained")
+        fun resource(id: String, type: Int, end: String? = null) = FlightTaskResourceRecord(id, id, "Resource", type,
+            quantity = if (type == 0) "2.5" else null, startUtc = if (type == 1) now.toString() else null, endUtc = end, notes = "Retained resource")
+        val baseline = saved(record, input.copy(attachments = listOf(
+            FlightServiceAttachmentInput("dddddddd-dddd-dddd-dddd-dddddddddddd", 2, "retained.pdf", "application/pdf")))).task.copy(canEdit = false, canSetEnd = true, canDelete = false, canChangeType = false, canCloseOnly = true,
+            performers = saved(record, input).task.performers + otherPerson,
+            tools = listOf(resource("77777777-7777-7777-7777-777777777777", 1)),
+            materials = listOf(resource("88888888-8888-8888-8888-888888888888", 0), resource("99999999-9999-9999-9999-999999999999", 1, now.plusSeconds(30).toString())),
+            generalSupports = listOf(resource("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", 1)))
+        live = flight.copy(tasks = listOf(baseline), isUnassignedSearchFlight = true, canAddTasks = false)
+        val old = baseline.input()
+        resourceTypes = FlightTaskResourceCatalogs(tools = mapOf("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" to 1))
+        fun finish(values: List<SaveFlightTaskResourceRequest>) = values.map {
+            if (it.quantity == null && it.endUtc == null) it.copy(endUtc = now.plusSeconds(60).toString()) else it }
+        val desired = old.copy(endUtc = now.plusSeconds(120).toString(),
+            performers = old.performers.map { it.copy(endUtc = it.endUtc ?: now.plusSeconds(60).toString()) },
+            tools = finish(old.tools), materials = finish(old.materials), generalSupports = finish(old.generalSupports))
+        val repo = repository()
+
+        repo.save(live, record, desired)
+
+        val queued = dao.rows(owner.value!!).single()
+        assertEquals(desired, Json.decodeFromString<SaveFlightTaskRequest>(queued.inputJson!!))
+        val invalid = listOf(desired.copy(notes = "Changed core"), desired.copy(taskType = 1),
+            desired.copy(attachments = desired.attachments!!.map { it.copy(fileName = "changed.pdf") }),
+            desired.copy(performers = desired.performers.dropLast(1)),
+            desired.copy(performers = desired.performers + SaveFlightTaskPerformerRequest("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "cccccccc-cccc-cccc-cccc-cccccccccccc", now.toString(), now.plusSeconds(60).toString())),
+            desired.copy(performers = desired.performers.map { if (it.id == second) it.copy(endUtc = now.plusSeconds(45).toString()) else it }),
+            desired.copy(tools = desired.tools.map { it.copy(startUtc = now.plusSeconds(5).toString()) }),
+            desired.copy(tools = desired.tools + SaveFlightTaskResourceRequest("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", startUtc = now.toString(), endUtc = now.plusSeconds(60).toString())),
+            desired.copy(materials = desired.materials.map { if (it.quantity != null) it.copy(quantity = "3") else it }),
+            desired.copy(materials = desired.materials.map { if (it.quantity == null) it.copy(endUtc = now.plusSeconds(45).toString()) else it }),
+            desired.copy(generalSupports = emptyList()))
+        for (changed in invalid) {
+            assertTrue(runCatching { repo.save(live, record, changed) }.isFailure)
+            assertEquals(queued, dao.rows(owner.value!!).single())
+        }
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals(desired, sent.single().second)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
     @Test fun explicitlyReviewedUnchangedReadonlyTaskCanRecoverByExactAcknowledgment() = runBlocking {
         val closed = input.copy(endUtc = now.plusSeconds(60).toString(), performers = input.performers.map { it.copy(endUtc = now.toString()) })
         val recordValue = saved(record, closed).task.copy(createdByUserId = "someone-else", endedByUserId = "closer",

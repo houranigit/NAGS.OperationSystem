@@ -270,6 +270,53 @@ class FlightServicesRepositoryTest {
         assertEquals(1, dao.rows(owner.value!!).size)
     }
 
+    @Test fun closeOnlyServiceCanFillMissingStaffEndsButCannotChangeRecordedEndsOrOtherInput() = runBlocking {
+        val people = input.performers + SaveFlightServicePerformerRequest(second, flight.id, now.toString(), now.plusSeconds(30).toString())
+        val baseline = saved(record, input.copy(performers = people, attachments = listOf(
+            FlightServiceAttachmentInput("dddddddd-dddd-dddd-dddd-dddddddddddd", 2, "retained.pdf", "application/pdf")))).service.copy(canEdit = false, canSetEnd = true,
+            canChangeService = false, canDelete = false, canCloseOnly = true)
+        live = flight.copy(services = listOf(baseline), isUnassignedSearchFlight = true, canAddServices = false)
+        val desired = baseline.input().copy(endUtc = now.plusSeconds(120).toString(),
+            performers = baseline.input().performers.map { it.copy(endUtc = it.endUtc ?: now.plusSeconds(60).toString()) })
+        val repo = repository()
+
+        repo.save(live, record, desired)
+
+        val queued = dao.rows(owner.value!!).single()
+        assertEquals(desired, Json.decodeFromString<SaveFlightServiceRequest>(queued.inputJson!!))
+        val invalid = listOf(desired.copy(notes = "Changed core"), desired.copy(serviceId = second),
+            desired.copy(attachments = desired.attachments!!.map { it.copy(fileName = "changed.pdf") }),
+            desired.copy(performers = desired.performers.dropLast(1)),
+            desired.copy(performers = desired.performers + SaveFlightServicePerformerRequest("99999999-9999-9999-9999-999999999999", "88888888-8888-8888-8888-888888888888", now.toString(), now.plusSeconds(60).toString())),
+            desired.copy(performers = desired.performers.map { if (it.id == second) it.copy(endUtc = now.plusSeconds(45).toString()) else it }))
+        for (changed in invalid) {
+            assertTrue(runCatching { repo.save(live, record, changed) }.isFailure)
+            assertEquals(queued, dao.rows(owner.value!!).single())
+        }
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals(desired, sent.single().second)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun immutableCloseOnlyServiceDoesNotRequireAllowanceToAddThatService() = runBlocking {
+        val baseline = saved(record, input).service.copy(canEdit = false, canSetEnd = true, canChangeService = false, canDelete = false, canCloseOnly = true)
+        live = flight.copy(services = listOf(baseline), isUnassignedSearchFlight = true, allowedServiceIds = emptyList(), canAddServices = false)
+        val desired = baseline.input().copy(endUtc = now.plusSeconds(120).toString(),
+            performers = baseline.input().performers.map { it.copy(endUtc = now.plusSeconds(60).toString()) })
+        val repo = repository()
+        assertTrue(runCatching { repo.save(live, second, input) }.isFailure)
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+
+        repo.save(live, record, desired)
+        val queued = dao.rows(owner.value!!).single()
+        assertTrue(runCatching { repo.save(live, record, desired.copy(serviceId = second)) }.isFailure)
+        assertEquals(queued, dao.rows(owner.value!!).single())
+        online = true
+        assertFalse(repo.syncPending())
+        assertEquals(desired, sent.single().second)
+    }
+
     @Test fun serviceCannotCloseWhileAnyStaffPeriodIsOpenAndPendingInputSurvivesRejectedEdit() = runBlocking {
         val repo = repository()
         repo.save(flight, record, input)

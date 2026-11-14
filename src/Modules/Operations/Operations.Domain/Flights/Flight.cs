@@ -177,7 +177,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
 
     public Result ReplaceAssignedEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
     {
-        if (AdHocCreationFingerprint is not null && employees.Count > 0) return AdHocAssignmentError();
+        if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && employees.Count > 0) return AdHocAssignmentError();
         if (IsPerLanding && employees.Count > 0)
             return PerLandingAssignmentError();
         SetAssignedEmployees(employees);
@@ -187,7 +187,7 @@ public sealed class Flight : AggregateRoot<Guid>, IAuditable
 
     public Result InviteEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
     {
-        if (AdHocCreationFingerprint is not null && employees.Count > 0) return AdHocAssignmentError();
+        if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && employees.Count > 0) return AdHocAssignmentError();
         if (IsPerLanding)
             return PerLandingAssignmentError();
 

@@ -17,6 +17,7 @@ import com.nags.operations.data.db.CatalogDatabase
 import com.nags.operations.data.db.dao.FlightCacheDao
 import com.nags.operations.data.db.entities.FlightDetailCacheEntity
 import com.nags.operations.data.db.entities.FlightSnapshotEntity
+import com.nags.operations.data.hasOwnCancellation
 import com.nags.operations.data.isInFlightWindow
 import com.nags.operations.data.matches
 import com.nags.operations.data.parseFlightInstant
@@ -66,7 +67,7 @@ class FlightsRepository internal constructor(
     private val prepareOffline: suspend (FlightDetail) -> Unit = {},
     private val localAdHocFlights: suspend () -> List<FlightDetail> = { emptyList() },
     private val unmaterializedAdHoc: suspend (String) -> Boolean = { false },
-    private val reconcileAdHoc: suspend (Set<String>, Boolean) -> Unit = { _, _ -> },
+    private val reconcileAdHoc: suspend (Set<String>, Boolean, Set<String>) -> Unit = { _, _, _ -> },
     private val revokeAdHoc: suspend (String, String?) -> Unit = { _, _ -> },
     private val recordAdHoc: suspend (FlightDetail) -> Unit = {},
     private val confirmAdHocStation: suspend (String) -> Unit = {},
@@ -78,12 +79,13 @@ class FlightsRepository internal constructor(
     private val confirmAdditionalStation: suspend (String) -> Unit = {},
     private val revokeAdditional: suspend (String, String?) -> Unit = { _, _ -> },
     private val additionalLogoFlights: suspend () -> List<FlightListItem> = { emptyList() },
+    private val onPreparationFailure: (Exception) -> Unit = {},
 ) {
     constructor(api: OperationsApi, db: CatalogDatabase, tokenStore: TokenStore, online: StateFlow<Boolean>, logoStore: CustomerLogoStore? = null,
         prepareOffline: suspend (FlightDetail) -> Unit = {},
         localAdHocFlights: suspend () -> List<FlightDetail> = { emptyList() },
         unmaterializedAdHoc: suspend (String) -> Boolean = { false },
-        reconcileAdHoc: suspend (Set<String>, Boolean) -> Unit = { _, _ -> },
+        reconcileAdHoc: suspend (Set<String>, Boolean, Set<String>) -> Unit = { _, _, _ -> },
         revokeAdHoc: suspend (String, String?) -> Unit = { _, _ -> }, recordAdHoc: suspend (FlightDetail) -> Unit = {},
         confirmAdHocStation: suspend (String) -> Unit = {},
         additionalCachedFlight: suspend (String) -> FlightDetail? = { null },
@@ -104,6 +106,13 @@ class FlightsRepository internal constructor(
         recordAdditionalFetched = recordAdditionalFetched, recordAdditionalAcknowledged = recordAdditionalAcknowledged,
         prepareAdditionalOffline = prepareAdditionalOffline, confirmAdditionalStation = confirmAdditionalStation,
         revokeAdditional = revokeAdditional, additionalLogoFlights = additionalLogoFlights,
+        onPreparationFailure = { error ->
+            if (com.nags.operations.BuildConfig.DEBUG) {
+                val frame = error.stackTrace.firstOrNull { it.className.startsWith("com.nags.operations.") }
+                val status = (error as? ApiException)?.statusCode
+                android.util.Log.w("FlightPreparation", "${error.javaClass.simpleName} status=${status ?: "none"} at=${frame?.className}:${frame?.lineNumber}")
+            }
+        },
         dao = db.flightCacheDao(),
         ownerFlow = combine(tokenStore.accessTokenFlow, tokenStore.sessionSubjectFlow) { token, subject ->
             if (token.isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, subject)
@@ -120,6 +129,12 @@ class FlightsRepository internal constructor(
     private val deniedDuringRefresh = mutableSetOf<String>()
     @Volatile private var generation = 0L
     @Volatile private var listRevision = 0L
+    private var contentRevision = 0L
+    private val detailEpochs = mutableMapOf<String, Long>()
+    private val confirmedDetailEpochs = mutableMapOf<String, Long>()
+    private val positiveDetailEpochs = mutableMapOf<String, Long>()
+    private val observedDetails = mutableMapOf<String, String>()
+    @Volatile private var refreshRequested = false
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
     private val _cacheChanges = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -185,60 +200,113 @@ class FlightsRepository internal constructor(
         val local = localAdHocFlights().firstOrNull { it.id == id }
         if (!isOnline()) return local ?: cachedDetailOrNull(session, id) ?: additionalCachedFlight(id) ?: cachedDetail(session, id)
         if (local != null && unmaterializedAdHoc(id)) return local
-        return refreshMutex.withLock {
+        val read = mutationMutex.withLock {
             ensureCurrent(session)
-            var reportsChanged = false
-            try {
-                val additionalRevision = beginAdditionalDetailRead(id)
-                var detail = fetchFlight(id)
-                if (detail.id != id) throw IOException("The flight response did not match its request.")
-                mutationMutex.withLock {
-                    ensureCurrent(session)
-                    val saved = scopedSnapshotLocked(session)
-                    val scope = saved?.second?.scope ?: dao.snapshot(session.owner)?.let(::decodeSnapshot)?.scope
-                    if (!detail.isInFlightWindow(Instant.parse(now())) || (scope != null && detail.stationId != scope.stationId)) {
-                        throw ApiException(404, "This flight is outside your current flight window.")
-                    }
-                    // A live bounded read establishes station authority, never orphan offline membership.
-                    if (scope == null) {
-                        confirmAdHocStation(detail.stationId)
-                        confirmAdditionalStation(detail.stationId)
-                    }
-                    detail = recordAdditionalFetched(detail, additionalRevision)
-                    // Only the complete scoped manifest authorizes a normal offline detail.
-                    if (saved?.second?.items?.any { it.id == id } == true) {
-                        dao.putDetails(listOf(FlightDetailCacheEntity(session.owner, id, json.encodeToString(detail))))
-                        reportsChanged = updateSnapshotReportsLocked(session, id) { it.withReportFlags(detail) }
-                    }
+            val key = detailKey(session, id)
+            val epoch = (detailEpochs[key] ?: 0L) + 1
+            detailEpochs[key] = epoch
+            epoch
+        }
+        var reportsChanged = false
+        try {
+            val additionalRevision = beginAdditionalDetailRead(id)
+            var detail = fetchFlight(id)
+            if (detail.id != id) throw IOException("The flight response did not match its request.")
+            mutationMutex.withLock {
+                ensureCurrent(session)
+                val key = detailKey(session, id)
+                if ((confirmedDetailEpochs[key] ?: 0L) > read) throw IOException("A newer confirmed flight read or saved update replaced this response.")
+                val saved = scopedSnapshotLocked(session)
+                val scope = saved?.second?.scope ?: dao.snapshot(session.owner)?.let(::decodeSnapshot)?.scope
+                if (!detail.isInFlightWindow(Instant.parse(now())) || (scope != null && detail.stationId != scope.stationId)) {
+                    throw ApiException(404, "This flight is outside your current flight window.")
                 }
-                if (reportsChanged) _cacheChanges.tryEmit(Unit)
-                detail
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                handleAccessError(session, error, id)
-                if (!error.isTransient()) throw error
-                cachedDetailOrNull(session, id) ?: localAdHocFlights().firstOrNull { it.id == id } ?: additionalCachedFlight(id) ?: throw error
+                // A live bounded read establishes station authority, never orphan offline membership.
+                if (scope == null) {
+                    confirmAdHocStation(detail.stationId)
+                    confirmAdditionalStation(detail.stationId)
+                }
+                detail = recordAdditionalFetched(detail, additionalRevision)
+                val raw = json.encodeToString(detail)
+                val previous = dao.detail(session.owner, id)?.payloadJson ?: observedDetails[key]
+                if (raw != previous) contentRevision++
+                observedDetails[key] = raw
+                confirmedDetailEpochs[key] = maxOf(confirmedDetailEpochs[key] ?: 0L, read)
+                positiveDetailEpochs[key] = read
+                recordAdHoc(detail)
+                // Only the complete scoped manifest authorizes a normal offline detail.
+                if (saved?.second?.items?.any { it.id == id } == true) {
+                    dao.putDetails(listOf(FlightDetailCacheEntity(session.owner, id, raw)))
+                    reportsChanged = updateSnapshotReportsLocked(session, id) { it.withReportFlags(detail) }
+                }
             }
+            if (reportsChanged) _cacheChanges.tryEmit(Unit)
+            return detail
+        } catch (error: CancellationException) { throw error }
+        catch (error: Exception) {
+            val currentRead = mutationMutex.withLock {
+                ensureCurrent(session)
+                val key = detailKey(session, id)
+                val confirmed = confirmedDetailEpochs[key] ?: 0L
+                val accessFailure = error is ApiException && error.statusCode in listOf(401, 403, 404)
+                if (accessFailure) !(confirmed > read && positiveDetailEpochs[key] == confirmed) else confirmed <= read
+            }
+            if (!currentRead) return retainedDetail(session, id)
+                ?: throw IOException("A newer flight read or saved update replaced this response.", error)
+            handleAccessError(session, error, id)
+            if (!error.isTransient()) throw error
+            return retainedDetail(session, id) ?: throw error
         }
     }
 
+    private suspend fun retainedDetail(session: FlightCacheSession, id: String): FlightDetail? {
+        ensureCurrent(session)
+        val result = cachedDetailOrNull(session, id) ?: localAdHocFlights().firstOrNull { it.id == id }
+            ?: additionalCachedFlight(id)
+        ensureCurrent(session)
+        return result
+    }
+
     /** A batch response replaces every operational section together, never one member at a time. */
-    suspend fun recordOperationsBatch(detail: FlightDetail) {
-        recordAdHoc(detail)
-        recordAdditionalAcknowledged(detail)
+    suspend fun recordOperationsBatch(detail: FlightDetail) = recordAcknowledgedDetail(detail, planning = false)
+
+    suspend fun recordPlanningAcknowledged(detail: FlightDetail) = recordAcknowledgedDetail(detail, planning = true)
+
+    private suspend fun recordAcknowledgedDetail(detail: FlightDetail, planning: Boolean) {
         val session = requireSession()
-        refreshMutex.withLock {
-            mutationMutex.withLock {
-                ensureCurrent(session)
-                dao.detail(session.owner, detail.id)?.let { cached ->
-                    dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(detail))))
-                }
-                updateSnapshotReportsLocked(session, detail.id) { it.withReportFlags(detail) }
+        mutationMutex.withLock {
+            ensureCurrent(session)
+            markContentChangedLocked(session, detail.id)
+            recordAdHoc(detail)
+            recordAdditionalAcknowledged(detail)
+            dao.detail(session.owner, detail.id)?.let { cached ->
+                dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(detail))))
             }
+            var planningChanged = false
+            updateSnapshotReportsLocked(session, detail.id) { original ->
+                val reports = original.withReportFlags(detail)
+                if (!planning) reports else reports.withPlanning(detail).also { planningChanged = it != reports }
+            }
+            if (planningChanged) listRevision++
         }
         _cacheChanges.tryEmit(Unit)
     }
+
+    /** Caller holds mutationMutex; epochs also protect detail GETs when badge flags are unchanged. */
+    private fun markContentChangedLocked(session: FlightCacheSession, id: String) {
+        invalidateDetailReadLocked(session, id)
+        val key = detailKey(session, id)
+        positiveDetailEpochs[key] = checkNotNull(confirmedDetailEpochs[key])
+        contentRevision++
+    }
+    private fun invalidateDetailReadLocked(session: FlightCacheSession, id: String) {
+        val key = detailKey(session, id)
+        val epoch = (detailEpochs[key] ?: 0L) + 1
+        detailEpochs[key] = epoch
+        confirmedDetailEpochs[key] = epoch
+        observedDetails.remove(key)
+    }
+    private fun detailKey(session: FlightCacheSession, id: String) = "${session.owner}\u0000$id"
 
     private suspend fun recordAdHocPartial(session: FlightCacheSession, id: String, change: (FlightDetail) -> FlightDetail) {
         ensureCurrent(session)
@@ -250,6 +318,24 @@ class FlightsRepository internal constructor(
     /** Cache-only current evidence for mutually exclusive local submissions; never starts an HTTP read. */
     suspend fun cachedFlight(id: String): FlightDetail? = captureSession()?.let { session ->
         cachedDetailOrNull(session, id) ?: localAdHocFlights().firstOrNull { it.id == id } ?: additionalCachedFlight(id)
+    }
+
+    /** Read-only local-save evidence: caller may already own Room, so never acquire cache mutation/prune locks. */
+    suspend fun hasCachedCancellationForSave(id: String): Boolean {
+        val owner = currentOwner() ?: return false
+        val session = FlightCacheSession(owner, generation)
+        val at = Instant.parse(now())
+        val snapshot = dao.snapshot(owner)
+        val payload = snapshot?.takeUnless { it.permissionDenied }?.let(::decodeSnapshot)
+        val station = payload?.scope?.stationId
+        val normal = if (snapshot?.lastSuccessUtc != null && payload?.items?.any { it.id == id && it.isInFlightWindow(at) } == true)
+            dao.detail(owner, id)?.let { row -> runCatching { json.decodeFromString<FlightDetail>(row.payloadJson) }.getOrNull() }
+                ?.takeIf { it.id == id && it.stationId == station && it.isInFlightWindow(at) }
+        else null
+        val detail = normal ?: localAdHocFlights().firstOrNull { it.id == id } ?: additionalCachedFlight(id)
+        ensureCurrent(session)
+        return detail?.takeIf { it.id == id && it.isInFlightWindow(at) && (station == null || it.stationId == station) }
+            ?.hasOwnCancellation() == true
     }
 
     suspend fun recordCancellation(id: String, saved: com.nags.operations.data.FlightCancellationSaved) {
@@ -268,24 +354,24 @@ class FlightsRepository internal constructor(
         confirmedSubmissions: List<com.nags.operations.data.FlightCancellationSubmission>? = null,
         submissions: (FlightDetail) -> List<com.nags.operations.data.FlightCancellationSubmission>) {
         val session = requireSession()
-        refreshMutex.withLock {
-            mutationMutex.withLock {
-                ensureCurrent(session)
-                var confirmedCancellations = confirmedSubmissions
-                dao.detail(session.owner, id)?.let { cached ->
-                    val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
-                    if (detail != null) {
-                        val cancellations = submissions(detail)
-                        confirmedCancellations = cancellations
-                        val updated = detail.copy(cancellationSubmissions = cancellations,
-                            hasCancellationSubmission = cancellations.isNotEmpty(), rowVersion = rowVersion).restrictCapabilitiesAfterKnownWork()
-                        dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
-                    }
+        mutationMutex.withLock {
+            ensureCurrent(session)
+            markContentChangedLocked(session, id)
+            var confirmedCancellations = confirmedSubmissions
+            dao.detail(session.owner, id)?.let { cached ->
+                val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
+                if (detail != null) {
+                    val cancellations = submissions(detail)
+                    confirmedCancellations = cancellations
+                    val updated = detail.copy(cancellationSubmissions = cancellations,
+                        hasCancellationSubmission = cancellations.isNotEmpty(), rowVersion = rowVersion).restrictCapabilitiesAfterKnownWork()
+                    dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
                 }
-                updateSnapshotReportsLocked(session, id) { it.copy(hasCancellationSubmission = hasCancellation,
-                    latestCancellationAtUtc = confirmedCancellations?.latestCancellationAtUtc()) }
             }
+            updateSnapshotReportsLocked(session, id) { it.copy(hasCancellationSubmission = hasCancellation,
+                latestCancellationAtUtc = confirmedCancellations?.latestCancellationAtUtc()) }
         }
+
         recordAdHocPartial(session, id) { detail ->
             val cancellations = submissions(detail)
             detail.copy(cancellationSubmissions = cancellations, hasCancellationSubmission = cancellations.isNotEmpty(), rowVersion = rowVersion)
@@ -295,20 +381,20 @@ class FlightsRepository internal constructor(
 
     suspend fun recordArrival(id: String, saved: com.nags.operations.data.FlightArrivalSaved) {
         val session = requireSession()
-        refreshMutex.withLock {
-            mutationMutex.withLock {
-                ensureCurrent(session)
-                val cached = dao.detail(session.owner, id)
-                val detail = cached?.let { runCatching { json.decodeFromString<FlightDetail>(it.payloadJson) }.getOrNull() }
-                if (cached != null && detail != null) {
-                    val updated = detail.copy(arrivalSubmissions = detail.arrivalSubmissions.filterNot {
-                        it.id == saved.submission.id
-                    } + saved.submission, rowVersion = saved.rowVersion).restrictCapabilitiesAfterKnownWork()
-                    dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
-                }
-                updateSnapshotReportsLocked(session, id) { it.copy(hasArrivalSubmission = true) }
+        mutationMutex.withLock {
+            ensureCurrent(session)
+            markContentChangedLocked(session, id)
+            val cached = dao.detail(session.owner, id)
+            val detail = cached?.let { runCatching { json.decodeFromString<FlightDetail>(it.payloadJson) }.getOrNull() }
+            if (cached != null && detail != null) {
+                val updated = detail.copy(arrivalSubmissions = detail.arrivalSubmissions.filterNot {
+                    it.id == saved.submission.id
+                } + saved.submission, rowVersion = saved.rowVersion).restrictCapabilitiesAfterKnownWork()
+                dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
             }
+            updateSnapshotReportsLocked(session, id) { it.copy(hasArrivalSubmission = true) }
         }
+
         recordAdHocPartial(session, id) { detail -> detail.copy(arrivalSubmissions = detail.arrivalSubmissions.filterNot { it.id == saved.submission.id } + saved.submission, rowVersion = saved.rowVersion) }
         _cacheChanges.tryEmit(Unit)
     }
@@ -316,21 +402,21 @@ class FlightsRepository internal constructor(
     /** Acknowledged departure updates the replaceable cache; pending intent lives in its own repository. */
     suspend fun recordDeparture(id: String, saved: FlightDepartureSaved) {
         val session = requireSession()
-        refreshMutex.withLock {
-            mutationMutex.withLock {
-                ensureCurrent(session)
-                dao.detail(session.owner, id)?.let { cached ->
-                    val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
-                    if (detail != null) {
-                        val updated = detail.copy(departureSubmissions = detail.departureSubmissions.filterNot {
-                            it.id == saved.submission.id
-                        } + saved.submission, rowVersion = saved.rowVersion).restrictCapabilitiesAfterKnownWork()
-                        dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
-                    }
+        mutationMutex.withLock {
+            ensureCurrent(session)
+            markContentChangedLocked(session, id)
+            dao.detail(session.owner, id)?.let { cached ->
+                val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
+                if (detail != null) {
+                    val updated = detail.copy(departureSubmissions = detail.departureSubmissions.filterNot {
+                        it.id == saved.submission.id
+                    } + saved.submission, rowVersion = saved.rowVersion).restrictCapabilitiesAfterKnownWork()
+                    dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
                 }
-                updateSnapshotReportsLocked(session, id) { it.copy(hasDepartureSubmission = true) }
             }
+            updateSnapshotReportsLocked(session, id) { it.copy(hasDepartureSubmission = true) }
         }
+
         recordAdHocPartial(session, id) { detail -> detail.copy(departureSubmissions = detail.departureSubmissions.filterNot { it.id == saved.submission.id } + saved.submission, rowVersion = saved.rowVersion) }
         _cacheChanges.tryEmit(Unit)
     }
@@ -351,21 +437,21 @@ class FlightsRepository internal constructor(
     private suspend fun updateServiceCache(id: String, rowVersion: String, activeWorkCount: Int?, completedWorkCount: Int?,
         change: (List<com.nags.operations.data.FlightServiceRecord>) -> List<com.nags.operations.data.FlightServiceRecord>) {
         val session = requireSession()
-        refreshMutex.withLock {
-            mutationMutex.withLock {
-                ensureCurrent(session)
-                dao.detail(session.owner, id)?.let { cached ->
-                    val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
-                    if (detail != null) {
-                        dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(
-                            detail.copy(services = change(detail.services), rowVersion = rowVersion).restrictCapabilitiesAfterKnownWork()))))
-                    }
+        mutationMutex.withLock {
+            ensureCurrent(session)
+            markContentChangedLocked(session, id)
+            dao.detail(session.owner, id)?.let { cached ->
+                val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
+                if (detail != null) {
+                    dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(
+                        detail.copy(services = change(detail.services), rowVersion = rowVersion).restrictCapabilitiesAfterKnownWork()))))
                 }
-                // Authoritative counts make a recovered acknowledgment idempotent, including after a crash.
-                updateSnapshotReportsLocked(session, id) { it.copy(activeWorkCount = activeWorkCount,
-                    completedWorkCount = completedWorkCount) }
             }
+            // Authoritative counts make a recovered acknowledgment idempotent, including after a crash.
+            updateSnapshotReportsLocked(session, id) { it.copy(activeWorkCount = activeWorkCount,
+                completedWorkCount = completedWorkCount) }
         }
+
         recordAdHocPartial(session, id) { detail -> detail.copy(services = change(detail.services), rowVersion = rowVersion) }
         _cacheChanges.tryEmit(Unit)
     }
@@ -386,21 +472,21 @@ class FlightsRepository internal constructor(
     private suspend fun updateTaskCache(id: String, rowVersion: String, activeWorkCount: Int?, completedWorkCount: Int?,
         change: (List<com.nags.operations.data.FlightTaskRecord>) -> List<com.nags.operations.data.FlightTaskRecord>) {
         val session = requireSession()
-        refreshMutex.withLock {
-            mutationMutex.withLock {
-                ensureCurrent(session)
-                dao.detail(session.owner, id)?.let { cached ->
-                    val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
-                    if (detail != null) {
-                        dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(
-                            detail.copy(tasks = change(detail.tasks), rowVersion = rowVersion).restrictCapabilitiesAfterKnownWork()))))
-                    }
+        mutationMutex.withLock {
+            ensureCurrent(session)
+            markContentChangedLocked(session, id)
+            dao.detail(session.owner, id)?.let { cached ->
+                val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
+                if (detail != null) {
+                    dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(
+                        detail.copy(tasks = change(detail.tasks), rowVersion = rowVersion).restrictCapabilitiesAfterKnownWork()))))
                 }
-                // Authoritative counts make a recovered acknowledgment idempotent, including after a crash.
-                updateSnapshotReportsLocked(session, id) { it.copy(activeWorkCount = activeWorkCount,
-                    completedWorkCount = completedWorkCount) }
             }
+            // Authoritative counts make a recovered acknowledgment idempotent, including after a crash.
+            updateSnapshotReportsLocked(session, id) { it.copy(activeWorkCount = activeWorkCount,
+                completedWorkCount = completedWorkCount) }
         }
+
         recordAdHocPartial(session, id) { detail -> detail.copy(tasks = change(detail.tasks), rowVersion = rowVersion) }
         _cacheChanges.tryEmit(Unit)
     }
@@ -456,84 +542,130 @@ class FlightsRepository internal constructor(
         }
     }
 
-    /** Replaces only a complete scoped list; partial downloads never become an offline snapshot. */
+    /** One background preparation at a time; repeated hints coalesce without blocking interactive work. */
     suspend fun refreshCache() {
         if (!isOnline()) return
-        refreshMutex.lock()
+        if (!refreshMutex.tryLock()) { refreshRequested = true; return }
         _isSyncing.value = true
         try {
-            if (!isOnline()) return
-            val session = captureSession() ?: return
-            mutationMutex.withLock { deniedDuringRefresh.clear() }
-            var logoRead = logoStore?.beginMetadataRead()
-            val attemptedAt = now()
-            val started = monotonicNanos()
-            val revision = listRevision
-            try {
-                recordIncompleteAttempt(session, attemptedAt)
-                val (downloaded, acceptedLogoRead) = readCompleteList(session, revision, logoRead)
-                logoRead = acceptedLogoRead
-                val downloadedScope = checkNotNull(downloaded.scope)
-                val items = downloaded.items.filter { it.isInFlightWindow(Instant.parse(now())) }.toMutableList()
-                val visibleIds = items.mapTo(mutableSetOf()) { it.id }
-                reconcileAdHoc(visibleIds, false)
-                mutationMutex.withLock {
-                    ensureCompatibleScope(session, revision, downloadedScope)
-                    revokeMissingFlightsLocked(session, visibleIds)
-                }
-                val details = mutableListOf<FlightDetailCacheEntity>()
-                // A successful sync prepares every eligible flight, including flights never opened.
-                // Downloads are sequential so media memory is bounded by the existing per-file limit.
-                for (item in items.toList()) {
-                    ensureCurrent(session)
-                    val detail = try {
-                        fetchFlight(item.id).also { detail ->
-                            if (detail.id != item.id || detail.stationId != downloadedScope.stationId ||
-                                !detail.isInFlightWindow(Instant.parse(now()))) {
-                                throw ApiException(404, "This flight is outside your current flight window.")
-                            }
-                        }
-                    } catch (error: ApiException) {
-                        if (error.statusCode != 403 && error.statusCode != 404) throw error
-                        // Persist known access loss even if a later download fails or is cancelled.
-                        handleAccessError(session, error, item.id, invalidatePending = false)
-                        items.removeAll { it.id == item.id }
-                        continue
-                    }
-                    ensureCurrent(session)
-                    // Missing/stale media and disk failures must not advance the successful-sync time.
-                    prepareOffline(detail)
-                    ensureCurrent(session)
-                    details += FlightDetailCacheEntity(session.owner, item.id, json.encodeToString(detail))
-                }
-                prepareAdditionalOffline()
-                mutationMutex.withLock {
-                    ensureCompatibleScope(session, revision, downloadedScope)
-                    val previousScope = dao.snapshot(session.owner)?.let(::decodeSnapshot)?.scope
-                    if (previousScope != null && previousScope.stationId != downloadedScope.stationId) {
-                        logoStore?.clearOwner(session.owner)
-                        logoRead = logoStore?.beginMetadataRead()
-                    }
-                    val retained = items.filter { it.id !in deniedDuringRefresh && it.isInFlightWindow(Instant.parse(now())) }
-                    val ids = retained.mapTo(mutableSetOf()) { it.id }
-                    val duration = (monotonicNanos() - started).coerceAtLeast(0L) / 1_000_000L
-                    reconcileLogos(retained, logoRead, complete = true, prepare = true)
-                    dao.replace(FlightSnapshotEntity(session.owner, json.encodeToString(downloaded.copy(items = retained)), retained.size,
-                        attemptedAt, now(), lastDurationMs = duration), details.filter { it.flightId in ids })
-                    listRevision++
-                }
-                reconcileAdHoc(items.mapTo(mutableSetOf()) { it.id }, true)
-                _cacheChanges.tryEmit(Unit)
-            } catch (error: CancellationException) {
-                withContext(NonCancellable) { recordIncompleteAttempt(session, attemptedAt) }
-                throw error
-            } catch (error: Exception) {
-                if (!handleAccessError(session, error)) recordIncompleteAttempt(session, attemptedAt)
+            // One follow-up covers changes/hints received during a preparation, without an unbounded retry storm.
+            repeat(2) {
+                refreshRequested = false
+                val changed = refreshCacheOnce()
+                if (!changed && !refreshRequested) return
             }
         } finally {
             _isSyncing.value = false
             refreshMutex.unlock()
         }
+    }
+
+    /** No HTTP or media/logo preparation runs while holding mutationMutex. */
+    private suspend fun refreshCacheOnce(): Boolean {
+        if (!isOnline()) return false
+        val session = captureSession() ?: return false
+        val contentAtStart = mutationMutex.withLock { deniedDuringRefresh.clear(); contentRevision }
+        val materializedAtStart = localAdHocFlights().filterNot { unmaterializedAdHoc(it.id) }.mapTo(mutableSetOf()) { it.id }
+        var logoRead = logoStore?.beginMetadataRead()
+        val attemptedAt = now()
+        val started = monotonicNanos()
+        val revision = listRevision
+        try {
+            recordIncompleteAttempt(session, attemptedAt)
+            val (downloaded, acceptedLogoRead) = readCompleteList(session, revision, logoRead)
+            logoRead = acceptedLogoRead
+            val downloadedScope = checkNotNull(downloaded.scope)
+            val items = downloaded.items.filter { it.isInFlightWindow(Instant.parse(now())) }.toMutableList()
+            val visibleIds = items.mapTo(mutableSetOf()) { it.id }
+            mutationMutex.withLock {
+                ensureCompatibleScope(session, revision, downloadedScope)
+                ensurePreparedContentUnchanged(contentAtStart)
+                reconcileAdHoc(visibleIds, false, materializedAtStart)
+                revokeMissingFlightsLocked(session, visibleIds)
+            }
+            val details = mutableListOf<FlightDetailCacheEntity>()
+            val detailReadEpochs = mutableMapOf<String, Long>()
+            // Downloads stay sequential to bound media memory to the existing per-file limit.
+            for (item in items.toList()) {
+                val detailEpoch = mutationMutex.withLock {
+                    ensureCurrent(session)
+                    ensurePreparedContentUnchanged(contentAtStart)
+                    val key = detailKey(session, item.id)
+                    ((detailEpochs[key] ?: 0L) + 1).also { detailEpochs[key] = it }
+                }
+                val detail = try {
+                    fetchFlight(item.id).also { detail ->
+                        if (detail.id != item.id || detail.stationId != downloadedScope.stationId ||
+                            !detail.isInFlightWindow(Instant.parse(now())))
+                            throw ApiException(404, "This flight is outside your current flight window.")
+                    }
+                } catch (error: ApiException) {
+                    mutationMutex.withLock { ensureCurrent(session); ensurePreparedContentUnchanged(contentAtStart) }
+                    if (error.statusCode != 403 && error.statusCode != 404) throw error
+                    handleAccessError(session, error, item.id, invalidatePending = false)
+                    items.removeAll { candidate -> candidate.id == item.id }
+                    continue
+                }
+                ensureCurrent(session)
+                prepareOffline(detail)
+                ensureCurrent(session)
+                details += FlightDetailCacheEntity(session.owner, item.id, json.encodeToString(detail))
+                detailReadEpochs[item.id] = detailEpoch
+            }
+            prepareAdditionalOffline()
+            val retained = mutationMutex.withLock {
+                ensureCompatibleScope(session, revision, downloadedScope)
+                ensurePreparedContentUnchanged(contentAtStart)
+                items.filter { it.id !in deniedDuringRefresh && it.isInFlightWindow(Instant.parse(now())) }
+            }
+            // Metadata/file downloads use their own scope stamps and never hold up a form or ACK.
+            reconcileLogos(retained, logoRead, complete = true, prepare = true)
+            mutationMutex.withLock {
+                ensureCompatibleScope(session, revision, downloadedScope)
+                ensurePreparedContentUnchanged(contentAtStart)
+                val materializedNow = localAdHocFlights().filterNot { unmaterializedAdHoc(it.id) }.mapTo(mutableSetOf()) { it.id }
+                if (materializedNow.any { it !in materializedAtStart }) throw PreparationChangedException()
+                val current = retained.filter { it.id !in deniedDuringRefresh && it.isInFlightWindow(Instant.parse(now())) }
+                val ids = current.mapTo(mutableSetOf()) { it.id }
+                for (candidate in details.filter { it.flightId in ids }) {
+                    val key = detailKey(session, candidate.flightId)
+                    val readEpoch = checkNotNull(detailReadEpochs[candidate.flightId])
+                    if ((confirmedDetailEpochs[key] ?: 0L) > readEpoch &&
+                        (dao.detail(session.owner, candidate.flightId)?.payloadJson ?: observedDetails[key]) != candidate.payloadJson)
+                        throw PreparationChangedException()
+                }
+                val duration = (monotonicNanos() - started).coerceAtLeast(0L) / 1_000_000L
+                dao.replace(FlightSnapshotEntity(session.owner, json.encodeToString(downloaded.copy(items = current)), current.size,
+                    attemptedAt, now(), lastDurationMs = duration), details.filter { it.flightId in ids })
+                listRevision++
+                for (id in ids) {
+                    val key = detailKey(session, id)
+                    val preparedEpoch = detailReadEpochs[id] ?: 0L
+                    if (preparedEpoch >= (confirmedDetailEpochs[key] ?: 0L)) {
+                        confirmedDetailEpochs[key] = preparedEpoch
+                        positiveDetailEpochs[key] = preparedEpoch
+                    }
+                }
+                reconcileAdHoc(ids, true, materializedAtStart)
+            }
+            _cacheChanges.tryEmit(Unit)
+            return false
+        } catch (error: CancellationException) {
+            withContext(NonCancellable) { recordIncompleteAttempt(session, attemptedAt) }
+            throw error
+        } catch (error: Exception) {
+            onPreparationFailure(error)
+            val changed = error is PreparationChangedException || mutationMutex.withLock { isCurrent(session) && contentRevision != contentAtStart }
+            // An older HTTP denial cannot revoke a newer acknowledged write or confirmed detail.
+            if (changed || !handleAccessError(session, error)) recordIncompleteAttempt(session, attemptedAt)
+            return changed
+        }
+    }
+
+    private class PreparationChangedException : IOException("Flight data changed during offline preparation. Retry synchronization.")
+
+    private fun ensurePreparedContentUnchanged(revision: Long) {
+        if (revision != contentRevision) throw PreparationChangedException()
     }
 
     private suspend fun recordIncompleteAttempt(session: FlightCacheSession, attemptedAt: String) = mutationMutex.withLock {
@@ -549,6 +681,7 @@ class FlightsRepository internal constructor(
         val (snapshot, payload) = scopedSnapshotLocked(session) ?: return
         val retained = payload.items.filter { it.id in visibleIds }
         if (retained.size == payload.items.size) return
+        payload.items.filter { it.id !in visibleIds }.forEach { invalidateDetailReadLocked(session, it.id) }
         dao.replace(snapshot.copy(payloadJson = json.encodeToString(payload.copy(items = retained)), itemCount = retained.size),
             dao.details(session.owner).filter { it.flightId in visibleIds })
         val customers = retained.mapNotNull { it.customerId }.toSet()
@@ -561,6 +694,7 @@ class FlightsRepository internal constructor(
     suspend fun clearLocal() {
         mutationMutex.withLock {
             generation++
+            detailEpochs.clear(); confirmedDetailEpochs.clear(); positiveDetailEpochs.clear(); observedDetails.clear(); contentRevision++
             dao.clearAll()
             listRevision++
         }
@@ -838,6 +972,7 @@ class FlightsRepository internal constructor(
             val changed = mutationMutex.withLock {
                 if (!isCurrent(session)) return@withLock false
                 if (invalidatePending) generation++
+                invalidateDetailReadLocked(session, flightId)
                 if (_isSyncing.value) deniedDuringRefresh += flightId
                 val previous = dao.snapshot(session.owner) ?: emptySnapshot(session.owner)
                 val payload = decodeSnapshot(previous) ?: ScopedFlightSnapshot(CACHE_SCOPE_VERSION)
@@ -920,6 +1055,14 @@ private fun FlightListItem.withReportFlags(detail: FlightDetail) = copy(
     hasDepartureSubmission = detail.departureSubmissions.isNotEmpty(),
     hasCancellationSubmission = detail.hasCancellationSubmission || detail.cancellationSubmissions.isNotEmpty(),
     latestCancellationAtUtc = detail.cancellationSubmissions.latestCancellationAtUtc(),
+)
+
+private fun FlightListItem.withPlanning(detail: FlightDetail) = copy(
+    flightNumber = detail.flightNumber, customerId = detail.customerId, customerIataCode = detail.customerIataCode,
+    customerName = detail.customerName, stationIataCode = detail.stationIata, operationTypeName = detail.operationTypeName,
+    scheduledArrivalUtc = detail.scheduledArrivalUtc, scheduledDepartureUtc = detail.scheduledDepartureUtc,
+    aircraftTypeModel = detail.aircraftTypeModel, stationTimeZoneId = detail.stationTimeZoneId,
+    isAdHocFlight = detail.isAdHocFlight,
 )
 
 /** A known server false must not be replaced by an older cached detail's positive report. */

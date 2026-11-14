@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="profile_menu_open">فتح قائمة الحساب</string>
+    <string name="profile_menu_close">إغلاق قائمة الحساب</string>
+    <string name="profile_sync_hub">مركز المزامنة</string>
+    <string name="profile_sync_description">العمل المحفوظ والبيانات دون اتصال</string>
+    <string name="profile_password">إدارة كلمة المرور</string>
+    <string name="profile_notifications">إعدادات الإشعارات</string>
+    <string name="profile_appearance">المظهر</string>
+    <string name="profile_theme_system">حسب النظام</string>
+    <string name="profile_theme_light">فاتح</string>
+    <string name="profile_theme_dark">داكن</string>
+    <string name="profile_sign_out_warning">زامن عملك قبل تسجيل الخروج. يؤدي تسجيل الخروج إلى مسح العمل والبيانات المحفوظة لهذا الحساب من هذا الجهاز.</string>
+    <string name="password_change_notice">يؤدي تحديث كلمة المرور إلى تسجيل الخروج من جميع الجلسات، بما فيها هذا الجهاز. سجّل الدخول مجددًا بكلمة المرور الجديدة. يبقى العمل المحفوظ على هذا الجهاز.</string>
+    <string name="password_offline">اتصل لتحديث كلمة المرور. يبقى عمل الرحلات المحفوظ كما هو.</string>
+    <string name="password_current">كلمة المرور الحالية</string>
+    <string name="password_new">كلمة المرور الجديدة</string>
+    <string name="password_confirm">تأكيد كلمة المرور الجديدة</string>
+    <string name="password_current_required">أدخل كلمة المرور الحالية.</string>
+    <string name="password_policy">استخدم من 8 إلى 128 حرفًا، مع حرف كبير وحرف صغير ورقم ورمز.</string>
+    <string name="password_mismatch">يجب أن تتطابق كلمتا المرور الجديدتان.</string>
+    <string name="password_update">تحديث كلمة المرور</string>
+    <string name="password_show">إظهار كلمة المرور</string>
+    <string name="password_hide">إخفاء كلمة المرور</string>
+    <string name="password_changed_sign_in">تم تحديث كلمة المرور. سجّل الدخول مجددًا بكلمة المرور الجديدة. لا يزال عملك محفوظًا على هذا الجهاز.</string>
+    <string name="sync_hub_discard_adhoc">تجاهل إدخال الرحلة المخصصة المحفوظ؟</string>
+    <string name="sync_hub_discard_planning_message">تجاهل تغييرات تفاصيل الرحلة المحفوظة على هذا الجهاز فقط؟ يبقى العمل الحالي للرحلة محفوظًا.</string>
+    <string name="sync_hub_discard_new_flight_message">تجاهل الرحلة الجديدة على هذا الجهاز وإدخالاتها ووسائطها المحلية المحفوظة؟ لا يحذف هذا الإدخالات الموجودة على الخادم.</string>
+    <string name="sync_hub_adhoc">الرحلات المخصصة</string>
+    <string name="sync_hub_offline_data">البيانات دون اتصال</string>
+    <string name="sync_hub_syncing">جارٍ مزامنة بياناتك…</string>
+    <string name="sync_hub_attention">بعض البيانات تحتاج إلى مراجعة</string>
+    <string name="sync_hub_prepared">البيانات محفوظة للاستخدام دون اتصال</string>
+    <string name="sync_hub_saved_available">تتوفر بيانات محفوظة</string>
+    <string name="sync_hub_prepare">تجهيز الاستخدام دون اتصال</string>
+    <string name="sync_hub_overview_online">زامن بيانات الرحلات والقوائم المرجعية وعملك المحفوظ.</string>
+    <string name="sync_hub_overview_offline">يبقى العمل المحفوظ على هذا الجهاز وتُعاد محاولة إرساله عند عودة الاتصال.</string>
+    <string name="sync_hub_no_saved_work">لا يوجد عمل محفوظ بانتظار الإرسال.</string>
+    <string name="sync_hub_live_updates">التحديثات المباشرة</string>
+    <string name="sync_hub_collapse">إخفاء التفاصيل</string>
+    <string name="sync_hub_expand">إظهار التفاصيل</string>
+    <string name="sync_hub_last_live_update">آخر تحديث: %1$s</string>
+    <string name="sync_hub_live_fallback">تستمر المزامنة الآن والتحديثات الدورية في البحث عن التغييرات.</string>
+    <string name="sync_hub_offline_waiting">تُستأنف التحديثات المباشرة عند عودة الاتصال.</string>
+    <string name="sync_hub_sync_now">مزامنة الآن</string>
+    <string name="sync_hub_updated">تم التحديث %1$s</string>
+    <string name="sync_hub_last_success">آخر مزامنة ناجحة: %1$s</string>
+    <plurals name="sync_hub_waiting"><item quantity="zero">%d أقسام بانتظار الإرسال</item><item quantity="one">%d قسم بانتظار الإرسال</item><item quantity="two">%d قسمان بانتظار الإرسال</item><item quantity="few">%d أقسام بانتظار الإرسال</item><item quantity="many">%d قسمًا بانتظار الإرسال</item><item quantity="other">%d قسم بانتظار الإرسال</item></plurals>
+    <plurals name="sync_hub_review"><item quantity="zero">%d أقسام تحتاج إلى مراجعة</item><item quantity="one">%d قسم يحتاج إلى مراجعة</item><item quantity="two">%d قسمان يحتاجان إلى مراجعة</item><item quantity="few">%d أقسام تحتاج إلى مراجعة</item><item quantity="many">%d قسمًا تحتاج إلى مراجعة</item><item quantity="other">%d قسم يحتاج إلى مراجعة</item></plurals>
+    <string name="sync_hub_other_flights">رحلات المحطة الأخرى</string>
+    <string name="sync_hub_search_prepare">زامن مرة واحدة أثناء الاتصال لتجهيز البحث دون اتصال.</string>
+    <plurals name="sync_hub_searchable"><item quantity="zero">%d رحلات قابلة للبحث دون اتصال</item><item quantity="one">%d رحلة قابلة للبحث دون اتصال</item><item quantity="two">%d رحلتان قابلتان للبحث دون اتصال</item><item quantity="few">%d رحلات قابلة للبحث دون اتصال</item><item quantity="many">%d رحلة قابلة للبحث دون اتصال</item><item quantity="other">%d رحلة قابلة للبحث دون اتصال</item></plurals>
+</resources>

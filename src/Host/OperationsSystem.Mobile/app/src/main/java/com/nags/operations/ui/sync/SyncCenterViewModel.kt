@@ -41,6 +41,7 @@ class SyncCenterViewModel internal constructor(
     private val services: com.nags.operations.data.repo.FlightServicesRepository? = null,
     private val tasks: com.nags.operations.data.repo.FlightTasksRepository? = null,
     private val adHoc: com.nags.operations.data.repo.AdHocFlightsRepository? = null,
+    offlineSearchStatuses: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
 ) : ViewModel() {
     constructor(
         catalogs: SharedCatalogsRepository,
@@ -56,6 +57,7 @@ class SyncCenterViewModel internal constructor(
         serviceRepository: com.nags.operations.data.repo.FlightServicesRepository? = null,
         taskRepository: com.nags.operations.data.repo.FlightTasksRepository? = null,
         adHocRepository: com.nags.operations.data.repo.AdHocFlightsRepository? = null,
+        offlineSearchStatuses: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
     ) : this(
         statuses = catalogs.observeStatus(),
         isSyncing = syncing,
@@ -68,7 +70,7 @@ class SyncCenterViewModel internal constructor(
         departures = departureRepository,
         cancellations = cancellationRepository,
         services = serviceRepository,
-        tasks = taskRepository, adHoc = adHocRepository,
+        tasks = taskRepository, adHoc = adHocRepository, offlineSearchStatuses = offlineSearchStatuses,
     )
 
     private val scope = coroutineScope ?: viewModelScope
@@ -78,6 +80,9 @@ class SyncCenterViewModel internal constructor(
             delay(1_000L)
         }
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000L), clock())
+
+    // This reports searchable membership, not fully downloaded media readiness.
+    val offlineSearchStatus = offlineSearchStatuses.stateIn(scope, SharingStarted.WhileSubscribed(5_000L), FlightSyncStatus())
 
     val rows: StateFlow<List<SyncRowState>> = combine(statuses, flightStatuses, nowTick, ::mobileSyncRows)
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), mobileSyncRows(emptyList(), FlightSyncStatus(), clock()))
@@ -163,6 +168,11 @@ data class SyncRowState(
     val ageMs: Long?,
     val permissionDenied: Boolean,
 )
+
+/** Old cache metadata alone cannot establish search coverage; the global flight row still gates media. */
+internal fun offlineDataPrepared(rows: List<SyncRowState>, offlineSearch: FlightSyncStatus): Boolean =
+    offlineSearch.lastSuccessUtc != null && offlineSearch.error == null && !offlineSearch.permissionDenied &&
+        rows.isNotEmpty() && rows.all { it.lastSyncedAt != null && it.lastError == null && !it.permissionDenied }
 
 /** Preserve the reference catalog order after the basic Flights card. */
 private val catalogDisplayOrder = listOf(

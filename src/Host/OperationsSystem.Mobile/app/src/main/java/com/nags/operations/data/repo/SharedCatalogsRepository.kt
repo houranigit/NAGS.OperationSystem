@@ -5,6 +5,8 @@ import com.nags.operations.data.ApiException
 import com.nags.operations.data.AtaChapterCatalogItem
 import com.nags.operations.data.CatalogSyncStatus
 import com.nags.operations.data.CustomerCatalogItem
+import com.nags.operations.data.FlightTaskResourceCatalogs
+import com.nags.operations.data.taskCalculationType
 import com.nags.operations.data.ResourceCatalogItem
 import com.nags.operations.data.ServiceCatalogItem
 import com.nags.operations.data.SharedCatalog
@@ -90,6 +92,20 @@ class SharedCatalogsRepository internal constructor(
     fun stationStaffFlow(): Flow<List<StaffCatalogItem>> = observeSnapshots().map { snapshots ->
         snapshots.firstOrNull { it.catalog == SharedCatalog.StationStaff.storageKey && !it.permissionDenied }
             ?.let { decodeStationStaff(it.payloadJson)?.items }.orEmpty()
+    }
+
+    /** One-shot reads participate in an existing Room save transaction; observable first() can wait on that same transaction. */
+    suspend fun taskResourceCatalogs(): FlightTaskResourceCatalogs {
+        val owner = currentOwner() ?: return FlightTaskResourceCatalogs()
+        val observed = generation
+        val snapshots = dao.snapshots(owner).filter { it.ownerSubject == owner && !it.permissionDenied }.associateBy { it.catalog }
+        fun types(kind: SharedCatalog): Map<String, Int> = snapshots[kind.storageKey]?.let { snapshot ->
+            json.decodeFromString<List<ResourceCatalogItem>>(snapshot.payloadJson).mapNotNull { item ->
+                item.taskCalculationType()?.let { item.id to it }
+            }.toMap()
+        }.orEmpty()
+        val result = FlightTaskResourceCatalogs(types(SharedCatalog.Tools), types(SharedCatalog.Materials), types(SharedCatalog.GeneralSupports))
+        return result.takeIf { isCurrent(owner, observed) } ?: FlightTaskResourceCatalogs()
     }
 
     private inline fun <reified T> catalogFlow(kind: SharedCatalog): Flow<List<T>> = observeSnapshots().map { snapshots ->
