@@ -36,7 +36,7 @@ internal class FlightFormValidationState {
     private val targets = mutableSetOf<FlightFormTarget>()
     internal var topInsetPx = 0f
     internal var navigationHeadPx = 48f
-    internal var navigateToWindowTop: (suspend (Float) -> Unit)? = null
+    internal var navigateToWindowTop: (suspend (Float, () -> Unit) -> Unit)? = null
 
     internal fun register(target: FlightFormTarget) { targets.add(target) }
     internal fun unregister(target: FlightFormTarget) { targets.remove(target) }
@@ -53,8 +53,17 @@ internal class FlightFormValidationState {
     suspend fun revealTarget(key: String): Boolean {
         val target = targets.firstOrNull { it.navigationKey == key && it.bounds != null } ?: return false
         val navigate = navigateToWindowTop
-        if (navigate != null) navigate(target.bounds!!.top) else reveal(target, focus = false)
-        if (target.highlightEnabled && target in targets) target.highlightRequest++
+        var highlightRequested = false
+        val highlight = {
+            if (!highlightRequested && target.highlightEnabled && target in targets) {
+                highlightRequested = true
+                target.highlightRequest++
+            }
+        }
+        if (navigate != null) navigate(target.bounds!!.top, highlight) else {
+            reveal(target, focus = false)
+            highlight()
+        }
         return true
     }
 

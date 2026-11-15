@@ -420,7 +420,9 @@ fun FlightsScreen(
                 } else {
                     FlightCancellationForm(state.detail ?: flight, viewModel::customerLogo, onClose = closeForm, progressStatus = progressStatus,
                         pending = pendingCancellation, onSave = viewModel::saveCancellation,
-                        onReview = { viewModel.reviewArrival(flight.id) })
+                        onReview = { viewModel.reviewArrival(flight.id) },
+                        reportStatus = sheetReportStatus,
+                        listItem = state.items.firstOrNull { it.id == flight.id })
                 }
             }
         }

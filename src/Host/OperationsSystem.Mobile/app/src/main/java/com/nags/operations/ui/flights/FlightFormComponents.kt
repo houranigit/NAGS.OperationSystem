@@ -71,6 +71,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.AbsoluteAlignment
@@ -134,8 +135,11 @@ import com.nags.operations.data.FlightDetail
 import com.nags.operations.ui.components.CustomerLogo
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 internal val FlightFormGround = Color(0xFFF2F2F7)
@@ -203,10 +207,23 @@ internal fun FlightRecordingFormScaffold(
         }
         val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         DisposableEffect(validationState, scroll, density) {
-            val navigate: suspend (Float) -> Unit = { targetTop ->
+            val navigate: suspend (Float, () -> Unit) -> Unit = { targetTop, onArriving ->
                 val gap = with(density) { 12.dp.toPx() }
-                val destination = scroll.value + targetTop - viewportTop - headerHeight - gap
-                scroll.animateScrollTo(destination.roundToInt().coerceIn(0, scroll.maxValue))
+                val destination = (scroll.value + targetTop - viewportTop - headerHeight - gap)
+                    .roundToInt().coerceIn(0, scroll.maxValue)
+                coroutineScope {
+                    // Start feedback during the spring's final settling, when the card has arrived visually.
+                    val arrival = launch {
+                        snapshotFlow { scroll.value }.first { abs(it - destination) <= gap }
+                        onArriving()
+                    }
+                    try {
+                        scroll.animateScrollTo(destination)
+                        onArriving()
+                    } finally {
+                        arrival.cancel()
+                    }
+                }
             }
             validationState?.navigateToWindowTop = navigate
             onDispose {

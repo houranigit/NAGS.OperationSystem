@@ -15,7 +15,9 @@ import androidx.compose.ui.res.stringResource
 import com.nags.operations.R
 import com.nags.operations.ui.components.InlineNotice
 import com.nags.operations.ui.components.InlineNoticeKind
+import com.nags.operations.ui.components.FlightCard
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.SaveFlightCancellationRequest
 import com.nags.operations.data.arrivalInputTime
 import com.nags.operations.data.cancellationEditable
@@ -40,6 +42,8 @@ internal fun FlightCancellationForm(
     pending: FlightCancellationPendingEntity? = null,
     onSave: suspend (FlightDetail, SaveFlightCancellationRequest) -> Unit,
     onReview: suspend () -> FlightDetail,
+    reportStatus: FlightCardReportStatus,
+    listItem: FlightListItem? = null,
 ) {
     val entryTimeZoneId = rememberSaveable { flight.stationTimeZoneId }
     val entryZone = remember(entryTimeZoneId) { stationTimeZone(entryTimeZoneId) }
@@ -94,8 +98,31 @@ internal fun FlightCancellationForm(
             }
         }
     }
+    val cardFlight = flight.formCardSummary(listItem, emptyList()).copy(
+        stationTimeZoneId = entryTimeZoneId,
+        activeWorkCount = listItem?.activeWorkCount,
+        completedWorkCount = listItem?.completedWorkCount,
+    )
+    val cardNeedsReview = progressStatus in listOf(FlightProgressStatus.ArrivalNeedsReview,
+        FlightProgressStatus.DepartureNeedsReview, FlightProgressStatus.CancellationNeedsReview) || needsReview
+    val pendingLabel = when {
+        cardNeedsReview -> stringResource(R.string.flight_card_needs_review)
+        progressStatus == FlightProgressStatus.CancellationRevertPending -> stringResource(R.string.flight_card_revert_pending)
+        pending != null || progressStatus in listOf(FlightProgressStatus.ArrivalPendingSync,
+            FlightProgressStatus.DeparturePendingSync, FlightProgressStatus.CancellationPendingSync) ->
+            stringResource(R.string.flight_card_pending_sync)
+        else -> null
+    }
     FlightRecordingFormScaffold(flight, stringResource(R.string.cancellation_title), stringResource(R.string.cancellation_save),
-        loadCustomerLogo, requestClose, saveEnabled = enabled, saveLoading = saving, onSave = { save(false) }, progressStatus = progressStatus) {
+        loadCustomerLogo, requestClose, saveEnabled = enabled, saveLoading = saving, onSave = { save(false) },
+        progressStatus = progressStatus, compact = true,
+        identityContent = { positioned ->
+            FlightCard(cardFlight, onClick = null, loadCustomerLogo = loadCustomerLogo,
+                reportStatus = reportStatus,
+                pendingSyncLabel = pendingLabel, hasSyncError = cardNeedsReview,
+                cancellationAtUtc = pendingInput?.canceledAtUtc ?: cardFlight.latestCancellationAtUtc,
+                onFlightNumberPositioned = positioned)
+        }) {
         saveError?.let { InlineNotice(it, kind = InlineNoticeKind.Error) }
         if (needsReview) {
             InlineNotice(pending?.error ?: stringResource(R.string.cancellation_sync_review), kind = InlineNoticeKind.Warning)
@@ -110,12 +137,15 @@ internal fun FlightCancellationForm(
                 }
             }) { Text(stringResource(R.string.cancellation_reload_review)) }
         }
+        FlightFormSectionTitle(stringResource(R.string.cancellation_title))
         FlightFormFieldGroup {
             FlightFormDateTimeField(canceledAt, stringResource(R.string.cancellation_time), stringResource(R.string.cancellation_choose_time),
                 enabled = enabled, errorMessage = if (validationAttempted && utcTime.isBlank()) stringResource(R.string.cancellation_time_required) else null,
                 onClick = { focus.clearFocus(); keyboard?.hide(); pickerOpen = true })
+            FlightFormDivider()
+            FlightFormRemarks(remarks, { remarks = it }, stringResource(R.string.cancellation_remarks),
+                enabled = enabled, inGroup = true)
         }
-        FlightFormRemarks(remarks, { remarks = it }, stringResource(R.string.cancellation_remarks), enabled = enabled)
     }
     if (pickerOpen) FlightFormDateTimeSheet(LocalDateTime.parse(canceledAt), referenceYear,
         onValueChange = { canceledAt = it.toString() }, onDismiss = { pickerOpen = false })

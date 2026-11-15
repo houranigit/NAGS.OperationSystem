@@ -136,10 +136,13 @@ internal fun FlightWorkAddRow(label: String, enabled: Boolean = true, onClick: (
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.AddCircle, null, Modifier.size(20.dp), tint = WorkAddGreen)
+                Icon(Icons.Filled.AddCircle, null, Modifier.size(20.dp),
+                    tint = if (enabled) WorkAddGreen else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
             }
             Text(label, Modifier.weight(1f).padding(end = 14.dp), style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.45f),
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
