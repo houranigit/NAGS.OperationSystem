@@ -82,7 +82,7 @@ import kotlinx.serialization.json.Json
 /** Attribution describes the original submission, independently of its operational ATA/ATD. */
 @Composable
 internal fun FlightSubmissionNote(name: String, submittedAt: String, zone: ZoneId, onUpdate: (() -> Unit)? = null, updateLabel: String? = null,
-    needsReview: Boolean = false, updatedByDisplayName: String? = null, updatedAtUtc: String? = null) {
+    needsReview: Boolean = false, updatedByDisplayName: String? = null, updatedAtUtc: String? = null, savedLocally: Boolean = false) {
     val locale = LocalLocale.current.platformLocale
     val timestampTemplate = stringResource(R.string.flight_submission_timestamp)
     val timestamp = remember(submittedAt, zone, locale, timestampTemplate) {
@@ -102,13 +102,13 @@ internal fun FlightSubmissionNote(name: String, submittedAt: String, zone: ZoneI
         }.getOrNull() }
     }
     val updatedBy = stringResource(R.string.flight_submission_note_updated_by)
-    val prefix = stringResource(R.string.flight_submission_note_prefix)
+    val prefix = stringResource(if (savedLocally) R.string.flight_actuals_saved_locally else R.string.flight_submission_note_prefix)
     val on = stringResource(R.string.flight_submission_note_on)
     val update = updateLabel ?: stringResource(R.string.flight_submission_update)
     val updateColor = if (needsReview) MaterialTheme.colorScheme.error else AccentBlue
     Text(buildAnnotatedString {
         append(prefix)
-        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(name) }
+        if (!savedLocally) withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(name) }
         append(on)
         withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(timestamp) }
         if (!updatedByDisplayName.isNullOrBlank() && updateTimestamp != null) {
@@ -153,10 +153,10 @@ internal fun FlightSubmissionUpdateForm(
     val departure = if (submissionId.isBlank()) flight.visibleDeparture() else flight.departureSubmissions.firstOrNull { it.id.equals(submissionId, true) }
     val arrivalInput = remember(pendingArrival?.inputJson, pendingArrival?.reviewSourceInputJson) { pendingArrival?.let {
         runCatching { Json.decodeFromString<SaveFlightArrivalRequest>(if (reviewMode || it.status != "pending") it.reviewSourceInputJson ?: it.inputJson else it.inputJson) }.getOrNull()
-    }?.takeIf { reviewMode || it.targetSubmissionId.equals(submissionId, true) } }
+    }?.takeIf { reviewMode || it.targetSubmissionId.orEmpty().equals(submissionId, true) } }
     val departureInput = remember(pendingDeparture?.inputJson, pendingDeparture?.reviewSourceInputJson) { pendingDeparture?.let {
         runCatching { Json.decodeFromString<SaveFlightDepartureRequest>(if (reviewMode || it.status != "pending") it.reviewSourceInputJson ?: it.inputJson else it.inputJson) }.getOrNull()
-    }?.takeIf { reviewMode || it.targetSubmissionId.equals(submissionId, true) } }
+    }?.takeIf { reviewMode || it.targetSubmissionId.orEmpty().equals(submissionId, true) } }
     val arrivalPending = pendingArrival?.takeIf { arrivalInput != null }
     val departurePending = pendingDeparture?.takeIf { departureInput != null }
     val zone = remember(flight.stationTimeZoneId) { stationTimeZone(flight.stationTimeZoneId) }
@@ -345,12 +345,12 @@ internal fun FlightSubmissionUpdateForm(
             FlightReviewOnlineHeading(cachedReview || flight.fromCache)
             if (isArrival && arrival != null) {
                 FlightSavedDetailsCard { FlightArrivalSummary(arrival, zone) }
-                FlightSubmissionNote(arrival.createdByDisplayName ?: arrival.submittedByEmployee.fullName, arrival.createdAtUtc, zone,
-                    updatedByDisplayName = arrival.updatedByDisplayName, updatedAtUtc = arrival.updatedAtUtc)
+                FlightSubmissionNote(flightAttributionName(arrival.createdByDisplayName ?: arrival.submittedByEmployee.fullName, arrival.createdByUserId, arrival.submittedByEmployee.staffMemberId, flight.currentStaffMemberId), arrival.createdAtUtc, zone,
+                    updatedByDisplayName = arrival.updatedByDisplayName?.let { flightAttributionName(it, arrival.updatedByUserId) }, updatedAtUtc = arrival.updatedAtUtc)
             } else if (!isArrival && departure != null) {
                 FlightSavedDetailsCard { FlightDepartureSummary(departure, zone, onlineSignaturePreview) }
-                FlightSubmissionNote(departure.createdByDisplayName ?: departure.submittedByEmployee.fullName, departure.createdAtUtc, zone,
-                    updatedByDisplayName = departure.updatedByDisplayName, updatedAtUtc = departure.updatedAtUtc)
+                FlightSubmissionNote(flightAttributionName(departure.createdByDisplayName ?: departure.submittedByEmployee.fullName, departure.createdByUserId, departure.submittedByEmployee.staffMemberId, flight.currentStaffMemberId), departure.createdAtUtc, zone,
+                    updatedByDisplayName = departure.updatedByDisplayName?.let { flightAttributionName(it, departure.updatedByUserId) }, updatedAtUtc = departure.updatedAtUtc)
             } else Text(stringResource(R.string.flight_review_empty_online), Modifier.padding(horizontal = 14.dp),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (!localDiscarded) FlightReviewLocalHeading()

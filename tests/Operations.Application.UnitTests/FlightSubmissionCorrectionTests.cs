@@ -296,6 +296,8 @@ public sealed class FlightSubmissionCorrectionTests
             var result = await f.Departures.Handle(new(f.FlightId,
                 new(Now, null, null, "New notes", TargetSubmissionId: f.DepartureId), Version), CancellationToken.None);
             result.IsSuccess.ShouldBeTrue(); result.Value.Submission.CreatedByDisplayName.ShouldBe("Original account");
+            result.Value.Submission.CreatedByUserId.ShouldBe(f.AuthorUserId);
+            result.Value.Submission.UpdatedByUserId.ShouldBe(f.Actor.UserId);
             result.Value.Submission.UpdatedByDisplayName.ShouldBe("Editor account"); result.Value.Submission.UpdatedAtUtc.ShouldBe(Now);
         }
         else
@@ -303,6 +305,8 @@ public sealed class FlightSubmissionCorrectionTests
             var result = await f.Arrivals.Handle(new(f.FlightId,
                 new(Now.AddHours(-1), f.AircraftId, "HZ-TEST", "REF", "New notes", TargetSubmissionId: f.ArrivalId), Version), CancellationToken.None);
             result.IsSuccess.ShouldBeTrue(); result.Value.Submission.CreatedByDisplayName.ShouldBe("Original account");
+            result.Value.Submission.CreatedByUserId.ShouldBe(f.AuthorUserId);
+            result.Value.Submission.UpdatedByUserId.ShouldBe(f.Actor.UserId);
             result.Value.Submission.UpdatedByDisplayName.ShouldBe("Editor account"); result.Value.Submission.UpdatedAtUtc.ShouldBe(Now);
         }
     }

@@ -159,11 +159,12 @@ internal fun FlightOperationsForm(
     val zone = entryZone
     val arrival = flight.visibleArrival()
     val departure = flight.visibleDeparture()
-    val hasSavedSignature = departure?.hasSignature == true || pendingDeparture?.signatureFile != null
+    val departureSummary = flight.formDepartureSummary(pendingDeparture)
+    val hasSavedSignature = departureSummary?.hasSignature == true
     var savedSignaturePreview by remember { mutableStateOf<ByteArray?>(null) }
     var signaturePreviewLoading by remember { mutableStateOf(false) }
     var signaturePreviewRetry by remember { mutableStateOf(0) }
-    LaunchedEffect(departure?.id, departure?.signatureVersion, departure?.updatedAtUtc,
+    LaunchedEffect(departureSummary?.id, departureSummary?.signatureVersion, departureSummary?.updatedAtUtc,
         pendingDeparture?.changeId, pendingDeparture?.signatureFile, signaturePreviewRetry) {
         savedSignaturePreview = null
         if (hasSavedSignature) {
@@ -280,9 +281,11 @@ internal fun FlightOperationsForm(
     val aircraftAvailable = aircraftTypes.any { it.id.equals(aircraftId, ignoreCase = true) }
     val arrivalChanged = Json.encodeToString(input()) != arrivalBaseline
     val departureChanged = atd != departureBaselineAtd || departureRemarks.trim() != departureBaselineRemarks.trim() || signature.isNotBlank()
-    val otherEmployeeDeparture = departure?.takeIf {
-        !it.submittedByEmployee.staffMemberId.equals(flight.currentStaffMemberId, ignoreCase = true)
-    }
+    val savedDeparture = departureSummary.takeUnless { departureChanged }
+    val departureUpdateId = if (pendingDepartureInput != null && pendingDeparture?.flightId == flight.id &&
+        (pendingDepartureInput.targetSubmissionId.equals(savedDeparture?.id, true) ||
+            pendingDepartureInput.targetSubmissionId == null && savedDeparture?.submittedByEmployee?.staffMemberId.equals(flight.currentStaffMemberId, true)))
+        pendingDepartureInput.targetSubmissionId.orEmpty() else savedDeparture?.id.orEmpty()
     val departureNeedsReview = pendingDeparture != null && pendingDeparture.status != "pending" && reviewedDepartureChangeId != pendingDeparture.changeId
     val arrivalRemarksValid = !flight.requiresArrivalRemarks() || arrivalRemarks.isNotBlank()
     val workArrivalReady = arrival != null || pending?.status == "pending" && pendingInput?.validationErrors(arrivalVersion)?.isEmpty() == true &&
@@ -292,10 +295,11 @@ internal fun FlightOperationsForm(
     val departureEnabled = flight.departureEditable() && !departureNeedsReview && !saving && workArrivalReady
     val departureTime = arrivalInputTime(atd, originalAtd, entryZone)
     val requiresReview = pending != null && pending.status != "pending" && reviewedChangeId != pending.changeId
-    val readOnlyArrival = arrival?.takeIf { !flight.arrivalEditable() }
-    val otherEmployeeArrival = arrival?.takeIf {
-        !it.submittedByEmployee.staffMemberId.equals(flight.currentStaffMemberId, ignoreCase = true)
-    }
+    val savedArrival = flight.formArrivalSummary(pending, aircraftTypes).takeUnless { arrivalChanged }
+    val arrivalUpdateId = if (pendingInput != null && pending?.flightId == flight.id &&
+        (pendingInput.targetSubmissionId.equals(savedArrival?.id, true) ||
+            pendingInput.targetSubmissionId == null && savedArrival?.submittedByEmployee?.staffMemberId.equals(flight.currentStaffMemberId, true)))
+        pendingInput.targetSubmissionId.orEmpty() else savedArrival?.id.orEmpty()
     val arrivalEnabled = flight.arrivalEditable() && !requiresReview && !saving
     val errors = if (validationAttempted && arrivalEnabled && (arrivalChanged || reviewedChangeId != null)) input().validationErrors(arrivalVersion) else emptySet()
     fun restoreOnlineArrival() {
@@ -895,26 +899,27 @@ internal fun FlightOperationsForm(
                         isAccepted = false, createdAtUtc = pending.savedAtUtc)
                     FlightSavedDetailsCard { FlightArrivalSummary(saved, entryZone) }
                     arrival?.let { original ->
-                        FlightSubmissionNote(original.createdByDisplayName ?: original.submittedByEmployee.fullName,
-                            original.createdAtUtc, entryZone, updatedByDisplayName = original.updatedByDisplayName,
+                        FlightSubmissionNote(flightAttributionName(original.createdByDisplayName ?: original.submittedByEmployee.fullName, original.createdByUserId, original.submittedByEmployee.staffMemberId, flight.currentStaffMemberId),
+                            original.createdAtUtc, entryZone, updatedByDisplayName = original.updatedByDisplayName?.let { flightAttributionName(it, original.updatedByUserId) },
                             updatedAtUtc = original.updatedAtUtc)
                     }
                     FlightFailedSubmissionNote({ reviewTargets.firstOrNull { it.kind == "arrival" }?.let(::openReview) })
                 }
-            } else if (otherEmployeeArrival != null) {
+            } else if (savedArrival != null) {
                 // The scaffold adds 10dp after this group, matching the 28dp work-note gap.
                 Column(Modifier.padding(bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FlightSavedDetailsCard { FlightArrivalSummary(otherEmployeeArrival.withPendingCorrection(pending, aircraftTypes), entryZone) }
-                    FlightSubmissionNote(otherEmployeeArrival.createdByDisplayName ?: otherEmployeeArrival.submittedByEmployee.fullName, otherEmployeeArrival.createdAtUtc, entryZone,
-                        updatedByDisplayName = otherEmployeeArrival.updatedByDisplayName, updatedAtUtc = otherEmployeeArrival.updatedAtUtc,
+                    FlightSavedDetailsCard { FlightArrivalSummary(savedArrival, entryZone) }
+                    FlightSubmissionNote(flightAttributionName(savedArrival.createdByDisplayName ?: savedArrival.submittedByEmployee.fullName, savedArrival.createdByUserId, savedArrival.submittedByEmployee.staffMemberId, flight.currentStaffMemberId), savedArrival.createdAtUtc, entryZone,
+                        updatedByDisplayName = savedArrival.updatedByDisplayName?.let { flightAttributionName(it, savedArrival.updatedByUserId) }, updatedAtUtc = savedArrival.updatedAtUtc,
+                        savedLocally = savedArrival.id.isBlank(),
                         updateLabel = stringResource(if (pending?.status?.let { it != "pending" } == true) R.string.flight_review_action else R.string.flight_submission_update_arrival_details),
                         needsReview = pending?.status?.let { it != "pending" } == true,
-                        onUpdate = if (!saving && (flight.canUpdateArrivalSubmission(otherEmployeeArrival.id) || pending?.status?.let { it != "pending" } == true)) ({
+                        onUpdate = if (!saving && ((if (arrivalUpdateId.isBlank()) flight.arrivalEditable() else flight.canUpdateArrivalSubmission(arrivalUpdateId)) || pending?.status?.let { it != "pending" } == true)) ({
                             val failed = reviewTargets.firstOrNull { it.kind == "arrival" }
                             if (failed != null) openReview(failed) else {
                             updateReviewMode = false
                             updateSnapshot = Json.encodeToString(flight)
-                            updateSection = "arrival:${otherEmployeeArrival.id}"
+                            updateSection = "arrival:$arrivalUpdateId"
                             }
                         }) else null)
                 }
@@ -930,7 +935,7 @@ internal fun FlightOperationsForm(
                 FlightActualFormCard(
                     id = "actual-arrival", label = stringResource(R.string.operations_actual_arrival),
                     icon = Icons.Filled.FlightLand,
-                    time = readOnlyArrival?.let { operationLocalTime(it.ata, entryZone) } ?: ata,
+                    time = ata,
                     description = stringResource(R.string.arrival_choose_ata), enabled = arrivalEnabled,
                     removable = arrival == null && pending == null,
                     errorMessage = if (ArrivalInputError.AtaRequired in errors) stringResource(R.string.arrival_ata_required) else null,
@@ -941,24 +946,24 @@ internal fun FlightOperationsForm(
                         reference = baseline.customerWorkReferenceNumber.orEmpty(); arrivalRemarks = baseline.remarks.orEmpty()
                     },
                 ) {
-                    FlightFormChoiceRow(stringResource(R.string.arrival_aircraft), (readOnlyArrival?.aircraftTypeModel ?: selectedAircraft).ifBlank { stringResource(R.string.flight_form_required_field) },
-                        stringResource(R.string.arrival_aircraft_type), isPlaceholder = (readOnlyArrival?.aircraftTypeModel ?: selectedAircraft).isBlank(), enabled = arrivalEnabled,
+                    FlightFormChoiceRow(stringResource(R.string.arrival_aircraft), selectedAircraft.ifBlank { stringResource(R.string.flight_form_required_field) },
+                        stringResource(R.string.arrival_aircraft_type), isPlaceholder = selectedAircraft.isBlank(), enabled = arrivalEnabled,
                         errorMessage = when {
                             ArrivalInputError.AircraftRequired in errors -> stringResource(R.string.arrival_aircraft_required)
                             validationAttempted && arrivalEnabled && (arrivalChanged || reviewedChangeId != null) && !aircraftAvailable -> stringResource(R.string.arrival_aircraft_unavailable)
                             else -> null
                         }, onClick = { openPicker("aircraft") })
                     FlightFormDivider()
-                    FlightFormTextRow(stringResource(R.string.arrival_tail_number), (readOnlyArrival?.aircraftTailNumber ?: tailNumber).uppercase(java.util.Locale.ROOT), { tailNumber = it.uppercase(java.util.Locale.ROOT) },
+                    FlightFormTextRow(stringResource(R.string.arrival_tail_number), tailNumber.uppercase(java.util.Locale.ROOT), { tailNumber = it.uppercase(java.util.Locale.ROOT) },
                         stringResource(R.string.flight_form_required_field), keyboardOptions = KeyboardOptions(
                             capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Next), enabled = arrivalEnabled,
                         errorMessage = if (ArrivalInputError.TailRequired in errors) stringResource(R.string.arrival_tail_required) else null)
                     FlightFormDivider()
-                    FlightFormTextRow(stringResource(R.string.arrival_reference), (if (readOnlyArrival != null) readOnlyArrival.customerWorkReferenceNumber.orEmpty() else reference).uppercase(java.util.Locale.ROOT), { reference = it.uppercase(java.util.Locale.ROOT) }, "", enabled = arrivalEnabled)
+                    FlightFormTextRow(stringResource(R.string.arrival_reference), reference.uppercase(java.util.Locale.ROOT), { reference = it.uppercase(java.util.Locale.ROOT) }, "", enabled = arrivalEnabled)
                     FlightFormDivider()
                     FlightFormValidation(if (validationAttempted && arrivalEnabled && !arrivalRemarksValid)
                         stringResource(R.string.flight_unknown_customer_arrival_remarks) else null) {
-                        FlightFormRemarks(if (readOnlyArrival != null) readOnlyArrival.remarks.orEmpty() else arrivalRemarks, { arrivalRemarks = it },
+                        FlightFormRemarks(arrivalRemarks, { arrivalRemarks = it },
                             stringResource(R.string.operations_arrival_remarks), enabled = arrivalEnabled,
                             heading = stringResource(R.string.operations_arrival_remarks_heading), inGroup = true,
                             required = flight.requiresArrivalRemarks())
@@ -1047,26 +1052,27 @@ internal fun FlightOperationsForm(
                         createdAtUtc = pendingDeparture.savedAtUtc, hasSignature = pendingDeparture.signatureFile != null)
                     FlightSavedDetailsCard { FlightDepartureSummary(saved, entryZone, savedSignaturePreview) }
                     departure?.let { original ->
-                        FlightSubmissionNote(original.createdByDisplayName ?: original.submittedByEmployee.fullName,
-                            original.createdAtUtc, entryZone, updatedByDisplayName = original.updatedByDisplayName,
+                        FlightSubmissionNote(flightAttributionName(original.createdByDisplayName ?: original.submittedByEmployee.fullName, original.createdByUserId, original.submittedByEmployee.staffMemberId, flight.currentStaffMemberId),
+                            original.createdAtUtc, entryZone, updatedByDisplayName = original.updatedByDisplayName?.let { flightAttributionName(it, original.updatedByUserId) },
                             updatedAtUtc = original.updatedAtUtc)
                     }
                     FlightFailedSubmissionNote({ reviewTargets.firstOrNull { it.kind == "departure" }?.let(::openReview) })
                 }
-            } else if (otherEmployeeDeparture != null) {
+            } else if (savedDeparture != null) {
                 // The final note also keeps 28dp to the end, including the scaffold's 24dp inset.
                 Column(Modifier.padding(bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FlightSavedDetailsCard { FlightDepartureSummary(otherEmployeeDeparture.withPendingCorrection(pendingDeparture), entryZone, savedSignaturePreview) }
-                    FlightSubmissionNote(otherEmployeeDeparture.createdByDisplayName ?: otherEmployeeDeparture.submittedByEmployee.fullName, otherEmployeeDeparture.createdAtUtc, entryZone,
-                        updatedByDisplayName = otherEmployeeDeparture.updatedByDisplayName, updatedAtUtc = otherEmployeeDeparture.updatedAtUtc,
+                    FlightSavedDetailsCard { FlightDepartureSummary(savedDeparture, entryZone, savedSignaturePreview) }
+                    FlightSubmissionNote(flightAttributionName(savedDeparture.createdByDisplayName ?: savedDeparture.submittedByEmployee.fullName, savedDeparture.createdByUserId, savedDeparture.submittedByEmployee.staffMemberId, flight.currentStaffMemberId), savedDeparture.createdAtUtc, entryZone,
+                        updatedByDisplayName = savedDeparture.updatedByDisplayName?.let { flightAttributionName(it, savedDeparture.updatedByUserId) }, updatedAtUtc = savedDeparture.updatedAtUtc,
+                        savedLocally = savedDeparture.id.isBlank(),
                         updateLabel = stringResource(if (pendingDeparture?.status?.let { it != "pending" } == true) R.string.flight_review_action else R.string.flight_submission_update_departure_details),
                         needsReview = pendingDeparture?.status?.let { it != "pending" } == true,
-                        onUpdate = if (!saving && (flight.canUpdateDepartureSubmission(otherEmployeeDeparture.id) || pendingDeparture?.status?.let { it != "pending" } == true)) ({
+                        onUpdate = if (!saving && ((if (departureUpdateId.isBlank()) flight.departureEditable() else flight.canUpdateDepartureSubmission(departureUpdateId)) || pendingDeparture?.status?.let { it != "pending" } == true)) ({
                             val failed = reviewTargets.firstOrNull { it.kind == "departure" }
                             if (failed != null) openReview(failed) else {
                             updateReviewMode = false
                             updateSnapshot = Json.encodeToString(flight)
-                            updateSection = "departure:${otherEmployeeDeparture.id}"
+                            updateSection = "departure:$departureUpdateId"
                             }
                         }) else null)
                 }

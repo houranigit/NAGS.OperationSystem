@@ -24,6 +24,8 @@ data class FlightArrivalSubmission(
     val updatedAtUtc: String? = null,
     val createdByDisplayName: String? = null,
     val updatedByDisplayName: String? = null,
+    val createdByUserId: String? = null,
+    val updatedByUserId: String? = null,
 ) {
     fun input() = SaveFlightArrivalRequest(ata, aircraftTypeId, aircraftTailNumber, customerWorkReferenceNumber, remarks)
 }

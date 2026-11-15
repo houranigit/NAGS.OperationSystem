@@ -160,4 +160,113 @@ class FlightActualDetailsTest {
         assertEquals("", arrival.withPendingCorrection(pendingArrival.copy(inputJson = Json.encodeToString(
             localArrival.copy(targetSubmissionId = arrival.id)))).aircraftTypeModel)
     }
+
+    @Test fun formCardsShowOwnUntargetedCorrectionsAndPreserveOriginalAttribution() {
+        val ownArrival = arrival.copy(id = "own-arrival", submittedByEmployee = actor, receivedByEmployee = actor,
+            createdByDisplayName = "Creator account", updatedByDisplayName = "Latest updater", updatedAtUtc = "2026-11-10T10:10:00Z")
+        val ownDeparture = departure.copy(id = "own-departure", submittedByEmployee = actor, handledByEmployee = actor,
+            createdByDisplayName = "Creator account", updatedByDisplayName = "Latest updater", updatedAtUtc = "2026-11-10T11:10:00Z",
+            signatureVersion = "saved-signature")
+        val detail = flight.copy(arrivalSubmissions = listOf(arrival, ownArrival), departureSubmissions = listOf(departure, ownDeparture))
+        assertEquals(ownArrival.copy(ata = localArrival.ata, aircraftTypeId = localArrival.aircraftTypeId,
+            aircraftTypeModel = "B737", aircraftTailNumber = localArrival.aircraftTailNumber,
+            customerWorkReferenceNumber = localArrival.customerWorkReferenceNumber, remarks = localArrival.remarks),
+            detail.formArrivalSummary(pendingArrival, aircraft))
+        assertEquals(ownDeparture.copy(atd = localDeparture.atd, remarks = localDeparture.remarks),
+            detail.formDepartureSummary(pendingDeparture))
+        assertEquals(ownArrival, detail.formArrivalSummary(null))
+        assertEquals(ownDeparture, detail.formDepartureSummary(null))
+        assertEquals("reviewed-version", detail.rowVersion)
+        assertEquals(listOf(arrival, ownArrival), detail.arrivalSubmissions)
+    }
+
+    @Test fun formCardsSynthesizeQueuedAdditionsWithoutBorrowingForeignServerIdentity() {
+        val detail = flight.copy(assignedEmployees = listOf(actor))
+        for (status in listOf("pending", "failed", "conflict")) {
+            val arrived = detail.formArrivalSummary(pendingArrival.copy(status = status), aircraft)!!
+            assertEquals("", arrived.id)
+            assertEquals(actor, arrived.submittedByEmployee)
+            assertEquals(actor, arrived.receivedByEmployee)
+            assertEquals(localArrival.ata, arrived.ata)
+            assertEquals("B737", arrived.aircraftTypeModel)
+            assertEquals(pendingArrival.savedAtUtc, arrived.createdAtUtc)
+            assertFalse(arrived.isAccepted)
+            assertNull(arrived.createdByDisplayName)
+            assertNull(arrived.updatedAtUtc)
+            val departed = detail.formDepartureSummary(pendingDeparture.copy(status = status, signatureFile = "local.png"))!!
+            assertEquals("", departed.id)
+            assertEquals(actor, departed.submittedByEmployee)
+            assertEquals(actor, departed.handledByEmployee)
+            assertEquals(localDeparture.atd, departed.atd)
+            assertEquals(pendingDeparture.savedAtUtc, departed.createdAtUtc)
+            assertFalse(departed.isAccepted)
+            assertNull(departed.createdByDisplayName)
+            assertNull(departed.signatureVersion)
+            assertTrue(departed.hasSignature)
+        }
+        val empty = detail.copy(arrivalSubmissions = emptyList(), departureSubmissions = emptyList())
+        assertNull(empty.formArrivalSummary(null))
+        assertNull(empty.formDepartureSummary(null))
+        assertEquals("", empty.formArrivalSummary(pendingArrival)!!.id)
+        assertFalse(empty.formDepartureSummary(pendingDeparture)!!.hasSignature)
+    }
+
+    @Test fun formCardsKeepExplicitTargetsAcrossCacheRefreshAndNeverUseTheVisibleOwnerInstead() {
+        val targetedArrival = pendingArrival.copy(inputJson = Json.encodeToString(localArrival.copy(targetSubmissionId = arrival.id)),
+            reviewedArrivalJson = Json.encodeToString(arrival))
+        val targetedDeparture = pendingDeparture.copy(inputJson = Json.encodeToString(localDeparture.copy(targetSubmissionId = departure.id)),
+            reviewedDepartureJson = Json.encodeToString(listOf(departure)))
+        val ownArrival = arrival.copy(id = "own-arrival", submittedByEmployee = actor)
+        val ownDeparture = departure.copy(id = "own-departure", submittedByEmployee = actor)
+        for (detail in listOf(flight.copy(arrivalSubmissions = listOf(ownArrival, arrival), departureSubmissions = listOf(ownDeparture, departure)),
+            flight.copy(arrivalSubmissions = listOf(ownArrival), departureSubmissions = listOf(ownDeparture)))) {
+            assertEquals(arrival.copy(ata = localArrival.ata, aircraftTypeId = localArrival.aircraftTypeId,
+                aircraftTypeModel = "B737", aircraftTailNumber = localArrival.aircraftTailNumber,
+                customerWorkReferenceNumber = localArrival.customerWorkReferenceNumber, remarks = localArrival.remarks),
+                detail.formArrivalSummary(targetedArrival, aircraft))
+            assertEquals(departure.copy(atd = localDeparture.atd, remarks = localDeparture.remarks),
+                detail.formDepartureSummary(targetedDeparture))
+        }
+    }
+
+    @Test fun formCardsRecoverOnlyOwnUntargetedReviewedReports() {
+        val ownArrival = arrival.copy(id = "own-arrival", submittedByEmployee = actor)
+        val ownDeparture = departure.copy(id = "own-departure", submittedByEmployee = actor)
+        val localArrivalRow = pendingArrival.copy(reviewedArrivalJson = Json.encodeToString(ownArrival))
+        val localDepartureRow = pendingDeparture.copy(reviewedDepartureJson = Json.encodeToString(listOf(departure, ownDeparture)))
+        assertEquals(ownArrival.id, flight.formArrivalSummary(localArrivalRow, aircraft)!!.id)
+        assertEquals(ownDeparture.id, flight.formDepartureSummary(localDepartureRow)!!.id)
+        assertEquals("", flight.formArrivalSummary(pendingArrival.copy(reviewedArrivalJson = Json.encodeToString(arrival)), aircraft)!!.id)
+        assertEquals("", flight.formDepartureSummary(pendingDeparture.copy(reviewedDepartureJson = Json.encodeToString(listOf(departure))))!!.id)
+    }
+
+    @Test fun formCardsIgnoreMissingTargetsMalformedPayloadsAndUnrelatedQueues() {
+        for (row in listOf(pendingArrival.copy(flightId = "another-flight"), pendingArrival.copy(inputJson = "invalid JSON"),
+            pendingArrival.copy(inputJson = Json.encodeToString(localArrival.copy(ata = "not-a-time"))),
+            pendingArrival.copy(inputJson = Json.encodeToString(localArrival.copy(targetSubmissionId = "missing")),
+                reviewedArrivalJson = Json.encodeToString(arrival)))) {
+            assertEquals(arrival, flight.formArrivalSummary(row, aircraft))
+        }
+        for (row in listOf(pendingDeparture.copy(flightId = "another-flight"), pendingDeparture.copy(staffMemberId = other.staffMemberId),
+            pendingDeparture.copy(inputJson = "invalid JSON"), pendingDeparture.copy(inputJson = Json.encodeToString(localDeparture.copy(atd = "not-a-time"))),
+            pendingDeparture.copy(inputJson = Json.encodeToString(localDeparture.copy(targetSubmissionId = "missing")),
+                reviewedDepartureJson = Json.encodeToString(listOf(departure))))) {
+            assertEquals(departure, flight.formDepartureSummary(row))
+        }
+        val noActor = flight.copy(currentStaffMemberId = null)
+        assertEquals(arrival, noActor.formArrivalSummary(pendingArrival, aircraft))
+        assertEquals(departure, noActor.formDepartureSummary(pendingDeparture))
+    }
+
+    @Test fun formDepartureCardShowsNewLocalSignatureWithoutInventingAServerVersion() {
+        val unsigned = departure.copy(submittedByEmployee = actor, hasSignature = false, signatureVersion = "server-version")
+        val detail = flight.copy(departureSubmissions = listOf(unsigned))
+        val withSignature = detail.formDepartureSummary(pendingDeparture.copy(signatureFile = "queued.png"))!!
+        assertTrue(withSignature.hasSignature)
+        assertEquals("server-version", withSignature.signatureVersion)
+        assertFalse(detail.formDepartureSummary(pendingDeparture)!!.hasSignature)
+        val signed = detail.copy(departureSubmissions = listOf(unsigned.copy(hasSignature = true)))
+        assertTrue(signed.formDepartureSummary(pendingDeparture)!!.hasSignature)
+        assertFalse(unsigned.hasSignature)
+    }
 }

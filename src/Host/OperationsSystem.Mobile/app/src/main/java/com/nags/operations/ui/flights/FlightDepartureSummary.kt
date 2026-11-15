@@ -39,7 +39,7 @@ import com.nags.operations.ui.util.formatIsoDateForDisplay
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
 import java.time.ZoneId
 
-/** Another employee's saved departure remains at the departure section in its own card. */
+/** Saved departure details remain at the departure section in their own card. */
 @Composable
 internal fun FlightDepartureSummary(departure: FlightDepartureSubmission, zone: ZoneId, signaturePreview: ByteArray? = null) {
     val signature = rememberSignatureBitmap(signaturePreview.takeIf { departure.hasSignature })

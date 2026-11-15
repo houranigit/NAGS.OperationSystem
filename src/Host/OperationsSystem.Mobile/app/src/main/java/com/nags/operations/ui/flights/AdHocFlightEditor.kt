@@ -161,7 +161,8 @@ internal fun AdHocFlightEditor(viewModel: FlightsViewModel, initialFlight: Fligh
 @Composable
 private fun AdHocFlightCreationNote(flight: FlightDetail, zone: ZoneId) {
     if (flight.rowVersion == LOCAL_ADHOC_VERSION) return
-    val name = flight.createdByDisplayName?.takeIf { it.isNotBlank() } ?: return
+    val name = flight.createdByDisplayName?.takeIf { it.isNotBlank() }
+        ?.let { flightAttributionName(it, flight.createdByUserId) } ?: return
     val locale = LocalLocale.current.platformLocale
     val template = stringResource(R.string.flight_submission_timestamp)
     val timestamp = remember(flight.createdAtUtc, zone, locale, template) {

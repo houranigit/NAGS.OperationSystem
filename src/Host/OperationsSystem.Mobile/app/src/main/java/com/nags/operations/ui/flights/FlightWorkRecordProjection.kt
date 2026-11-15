@@ -41,6 +41,7 @@ internal data class FlightWorkRecordMetadata(
     val updatedAtUtc: String? = null,
     val pendingOperation: String? = null,
     val canCloseOnly: Boolean = false,
+    val updatedByUserId: String? = null,
 )
 
 /** Keys classify published/queued occurrences. Unstarted local form drafts are deliberately absent. */
@@ -64,7 +65,7 @@ internal fun flightServiceRecordMetadata(
             endedByDisplayName = original?.endedByDisplayName?.takeIf { retainsCloser && it.isNotBlank() },
             updatedByDisplayName = original?.updatedByDisplayName?.takeIf(String::isNotBlank),
             updatedAtUtc = original?.updatedAtUtc?.takeIf(String::isNotBlank), pendingOperation = row?.operation,
-            canCloseOnly = original?.canCloseOnly == true)
+            canCloseOnly = original?.canCloseOnly == true, updatedByUserId = original?.updatedByUserId)
     }
 }
 
@@ -89,7 +90,7 @@ internal fun flightTaskRecordMetadata(
             endedByDisplayName = original?.endedByDisplayName?.takeIf { retainsCloser && it.isNotBlank() },
             updatedByDisplayName = original?.updatedByDisplayName?.takeIf(String::isNotBlank),
             updatedAtUtc = original?.updatedAtUtc?.takeIf(String::isNotBlank), pendingOperation = row?.operation,
-            canCloseOnly = original?.canCloseOnly == true)
+            canCloseOnly = original?.canCloseOnly == true, updatedByUserId = original?.updatedByUserId)
     }
 }
 

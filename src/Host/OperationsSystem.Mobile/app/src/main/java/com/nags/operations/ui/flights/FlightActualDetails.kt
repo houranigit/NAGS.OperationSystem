@@ -1,6 +1,7 @@
 package com.nags.operations.ui.flights
 
 import com.nags.operations.data.AircraftTypeCatalogItem
+import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.SaveFlightArrivalRequest
 import com.nags.operations.data.SaveFlightDepartureRequest
 import com.nags.operations.data.StaffCatalogItem
@@ -38,6 +39,59 @@ internal fun FlightDepartureSubmission.withPendingCorrection(pending: FlightDepa
         actualDetailsJson.decodeFromString<SaveFlightDepartureRequest>(it.inputJson).also { value -> OffsetDateTime.parse(value.atd) }
     }.getOrNull() }?.takeIf { it.targetSubmissionId.equals(id, true) } ?: return this
     return copy(atd = input.atd, remarks = input.remarks)
+}
+
+/** Saved form cards show desired local values without borrowing another report's attribution. */
+internal fun FlightDetail.formArrivalSummary(
+    pending: FlightArrivalPendingEntity?,
+    aircraftTypes: List<AircraftTypeCatalogItem> = emptyList(),
+): FlightArrivalSubmission? {
+    val row = pending?.takeIf { it.flightId == id && !currentStaffMemberId.isNullOrBlank() }
+        ?: return visibleArrival()
+    val input = runCatching {
+        actualDetailsJson.decodeFromString<SaveFlightArrivalRequest>(row.inputJson).also { OffsetDateTime.parse(it.ata) }
+    }.getOrNull() ?: return visibleArrival()
+    val targetId = input.targetSubmissionId
+    fun matches(original: FlightArrivalSubmission) = if (targetId == null)
+        original.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true)
+    else original.id.equals(targetId, true)
+    val original = arrivalSubmissions.firstOrNull(::matches) ?: row.reviewedArrivalJson?.let { raw ->
+        runCatching { actualDetailsJson.decodeFromString<FlightArrivalSubmission?>(raw)?.takeIf(::matches) }.getOrNull()
+    }
+    if (targetId != null && original == null) return visibleArrival()
+    val model = aircraftTypes.firstOrNull { it.id.equals(input.aircraftTypeId, true) }?.model
+        ?: original?.takeIf { it.aircraftTypeId.equals(input.aircraftTypeId, true) }?.aircraftTypeModel
+        ?: aircraftTypeModel?.takeIf { aircraftTypeId.equals(input.aircraftTypeId, true) }.orEmpty()
+    if (original != null) return original.copy(ata = input.ata, aircraftTypeId = input.aircraftTypeId,
+        aircraftTypeModel = model, aircraftTailNumber = input.aircraftTailNumber,
+        customerWorkReferenceNumber = input.customerWorkReferenceNumber, remarks = input.remarks)
+    val actor = assignedEmployees.firstOrNull { it.staffMemberId.equals(currentStaffMemberId, true) }
+        ?: AssignedEmployee(checkNotNull(currentStaffMemberId), "", "")
+    return FlightArrivalSubmission("", actor, input.ata, input.aircraftTypeId, model, input.aircraftTailNumber,
+        input.customerWorkReferenceNumber, actor, input.remarks, isAccepted = false, createdAtUtc = row.savedAtUtc)
+}
+
+/** An unsynchronized signature is visible while its original server version stays unchanged. */
+internal fun FlightDetail.formDepartureSummary(pending: FlightDeparturePendingEntity?): FlightDepartureSubmission? {
+    val row = pending?.takeIf { it.flightId == id && !currentStaffMemberId.isNullOrBlank() &&
+        it.staffMemberId.equals(currentStaffMemberId, true) } ?: return visibleDeparture()
+    val input = runCatching {
+        actualDetailsJson.decodeFromString<SaveFlightDepartureRequest>(row.inputJson).also { OffsetDateTime.parse(it.atd) }
+    }.getOrNull() ?: return visibleDeparture()
+    val targetId = input.targetSubmissionId
+    fun matches(original: FlightDepartureSubmission) = if (targetId == null)
+        original.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true)
+    else original.id.equals(targetId, true)
+    val original = departureSubmissions.firstOrNull(::matches) ?: runCatching {
+        actualDetailsJson.decodeFromString<List<FlightDepartureSubmission>>(row.reviewedDepartureJson).firstOrNull(::matches)
+    }.getOrNull()
+    if (targetId != null && original == null) return visibleDeparture()
+    if (original != null) return original.copy(atd = input.atd, remarks = input.remarks,
+        hasSignature = original.hasSignature || row.signatureFile != null)
+    val actor = assignedEmployees.firstOrNull { it.staffMemberId.equals(currentStaffMemberId, true) }
+        ?: AssignedEmployee(checkNotNull(currentStaffMemberId), "", "")
+    return FlightDepartureSubmission("", actor, input.atd, actor, input.remarks,
+        isAccepted = false, createdAtUtc = row.savedAtUtc, hasSignature = row.signatureFile != null)
 }
 
 /** Presentation only: local intent must never become an accepted submission or change a rowversion. */

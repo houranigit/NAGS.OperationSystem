@@ -409,6 +409,8 @@ private fun SubmittedWorkNote(metadata: FlightWorkRecordMetadata, zone: ZoneId, 
         else -> ""
     }
     val author = metadata.createdByDisplayName?.takeIf { metadata.published && it.isNotBlank() }
+        ?.let { flightAttributionName(it, metadata.createdByUserId) }
+    val updater = metadata.updatedByDisplayName?.let { flightAttributionName(it, metadata.updatedByUserId) }
     val by = stringResource(R.string.work_submitted_note_by)
     val on = stringResource(R.string.flight_submission_note_on)
     val needsReview = metadata.pendingStatus != null && metadata.pendingStatus != "pending"
@@ -445,9 +447,9 @@ private fun SubmittedWorkNote(metadata: FlightWorkRecordMetadata, zone: ZoneId, 
         append(prefix)
         if (author != null) { append(by); withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(author) } }
         if (timestamp != null) { append(on); withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(timestamp) } }
-        if (metadata.published && !metadata.updatedByDisplayName.isNullOrBlank() && updateTimestamp != null) {
+        if (metadata.published && !updater.isNullOrBlank() && updateTimestamp != null) {
             append(updatedBy)
-            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(metadata.updatedByDisplayName) }
+            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(updater) }
             append(on)
             withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(updateTimestamp) }
         }

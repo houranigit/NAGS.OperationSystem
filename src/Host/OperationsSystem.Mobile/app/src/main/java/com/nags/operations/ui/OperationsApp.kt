@@ -4,6 +4,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import com.nags.operations.ui.flights.LocalFlightUserId
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -128,6 +130,7 @@ fun OperationsApp() {
         confirmButton = { TextButton(onClick = { confirmSignOut = false; signOut() }) {
             Text(stringResource(R.string.account_sign_out), color = MaterialTheme.colorScheme.error)
         } }, dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text(stringResource(R.string.flights_cancel)) } })
+    CompositionLocalProvider(LocalFlightUserId provides subject) {
     NavHost(navController = navController, startDestination = Routes.Login,
         enterTransition = { fadeIn(tween(220)) }, exitTransition = { fadeOut(tween(220)) },
         popEnterTransition = { fadeIn(tween(220)) }, popExitTransition = { fadeOut(tween(220)) }) {
@@ -197,5 +200,6 @@ fun OperationsApp() {
                 onOpenFlight = graph.notificationNavigation::publish,
                 onOpenSchedule = graph.notificationNavigation::publish)
         }
+    }
     }
 }

@@ -16,7 +16,9 @@ public sealed record FlightDepartureSubmissionDto(
     string? SignatureVersion = null,
     bool HasSignature = true,
     string? CreatedByDisplayName = null,
-    string? UpdatedByDisplayName = null)
+    string? UpdatedByDisplayName = null,
+    Guid? CreatedByUserId = null,
+    Guid? UpdatedByUserId = null)
 {
     public static FlightDepartureSubmissionDto Map(FlightDepartureSubmission submission, IReadOnlyDictionary<Guid, string>? names = null) => new(
         submission.Id,
@@ -27,5 +29,6 @@ public sealed record FlightDepartureSubmissionDto(
         submission.Details.CustomerSignature is { } signature
             ? Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(signature.StorageKey))) : null,
         submission.Details.CustomerSignature is not null, names?.GetValueOrDefault(submission.CreatedByUserId),
-        submission.UpdatedByUserId is { } updater ? names?.GetValueOrDefault(updater) : null);
+        submission.UpdatedByUserId is { } updater ? names?.GetValueOrDefault(updater) : null,
+        submission.CreatedByUserId, submission.UpdatedByUserId);
 }

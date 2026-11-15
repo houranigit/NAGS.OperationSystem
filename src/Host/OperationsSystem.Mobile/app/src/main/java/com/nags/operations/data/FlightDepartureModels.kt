@@ -17,6 +17,8 @@ data class FlightDepartureSubmission(
     val hasSignature: Boolean = true,
     val createdByDisplayName: String? = null,
     val updatedByDisplayName: String? = null,
+    val createdByUserId: String? = null,
+    val updatedByUserId: String? = null,
 )
 
 fun FlightDetail.visibleDeparture(): FlightDepartureSubmission? = departureSubmissions.firstOrNull {
