@@ -32,7 +32,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -72,6 +76,8 @@ internal fun MainBottomNavigation(
 
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp).height(64.dp)
+            .dropShadow(dockShape, Shadow(radius = 8.dp, color = Color.Black.copy(alpha = 0.10f),
+                offset = DpOffset(0.dp, (-2).dp)))
             .shadow(4.dp, dockShape, clip = false).clip(dockShape).background(colors.surface)
             .selectableGroup().padding(horizontal = 4.dp)
             .drawBehind {
