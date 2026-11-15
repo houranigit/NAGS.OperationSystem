@@ -3,6 +3,7 @@ package com.nags.operations.ui.flights
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,6 +57,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
@@ -222,7 +224,9 @@ fun FlightsScreen(
     var cacheNoticeDismissed by rememberSaveable(cacheNotice, state.stationId) { mutableStateOf(false) }
     val cacheNoticeVisible = cacheNotice != null && !cacheNoticeDismissed
     val listTopPadding = if (cacheNoticeVisible) 0.dp else 16.dp
-    Column(Modifier.fillMaxSize().imePadding()) {
+    val isLight = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+    val ground = if (isLight) Color.White else MaterialTheme.colorScheme.background
+    Column(Modifier.fillMaxSize().background(ground).imePadding()) {
         if (discoverySource == null) FlightTabSearchHeader(isSearchOpen = state.isSearchOpen, query = state.search,
             onQueryChange = viewModel::setSearch, onOpenSearch = viewModel::openSearch,
             onCloseSearch = ::closeSearch, autoFocusOnOpen = interactionEnabled,

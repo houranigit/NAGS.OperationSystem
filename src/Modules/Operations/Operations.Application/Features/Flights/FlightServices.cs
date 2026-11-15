@@ -214,9 +214,8 @@ public sealed class SaveFlightServiceCommandHandler(IOperationsDbContext db, IMo
         if (input.Performers is not { Count: > 0 })
             return Error.Validation("Every service requires at least one performer.", "Operations.WorkOrder.ServiceLinePerformerRequired");
         if (input.Performers.Any(p => p is null || p.Id == Guid.Empty || p.StaffMemberId == Guid.Empty || p.StartUtc == default) ||
-            input.Performers.Select(p => p.Id).Distinct().Count() != input.Performers.Count ||
-            input.Performers.Select(p => p.StaffMemberId).Distinct().Count() != input.Performers.Count)
-            return Error.Validation("Provide exactly one identified working period for every selected employee.", "Operations.WorkOrder.EmployeeAssignmentsRequired");
+            input.Performers.Select(p => p.Id).Distinct().Count() != input.Performers.Count)
+            return Error.Validation("Provide an employee and a unique record identity for every working period.", "Operations.WorkOrder.EmployeeAssignmentsRequired");
         if (input.Attachments is null) return Result.Success();
         if (input.Attachments.Count > FlightService.MaxAttachments)
             return Error.Validation("A service can have at most 10 attachments.", "Operations.WorkOrder.AttachmentLimitExceeded");

@@ -28,7 +28,7 @@ import com.nags.operations.data.ResourceCatalogItem
 import com.nags.operations.data.StaffCatalogItem
 import com.nags.operations.data.taskCalculationType
 
-/** Nested work choices keep each employee unique within the parent entry. */
+/** Repeated employees retain independent working-period occurrences within the parent entry. */
 @Composable
 internal fun FlightWorkEmployeeList(
     items: List<FlightEmployeeDraft>,
@@ -97,7 +97,7 @@ internal fun FlightWorkEmployeeList(
         title = stringResource(R.string.work_select_employee),
         searchLabel = stringResource(R.string.work_search_employees),
         emptyLabel = stringResource(R.string.work_no_employees),
-        options = choices.filter { choice -> items.none { it.employeeId == choice.id && it.id != editingId } },
+        options = choices,
         selectedId = items.firstOrNull { it.id == editingId }?.employeeId,
         onSelect = { id ->
             if (!selectionHandled) options.firstOrNull { it.id == id }?.let { selected ->

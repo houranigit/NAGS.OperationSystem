@@ -423,9 +423,10 @@
     <string name="service_validation_staff_end_required">أدخل وقت الانتهاء قبل إغلاق الخدمة.</string>
     <string name="service_validation_reference">يجب ألا يتجاوز مرجع العميل 200 حرف.</string>
     <string name="service_validation_notes">يجب ألا تتجاوز الملاحظات 2,000 حرف.</string>
-    <string name="service_validation_performers">أضف موظفًا منفذًا واحدًا على الأقل، دون تكرار الموظف.</string>
+    <string name="service_validation_performers">أضف موظفًا منفذًا واحدًا على الأقل.</string>
     <string name="service_validation_staff">اختر موظفًا متاحًا في المحطة.</string>
     <string name="service_validation_staff_period">يجب أن تكون فترات الموظفين صالحة وضمن فترة الخدمة.</string>
+    <string name="work_validation_staff_overlap">يجب أن تكون فترات عمل الموظف نفسه مختلفة وغير متداخلة.</string>
     <string name="service_validation_attachments">أرفق 10 ملفات كحد أقصى: صور PNG/JPEG/WebP حتى 10 ميغابايت، أو صوت حتى 25 ميغابايت، أو PDF حتى 2 ميغابايت. الإجمالي 25 ميغابايت.</string>
     <string name="service_validation_version">افتح الرحلة عبر الإنترنت لتحديث تفاصيلها قبل حفظ الخدمات.</string>
     <string name="service_validation_unknown_notes">أضف ملاحظات تصف الخدمة غير المعروفة.</string>
@@ -444,7 +445,7 @@
     <string name="task_validation_staff_end_required">أدخل وقت الانتهاء قبل إغلاق المهمة.</string>
     <string name="task_validation_reference">لا يمكن أن يتجاوز مرجع العميل 200 حرف.</string>
     <string name="task_validation_notes">لا يمكن أن تتجاوز الملاحظات 2,000 حرف.</string>
-    <string name="task_validation_performers">أضف موظفًا منفذًا واحدًا على الأقل. لا يمكن تكرار الموظف.</string>
+    <string name="task_validation_performers">أضف موظفًا منفذًا واحدًا على الأقل.</string>
     <string name="task_validation_staff">اختر موظفًا متاحًا في المحطة.</string>
     <string name="task_validation_staff_period">يجب أن تكون فترات الموظفين صالحة وضمن فترة المهمة.</string>
     <string name="task_validation_resources">لا يمكن تكرار العنصر المحدد في هذه القائمة.</string>

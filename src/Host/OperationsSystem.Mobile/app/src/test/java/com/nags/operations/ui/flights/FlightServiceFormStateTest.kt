@@ -228,14 +228,18 @@ class FlightServiceFormStateTest {
         assertTrue(serviceEditorValidation(item, request, flight, catalog, flight.rowVersion, actualArrival, null).isEmpty())
     }
 
-    @Test fun staffHeaderIsReservedForEmptyOrDuplicateAssignments() {
+    @Test fun repeatedStaffConflictsAreAttachedToBothOccurrencesWhileEmptyStaffUsesTheHeader() {
         val employee = FlightEmployeeDraft(performerId, staffId, period = FlightWorkPeriod("2026-11-11T11:00"))
         val item = FlightServiceDraft(recordId, serviceId, "Service", period = FlightWorkPeriod("2026-11-11T11:00"))
         val emptyErrors = serviceEditorValidation(item, item.serviceInput(zone), flight, catalog, flight.rowVersion, actualArrival, null)
         assertEquals(mapOf("performers" to R.string.service_validation_performers), emptyErrors)
         val duplicate = item.copy(employees = listOf(employee, employee.copy(id = "77777777-7777-7777-7777-777777777777")))
-        assertEquals(mapOf("performers" to R.string.service_validation_performers),
+        assertEquals(duplicate.employees.flatMap { listOf("performers.${it.id}.startUtc", "performers.${it.id}.endUtc") }
+            .associateWith { R.string.work_validation_staff_overlap },
             serviceEditorValidation(duplicate, duplicate.serviceInput(zone), flight, catalog, flight.rowVersion, actualArrival, null))
+        val separated = duplicate.copy(employees = listOf(employee.copy(period = employee.period.copy(end = "2026-11-11T12:00")),
+            duplicate.employees.last().copy(period = FlightWorkPeriod("2026-11-11T12:00"))))
+        assertTrue(serviceEditorValidation(separated, separated.serviceInput(zone), flight, catalog, flight.rowVersion, actualArrival, null).isEmpty())
     }
 
     @Test fun invalidStaffAndRecordIdentitiesAreAttachedToTheirOwnChooserInsteadOfTheStaffHeader() {

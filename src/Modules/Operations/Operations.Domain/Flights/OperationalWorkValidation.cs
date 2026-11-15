@@ -45,6 +45,12 @@ internal static class OperationalWorkValidation
         return Result.Success();
     }
 
-    internal static Error DuplicateEmployee() =>
-        Error.Validation("Provide exactly one working period for every selected employee.", "Operations.WorkOrder.EmployeeAssignmentsRequired");
+    internal static bool PeriodsConflict(TimeWindow first, TimeWindow second) =>
+        first == second || first.ToUtc != first.FromUtc && second.ToUtc != second.FromUtc &&
+        (!second.ToUtc.HasValue || first.FromUtc < second.ToUtc.Value) &&
+        (!first.ToUtc.HasValue || second.FromUtc < first.ToUtc.Value);
+
+    internal static Error OverlappingEmployeePeriods() =>
+        Error.Validation("Working periods for the same employee must be different and cannot overlap.",
+            "Operations.WorkOrder.EmployeeOverlappingPeriods");
 }

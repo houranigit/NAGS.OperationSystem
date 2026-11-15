@@ -178,6 +178,10 @@ internal fun serviceEditorValidation(item: FlightServiceDraft, request: SaveFlig
             put(prefix + "startUtc", R.string.service_validation_staff_period)
         if (prefix + "endUtc" in errors && value?.endUtc != null)
             put(prefix + "endUtc", R.string.service_validation_staff_period)
+        if (prefix + "overlappingPeriods" in errors) {
+            put(prefix + "startUtc", R.string.work_validation_staff_overlap)
+            put(prefix + "endUtc", R.string.work_validation_staff_overlap)
+        }
         serviceActualTimeError(start, ata, atd)?.let { put(prefix + "startUtc", it) }
         serviceActualTimeError(end, ata, atd)?.let { put(prefix + "endUtc", it) }
     }

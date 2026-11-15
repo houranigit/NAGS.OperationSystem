@@ -207,7 +207,7 @@ public sealed class FlightTaskTests
         firstPerformer.Notes.ShouldBe("Work note");
         duplicates.Select(result => result.Error.Code).ShouldBe([
             "Operations.ResourceUsage.ToolDuplicate", "Operations.ResourceUsage.MaterialDuplicate",
-            "Operations.ResourceUsage.GeneralSupportDuplicate", "Operations.WorkOrder.EmployeeAssignmentsRequired"]);
+            "Operations.ResourceUsage.GeneralSupportDuplicate", "Operations.WorkOrder.EmployeeOverlappingPeriods"]);
         flight.UpdatedAtUtc.ShouldBe(TestData.Now);
     }
 
@@ -712,7 +712,7 @@ public sealed class FlightTaskTests
 
         failures.Select(result => result.Error.Code).ShouldBe([
             "Operations.ResourceUsage.ToolDuplicate", "Operations.ResourceUsage.MaterialDuplicate",
-            "Operations.ResourceUsage.GeneralSupportDuplicate", "Operations.WorkOrder.EmployeeAssignmentsRequired"]);
+            "Operations.ResourceUsage.GeneralSupportDuplicate", "Operations.WorkOrder.EmployeeOverlappingPeriods"]);
         new[] { tool.Tool.ToolId, material.Material.MaterialId, support.GeneralSupport.GeneralSupportId, employee.Employee.StaffMemberId }
             .ShouldBe(originalIds);
         tool.Notes.ShouldBeNull();
@@ -929,6 +929,96 @@ public sealed class FlightTaskTests
         task.Attachments.Count.ShouldBe(10);
         task.Attachments.ShouldAllBe(item => item.Id != first.Id);
         replacement.Details.Kind.ShouldBe(AttachmentKind.Voice);
+    }
+
+    [Theory]
+    [InlineData(0, 8, 8, 16, false)]
+    [InlineData(0, 8, 24, 32, false)]
+    [InlineData(24, 32, 0, 8, false)]
+    [InlineData(0, 8, 7, 12, true)]
+    [InlineData(0, 8, 1, 7, true)]
+    [InlineData(1, 7, 0, 8, true)]
+    [InlineData(0, 8, 0, 8, true)]
+    [InlineData(0, null, 24, 32, true)]
+    [InlineData(0, 8, 7, null, true)]
+    [InlineData(0, 8, 8, null, false)]
+    [InlineData(0, null, 0, null, true)]
+    [InlineData(8, 8, 8, 8, true)]
+    [InlineData(8, 8, 0, 16, false)]
+    [InlineData(0, 16, 8, 8, false)]
+    [InlineData(0, 0, 8, 8, false)]
+    public void RepeatedTaskEmployeePeriods_RequireDifferentNonoverlappingWindows(
+        int firstStart, int? firstEnd, int secondStart, int? secondEnd, bool conflicts)
+    {
+        var flight = ScheduleFlight();
+        var task = AddTask(flight);
+        var employee = TestData.Staff();
+        var firstWindow = TimeWindow.Create(TestData.Now.AddHours(firstStart), firstEnd.HasValue ? TestData.Now.AddHours(firstEnd.Value) : null).Value;
+        var secondWindow = TimeWindow.Create(TestData.Now.AddHours(secondStart), secondEnd.HasValue ? TestData.Now.AddHours(secondEnd.Value) : null).Value;
+        var first = flight.AddTaskPerformer(task.Id, employee, firstWindow, "First shift", Guid.NewGuid(), TestData.Now.AddMinutes(1)).Value;
+        var previousAudit = flight.UpdatedAtUtc;
+
+        var second = flight.AddTaskPerformer(task.Id, employee, secondWindow, "Second shift", Guid.NewGuid(), TestData.Now.AddMinutes(2));
+
+        if (conflicts)
+        {
+            second.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
+            task.Performers.ShouldHaveSingleItem().ShouldBeSameAs(first);
+            flight.UpdatedAtUtc.ShouldBe(previousAudit);
+        }
+        else
+        {
+            second.IsSuccess.ShouldBeTrue();
+            task.Performers.Count.ShouldBe(2);
+            second.Value.Id.ShouldNotBe(first.Id);
+            second.Value.Employee.StaffMemberId.ShouldBe(first.Employee.StaffMemberId);
+            second.Value.Notes.ShouldBe("Second shift");
+        }
+
+        flight.AddTaskPerformer(task.Id, TestData.Staff(), secondWindow, null, Guid.NewGuid(), TestData.Now.AddMinutes(3))
+            .IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void RepeatedTaskEmployeeCorrections_PreserveOccurrencesAndRejectCollisionsWithoutMutation()
+    {
+        var flight = ScheduleFlight();
+        var task = AddTask(flight);
+        var employee = TestData.Staff();
+        var first = flight.AddTaskPerformer(task.Id, employee,
+            TimeWindow.Create(TestData.Now, TestData.Now.AddHours(8)).Value, "First shift", Guid.NewGuid(), TestData.Now).Value;
+        var second = flight.AddTaskPerformer(task.Id, employee,
+            TimeWindow.Create(TestData.Now.AddHours(24), TestData.Now.AddHours(32)).Value, "Second shift", Guid.NewGuid(), TestData.Now).Value;
+        var moved = TimeWindow.Create(TestData.Now.AddHours(8), TestData.Now.AddHours(16)).Value;
+
+        flight.UpdateTaskPerformer(task.Id, first.Id, employee, moved, "Corrected shift", Guid.NewGuid(), TestData.Now.AddMinutes(1))
+            .Value.ShouldBeSameAs(first);
+        var previousAudit = task.UpdatedAtUtc;
+        var rejected = flight.UpdateTaskPerformer(task.Id, first.Id, employee,
+            TimeWindow.Create(TestData.Now.AddHours(25), TestData.Now.AddHours(30)).Value, "MUST-NOT-LEAK", Guid.NewGuid(), TestData.Now.AddMinutes(2));
+
+        rejected.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
+        first.Window.ShouldBe(moved);
+        first.Notes.ShouldBe("Corrected shift");
+        task.UpdatedAtUtc.ShouldBe(previousAudit);
+        task.Performers.Count.ShouldBe(2);
+
+        var adjacent = TimeWindow.Create(TestData.Now.AddHours(16), TestData.Now.AddHours(24)).Value;
+        flight.SaveTask(task.Id, task.TaskType, null, null, task.Window, null,
+            [new(employee, moved, "First shift", first.Id), new(employee, adjacent, "Second shift", second.Id)],
+            [], [], [], Guid.NewGuid(), TestData.Now.AddMinutes(3)).IsSuccess.ShouldBeTrue();
+        task.Performers[0].ShouldBeSameAs(first);
+        task.Performers[1].ShouldBeSameAs(second);
+        var previousFlightAudit = flight.UpdatedAtUtc;
+
+        flight.SaveTask(task.Id, task.TaskType, null, "MUST-NOT-LEAK", task.Window, null,
+            [new(employee, moved, "First shift", first.Id), new(employee, moved, "Changed shift", second.Id)],
+            [], [], [], Guid.NewGuid(), TestData.Now.AddMinutes(4))
+            .Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
+        task.CustomerReferenceNumber.ShouldBeNull();
+        second.Window.ShouldBe(adjacent);
+        second.Notes.ShouldBe("Second shift");
+        flight.UpdatedAtUtc.ShouldBe(previousFlightAudit);
     }
 
     private static Flight ScheduleFlight() =>

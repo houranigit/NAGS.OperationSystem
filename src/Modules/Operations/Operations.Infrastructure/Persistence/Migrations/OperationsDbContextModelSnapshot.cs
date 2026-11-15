@@ -371,8 +371,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("FlightServiceId");
 
-                    b.HasIndex("FlightServiceId", "StaffMemberId")
-                        .IsUnique();
+                    b.HasIndex("FlightServiceId", "StaffMemberId");
 
                     b.ToTable("flight_service_performers", "operations");
                 });
@@ -525,8 +524,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("FlightTaskId");
 
-                    b.HasIndex("FlightTaskId", "StaffMemberId")
-                        .IsUnique();
+                    b.HasIndex("FlightTaskId", "StaffMemberId");
 
                     b.ToTable("flight_task_performers", "operations");
                 });

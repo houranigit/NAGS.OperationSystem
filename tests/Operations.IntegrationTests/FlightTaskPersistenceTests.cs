@@ -459,8 +459,7 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
     [InlineData("tool")]
     [InlineData("material")]
     [InlineData("support")]
-    [InlineData("employee")]
-    public async Task Task_child_unique_indexes_reject_duplicate_catalog_or_staff_rows(string kind)
+    public async Task Task_child_unique_indexes_reject_duplicate_resource_rows(string kind)
     {
         await using var db = fixture.CreateContext();
         await db.Database.MigrateAsync();
@@ -472,8 +471,7 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
         {
             "tool" => task.Tools.Single().Id,
             "material" => task.Materials.Single().Id,
-            "support" => task.GeneralSupports.Single().Id,
-            _ => task.Performers.Single().Id
+            _ => task.GeneralSupports.Single().Id
         };
         var sql = kind switch
         {
@@ -489,17 +487,11 @@ public sealed class FlightTaskPersistenceTests(FlightTaskPersistenceTests.Databa
                 SELECT @newId, [FlightTaskId], [MaterialId], [MaterialName], [CalculationType], [Quantity], [FromUtc], [ToUtc], [Notes]
                 FROM [operations].[flight_task_materials] WHERE [Id] = @id
                 """,
-            "support" => """
+            _ => """
                 INSERT INTO [operations].[flight_task_general_supports]
                     ([Id], [FlightTaskId], [GeneralSupportId], [GeneralSupportName], [CalculationType], [Quantity], [FromUtc], [ToUtc], [Notes])
                 SELECT @newId, [FlightTaskId], [GeneralSupportId], [GeneralSupportName], [CalculationType], [Quantity], [FromUtc], [ToUtc], [Notes]
                 FROM [operations].[flight_task_general_supports] WHERE [Id] = @id
-                """,
-            _ => """
-                INSERT INTO [operations].[flight_task_performers]
-                    ([Id], [FlightTaskId], [StaffMemberId], [StaffFullName], [StaffEmployeeId], [FromUtc], [ToUtc], [Notes])
-                SELECT @newId, [FlightTaskId], [StaffMemberId], [StaffFullName], [StaffEmployeeId], [FromUtc], [ToUtc], [Notes]
-                FROM [operations].[flight_task_performers] WHERE [Id] = @id
                 """
         };
 

@@ -30,10 +30,24 @@ class FlightServiceOverlapValidationTest {
         assertEquals(setOf("a"), serviceOverlapValidation(rows, zone, setOf("a")).keys)
     }
 
-    @Test fun unknownAndDifferentServicesMayOverlap() {
+    @Test fun unknownServiceUsesTheSameNonoverlapRuleWhileDifferentServicesMayOverlap() {
         val unknown = "40000000-0000-0000-0000-000000000003"
         val rows = listOf(service("a", "10:00", "12:00", unknown), service("b", "10:00", "12:00", unknown),
             service("c", "10:00", "12:00"), service("d", "10:00", "12:00", "another"))
-        assertTrue(serviceOverlapValidation(rows, zone, rows.map { it.id }.toSet()).isEmpty())
+        assertEquals(setOf("a", "b"), serviceOverlapValidation(rows, zone, rows.map { it.id }.toSet()).keys)
+    }
+
+    @Test fun identicalZeroDurationOccurrencesAreNotDifferentWindows() {
+        val rows = listOf(service("a", "10:30", "10:30"), service("b", "10:30", "10:30"))
+        assertEquals(setOf("a", "b"), serviceOverlapValidation(rows, zone, setOf("a", "b")).keys)
+        assertTrue(serviceOverlapValidation(listOf(rows.first(), service("b", "10:31", "10:31")), zone, setOf("a", "b")).isEmpty())
+    }
+
+    @Test fun offsetEquivalentWindowsStillConflictAndChangingAConflictClearsIt() {
+        val first = service("a", "10:00", "11:00")
+        val second = service("b", "10:00", "11:00").copy(period = FlightWorkPeriod("2026-11-13T10:00", "2026-11-13T11:00",
+            "2026-11-13T12:00:00+02:00", "2026-11-13T13:00:00+02:00"))
+        assertEquals(setOf("b"), serviceOverlapValidation(listOf(first, second), zone, setOf("b")).keys)
+        assertTrue(serviceOverlapValidation(listOf(first, service("b", "11:00", "12:00")), zone, setOf("b")).isEmpty())
     }
 }

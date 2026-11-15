@@ -324,7 +324,7 @@ public sealed class FlightServiceSaveTests
     [Theory]
     [InlineData("none")]
     [InlineData("duplicate-id")]
-    [InlineData("duplicate-staff")]
+    [InlineData("overlapping-staff")]
     public async Task Invalid_performer_collections_reject_the_whole_service_save_without_mutation(string invalid)
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -346,6 +346,32 @@ public sealed class FlightServiceSaveTests
         var service = (await fixture.ReadAsync()).Services.ShouldHaveSingleItem();
         service.Notes.ShouldBe(fixture.Input.Notes);
         service.Performers.ShouldHaveSingleItem().Id.ShouldBe(original.Id);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Repeated_employee_can_work_on_different_days_and_overlapping_corrections_do_not_publish(bool combined)
+    {
+        await using var f = await Fixture.CreateAsync();
+        var id = Guid.NewGuid(); var first = f.Input.Performers.Single() with { EndUtc = Now.AddHours(2) };
+        var next = new SaveFlightServicePerformerRequest(Guid.NewGuid(), first.StaffMemberId,
+            Now.AddDays(1), Now.AddDays(1).AddHours(4));
+        var input = f.Input with { EndUtc = Now.AddDays(2), Performers = [first, next] };
+        if (combined) (await f.BatchAsync(new(ServiceChanges: [new(id, input)]))).IsSuccess.ShouldBeTrue();
+        else (await f.SaveAsync(id, input)).IsSuccess.ShouldBeTrue();
+
+        var saved = (await f.ReadAsync()).Services.ShouldHaveSingleItem();
+        saved.Performers.Select(item => item.Id).Order().ShouldBe(input.Performers.Select(item => item.Id).Order());
+        saved.Performers.Select(item => item.Employee.StaffMemberId).Distinct().ShouldHaveSingleItem().ShouldBe(first.StaffMemberId);
+        var writes = f.Writes.SaveCalls;
+        var invalid = input with { Notes = "Must not leak", Performers = [first, next with { StartUtc = Now }] };
+        if (combined) (await f.BatchAsync(new(ServiceChanges: [new(id, invalid)]))).Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
+        else (await f.SaveAsync(id, invalid)).Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
+        f.Writes.SaveCalls.ShouldBe(writes);
+        var unchanged = (await f.ReadAsync()).Services.ShouldHaveSingleItem();
+        unchanged.Notes.ShouldBe(input.Notes);
+        unchanged.Performers.Single(item => item.Id == next.Id).Window.FromUtc.ShouldBe(next.StartUtc);
     }
 
     [Fact]
@@ -909,15 +935,59 @@ public sealed class FlightServiceSaveTests
     }
 
     [Fact]
-    public async Task Unknown_services_may_overlap_but_each_requires_remarks()
+    public async Task Unknown_services_require_distinct_nonoverlapping_periods_and_remarks()
     {
         await using var f = await Fixture.CreateAsync();
         f.Reader.AllowedServicesOverride = new HashSet<Guid> { WellKnownMasterDataIds.UnknownService };
-        var input = f.Input with { ServiceId = WellKnownMasterDataIds.UnknownService };
+        var input = f.Input with { ServiceId = WellKnownMasterDataIds.UnknownService, EndUtc = Now,
+            Performers = [f.Input.Performers.Single() with { EndUtc = Now }] };
         (await f.SaveAsync(Guid.NewGuid(), input)).IsSuccess.ShouldBeTrue();
-        (await f.SaveAsync(Guid.NewGuid(), input with { Performers = [input.Performers.Single() with { Id = Guid.NewGuid() }] })).IsSuccess.ShouldBeTrue();
-        (await f.SaveAsync(Guid.NewGuid(), input with { Notes = null, Performers = [input.Performers.Single() with { Id = Guid.NewGuid() }] })).Error.Code.ShouldBe("Operations.WorkOrder.UnknownDescriptionRequired");
+        (await f.SaveAsync(Guid.NewGuid(), input with { Performers = [input.Performers.Single() with { Id = Guid.NewGuid() }] }))
+            .Error.Code.ShouldBe("Operations.FlightService.OverlappingPeriods");
+        var adjacent = input with { StartUtc = Now, EndUtc = Now.AddMinutes(30),
+            Performers = [new(Guid.NewGuid(), f.Owner.StaffMemberId, Now, Now.AddMinutes(30))] };
+        (await f.SaveAsync(Guid.NewGuid(), adjacent with { Notes = null })).Error.Code.ShouldBe("Operations.WorkOrder.UnknownDescriptionRequired");
+        (await f.SaveAsync(Guid.NewGuid(), adjacent)).IsSuccess.ShouldBeTrue();
         (await f.ReadAsync()).Services.Count.ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Repeated_identical_zero_duration_service_periods_are_rejected_without_a_write(bool combined)
+    {
+        await using var f = await Fixture.CreateAsync();
+        var point = f.Input with { StartUtc = Now, EndUtc = Now,
+            Performers = [new(Guid.NewGuid(), f.Owner.StaffMemberId, Now, Now)] };
+        (await f.SaveAsync(Guid.NewGuid(), point)).IsSuccess.ShouldBeTrue();
+        var writes = f.Writes.SaveCalls;
+        var repeated = point with { Performers = [point.Performers.Single() with { Id = Guid.NewGuid() }] };
+        if (combined) (await f.BatchAsync(new(ServiceChanges: [new(Guid.NewGuid(), repeated)])))
+            .Error.Code.ShouldBe("Operations.FlightService.OverlappingPeriods");
+        else (await f.SaveAsync(Guid.NewGuid(), repeated)).Error.Code.ShouldBe("Operations.FlightService.OverlappingPeriods");
+        f.Writes.SaveCalls.ShouldBe(writes); (await f.ReadAsync()).Services.ShouldHaveSingleItem();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task Combined_task_save_preserves_repeated_employee_occurrences_and_rejects_period_conflicts(int type)
+    {
+        await using var f = await Fixture.CreateAsync(); var id = Guid.NewGuid();
+        var first = new SaveFlightTaskPerformerRequest(Guid.NewGuid(), f.Owner.StaffMemberId, Now, Now.AddHours(2));
+        var next = new SaveFlightTaskPerformerRequest(Guid.NewGuid(), f.Owner.StaffMemberId,
+            Now.AddDays(1), Now.AddDays(1).AddHours(4));
+        var input = new SaveFlightTaskRequest(type, null, Now, Now.AddDays(2), "TASK", null, [first, next], [], [], []);
+        var saved = await f.BatchAsync(new(TaskChanges: [new(id, input)]));
+        saved.IsSuccess.ShouldBeTrue();
+        saved.Value.Tasks!.Single().Performers.Select(item => item.Id).Order().ShouldBe(input.Performers.Select(item => item.Id).Order());
+        var writes = f.Writes.SaveCalls;
+        var conflicting = input with { Performers = [first, next with { StartUtc = first.StartUtc }] };
+        (await f.BatchAsync(new(TaskChanges: [new(id, conflicting)]))).Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
+        f.Writes.SaveCalls.ShouldBe(writes);
+        f.Db.ChangeTracker.Clear();
+        var retained = await f.Db.Flights.Include(item => item.TaskRecords).ThenInclude(item => item.Performers).SingleAsync();
+        retained.Tasks.Single().Performers.Single(item => item.Id == next.Id).Window.FromUtc.ShouldBe(next.StartUtc);
     }
 
     [Fact]

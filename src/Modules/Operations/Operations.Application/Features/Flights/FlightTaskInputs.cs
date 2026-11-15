@@ -20,9 +20,8 @@ internal static class FlightTaskInputs
         if (input.Performers is not { Count: > 0 })
             return Error.Validation("Every task requires at least one performer.", "Operations.WorkOrder.TaskPerformerRequired");
         if (input.Performers.Any(p => p is null || p.Id == Guid.Empty || p.StaffMemberId == Guid.Empty || p.StartUtc == default) ||
-            input.Performers.Select(p => p.Id).Distinct().Count() != input.Performers.Count ||
-            input.Performers.Select(p => p.StaffMemberId).Distinct().Count() != input.Performers.Count)
-            return Error.Validation("Provide one identified work period for every selected employee.", "Operations.FlightTask.PerformersInvalid");
+            input.Performers.Select(p => p.Id).Distinct().Count() != input.Performers.Count)
+            return Error.Validation("Provide an employee and a unique record identity for every working period.", "Operations.FlightTask.PerformersInvalid");
         foreach (var list in new[] { input.Tools, input.Materials, input.GeneralSupports })
             if (list is null || list.Any(item => item is null || item.Id == Guid.Empty || item.ResourceId == Guid.Empty) ||
                 list.Select(item => item.Id).Distinct().Count() != list.Count || list.Select(item => item.ResourceId).Distinct().Count() != list.Count)

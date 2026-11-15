@@ -159,7 +159,7 @@ public sealed class FlightTaskPerformerConfiguration : IEntityTypeConfiguration<
         builder.Property(p => p.Notes).HasMaxLength(2000);
         // EF-only index property shares the snapshot column; Employee owns the staff identity.
         builder.Property<Guid>("StaffMemberId").HasColumnName("StaffMemberId").IsRequired();
-        builder.HasIndex(nameof(FlightTaskPerformer.FlightTaskId), "StaffMemberId").IsUnique();
+        builder.HasIndex(nameof(FlightTaskPerformer.FlightTaskId), "StaffMemberId");
 
         builder.OwnsOne(p => p.Employee, employee =>
         {

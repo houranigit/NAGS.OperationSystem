@@ -179,6 +179,10 @@ internal fun taskEditorValidation(item: FlightTaskDraft, request: SaveFlightTask
         if (value == null || prefix + "startUtc" in errors) put(prefix + "startUtc", R.string.task_validation_staff_period)
         if (prefix + "endUtc" in errors && value?.endUtc != null) put(prefix + "endUtc", R.string.task_validation_staff_period)
         if (prefix + "notes" in errors) put(prefix + "notes", R.string.task_validation_notes)
+        if (prefix + "overlappingPeriods" in errors) {
+            put(prefix + "startUtc", R.string.work_validation_staff_overlap)
+            put(prefix + "endUtc", R.string.work_validation_staff_overlap)
+        }
         taskActualError(taskTimeInstant(value?.startUtc), ata, atd)?.let { put(prefix + "startUtc", it) }
         taskActualError(taskTimeInstant(value?.endUtc), ata, atd)?.let { put(prefix + "endUtc", it) }
     }

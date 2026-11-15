@@ -320,7 +320,7 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
     }
 
     [Fact]
-    public async Task Service_employee_uniqueness_and_invalid_parent_edits_preserve_the_existing_graph()
+    public async Task Service_employee_overlap_and_invalid_parent_edits_preserve_the_existing_graph()
     {
         await using var db = fixture.CreateContext();
         await db.Database.MigrateAsync();
@@ -346,13 +346,6 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
         (await db.SaveChangesAsync()).ShouldBe(0);
         reloaded.RowVersion.ShouldBe(version);
         var performerId = persisted.Performers.ShouldHaveSingleItem().Id;
-        var duplicate = await Should.ThrowAsync<SqlException>(() => db.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO [operations].[flight_service_performers]
-                ([Id], [FlightServiceId], [StaffMemberId], [StaffFullName], [StaffEmployeeId], [FromUtc], [ToUtc])
-            SELECT {Guid.NewGuid()}, [FlightServiceId], [StaffMemberId], [StaffFullName], [StaffEmployeeId], [FromUtc], [ToUtc]
-            FROM [operations].[flight_service_performers] WHERE [Id] = {performerId}
-            """));
-        new[] { 2601, 2627 }.ShouldContain(duplicate.Number);
         db.ChangeTracker.Clear();
 
         reloaded = await LoadFlightAsync(db, flight.Id);
@@ -364,6 +357,55 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
         persisted.Performers.Single().Employee.ShouldBe(employee);
         persisted.Attachments.ShouldHaveSingleItem().Id.ShouldBe(service.Attachments.Single().Id);
         reloaded.RowVersion.ShouldBe(version);
+    }
+
+    [Fact]
+    public async Task Repeated_performer_migration_preserves_existing_rows_and_round_trips_independent_shifts()
+    {
+        await using var db = fixture.CreateContext();
+        await db.Database.MigrateAsync("20261113174403_Operations_FlightUserActivity");
+        var actor = Guid.NewGuid();
+        var employee = Employee("Shift engineer", "E351");
+        var flight = ScheduleFlight(employee);
+        var parent = TimeWindow.Create(Now, Now.AddDays(3)).Value;
+        var firstShift = TimeWindow.Create(Now, Now.AddHours(4)).Value;
+        var secondShift = TimeWindow.Create(Now.AddDays(1), Now.AddDays(1).AddHours(4)).Value;
+        var service = flight.AddService(flight.PlannedServices.Single().Service, null, parent, null, actor, Now).Value;
+        var serviceFirst = flight.AddServicePerformer(service.Id, employee, firstShift, actor, Now).Value;
+        var task = flight.AddTask(FlightTaskType.Major, null, null, parent, null, actor, Now,
+            initialPerformers: [new(employee, firstShift)]).Value;
+        var taskFirstId = task.Performers.Single().Id;
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        var version = flight.RowVersion.ToArray();
+        db.ChangeTracker.Clear();
+
+        await db.Database.MigrateAsync();
+        var reloaded = await db.Flights
+            .Include(item => item.ServiceRecords).ThenInclude(item => item.Performers)
+            .Include(item => item.TaskRecords).ThenInclude(item => item.Performers)
+            .AsSplitQuery().SingleAsync(item => item.Id == flight.Id);
+        reloaded.RowVersion.ShouldBe(version);
+        reloaded.Services.Single().Performers.Single().Id.ShouldBe(serviceFirst.Id);
+        reloaded.Tasks.Single().Performers.Single().Id.ShouldBe(taskFirstId);
+        var serviceSecond = reloaded.AddServicePerformer(service.Id, employee, secondShift, actor, Now.AddDays(1)).Value;
+        var taskSecond = reloaded.AddTaskPerformer(task.Id, employee, secondShift, "Second day", actor, Now.AddDays(1)).Value;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        reloaded = await db.Flights
+            .Include(item => item.ServiceRecords).ThenInclude(item => item.Performers)
+            .Include(item => item.TaskRecords).ThenInclude(item => item.Performers)
+            .AsSplitQuery().SingleAsync(item => item.Id == flight.Id);
+        var savedService = reloaded.Services.Single();
+        var savedTask = reloaded.Tasks.Single();
+        savedService.Performers.Select(item => item.Id).Order().ShouldBe(new[] { serviceFirst.Id, serviceSecond.Id }.Order());
+        savedTask.Performers.Select(item => item.Id).Order().ShouldBe(new[] { taskFirstId, taskSecond.Id }.Order());
+        savedService.Performers.ShouldAllBe(item => item.Employee == employee);
+        savedTask.Performers.ShouldAllBe(item => item.Employee == employee);
+        savedService.Performers.Single(item => item.Id == serviceSecond.Id).Window.ShouldBe(secondShift);
+        savedTask.Performers.Single(item => item.Id == taskSecond.Id).Window.ShouldBe(secondShift);
+        savedTask.Performers.Single(item => item.Id == taskSecond.Id).Notes.ShouldBe("Second day");
     }
 
     [Fact]

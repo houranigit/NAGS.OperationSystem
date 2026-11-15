@@ -51,8 +51,9 @@ data class SaveFlightServiceRequest(
         val departure = actualDepartureUtc?.let(::serviceInstant)
         if (start != null && (arrival != null && start < arrival || departure != null && start > departure)) add("startUtc")
         if (end != null && (arrival != null && end < arrival || departure != null && end > departure)) add("endUtc")
-        if (performers.map { it.id.lowercase() }.distinct().size != performers.size ||
-            performers.map { it.staffMemberId.lowercase() }.distinct().size != performers.size || performers.isEmpty()) add("performers")
+        if (performers.map { it.id.lowercase() }.distinct().size != performers.size || performers.isEmpty()) add("performers")
+        conflictingWorkPeriodIds(performers.map { OperationalWorkPeriod(it.id, it.staffMemberId, it.startUtc, it.endUtc) })
+            .forEach { add("performers.$it.overlappingPeriods") }
         if (requireClosedPerformers && endUtc != null && performers.any { it.endUtc == null }) add("endUtc")
         performers.forEach { performer ->
             val prefix = "performers.${performer.id}."

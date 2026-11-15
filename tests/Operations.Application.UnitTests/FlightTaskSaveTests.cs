@@ -63,16 +63,41 @@ public sealed class FlightTaskSaveTests
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
-    public async Task Each_task_type_requires_unique_station_staff(int type)
+    public async Task Each_task_type_requires_station_staff_and_distinct_nonoverlapping_employee_periods(int type)
     {
         await using var f = await Fixture.CreateAsync(); var id = Guid.NewGuid();
         (await f.SaveAsync(id, f.Input with { TaskType = type, Performers = [] })).Error.Code.ShouldBe("Operations.WorkOrder.TaskPerformerRequired");
         var p = f.Input.Performers.Single();
         (await f.SaveAsync(id, f.Input with { TaskType = type, Performers = [p, p with { Id = Guid.NewGuid() }] }))
-            .Error.Code.ShouldBe("Operations.FlightTask.PerformersInvalid");
+            .Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
         f.Reader.StaffMembers[p.StaffMemberId] = f.Reader.StaffMembers[p.StaffMemberId] with { StationId = Guid.NewGuid() };
         (await f.SaveAsync(id, f.Input with { TaskType = type })).Error.Code.ShouldBe("Operations.Ref.StaffStationMismatch");
         (await f.ReadAsync()).Tasks.ShouldBeEmpty(); f.Storage.SaveCalls.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task Repeated_employee_task_periods_roundtrip_on_different_days_with_stable_identities(int type)
+    {
+        await using var f = await Fixture.CreateAsync(); var id = Guid.NewGuid();
+        var first = f.Input.Performers.Single() with { EndUtc = Now.AddHours(2), Notes = "First shift" };
+        var next = new SaveFlightTaskPerformerRequest(Guid.NewGuid(), first.StaffMemberId,
+            Now.AddDays(1), Now.AddDays(1).AddHours(4), "Next shift");
+        var input = f.Input with { TaskType = type, EndUtc = Now.AddDays(2), Performers = [first, next] };
+        var result = await f.SaveAsync(id, input);
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Task.Performers.Select(item => item.Id).Order().ShouldBe(input.Performers.Select(item => item.Id).Order());
+        result.Value.Task.Performers.Select(item => item.StaffMemberId).Distinct().ShouldHaveSingleItem().ShouldBe(first.StaffMemberId);
+        var writes = f.Writes.SaveCalls;
+        await f.ChangeVersionAsync();
+        (await f.SaveAsync(id, input, version: InitialVersion)).IsSuccess.ShouldBeTrue();
+        var conflicting = input with { Notes = "Must not leak", Performers = [first, next with { StartUtc = Now }] };
+        (await f.SaveAsync(id, conflicting)).Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
+        f.Writes.SaveCalls.ShouldBe(writes);
+        var saved = (await f.ReadAsync()).Tasks.ShouldHaveSingleItem();
+        saved.Notes.ShouldBe(input.Notes);
+        saved.Performers.Single(item => item.Id == next.Id).Window.FromUtc.ShouldBe(next.StartUtc);
     }
 
     [Theory]

@@ -66,8 +66,9 @@ data class SaveFlightTaskRequest(
             (arrival != null && value < arrival || departure != null && value > departure)
         if (start == null || outOfActuals(start)) add("startUtc")
         if (endUtc != null && (end == null || start != null && end < start || outOfActuals(end))) add("endUtc")
-        if (performers.isEmpty() || performers.map { it.id.lowercase() }.distinct().size != performers.size ||
-            performers.map { it.staffMemberId.lowercase() }.distinct().size != performers.size) add("performers")
+        if (performers.isEmpty() || performers.map { it.id.lowercase() }.distinct().size != performers.size) add("performers")
+        conflictingWorkPeriodIds(performers.map { OperationalWorkPeriod(it.id, it.staffMemberId, it.startUtc, it.endUtc) })
+            .forEach { add("performers.$it.overlappingPeriods") }
         val completionRequired = requireClosedChildren && (endUtc != null || departure != null)
         if (completionRequired && (endUtc == null || performers.any { it.endUtc == null })) add("endUtc")
         performers.forEach { person ->

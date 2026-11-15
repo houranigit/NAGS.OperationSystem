@@ -206,7 +206,7 @@ public sealed class FlightServiceTests
     }
 
     [Fact]
-    public void RepeatedServiceOccurrences_AllowAnEmployeeOnEachService_ButNotTwiceOnOneService()
+    public void RepeatedServiceOccurrences_AllowAnEmployeeOnEachService_ButRejectOverlappingPeriodsOnOneService()
     {
         var flight = ScheduleFlight();
         var selectedService = TestData.Service();
@@ -229,7 +229,7 @@ public sealed class FlightServiceTests
         secondPeriod.Employee.ShouldBe(employee);
         secondPeriod.Window.ShouldBe(secondWindow);
         second.Performers.ShouldHaveSingleItem().ShouldBeSameAs(secondPeriod);
-        duplicate.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeAssignmentsRequired");
+        duplicate.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
         flight.UpdatedAtUtc.ShouldBe(previousTime);
     }
 
@@ -555,7 +555,7 @@ public sealed class FlightServiceTests
     }
 
     [Fact]
-    public void ServicePerformerUpdate_CannotSelectAnEmployeeAlreadyOnTheService()
+    public void ServicePerformerUpdate_CannotOverlapAnotherPeriodForTheSelectedEmployee()
     {
         var flight = ScheduleFlight();
         var service = AddService(flight);
@@ -567,7 +567,7 @@ public sealed class FlightServiceTests
         var result = flight.UpdateServicePerformer(service.Id, first.Id, second.Employee, Window(),
             Guid.NewGuid(), TestData.Now.AddMinutes(1));
 
-        result.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeAssignmentsRequired");
+        result.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
         first.Employee.ShouldBeSameAs(originalEmployee);
         service.Performers.Count.ShouldBe(2);
         service.UpdatedByUserId.ShouldBe(user);
@@ -683,6 +683,92 @@ public sealed class FlightServiceTests
         AttachmentDetails.Create("file.jpg", "key", "image/jpeg", 1, (AttachmentKind)99).IsFailure.ShouldBeTrue();
         AttachmentDetails.Create("file.jpg", "key", "image/jpeg", 1, AttachmentKind.Image).Value
             .ShouldNotBe(AttachmentDetails.Create("file.jpg", "key", "image/jpeg", 1, AttachmentKind.Voice).Value);
+    }
+
+    [Theory]
+    [InlineData(0, 8, 8, 16, false)]
+    [InlineData(0, 8, 24, 32, false)]
+    [InlineData(24, 32, 0, 8, false)]
+    [InlineData(0, 8, 7, 12, true)]
+    [InlineData(0, 8, 1, 7, true)]
+    [InlineData(1, 7, 0, 8, true)]
+    [InlineData(0, 8, 0, 8, true)]
+    [InlineData(0, null, 24, 32, true)]
+    [InlineData(0, 8, 7, null, true)]
+    [InlineData(0, 8, 8, null, false)]
+    [InlineData(0, null, 0, null, true)]
+    [InlineData(8, 8, 8, 8, true)]
+    [InlineData(8, 8, 0, 16, false)]
+    [InlineData(0, 16, 8, 8, false)]
+    [InlineData(0, 0, 8, 8, false)]
+    public void RepeatedServiceEmployeePeriods_RequireDifferentNonoverlappingWindows(
+        int firstStart, int? firstEnd, int secondStart, int? secondEnd, bool conflicts)
+    {
+        var flight = ScheduleFlight();
+        var service = AddService(flight);
+        var employee = TestData.Staff();
+        var firstWindow = TimeWindow.Create(TestData.Now.AddHours(firstStart), firstEnd.HasValue ? TestData.Now.AddHours(firstEnd.Value) : null).Value;
+        var secondWindow = TimeWindow.Create(TestData.Now.AddHours(secondStart), secondEnd.HasValue ? TestData.Now.AddHours(secondEnd.Value) : null).Value;
+        var first = flight.AddServicePerformer(service.Id, employee, firstWindow, Guid.NewGuid(), TestData.Now.AddMinutes(1)).Value;
+        var previousAudit = flight.UpdatedAtUtc;
+
+        var second = flight.AddServicePerformer(service.Id, employee, secondWindow, Guid.NewGuid(), TestData.Now.AddMinutes(2));
+
+        if (conflicts)
+        {
+            second.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
+            service.Performers.ShouldHaveSingleItem().ShouldBeSameAs(first);
+            flight.UpdatedAtUtc.ShouldBe(previousAudit);
+        }
+        else
+        {
+            second.IsSuccess.ShouldBeTrue();
+            service.Performers.Count.ShouldBe(2);
+            second.Value.Id.ShouldNotBe(first.Id);
+            second.Value.Employee.StaffMemberId.ShouldBe(first.Employee.StaffMemberId);
+        }
+
+        flight.AddServicePerformer(service.Id, TestData.Staff(), secondWindow, Guid.NewGuid(), TestData.Now.AddMinutes(3))
+            .IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void RepeatedServiceEmployeeCorrections_PreserveOccurrencesAndRejectCollisionsWithoutMutation()
+    {
+        var flight = ScheduleFlight();
+        var service = AddService(flight);
+        var employee = TestData.Staff();
+        var first = flight.AddServicePerformer(service.Id, employee,
+            TimeWindow.Create(TestData.Now, TestData.Now.AddHours(8)).Value, Guid.NewGuid(), TestData.Now).Value;
+        var second = flight.AddServicePerformer(service.Id, employee,
+            TimeWindow.Create(TestData.Now.AddHours(24), TestData.Now.AddHours(32)).Value, Guid.NewGuid(), TestData.Now).Value;
+        var moved = TimeWindow.Create(TestData.Now.AddHours(8), TestData.Now.AddHours(16)).Value;
+
+        flight.UpdateServicePerformer(service.Id, first.Id, employee, moved, Guid.NewGuid(), TestData.Now.AddMinutes(1))
+            .Value.ShouldBeSameAs(first);
+        var previousAudit = service.UpdatedAtUtc;
+        var rejected = flight.UpdateServicePerformer(service.Id, first.Id, employee,
+            TimeWindow.Create(TestData.Now.AddHours(25), TestData.Now.AddHours(30)).Value, Guid.NewGuid(), TestData.Now.AddMinutes(2));
+
+        rejected.Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
+        first.Window.ShouldBe(moved);
+        service.UpdatedAtUtc.ShouldBe(previousAudit);
+        service.Performers.Count.ShouldBe(2);
+
+        var adjacent = TimeWindow.Create(TestData.Now.AddHours(16), TestData.Now.AddHours(24)).Value;
+        flight.SaveService(service.Id, service.Service, null, service.Window, null,
+            [new(employee, moved, first.Id), new(employee, adjacent, second.Id)], Guid.NewGuid(), TestData.Now.AddMinutes(3))
+            .IsSuccess.ShouldBeTrue();
+        service.Performers[0].ShouldBeSameAs(first);
+        service.Performers[1].ShouldBeSameAs(second);
+        var previousFlightAudit = flight.UpdatedAtUtc;
+
+        flight.SaveService(service.Id, service.Service, "MUST-NOT-LEAK", service.Window, null,
+            [new(employee, moved, first.Id), new(employee, moved, second.Id)], Guid.NewGuid(), TestData.Now.AddMinutes(4))
+            .Error.Code.ShouldBe("Operations.WorkOrder.EmployeeOverlappingPeriods");
+        service.CustomerReferenceNumber.ShouldBeNull();
+        second.Window.ShouldBe(adjacent);
+        flight.UpdatedAtUtc.ShouldBe(previousFlightAudit);
     }
 
     private static Flight ScheduleFlight() =>

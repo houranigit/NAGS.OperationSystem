@@ -37,7 +37,6 @@ internal static class FlightActualRules
 
     internal static Result ServicePeriod(Flight flight, Guid recordId, SaveFlightServiceRequest input)
     {
-        if (input.ServiceId == WellKnownMasterDataIds.UnknownService) return Result.Success();
         return flight.Services.Any(other => other.Id != recordId && other.Service.ServiceId == input.ServiceId &&
             Overlaps(input.StartUtc, input.EndUtc, other.Window.FromUtc, other.Window.ToUtc)) ? Overlap() : Result.Success();
     }
@@ -55,6 +54,7 @@ internal static class FlightActualRules
     }
 
     private static bool Overlaps(DateTimeOffset firstStart, DateTimeOffset? firstEnd, DateTimeOffset secondStart, DateTimeOffset? secondEnd) =>
+        firstStart == secondStart && firstEnd == secondEnd ||
         firstEnd != firstStart && secondEnd != secondStart &&
         (!secondEnd.HasValue || firstStart < secondEnd.Value) && (!firstEnd.HasValue || secondStart < firstEnd.Value);
 

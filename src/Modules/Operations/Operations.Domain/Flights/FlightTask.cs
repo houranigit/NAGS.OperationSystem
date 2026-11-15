@@ -308,8 +308,9 @@ public sealed class FlightTask : Entity<Guid>
         if (check.IsFailure)
             return check.Error;
 
-        if (_performers.Any(record => record.Employee.StaffMemberId == item!.StaffMemberId))
-            return OperationalWorkValidation.DuplicateEmployee();
+        if (_performers.Any(record => record.Employee.StaffMemberId == item!.StaffMemberId &&
+            OperationalWorkValidation.PeriodsConflict(record.Window, window!)))
+            return OperationalWorkValidation.OverlappingEmployeePeriods();
 
         var record = new FlightTaskPerformer(id ?? Guid.NewGuid(), Id, item!, window!, notes);
         _performers.Add(record);
@@ -324,8 +325,9 @@ public sealed class FlightTask : Entity<Guid>
         var check = ValidatePerformer(item, window, notes);
         if (check.IsFailure)
             return check.Error;
-        if (_performers.Any(entry => entry.Id != recordId && entry.Employee.StaffMemberId == item!.StaffMemberId))
-            return OperationalWorkValidation.DuplicateEmployee();
+        if (_performers.Any(entry => entry.Id != recordId && entry.Employee.StaffMemberId == item!.StaffMemberId &&
+            OperationalWorkValidation.PeriodsConflict(entry.Window, window!)))
+            return OperationalWorkValidation.OverlappingEmployeePeriods();
         if (record.Employee == item && record.Window == window && record.Notes == NormalizeOptional(notes))
             return false;
 

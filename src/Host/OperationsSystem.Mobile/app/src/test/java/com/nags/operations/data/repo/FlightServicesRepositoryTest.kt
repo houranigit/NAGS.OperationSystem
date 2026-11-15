@@ -606,8 +606,9 @@ class FlightServicesRepositoryTest {
             assertEquals(expected, input.copy(performers = listOf(value)).validationErrors(v1))
         }
         assertEquals(setOf("performers"), input.copy(performers = emptyList()).validationErrors(v1))
-        assertEquals(setOf("performers"), input.copy(performers = listOf(performer,
-            performer.copy(id = "77777777-7777-7777-7777-777777777777"))).validationErrors(v1))
+        assertEquals(setOf(prefix + "overlappingPeriods", "performers.77777777-7777-7777-7777-777777777777.overlappingPeriods"),
+            input.copy(performers = listOf(performer,
+                performer.copy(id = "77777777-7777-7777-7777-777777777777"))).validationErrors(v1))
         assertEquals(setOf("performers"), input.copy(performers = listOf(performer,
             performer.copy(staffMemberId = "88888888-8888-8888-8888-888888888888"))).validationErrors(v1))
         assertTrue(input.copy(endUtc = now.toString(), performers = listOf(performer.copy(endUtc = now.toString())))

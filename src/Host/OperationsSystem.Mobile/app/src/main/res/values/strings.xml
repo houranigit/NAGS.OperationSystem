@@ -447,7 +447,7 @@
     <string name="service_validation_staff_end_required">Enter an End time before closing the service.</string>
     <string name="service_validation_reference">Customer reference cannot exceed 200 characters.</string>
     <string name="service_validation_notes">Remarks cannot exceed 2,000 characters.</string>
-    <string name="service_validation_performers">Add at least one staff performer. Each employee can appear only once.</string>
+    <string name="service_validation_performers">Add at least one staff performer.</string>
     <string name="service_validation_staff">Select an available station employee.</string>
     <string name="service_validation_staff_period">Staff periods must be valid and stay within the service period.</string>
     <string name="service_validation_attachments">Use up to 10 attachments: PNG/JPEG/WebP images up to 10 MB, audio up to 25 MB, or PDFs up to 2 MB. Total: 25 MB.</string>
@@ -459,6 +459,7 @@
     <string name="service_validation_before_ata">Time cannot be before actual arrival (ATA).</string>
     <string name="service_validation_after_atd">Time cannot be after actual departure (ATD).</string>
     <string name="actuals_service_bounds">Actual arrival and departure must include all service and staff work. Correct the work periods or actual times.</string>
+    <string name="work_validation_staff_overlap">Working periods for the same employee must be different and cannot overlap.</string>
     <string name="work_quantity">Quantity</string>
     <string name="work_enter_quantity">Enter quantity</string>
     <string name="task_validation_type">Select Major or Minor.</string>
@@ -468,7 +469,7 @@
     <string name="task_validation_staff_end_required">Enter an End time before closing the task.</string>
     <string name="task_validation_reference">Customer reference cannot exceed 200 characters.</string>
     <string name="task_validation_notes">Remarks cannot exceed 2,000 characters.</string>
-    <string name="task_validation_performers">Add at least one staff performer. Each employee can appear only once.</string>
+    <string name="task_validation_performers">Add at least one staff performer.</string>
     <string name="task_validation_staff">Select an available station employee.</string>
     <string name="task_validation_staff_period">Staff periods must be valid and stay within the task period.</string>
     <string name="task_validation_resources">Each selected item can appear only once in this list.</string>

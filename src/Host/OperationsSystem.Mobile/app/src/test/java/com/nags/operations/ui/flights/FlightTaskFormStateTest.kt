@@ -40,6 +40,19 @@ class FlightTaskFormStateTest {
         recordId, flight.flightNumber, "change", operation, input?.let { Json.encodeToString(it) }, flight.rowVersion,
         Json.encodeToString(record), start)
 
+    @Test fun repeatedEmployeeOverlapErrorsIdentifyBothRowsAndClearAfterASeparateShift() {
+        val initial = draft()
+        val repeated = initial.employees.single().copy(id = "88888888-8888-8888-8888-888888888888")
+        val conflicting = initial.copy(employees = initial.employees + repeated)
+        val expected = conflicting.employees.flatMap { listOf("performers.${it.id}.startUtc", "performers.${it.id}.endUtc") }
+            .associateWith { R.string.work_validation_staff_overlap }
+        assertEquals(expected, taskEditorValidation(conflicting, conflicting.taskInput(zone), flight, catalogs,
+            flight.rowVersion, actualArrival, null))
+        val separate = conflicting.copy(employees = listOf(initial.employees.single().copy(period = FlightWorkPeriod("2026-11-11T11:00", "2026-11-11T12:00")),
+            repeated.copy(period = FlightWorkPeriod("2026-11-11T12:00"))))
+        assertTrue(taskEditorValidation(separate, separate.taskInput(zone), flight, catalogs, flight.rowVersion, actualArrival, null).isEmpty())
+    }
+
     @Test fun legacyQuantityPeriodsStayVisibleUntilAValidExplicitQuantityConfirmsTheirReplacement() {
         val period = FlightWorkPeriod("2026-11-11T11:15", "2026-11-11T11:45")
         val legacy = FlightResourceDraft(resourceId = resourceId, resourceName = "Material", period = period)
