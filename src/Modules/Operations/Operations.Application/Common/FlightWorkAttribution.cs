@@ -8,8 +8,8 @@ internal static class FlightWorkAttribution
     internal static IEnumerable<Guid?> UserIds(Flight flight) =>
         flight.ArrivalSubmissions.SelectMany(item => new Guid?[] { item.CreatedByUserId, item.UpdatedByUserId })
             .Concat(flight.DepartureSubmissions.SelectMany(item => new Guid?[] { item.CreatedByUserId, item.UpdatedByUserId }))
-            .Concat(flight.Services.SelectMany(item => new Guid?[] { item.CreatedByUserId, item.EndedByUserId, item.UpdatedByUserId }))
-            .Concat(flight.Tasks.SelectMany(item => new Guid?[] { item.CreatedByUserId, item.EndedByUserId, item.UpdatedByUserId })).Append(flight.CreatedByUserId);
+            .Concat(flight.ServiceRecords.SelectMany(item => new Guid?[] { item.CreatedByUserId, item.EndedByUserId, item.UpdatedByUserId }))
+            .Concat(flight.TaskRecords.SelectMany(item => new Guid?[] { item.CreatedByUserId, item.EndedByUserId, item.UpdatedByUserId })).Concat(flight.ReturnToRamps.SelectMany(item => new Guid?[] { item.CreatedByUserId, item.EndedByUserId, item.UpdatedByUserId })).Append(flight.CreatedByUserId);
 
     internal static Task<IReadOnlyDictionary<Guid, string>> NamesAsync(IUserDisplayNameReader? reader,
         IEnumerable<Guid?> userIds, CancellationToken cancellationToken) => reader is null

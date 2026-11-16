@@ -108,6 +108,14 @@ internal fun AdHocFlightEditor(viewModel: FlightsViewModel, initialFlight: Fligh
         onSaveArrival = { detail, value -> checkNotNull(viewModel.arrivals).save(detail, value) },
         onReviewArrival = { viewModel.reviewFlightInput(flight.id) }, onSaveDeparture = viewModel::saveDeparture,
         onSaveServices = viewModel::saveServices, onSaveTasks = viewModel::saveTasks,
+        onSaveReturnToRamp = viewModel::saveReturnToRamp,
+        loadReturnToRampInput = { viewModel.returnsToRamp?.pendingInput(flight.id, it) },
+        loadReturnToRampSignature = { viewModel.returnToRampSignature(flight, it) },
+        loadReturnToRampAttachment = { occurrence, kind, record, attachment, version ->
+            viewModel.pendingReturnToRampAttachment(flight.id, occurrence, attachment) ?: if (version.isBlank()) null
+            else if (kind == "services") viewModel.serviceAttachment(flight.id, record, attachment, version)
+            else viewModel.taskAttachment(flight.id, record, attachment, version)
+        },
         onReviewServices = { viewModel.reviewFlightInput(flight.id) }, onReviewTasks = { viewModel.reviewFlightInput(flight.id) },
         loadServiceAttachment = viewModel::serviceAttachment, loadPendingServiceAttachment = viewModel::pendingServiceAttachment,
         loadTaskAttachment = viewModel::taskAttachment, loadPendingTaskAttachment = viewModel::pendingTaskAttachment,

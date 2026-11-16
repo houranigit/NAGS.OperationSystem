@@ -34,10 +34,11 @@ import com.nags.operations.data.db.entities.FlightDiscoveryStationEntity
 import com.nags.operations.data.db.entities.FlightLocalInteractionEntity
 
 /** Mobile caches and operational intent remain separate from notifications and the untouched legacy database. */
-@Database(version = 14, exportSchema = true, entities = [FlightOperationsBatchEntity::class, AdHocFlightContextEntity::class, AdHocFlightPendingEntity::class, FlightDiscoveryQueryEntity::class, FlightDiscoveryDetailEntity::class, FlightDiscoveryStationEntity::class, FlightLocalInteractionEntity::class,
+@Database(version = 15, exportSchema = true, entities = [com.nags.operations.data.db.entities.FlightReturnToRampPendingEntity::class, FlightOperationsBatchEntity::class, AdHocFlightContextEntity::class, AdHocFlightPendingEntity::class, FlightDiscoveryQueryEntity::class, FlightDiscoveryDetailEntity::class, FlightDiscoveryStationEntity::class, FlightLocalInteractionEntity::class,
     SharedCatalogSnapshotEntity::class, FlightSnapshotEntity::class, FlightDetailCacheEntity::class, FlightArrivalPendingEntity::class, FlightDeparturePendingEntity::class, FlightCancellationPendingEntity::class, FlightServicePendingEntity::class, FlightServiceFormDraftEntity::class, FlightTaskPendingEntity::class,
 ])
 abstract class CatalogDatabase : RoomDatabase() {
+    abstract fun flightReturnToRampDao(): com.nags.operations.data.db.dao.FlightReturnToRampDao
     abstract fun flightDiscoveryDao(): FlightDiscoveryDao
     abstract fun adHocFlightDao(): AdHocFlightDao
     abstract fun flightOperationsBatchDao(): FlightOperationsBatchDao
@@ -191,12 +192,18 @@ abstract class CatalogDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS flight_rtr_pending (ownerSubject TEXT NOT NULL, flightId TEXT NOT NULL, occurrenceId TEXT NOT NULL, flightNumber TEXT NOT NULL, changeId TEXT NOT NULL, inputJson TEXT NOT NULL, previewJson TEXT NOT NULL, rowVersion TEXT NOT NULL, reviewedOccurrenceJson TEXT, savedAtUtc TEXT NOT NULL, status TEXT NOT NULL, error TEXT, filesJson TEXT NOT NULL, needsComparison INTEGER NOT NULL, attemptInputJson TEXT, attemptRowVersion TEXT, attemptFilesJson TEXT, PRIMARY KEY(ownerSubject, flightId, occurrenceId))")
+            }
+        }
+
         fun get(context: Context): CatalogDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 CatalogDatabase::class.java,
                 "shared-catalogs.db",
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15).build().also { instance = it }
         }
     }
 }

@@ -120,6 +120,8 @@ internal fun FlightSheetWork(
     items: List<FlightSheetWorkItem>,
     zone: ZoneId,
     modifier: Modifier = Modifier,
+    title: String = stringResource(R.string.sheet_work_title),
+    summaryHeader: @Composable (() -> Unit)? = null,
 ) {
     var closedExpanded by rememberSaveable(flightId) { mutableStateOf(false) }
     val active = items.filter { it.endUtc.isNullOrBlank() }
@@ -131,11 +133,12 @@ internal fun FlightSheetWork(
         Column {
             FlowRow(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(stringResource(R.string.sheet_work_title), Modifier.semantics { heading() },
+                Text(title, Modifier.semantics { heading() },
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp), fontWeight = FontWeight.Bold)
                 Text(stringResource(R.string.sheet_work_summary, active.size, closed.size),
                     style = MaterialTheme.typography.labelSmall, color = muted)
             }
+            summaryHeader?.invoke()
             if (items.isEmpty()) {
                 Text(stringResource(R.string.flight_card_no_work), Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
                     style = MaterialTheme.typography.bodySmall, color = muted)

@@ -1,5 +1,7 @@
 package com.nags.operations.data.repo
 
+import com.nags.operations.data.withReturnToRampReports
+
 import com.nags.operations.data.*
 import com.nags.operations.data.api.HttpClientFactory
 import com.nags.operations.data.db.dao.FlightDiscoveryDao
@@ -695,14 +697,14 @@ private fun FlightDetail.discoveryCard(interaction: String) = FlightListItem(id,
     stationId = stationId, stationTimeZoneId = stationTimeZoneId, isAdHocFlight = isAdHocFlight,
     createdByUserId = createdByUserId, createdByDisplayName = createdByDisplayName,
     hasArrivalSubmission = arrivalSubmissions.isNotEmpty(), hasDepartureSubmission = departureSubmissions.isNotEmpty(),
-    hasCancellationSubmission = hasCancellationSubmission || cancellationSubmissions.isNotEmpty(), lastInteractionAtUtc = interaction)
+    hasCancellationSubmission = hasCancellationSubmission || cancellationSubmissions.isNotEmpty(), lastInteractionAtUtc = interaction).withReturnToRampReports(this)
 private fun FlightListItem.withAcknowledged(detail: FlightDetail) = copy(flightNumber = detail.flightNumber,
     customerId = detail.customerId, customerName = detail.customerName, customerIataCode = detail.customerIataCode,
     scheduledArrivalUtc = detail.scheduledArrivalUtc, scheduledDepartureUtc = detail.scheduledDepartureUtc,
     stationTimeZoneId = detail.stationTimeZoneId, hasArrivalSubmission = detail.arrivalSubmissions.isNotEmpty(),
     hasDepartureSubmission = detail.departureSubmissions.isNotEmpty(),
     hasCancellationSubmission = detail.hasCancellationSubmission || detail.cancellationSubmissions.isNotEmpty(),
-    latestCancellationAtUtc = detail.cancellationSubmissions.maxByOrNull { instant(it.canceledAtUtc) }?.canceledAtUtc)
+    latestCancellationAtUtc = detail.cancellationSubmissions.maxByOrNull { instant(it.canceledAtUtc) }?.canceledAtUtc).withReturnToRampReports(detail)
 private fun FlightListItem.discoveryMatches(term: String): Boolean {
     val lower = term.lowercase(Locale.ROOT); val compact = lower.replace("-", "").replace(" ", "")
     return flightNumber.lowercase(Locale.ROOT).contains(lower) || customerName.lowercase(Locale.ROOT).contains(lower) ||

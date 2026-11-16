@@ -136,6 +136,31 @@ internal static class FlightEndpoints
             return Results.File(result.Value.Content, result.Value.ContentType, fileDownloadName: result.Value.FileName, enableRangeProcessing: false);
         }).RequirePermission(OperationsPermissions.Flights.View);
 
+        mobile.MapGet("/{id:guid}/returns-to-ramp/{occurrenceId:guid}/signature", async (
+            Guid id, Guid occurrenceId, DateTimeOffset expectedUpdatedAt, HttpResponse response, ISender sender, CancellationToken ct) =>
+        {
+            var result = await sender.Send(new GetMobileFlightReturnToRampSignatureQuery(id, occurrenceId, expectedUpdatedAt), ct);
+            if (result.IsFailure) return ApiResults.Problem(result.Error);
+            response.Headers.CacheControl = "private, no-store";
+            return Results.File(result.Value.Content, "image/png", enableRangeProcessing: false);
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
+        flights.MapPut("/{id:guid}/returns-to-ramp/{occurrenceId:guid}", async (Guid id, Guid occurrenceId, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion) return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+            var bodyLimit = http.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (bodyLimit is { IsReadOnly: false }) bodyLimit.MaxRequestBodySize = FlightOperationsBatchPolicy.MaxJsonRequestBytes;
+            if (http.ContentLength > FlightOperationsBatchPolicy.MaxJsonRequestBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+            if (!http.HasJsonContentType()) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+            SaveFlightReturnToRampRequest? request;
+            try { request = await http.ReadFromJsonAsync<SaveFlightReturnToRampRequest>(ct); }
+            catch (JsonException) { return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("The RTR input is invalid.", "Operations.ReturnToRamp.RequestInvalid")); }
+            catch (BadHttpRequestException error) { return Results.StatusCode(error.StatusCode); }
+            if (request is null) return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("RTR input is required.", "Operations.ReturnToRamp.RequestInvalid"));
+            return (await sender.Send(new SaveFlightReturnToRampCommand(id, occurrenceId, request, rowVersion), ct)).ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.Operate)
+            .WithMetadata(new RequestSizeLimitAttribute(FlightOperationsBatchPolicy.MaxJsonRequestBytes));
+
         flights.MapPut("/{id:guid}/operations-batch", async (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
         {
             if (http.GetIfMatch() is not { } rowVersion)

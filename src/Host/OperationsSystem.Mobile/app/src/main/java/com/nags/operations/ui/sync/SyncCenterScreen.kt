@@ -121,6 +121,24 @@ fun SyncCenterScreen(
         dismissButton = { TextButton(onClick = { discardTaskFlightId = null; discardTaskRecordId = null }) {
             Text(stringResource(R.string.flights_cancel))
         } })
+    val pendingReturnsToRamp by viewModel.pendingReturnsToRamp.collectAsStateWithLifecycle()
+    val returnToRampActionFailed by viewModel.returnToRampActionFailed.collectAsStateWithLifecycle()
+    var discardReturnFlightId by rememberSaveable { mutableStateOf<String?>(null) }
+    var discardReturnOccurrenceId by rememberSaveable { mutableStateOf<String?>(null) }
+    if (discardReturnFlightId != null && discardReturnOccurrenceId != null) AlertDialog(
+        onDismissRequest = { discardReturnFlightId = null; discardReturnOccurrenceId = null },
+        title = { Text(stringResource(R.string.rtr_sync_discard)) },
+        text = { Text(stringResource(R.string.rtr_sync_discard_message)) },
+        confirmButton = { TextButton(onClick = {
+            viewModel.discardReturnToRamp(checkNotNull(discardReturnFlightId), checkNotNull(discardReturnOccurrenceId))
+            discardReturnFlightId = null; discardReturnOccurrenceId = null
+        }, enabled = pendingReturnsToRamp.any { it.flightId == discardReturnFlightId &&
+            it.occurrenceId == discardReturnOccurrenceId && it.attemptInputJson == null }) {
+            Text(stringResource(R.string.rtr_sync_discard))
+        } },
+        dismissButton = { TextButton(onClick = { discardReturnFlightId = null; discardReturnOccurrenceId = null }) {
+            Text(stringResource(R.string.flights_cancel))
+        } })
     val pendingDepartures by viewModel.pendingDepartures.collectAsStateWithLifecycle()
     val departureActionFailed by viewModel.departureActionFailed.collectAsStateWithLifecycle()
     var discardDepartureId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -166,7 +184,7 @@ fun SyncCenterScreen(
             item(key = "sync-overview") {
                 val pendingStatuses = pendingAdHoc.map { it.status } + pendingArrivals.map { it.status } +
                     pendingServices.map { it.status } + pendingTasks.map { it.status } +
-                    pendingDepartures.map { it.status } + pendingCancellations.map { it.status }
+                    pendingDepartures.map { it.status } + pendingReturnsToRamp.map { it.status } + pendingCancellations.map { it.status }
                 SyncOverview(rows, offlineSearch, pendingStatuses, isSyncing, isOnline, viewModel::refreshNow)
             }
             item(key = "connection") { ConnectionDetails(isOnline, realtimeState, lastRealtimeEventAt, now) }
@@ -308,6 +326,42 @@ fun SyncCenterScreen(
                 }
             }
             if (departureActionFailed) item { InlineNotice(stringResource(R.string.departure_sync_action_failed), kind = InlineNoticeKind.Error) }
+            if (pendingReturnsToRamp.isNotEmpty()) {
+                item { SyncSectionTitle(stringResource(R.string.rtr_sync_title)) }
+                items(pendingReturnsToRamp, key = { "returns-to-ramp:${it.flightId}:${it.occurrenceId}" }) { row ->
+                    val sequence = remember(row.previewJson) {
+                        runCatching { row.preview(com.nags.operations.data.api.HttpClientFactory.json).sequence }.getOrNull()
+                    }
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surface)
+                        .padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if (sequence == null) stringResource(R.string.rtr_sync_item, row.flightNumber)
+                            else stringResource(R.string.rtr_sync_numbered_item, row.flightNumber, sequence),
+                            fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                        InlineNotice(row.error ?: stringResource(if (row.status == "pending") R.string.rtr_sync_pending else R.string.rtr_sync_review),
+                            kind = when {
+                                row.error != null -> InlineNoticeKind.Error
+                                row.status == "pending" -> InlineNoticeKind.Info
+                                else -> InlineNoticeKind.Warning
+                            })
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (syncNeedsReview(row.status)) TextButton(
+                                onClick = { onReviewFlight(row.flightId, "returns-to-ramp:${row.occurrenceId}") },
+                                enabled = row.attemptInputJson == null) {
+                                Text(stringResource(R.string.flight_review_action), color = MaterialTheme.colorScheme.error)
+                            }
+                            TextButton(onClick = { viewModel.retryReturnToRamp(row.flightId, row.occurrenceId) },
+                                enabled = isOnline && row.status == "pending") {
+                                Text(stringResource(R.string.arrival_sync_retry))
+                            }
+                            TextButton(onClick = { discardReturnFlightId = row.flightId; discardReturnOccurrenceId = row.occurrenceId },
+                                enabled = row.attemptInputJson == null) {
+                                Text(stringResource(R.string.rtr_sync_discard))
+                            }
+                        }
+                    }
+                }
+            }
+            if (returnToRampActionFailed) item { InlineNotice(stringResource(R.string.rtr_sync_action_failed), kind = InlineNoticeKind.Error) }
             if (pendingCancellations.isNotEmpty()) {
                 item { SyncSectionTitle(stringResource(R.string.cancellation_sync_title)) }
                 items(pendingCancellations, key = { "cancellation:${it.flightId}" }) { row ->

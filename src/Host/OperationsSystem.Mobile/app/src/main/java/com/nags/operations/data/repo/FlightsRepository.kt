@@ -1,5 +1,7 @@
 package com.nags.operations.data.repo
 
+import com.nags.operations.data.withReturnToRampReports
+
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.FlightCategory
@@ -1055,7 +1057,7 @@ private fun FlightListItem.withReportFlags(detail: FlightDetail) = copy(
     hasDepartureSubmission = detail.departureSubmissions.isNotEmpty(),
     hasCancellationSubmission = detail.hasCancellationSubmission || detail.cancellationSubmissions.isNotEmpty(),
     latestCancellationAtUtc = detail.cancellationSubmissions.latestCancellationAtUtc(),
-)
+).withReturnToRampReports(detail)
 
 private fun FlightListItem.withPlanning(detail: FlightDetail) = copy(
     flightNumber = detail.flightNumber, customerId = detail.customerId, customerIataCode = detail.customerIataCode,

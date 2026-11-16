@@ -515,4 +515,27 @@
     <string name="flight_review_removed">The local change was discarded. Online values are kept.</string>
     <string name="flight_review_delete">Your saved change deletes this entry. Overwrite stages that deletion; Save applies it.</string>
     <string name="flight_review_empty_online">There is no online submission for this entry.</string>
+    <string name="rtr_sheet_title">Return to ramp #%1$d</string>
+    <string name="rtr_sheet_open">On ground</string>
+    <string name="rtr_sheet_closed">Departed</string>
+    <string name="rtr_sheet_submitted">Submitted by %1$s on %2$s at %3$s</string>
+    <string name="rtr_form_section">Returns to ramp (%1$d)</string>
+    <string name="rtr_form_number">RTR #%1$d</string>
+    <string name="rtr_form_add">RTR</string>
+    <string name="rtr_form_remove">Remove return to ramp</string>
+    <string name="rtr_form_update">Update RTR…</string>
+    <string name="rtr_form_work_summary">Services: %1$d · Tasks: %2$d</string>
+    <string name="rtr_form_work_required">Add and finish at least one service or task before recording RTR departure.</string>
+    <string name="rtr_form_invalid_actuals">Check the RTR arrival, departure and work periods.</string>
+    <string name="rtr_form_prerequisite">Save flight departure and close the previous RTR before adding another return.</string>
+    <string name="rtr_form_title">Return to ramp</string>
+    <string name="rtr_form_unsaved">New RTR · Draft</string>
+    <string name="rtr_sync_title">Returns to ramp</string>
+    <string name="rtr_sync_item">%1$s · Return to ramp</string>
+    <string name="rtr_sync_numbered_item">%1$s · Return to ramp #%2$d</string>
+    <string name="rtr_sync_pending">Return to ramp saved on this device. Waiting to synchronize.</string>
+    <string name="rtr_sync_review">Review the saved return to ramp against the current flight before saving again.</string>
+    <string name="rtr_sync_discard">Discard saved return to ramp</string>
+    <string name="rtr_sync_discard_message">Discard the local changes to this return to ramp, including its saved work and media? Existing online records stay unchanged.</string>
+    <string name="rtr_sync_action_failed">Could not update the saved return to ramp. Try again or review its saved input.</string>
 </resources>

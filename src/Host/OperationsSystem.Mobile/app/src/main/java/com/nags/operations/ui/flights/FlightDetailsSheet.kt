@@ -215,6 +215,7 @@ internal fun FlightDetailsSheet(
                                 }
                             }
                             FlightSheetWork(flight.id, workItems, stationTimeZone(flight.stationTimeZoneId))
+                            FlightSheetReturnsToRamp(flight)
                             if (!flight.isPerLanding && !flight.isAdHocFlight) FlightSheetGroup {
                                 DetailPeopleRow(
                                     title = stringResource(R.string.flights_planned_services), icon = Icons.Outlined.Layers,

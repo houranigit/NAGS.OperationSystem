@@ -19,6 +19,7 @@ public sealed class FlightSubmissionUpdatedHandlerTests
     [InlineData(FlightSubmissionKind.Departure, "departure", "departure submission", "بيانات المغادرة التي أرسلتها")]
     [InlineData(FlightSubmissionKind.Service, "service", "service entry", "سجل الخدمة الذي أنشأته")]
     [InlineData(FlightSubmissionKind.Task, "task", "task entry", "سجل المهمة الذي أنشأته")]
+    [InlineData(FlightSubmissionKind.ReturnToRamp, "return-to-ramp", "return-to-ramp submission", "بيانات العودة إلى الموقف التي أرسلتها")]
     public async Task Correction_notifies_original_account_once_with_localized_content_and_only_navigation_payload(
         FlightSubmissionKind kind, string kindKey, string entryEn, string entryAr)
     {
@@ -60,6 +61,7 @@ public sealed class FlightSubmissionUpdatedHandlerTests
     [InlineData(FlightSubmissionKind.Departure, FlightSubmissionAction.Updated)]
     [InlineData(FlightSubmissionKind.Service, FlightSubmissionAction.Updated)]
     [InlineData(FlightSubmissionKind.Task, FlightSubmissionAction.Updated)]
+    [InlineData(FlightSubmissionKind.ReturnToRamp, FlightSubmissionAction.Updated)]
     [InlineData(FlightSubmissionKind.Service, FlightSubmissionAction.Deleted)]
     [InlineData(FlightSubmissionKind.Task, FlightSubmissionAction.Deleted)]
     public async Task Persisted_notification_retries_transport_with_the_same_identity_after_failure(FlightSubmissionKind kind, FlightSubmissionAction action)

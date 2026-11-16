@@ -153,10 +153,20 @@ internal fun FlightOperationsForm(
     identityNote: (@Composable () -> Unit)? = null,
     identityHasChanges: Boolean = false,
     identityValidation: (() -> String?)? = null,
+    onSaveReturnToRamp: suspend (FlightDetail, String, com.nags.operations.data.SaveFlightReturnToRampRequest, com.nags.operations.data.FlightReturnToRampRecord) -> Unit = { _, _, _, _ -> error("RTR saving is unavailable.") },
+    loadReturnToRampInput: suspend (String) -> com.nags.operations.data.SaveFlightReturnToRampRequest? = { null },
+    loadReturnToRampSignature: suspend (String) -> ByteArray? = { null },
+    loadReturnToRampAttachment: suspend (String, String, String, String, String) -> String? = { _, _, _, _, _ -> null },
 ) {
     val entryTimeZoneId = rememberSaveable { flight.stationTimeZoneId }
     val entryZone = remember(entryTimeZoneId) { stationTimeZone(entryTimeZoneId) }
     val zone = entryZone
+    var rtrDraftJson by rememberSaveable { mutableStateOf<String?>(null) }
+    val rtrDraft = remember(rtrDraftJson) { rtrDraftJson?.let { Json.decodeFromString<FlightRtrDraft>(it) } }
+    var rtrUpdateJson by rememberSaveable { mutableStateOf<String?>(null) }
+    var rtrUpdateFlightJson by rememberSaveable { mutableStateOf<String?>(null) }
+    val rtrErrors = rtrDraft?.errors(flight, catalogs, entryZone, null).orEmpty()
+    val rtrValidationMessage = stringResource(R.string.rtr_form_invalid_actuals)
     val arrival = flight.visibleArrival()
     val departure = flight.visibleDeparture()
     val departureSummary = flight.formDepartureSummary(pendingDeparture)
@@ -262,6 +272,13 @@ internal fun FlightOperationsForm(
     var initialNavigationConsumed by rememberSaveable(flight.id, initialNavigationKey) { mutableStateOf(false) }
     LaunchedEffect(initialNavigationKey) {
         if (!initialNavigationConsumed && initialNavigationKey != null) {
+            if (initialNavigationKey.startsWith("returns-to-ramp:")) {
+                flight.returnToRamps.firstOrNull { it.id == initialNavigationKey.substringAfter(":") }?.let {
+                    rtrUpdateJson = Json.encodeToString(it); rtrUpdateFlightJson = Json.encodeToString(flight)
+                    initialNavigationConsumed = true
+                    return@LaunchedEffect
+                }
+            }
             repeat(6) {
                 withFrameNanos { }
                 if (validationState.revealTarget(initialNavigationKey)) {
@@ -619,8 +636,11 @@ internal fun FlightOperationsForm(
             }
         } }
         val tasksValid = !saveTaskInput || tasksEnabled && checkedTasks.all { it.isEmpty() } && taskCompletionErrors.isEmpty()
-        val anyInput = identityHasChanges || saveArrivalInput || saveDepartureInput || saveServiceInput || saveTaskInput
-        if (identityError != null) {
+        val anyInput = identityHasChanges || saveArrivalInput || saveDepartureInput || saveServiceInput || saveTaskInput || rtrDraft != null
+        if (rtrErrors.isNotEmpty()) {
+            saveError = rtrValidationMessage
+            validationRequest++
+        } else if (identityError != null) {
             saveError = identityError
         } else if (mediaSession.hasActiveRecording) {
             saveError = finishRecordingMessage
@@ -693,6 +713,11 @@ internal fun FlightOperationsForm(
                         }
                         if (saveArrivalInput && !relaxArrival) saveArrival()
                         if (saveDepartureInput && !relaxDeparture) saveDeparture()
+                        if (rtrDraft != null) {
+                            val ink = rtrDraft.signature.takeIf(String::isNotBlank)?.let { withContext(Dispatchers.Default) { signaturePngContent(it) } }
+                            val request = rtrDraft.input(entryZone).let { it.copy(departure = it.departure?.copy(signatureContent = ink)) }
+                            onSaveReturnToRamp(flight, rtrDraft.id, request, rtrDraft.preview(flight, catalogs))
+                        }
                     }
                     // A failed later section must leave every editor dirty, including its review state.
                     if (saveArrivalInput) {
@@ -736,7 +761,7 @@ internal fun FlightOperationsForm(
         if (!departureEnabled && picker in listOf("atd", "signature")) picker = null
     }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
-    val hasChanges = identityHasChanges || arrivalChanged || departureChanged || servicesChanged || tasksChanged
+    val hasChanges = identityHasChanges || arrivalChanged || departureChanged || servicesChanged || tasksChanged || rtrDraft != null
     val requestClose = {
         if (saving) Unit else if (picker != null) picker = null else if (hasChanges) confirmDiscard = true else closeForm()
     }
@@ -853,7 +878,7 @@ internal fun FlightOperationsForm(
         saveEnabled = !saving && (identityHasChanges || arrivalEnabled && (arrivalChanged || reviewedChangeId != null) ||
             departureEnabled && (departureChanged || reviewedDepartureChangeId != null) ||
             servicesEnabled && (servicesChanged || forcedServiceIds.isNotEmpty()) ||
-            tasksEnabled && (tasksChanged || forcedTaskIds.isNotEmpty())),
+            tasksEnabled && (tasksChanged || forcedTaskIds.isNotEmpty()) || rtrDraft != null),
         saveLoading = saving, onSave = { saveChanges(false) }, progressStatus = progressStatus,
         compact = true, validationState = validationState,
         identityContent = { positioned ->
@@ -1109,6 +1134,50 @@ internal fun FlightOperationsForm(
                         heading = stringResource(R.string.operations_departure_remarks_heading), inGroup = true)
                 }
             }
+        }
+        Column(Modifier.flightFormNavigationTarget("returns-to-ramp", highlight = true), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            FlightFormSectionTitle(stringResource(R.string.rtr_form_section, flight.returnToRamps.size + if (rtrDraft != null) 1 else 0))
+            flight.returnToRamps.sortedBy { it.sequence }.forEach { occurrence ->
+                androidx.compose.runtime.key(occurrence.id) {
+                    Column(Modifier.padding(bottom = 18.dp).flightFormNavigationTarget("returns-to-ramp:${occurrence.id}", highlight = true), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FlightSavedDetailsCard { FlightRtrSummary(occurrence, flight) }
+                        FlightSubmissionNote(occurrence.createdByDisplayName ?: occurrence.receivedByFullName, occurrence.localSavedAtUtc ?: occurrence.createdAtUtc, entryZone,
+                            savedLocally = occurrence.localStatus != null, needsReview = occurrence.localStatus?.let { it != "pending" } == true,
+                            updatedByDisplayName = occurrence.updatedByDisplayName, updatedAtUtc = occurrence.updatedAtUtc,
+                            updateLabel = stringResource(if (occurrence.localStatus?.let { it != "pending" } == true) R.string.flight_review_action else R.string.rtr_form_update),
+                            onUpdate = if (!saving && (occurrence.canEdit || occurrence.localStatus != null)) ({
+                                rtrUpdateJson = Json.encodeToString(occurrence)
+                                rtrUpdateFlightJson = Json.encodeToString(flight)
+                            }) else null)
+                    }
+                }
+            }
+            if (rtrDraft != null) CompositionLocalProvider(LocalFlightMediaSession provides mediaSession) {
+                FlightRtrFields(rtrDraft, flight, catalogs, !saving, validationAttempted,
+                    onChange = { rtrDraftJson = Json.encodeToString(it) }, onRemove = { rtrDraftJson = null }, openArrivalImmediately = true)
+            } else {
+                FlightFormFieldGroup {
+                    FlightWorkAddRow(stringResource(R.string.rtr_form_add), enabled = !saving && flight.canSaveReturnsToRamp &&
+                        flight.departureSubmissions.isNotEmpty() && !flight.hasCancellationSubmission && flight.returnToRamps.none { it.isOpen }, onClick = {
+                        rtrDraftJson = Json.encodeToString(FlightRtrDraft(sequence = maxOf(flight.lastReturnToRampSequence,
+                            flight.returnToRamps.maxOfOrNull { it.sequence } ?: 0) + 1, arrival = FlightWorkPeriod.now(entryZone)))
+                    })
+                }
+                if (flight.departureSubmissions.isEmpty() || flight.returnToRamps.any { it.isOpen })
+                    Text(stringResource(R.string.rtr_form_prerequisite), Modifier.padding(horizontal = 12.dp),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+    if (rtrUpdateJson != null && rtrUpdateFlightJson != null) {
+        val occurrence = remember(rtrUpdateJson) { Json.decodeFromString<com.nags.operations.data.FlightReturnToRampRecord>(checkNotNull(rtrUpdateJson)) }
+        val snapshot = remember(rtrUpdateFlightJson) { Json.decodeFromString<FlightDetail>(checkNotNull(rtrUpdateFlightJson)) }
+        androidx.compose.runtime.key(occurrence.id) {
+            FlightRtrUpdateForm(snapshot, occurrence, catalogs, loadCustomerLogo,
+                loadInput = { loadReturnToRampInput(occurrence.id) }, loadSignature = { loadReturnToRampSignature(occurrence.id) },
+                loadAttachment = { kind, record, attachment, version -> loadReturnToRampAttachment(occurrence.id, kind, record, attachment, version) },
+                onSave = onSaveReturnToRamp, onReload = onReviewArrival,
+                onClose = { rtrUpdateJson = null; rtrUpdateFlightJson = null })
         }
     }
     if (picker == "ata" || picker == "atd") {

@@ -491,4 +491,27 @@
     <string name="flight_review_removed">تم تجاهل التغيير المحلي والإبقاء على القيم المحفوظة عبر الإنترنت.</string>
     <string name="flight_review_delete">يحذف تغييرك المحفوظ هذا الإدخال. يُجهّز الاستبدال الحذف ويُطبّقه الحفظ.</string>
     <string name="flight_review_empty_online">لا يوجد إدخال محفوظ عبر الإنترنت لهذا السجل.</string>
+    <string name="rtr_sheet_title">العودة إلى الساحة رقم %1$d</string>
+    <string name="rtr_sheet_open">على الأرض</string>
+    <string name="rtr_sheet_closed">غادرت</string>
+    <string name="rtr_sheet_submitted">أرسلها %1$s في %2$s الساعة %3$s</string>
+    <string name="rtr_form_section">العودة إلى الموقف (%1$d)</string>
+    <string name="rtr_form_number">العودة إلى الموقف #%1$d</string>
+    <string name="rtr_form_add">عودة إلى الموقف</string>
+    <string name="rtr_form_remove">إزالة العودة إلى الموقف</string>
+    <string name="rtr_form_update">تحديث العودة إلى الموقف…</string>
+    <string name="rtr_form_work_summary">%1$d خدمات · %2$d مهام</string>
+    <string name="rtr_form_work_required">أضف وأكمل خدمة أو مهمة واحدة على الأقل قبل تسجيل مغادرة العودة إلى الموقف.</string>
+    <string name="rtr_form_invalid_actuals">تحقق من أوقات الوصول والمغادرة والعمل للعودة إلى الموقف.</string>
+    <string name="rtr_form_prerequisite">احفظ مغادرة الرحلة وأغلق العودة السابقة قبل إضافة عودة أخرى.</string>
+    <string name="rtr_form_title">العودة إلى الموقف</string>
+    <string name="rtr_form_unsaved">عودة جديدة · مسودة</string>
+    <string name="rtr_sync_title">العودة إلى الساحة</string>
+    <string name="rtr_sync_item">%1$s · العودة إلى الساحة</string>
+    <string name="rtr_sync_numbered_item">%1$s · العودة إلى الساحة رقم %2$d</string>
+    <string name="rtr_sync_pending">تم حفظ العودة إلى الساحة على هذا الجهاز. بانتظار المزامنة.</string>
+    <string name="rtr_sync_review">راجع بيانات العودة إلى الساحة المحفوظة مع بيانات الرحلة الحالية قبل الحفظ مجددًا.</string>
+    <string name="rtr_sync_discard">تجاهل العودة إلى الساحة المحفوظة</string>
+    <string name="rtr_sync_discard_message">هل تريد تجاهل التغييرات المحلية لهذه العودة إلى الساحة، بما فيها العمل والوسائط المحفوظة؟ تبقى السجلات الموجودة على الخادم دون تغيير.</string>
+    <string name="rtr_sync_action_failed">تعذر تحديث العودة إلى الساحة المحفوظة. حاول مجددًا أو راجع البيانات المحفوظة.</string>
 </resources>

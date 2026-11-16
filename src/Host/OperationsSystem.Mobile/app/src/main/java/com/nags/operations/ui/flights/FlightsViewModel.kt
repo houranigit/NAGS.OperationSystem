@@ -164,6 +164,9 @@ class FlightsViewModel internal constructor(
     val adHocRepository: com.nags.operations.data.repo.AdHocFlightsRepository? = null,
     val adHocCustomers: Flow<List<com.nags.operations.data.CustomerCatalogItem>> = flowOf(emptyList()),
     private val isDiscoveryFeed: Boolean = false,
+    val returnsToRamp: com.nags.operations.data.repo.FlightReturnsToRampRepository? = null,
+    private val loadReturnToRampSignature: suspend (FlightDetail, String) -> ByteArray? = { _, _ -> null },
+    private val loadPendingReturnToRampAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null },
 ) : ViewModel() {
     constructor(repository: FlightsRepository, authRepository: AuthRepository, networkMonitor: NetworkMonitor,
         sharedCatalogsRepository: SharedCatalogsRepository, arrivalRepository: com.nags.operations.data.repo.FlightArrivalsRepository,
@@ -181,7 +184,13 @@ class FlightsViewModel internal constructor(
         saveReviewedOperation: suspend (FlightDetail, com.nags.operations.data.FlightOperationReviewTarget, suspend () -> Unit) -> Unit = { _, _, _ -> error("Review saving is unavailable.") },
         discardReviewedOperation: suspend (String, com.nags.operations.data.FlightOperationReviewTarget) -> Unit = { _, _ -> error("Review discard is unavailable.") },
         adHocRepository: com.nags.operations.data.repo.AdHocFlightsRepository? = null,
-        sourcePage: (suspend (Int, Int, String?) -> FlightPage)? = null) : this(
+        sourcePage: (suspend (Int, Int, String?) -> FlightPage)? = null,
+        returnToRampRepository: com.nags.operations.data.repo.FlightReturnsToRampRepository? = null,
+        loadReturnToRampSignature: suspend (FlightDetail, String) -> ByteArray? = { _, _ -> null },
+        loadPendingReturnToRampAttachment: suspend (String, String, String) -> String? = { _, _, _ -> null }) : this(
+        returnsToRamp = returnToRampRepository,
+        loadReturnToRampSignature = loadReturnToRampSignature,
+        loadPendingReturnToRampAttachment = loadPendingReturnToRampAttachment,
         adHocRepository = adHocRepository,
         adHocCustomers = sharedCatalogsRepository.customersFlow(),
         arrivals = arrivalRepository,
@@ -222,6 +231,15 @@ class FlightsViewModel internal constructor(
             sharedCatalogsRepository.generalSupportsFlow(),
         ) { catalogs, generalSupports -> catalogs.copy(generalSupports = generalSupports) }.distinctUntilChanged(),
     )
+
+    suspend fun saveReturnToRamp(flight: FlightDetail, occurrenceId: String,
+        input: com.nags.operations.data.SaveFlightReturnToRampRequest, preview: com.nags.operations.data.FlightReturnToRampRecord) {
+        checkNotNull(returnsToRamp) { "Return-to-ramp saving is unavailable." }.save(flight, occurrenceId, input, preview)
+    }
+    suspend fun returnToRampSignature(flight: FlightDetail, occurrenceId: String): ByteArray? = loadReturnToRampSignature(flight, occurrenceId)
+    suspend fun pendingReturnToRampAttachment(flightId: String, occurrenceId: String, attachmentId: String): String? =
+        loadPendingReturnToRampAttachment(flightId, occurrenceId, attachmentId)
+    suspend fun projectedReturnsToRamp(flight: FlightDetail): FlightDetail = returnsToRamp?.project(flight) ?: flight
 
     suspend fun reviewArrival(id: String): FlightDetail {
         check(online.value) { "Connect to reload the flight before reviewing saved input." }

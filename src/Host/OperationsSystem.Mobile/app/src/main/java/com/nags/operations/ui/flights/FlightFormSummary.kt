@@ -23,8 +23,8 @@ internal fun FlightDetail.formCardSummary(listItem: FlightListItem?, targets: Li
         hasArrivalSubmission = if (listItem != null) listItem.hasArrivalSubmission else arrivalSubmissions.isNotEmpty(),
         hasDepartureSubmission = if (listItem != null) listItem.hasDepartureSubmission else departureSubmissions.isNotEmpty(),
         hasCancellationSubmission = if (listItem != null) listItem.hasCancellationSubmission else hasCancellationSubmission,
-        hasOpenReturnToRamp = listItem?.hasOpenReturnToRamp,
-        latestReturnToRampSequence = listItem?.latestReturnToRampSequence,
+        hasOpenReturnToRamp = if (returnToRamps.isNotEmpty()) returnToRamps.any { it.isOpen } else listItem?.hasOpenReturnToRamp,
+        latestReturnToRampSequence = returnToRamps.maxOfOrNull { it.sequence } ?: listItem?.latestReturnToRampSequence,
         activeWorkCount = targets.count { !it.completed }, completedWorkCount = targets.count { it.completed },
         latestCancellationAtUtc = listItem?.latestCancellationAtUtc,
     )

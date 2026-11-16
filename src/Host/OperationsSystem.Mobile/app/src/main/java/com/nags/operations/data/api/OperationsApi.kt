@@ -46,6 +46,25 @@ import io.ktor.http.isSuccess
 
 /** Station- and time-bounded mobile flight reads and add-only staff invitations. */
 class OperationsApi internal constructor(private val client: HttpClient) {
+    suspend fun saveReturnToRamp(flightId: String, occurrenceId: String,
+        input: com.nags.operations.data.SaveFlightReturnToRampRequest, rowVersion: String): FlightDetail =
+        client.put(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(flightId)}/returns-to-ramp/${UUID.fromString(occurrenceId)}")) {
+            contentType(ContentType.Application.Json)
+            headers { append("If-Match", "\"$rowVersion\"") }
+            setBody(input)
+        }.bodyOrThrow()
+
+    suspend fun returnToRampSignature(flightId: String, occurrenceId: String, expectedUpdatedAt: String): ByteArray? =
+        client.prepareGet(HttpClientFactory.url("api/v1/operations/flights/mobile/${UUID.fromString(flightId)}/returns-to-ramp/${UUID.fromString(occurrenceId)}/signature")) {
+            parameter("expectedUpdatedAt", expectedUpdatedAt)
+        }.execute { response ->
+            if (response.status == HttpStatusCode.NotFound) return@execute null
+            if (!response.status.isSuccess()) throw ApiException(response.status.value, "Could not load the return-to-ramp signature.")
+            val bytes = response.bodyAsChannel().readBuffer(2 * 1024 * 1024 + 1L).readByteArray()
+            if (bytes.size > 2 * 1024 * 1024) throw IOException("Customer signature exceeds the size limit.")
+            bytes.takeIf { it.isNotEmpty() }
+        }
+
     suspend fun saveOperationsBatch(flightId: String, input: SaveFlightOperationsBatchRequest, rowVersion: String): FlightDetail =
         client.put(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(flightId)}/operations-batch")) {
             contentType(ContentType.Application.Json)

@@ -21,6 +21,7 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
             graph.lastCatalogEventAt, graph::refreshCatalogs, graph.isSyncing, graph.flightArrivals, graph.flightDepartures, graph.flightCancellations,
             graph.flightServices, graph.flightTasks, adHocRepository = graph.adHocFlights,
             offlineSearchStatuses = graph.discoveryFlights.offlineSearchStatus,
+            returnToRampRepository = graph.flightReturnsToRamp,
         )
         NotificationsViewModel::class.java -> NotificationsViewModel(graph.notificationsRepository, graph.flightsRepository)
         else -> throw IllegalArgumentException("Unknown ViewModel ${modelClass.name}")
@@ -42,6 +43,9 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
         graph.flightTasks, graph::loadTaskAttachment, graph::loadPendingTaskAttachment,
         graph::saveReviewedFlightOperation, graph::discardReviewedFlightOperation,
         adHocRepository = graph.adHocFlights,
+        returnToRampRepository = graph.flightReturnsToRamp,
+        loadReturnToRampSignature = graph::loadReturnToRampSignature,
+        loadPendingReturnToRampAttachment = graph::loadPendingReturnToRampAttachment,
         sourcePage = if (source == null) null else { page, size, query ->
             graph.discoveryFlights.page(source, query.orEmpty(), page, size)
         },

@@ -7,7 +7,7 @@ using Operations.Domain.ValueObjects;
 namespace Operations.Domain.Flights;
 
 /// <summary>A flight with planning data and employee-owned operational or cancellation submissions.</summary>
-public sealed class Flight : AggregateRoot<Guid>, IAuditable
+public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
 {
     private readonly List<PlannedService> _plannedServices = [];
     private readonly List<FlightAssignedEmployee> _assignedEmployees = [];

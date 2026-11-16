@@ -42,6 +42,7 @@ class SyncCenterViewModel internal constructor(
     private val tasks: com.nags.operations.data.repo.FlightTasksRepository? = null,
     private val adHoc: com.nags.operations.data.repo.AdHocFlightsRepository? = null,
     offlineSearchStatuses: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
+    private val returnsToRamp: com.nags.operations.data.repo.FlightReturnsToRampRepository? = null,
 ) : ViewModel() {
     constructor(
         catalogs: SharedCatalogsRepository,
@@ -58,6 +59,7 @@ class SyncCenterViewModel internal constructor(
         taskRepository: com.nags.operations.data.repo.FlightTasksRepository? = null,
         adHocRepository: com.nags.operations.data.repo.AdHocFlightsRepository? = null,
         offlineSearchStatuses: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
+        returnToRampRepository: com.nags.operations.data.repo.FlightReturnsToRampRepository? = null,
     ) : this(
         statuses = catalogs.observeStatus(),
         isSyncing = syncing,
@@ -71,6 +73,7 @@ class SyncCenterViewModel internal constructor(
         cancellations = cancellationRepository,
         services = serviceRepository,
         tasks = taskRepository, adHoc = adHocRepository, offlineSearchStatuses = offlineSearchStatuses,
+        returnsToRamp = returnToRampRepository,
     )
 
     private val scope = coroutineScope ?: viewModelScope
@@ -127,6 +130,18 @@ class SyncCenterViewModel internal constructor(
         try { taskActionFailed.value = false; action() }
         catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
         catch (_: Exception) { taskActionFailed.value = true }
+    }
+    val pendingReturnsToRamp = (returnsToRamp?.changes ?: flowOf(emptyList()))
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+    val returnToRampActionFailed = kotlinx.coroutines.flow.MutableStateFlow(false)
+    fun retryReturnToRamp(flightId: String, occurrenceId: String) = returnToRampAction { returnsToRamp?.retry(flightId, occurrenceId) }
+    fun discardReturnToRamp(flightId: String, occurrenceId: String) = returnToRampAction {
+        returnsToRamp?.discard(flightId, occurrenceId); requestRefresh()
+    }
+    private fun returnToRampAction(action: suspend () -> Unit) = scope.launch {
+        try { returnToRampActionFailed.value = false; action() }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { returnToRampActionFailed.value = true }
     }
     val cancellationActionFailed = kotlinx.coroutines.flow.MutableStateFlow(false)
     fun retryCancellation(id: String) = cancellationAction { cancellations?.retry(id) }

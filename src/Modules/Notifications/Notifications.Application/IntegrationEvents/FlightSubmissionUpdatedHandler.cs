@@ -47,6 +47,7 @@ public sealed class FlightSubmissionUpdatedHandler(
             FlightSubmissionKind.Departure => ("departure", "departure submission", "بيانات المغادرة التي أرسلتها"),
             FlightSubmissionKind.Service => ("service", "service entry", "سجل الخدمة الذي أنشأته"),
             FlightSubmissionKind.Task => ("task", "task entry", "سجل المهمة الذي أنشأته"),
+            FlightSubmissionKind.ReturnToRamp => ("return-to-ramp", "return-to-ramp submission", "بيانات العودة إلى الموقف التي أرسلتها"),
             _ => throw new InvalidOperationException("Unsupported flight submission kind.")
         };
         if (!Enum.IsDefined(integrationEvent.Action) || integrationEvent.Action == FlightSubmissionAction.Deleted &&

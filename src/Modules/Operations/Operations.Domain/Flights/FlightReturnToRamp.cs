@@ -80,6 +80,14 @@ public sealed class FlightReturnToRamp : Entity<Guid>
             ? Error.Validation("Return to ramp requires at least one service or task.", "Operations.ReturnToRamp.ActivityRequired")
             : Result.Success();
 
+    // Called only after a complete detached replacement occurrence passes all domain checks.
+    internal void ReplaceValidatedDetails(RtrArrivalDetails arrival, RtrDepartureDetails? departure, Guid userId)
+    {
+        if (DepartureDetails?.DepartedAtUtc != departure?.DepartedAtUtc) EndedByUserId = departure is null ? null : userId;
+        ArrivalDetails = arrival.Copy();
+        DepartureDetails = departure?.Copy();
+    }
+
     internal void AddService(FlightService service) => _services.Add(service);
     internal void AddTask(FlightTask task) => _tasks.Add(task);
     internal void RemoveService(FlightService service) => _services.Remove(service);

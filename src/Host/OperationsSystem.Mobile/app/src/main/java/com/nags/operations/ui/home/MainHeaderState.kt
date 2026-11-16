@@ -36,6 +36,7 @@ internal fun observeMainHeader(graph: AppGraph): Flow<MainHeaderState> {
         graph.flightCancellations.changes.map { rows -> rows.map { it.status } },
         graph.flightServices.changes.map { rows -> rows.map { it.status } },
         graph.flightTasks.changes.map { rows -> rows.map { it.status } },
+        graph.flightReturnsToRamp.changes.map { rows -> rows.map { it.status } },
         graph.adHocFlights.pending.map { rows -> rows.map { it.status } },
     )) { snapshots -> mainHeaderSavedChanges(snapshots.flatMap { it }) }
     val cache = combine(graph.sharedCatalogsRepository.observeStatus(), graph.flightsRepository.syncStatus,

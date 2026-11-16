@@ -129,7 +129,10 @@ fun FlightsScreen(
     onExternalPendingHandled: () -> Unit = {},
     interactionEnabled: Boolean = true,
 ) {
-    val state by viewModel.state.collectAsStateWithLifecycle()
+    val observedState by viewModel.state.collectAsStateWithLifecycle()
+    val pendingReturns by (viewModel.returnsToRamp?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val state = observedState.copy(detail = observedState.detail?.withPendingReturns(pendingReturns))
     var pendingNavigationFlightId by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingNavigationKey by rememberSaveable { mutableStateOf<String?>(null) }
     // Keep each list alive even when the pager disposes an offscreen page.
@@ -411,6 +414,15 @@ fun FlightsScreen(
                         onSaveServices = viewModel::saveServices,
                         pendingTasks = pendingTasks.filter { it.flightId == flight.id },
                         onSaveTasks = viewModel::saveTasks,
+                        onSaveReturnToRamp = viewModel::saveReturnToRamp,
+                        loadReturnToRampInput = { viewModel.returnsToRamp?.pendingInput(flight.id, it) },
+                        loadReturnToRampSignature = { viewModel.returnToRampSignature(state.detail ?: flight, it) },
+                        loadReturnToRampAttachment = { occurrence, kind, record, attachment, version ->
+                            viewModel.pendingReturnToRampAttachment(flight.id, occurrence, attachment) ?: if (version.isBlank()) null
+                            else if (kind == "services") viewModel.serviceAttachment(flight.id, record, attachment, version)
+                            else viewModel.taskAttachment(flight.id, record, attachment, version)
+                        },
+
                         onReviewTasks = { viewModel.reviewFlightInput(flight.id) },
                         loadTaskAttachment = viewModel::taskAttachment,
                         loadPendingTaskAttachment = viewModel::pendingTaskAttachment,
@@ -462,13 +474,15 @@ private fun FlightListPage(
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val savedTasks by (viewModel.tasks?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
         .collectAsStateWithLifecycle(initialValue = emptyList())
+    val savedReturns by (viewModel.returnsToRamp?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
+        .collectAsStateWithLifecycle(initialValue = emptyList())
     val savedAdHoc by (viewModel.adHocRepository?.pending ?: kotlinx.coroutines.flow.flowOf(emptyList()))
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val adHocById = remember(savedAdHoc) { savedAdHoc.associateBy { it.flightId } }
-    val workNeedsReviewIds = remember(savedServices, savedTasks) {
-        (savedServices.filter { it.status != "pending" }.map { it.flightId } + savedTasks.filter { it.status != "pending" }.map { it.flightId }).toSet()
+    val workNeedsReviewIds = remember(savedServices, savedTasks, savedReturns) {
+        (savedServices.filter { it.status != "pending" }.map { it.flightId } + savedTasks.filter { it.status != "pending" }.map { it.flightId } + savedReturns.filter { it.status != "pending" }.map { it.flightId }).toSet()
     }
-    val pendingWorkIds = remember(savedServices, savedTasks) { (savedServices.map { it.flightId } + savedTasks.map { it.flightId }).toSet() }
+    val pendingWorkIds = remember(savedServices, savedTasks, savedReturns) { (savedServices.map { it.flightId } + savedTasks.map { it.flightId } + savedReturns.map { it.flightId }).toSet() }
     val arrivalsById = remember(savedArrivals) { savedArrivals.associateBy { it.flightId } }
     val departuresById = remember(savedDepartures) { savedDepartures.associateBy { it.flightId } }
     val cancellationsById = remember(savedCancellations) { savedCancellations.associateBy { it.flightId } }
@@ -578,7 +592,12 @@ private fun FlightListPage(
                         }
                         FeedDateHeading(label, horizontalPadding = 0.dp)
                     } else {
-                    val flight = (row as FlightDiscoveryFeedRow.Flight).flight
+                    val recordedFlight = (row as FlightDiscoveryFeedRow.Flight).flight
+                    val localReturn = savedReturns.filter { it.flightId == recordedFlight.id }.maxByOrNull { it.preview(Json).sequence }
+                    val flight = localReturn?.preview(Json)?.let { rtr -> recordedFlight.copy(
+                        hasOpenReturnToRamp = rtr.isOpen, latestReturnToRampSequence = rtr.sequence,
+                        activeWorkCount = rtr.services.count { it.endUtc == null } + rtr.tasks.count { it.endUtc == null },
+                        completedWorkCount = rtr.services.count { it.endUtc != null } + rtr.tasks.count { it.endUtc != null }) } ?: recordedFlight
                     val pendingProgress = flight.cardPendingProgress(arrivalsById[flight.id], departuresById[flight.id], cancellationsById[flight.id])
                     val needsReview = pendingProgress == FlightProgressStatus.ArrivalNeedsReview ||
                         pendingProgress == FlightProgressStatus.DepartureNeedsReview || pendingProgress == FlightProgressStatus.CancellationNeedsReview ||
@@ -594,6 +613,7 @@ private fun FlightListPage(
                     val navigationTarget = (if (needsReview) flightReviewTargets(arrivalsById[flight.id], departuresById[flight.id],
                         flightServices, flightTasks) else flightPendingTargets(arrivalsById[flight.id], departuresById[flight.id],
                         flightServices, flightTasks)).firstOrNull()?.navigationKey()
+                        ?: localReturn?.let { "returns-to-ramp:${it.occurrenceId}" }
                         ?: cancellationsById[flight.id]?.let { "cancellation" }
                         ?: adHocById[flight.id]?.let { "adhoc" }
                     val navigateToPending: (() -> Unit)? = navigationTarget?.let { target -> {

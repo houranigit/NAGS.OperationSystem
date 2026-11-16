@@ -114,6 +114,9 @@ data class FlightDetail(
     val isUnassignedSearchFlight: Boolean = false,
     val canAddServices: Boolean? = null,
     val canAddTasks: Boolean? = null,
+    val returnToRamps: List<FlightReturnToRampRecord> = emptyList(),
+    val canSaveReturnsToRamp: Boolean = false,
+    val lastReturnToRampSequence: Int = 0,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
 }

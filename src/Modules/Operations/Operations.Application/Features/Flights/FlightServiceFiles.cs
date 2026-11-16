@@ -24,7 +24,7 @@ public sealed class GetMobileFlightServiceAttachmentQueryHandler(IOperationsDbCo
         var flight = await MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), actor.Value)
             .Include(f => f.ServiceRecords).ThenInclude(s => s.Attachments)
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
-        var attachment = flight?.Services.SingleOrDefault(s => s.Id == request.RecordId)?.Attachments.SingleOrDefault(a => a.Id == request.AttachmentId);
+        var attachment = flight?.ServiceRecords.SingleOrDefault(s => s.Id == request.RecordId)?.Attachments.SingleOrDefault(a => a.Id == request.AttachmentId);
         if (attachment is null) return NotFound();
         if (attachment.UploadedAtUtc != request.ExpectedUploadedAt)
             return Error.PreconditionFailed("The attachment changed. Reload the flight and retry.", "Operations.FlightService.AttachmentChanged");

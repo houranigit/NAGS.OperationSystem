@@ -23,7 +23,8 @@ public enum FlightSubmissionKind
     Arrival = 0,
     Departure = 1,
     Service = 2,
-    Task = 3
+    Task = 3,
+    ReturnToRamp = 4
 }
 
 public enum FlightSubmissionAction
