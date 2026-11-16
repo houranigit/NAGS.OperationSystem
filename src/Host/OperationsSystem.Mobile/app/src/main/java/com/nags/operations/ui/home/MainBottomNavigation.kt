@@ -3,8 +3,10 @@ package com.nags.operations.ui.home
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
@@ -37,6 +39,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -56,9 +60,9 @@ internal fun MainBottomNavigation(
     onSelectPage: (Int) -> Unit,
     modifier: Modifier = Modifier,
     unreadNotifications: Int = 0,
+    collapseFraction: Float = 0f,
 ) {
     val colors = MaterialTheme.colorScheme
-    val dockShape = RoundedCornerShape(32.dp)
     val icons = listOf(Icons.Default.Flight, Icons.Outlined.Share,
         Icons.AutoMirrored.Outlined.ManageSearch, Icons.Outlined.History, Icons.Outlined.NotificationsNone)
     val notificationDescription = if (unreadNotifications > 0) {
@@ -74,43 +78,63 @@ internal fun MainBottomNavigation(
         label = "Navigation highlight",
     )
 
-    Row(
-        modifier = modifier.padding(horizontal = 12.dp).height(56.dp)
-            .dropShadow(dockShape, Shadow(radius = 8.dp, color = Color.Black.copy(alpha = 0.10f),
-                offset = DpOffset(0.dp, (-2).dp)))
-            .shadow(4.dp, dockShape, clip = false).clip(dockShape).background(colors.surface)
-            .selectableGroup().padding(horizontal = 4.dp)
-            .drawBehind {
-                val itemWidth = size.width / icons.size
-                val logicalCenter = itemWidth * (highlightPosition + 0.5f)
-                val center = if (layoutDirection == LayoutDirection.Rtl) size.width - logicalCenter else logicalCenter
-                drawCircle(color = BrandRed, radius = 20.dp.toPx(),
-                    center = Offset(center, size.height / 2f))
-            },
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        icons.forEachIndexed { index, icon ->
-            val selected = selectedPage == index
-            val foreground = if (selected) Color.White else colors.onSurfaceVariant
-            Box(
-                modifier = Modifier.width(48.dp).fillMaxHeight()
-                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelectPage(index) })
-                    .semantics { contentDescription = descriptions[index] },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (index == 4) {
-                    BadgedBox(modifier = Modifier.clearAndSetSemantics {}, badge = {
-                        if (unreadNotifications > 0) {
-                            Badge(containerColor = colors.primary, contentColor = colors.onPrimary) {
-                                Text(if (unreadNotifications > 99) "99+" else unreadNotifications.toString(),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp))
+    BoxWithConstraints(modifier.padding(horizontal = 12.dp)) {
+        // Keep the accepted compact geometry intact; constrain the expanded dock on narrow windows.
+        val availableExpansion = ((maxWidth.value - 248f) / 72f).coerceIn(0f, 1f)
+        val animatedExpansion by animateFloatAsState(
+            targetValue = (1f - collapseFraction.coerceIn(0f, 1f)) * availableExpansion,
+            animationSpec = spring(dampingRatio = 1f, stiffness = 500f),
+            label = "Dock size",
+        )
+        val expansion = animatedExpansion.coerceIn(0f, availableExpansion)
+        val itemWidth = 48.dp + 12.dp * expansion
+        val dockHeight = 56.dp + 8.dp * expansion
+        val sidePadding = 4.dp + 6.dp * expansion
+        val selectionWidth = 40.dp + 16.dp * expansion
+        val dockShape = RoundedCornerShape(dockHeight / 2)
+
+        Row(
+            modifier = Modifier.height(dockHeight)
+                .dropShadow(dockShape, Shadow(radius = 8.dp, color = Color.Black.copy(alpha = 0.10f),
+                    offset = DpOffset(0.dp, (-2).dp)))
+                .shadow(4.dp, dockShape, clip = false).clip(dockShape).background(colors.surface)
+                .selectableGroup().padding(horizontal = sidePadding)
+                .drawBehind {
+                    val itemWidthPx = size.width / icons.size
+                    val logicalCenter = itemWidthPx * (highlightPosition + 0.5f)
+                    val center = if (layoutDirection == LayoutDirection.Rtl) size.width - logicalCenter else logicalCenter
+                    val selectionHeightPx = 40.dp.toPx()
+                    val selectionWidthPx = selectionWidth.toPx()
+                    drawRoundRect(color = BrandRed,
+                        topLeft = Offset(center - selectionWidthPx / 2f, (size.height - selectionHeightPx) / 2f),
+                        size = Size(selectionWidthPx, selectionHeightPx),
+                        cornerRadius = CornerRadius(selectionHeightPx / 2f))
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            icons.forEachIndexed { index, icon ->
+                val selected = selectedPage == index
+                val foreground = if (selected) Color.White else colors.onSurfaceVariant
+                Box(
+                    modifier = Modifier.width(itemWidth).fillMaxHeight()
+                        .selectable(selected = selected, role = Role.Tab, onClick = { onSelectPage(index) })
+                        .semantics { contentDescription = descriptions[index] },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (index == 4) {
+                        BadgedBox(modifier = Modifier.clearAndSetSemantics {}, badge = {
+                            if (unreadNotifications > 0) {
+                                Badge(containerColor = colors.primary, contentColor = colors.onPrimary) {
+                                    Text(if (unreadNotifications > 99) "99+" else unreadNotifications.toString(),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp))
+                                }
                             }
+                        }) {
+                            Icon(icon, contentDescription = null, tint = foreground, modifier = Modifier.size(26.dp))
                         }
-                    }) {
+                    } else {
                         Icon(icon, contentDescription = null, tint = foreground, modifier = Modifier.size(26.dp))
                     }
-                } else {
-                    Icon(icon, contentDescription = null, tint = foreground, modifier = Modifier.size(26.dp))
                 }
             }
         }

@@ -35,15 +35,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -56,6 +62,7 @@ import com.nags.operations.ui.flights.FlightsScreen
 import com.nags.operations.ui.flights.FlightsViewModel
 import com.nags.operations.ui.notifications.NotificationsScreen
 import com.nags.operations.ui.notifications.NotificationsViewModel
+import kotlin.math.abs
 
 @Composable
 fun MainShellScreen(
@@ -112,6 +119,37 @@ fun MainShellScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val pageInteractionEnabled = drawer.currentValue == DrawerValue.Closed && drawer.targetValue == DrawerValue.Closed
     val flightsSearchOpen = selectedPage == 0 && flightState.isSearchOpen
+    var navigationScrollState by remember(subject, selectedPage, selectedFlightTab) {
+        mutableStateOf(NavigationScrollState())
+    }
+    val navigationScrollEnabled by rememberUpdatedState(pageInteractionEnabled && !flightsSearchOpen &&
+        !(selectedPage == 0 && flightState.selectedFlightId != null))
+    val density = LocalDensity.current
+    val navigationScrollConnection = remember(subject, selectedPage, selectedFlightTab, density, navigationScrollEnabled) {
+        object : NestedScrollConnection {
+            private var userScrollStarted = false
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (!navigationScrollEnabled) {
+                    userScrollStarted = false
+                    return Offset.Zero
+                }
+                if (abs(consumed.y) > abs(consumed.x)) {
+                    if (source == NestedScrollSource.UserInput) userScrollStarted = true
+                    // Restoration must not collapse the dock; only a user's scroll and its fling can do so.
+                    if (userScrollStarted) {
+                        navigationScrollState = navigationScrollState.onConsumedScroll(consumed.y / density.density)
+                    }
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                userScrollStarted = false
+                return Velocity.Zero
+            }
+        }
+    }
     var navigationHeightPx by remember { mutableIntStateOf(0) }
     val navigationHeight = with(LocalDensity.current) { navigationHeightPx.toDp() }
 
@@ -175,7 +213,8 @@ fun MainShellScreen(
                 Box(Modifier.weight(1f).fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))) {
                     key(subject) {
-                        SubcomposeLayout(state = pageLayoutState, modifier = Modifier.fillMaxSize()) { constraints ->
+                        SubcomposeLayout(state = pageLayoutState,
+                            modifier = Modifier.fillMaxSize().nestedScroll(navigationScrollConnection)) { constraints ->
                             val activePage = selectedPage
                             val childConstraints = constraints.copy(minWidth = 0, minHeight = 0)
                             val placeables = subcompose("$subject:$activePage") {
@@ -215,6 +254,7 @@ fun MainShellScreen(
                     if (!flightsSearchOpen) {
                         MainBottomNavigation(selectedPage = selectedPage, onSelectPage = ::selectPage,
                             unreadNotifications = unreadNotifications,
+                            collapseFraction = if (navigationScrollState.isCompact) 1f else 0f,
                             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp)
                                 .onSizeChanged { navigationHeightPx = it.height })
                     }
