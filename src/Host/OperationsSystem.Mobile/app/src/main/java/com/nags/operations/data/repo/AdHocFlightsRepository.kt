@@ -146,8 +146,9 @@ class AdHocFlightsRepository(
         if (!needsPlanning) { commit({}, saveSections, {}); return@withLock }
         val context = checkNotNull(cachedContext()) { "Connect to verify your current station." }
         check(context.stationId == flight.stationId) { "Your station changed. Retained input is kept for Review." }
-        check(flight.copy(scheduledArrivalUtc = input.scheduledArrivalUtc, scheduledDepartureUtc = input.scheduledDepartureUtc)
-            .isInFlightWindow(Instant.parse(now()))) { "AdHoc flight times must overlap the current 12-hour flight window." }
+        check(isWithinFlightPlanningWindow(input.scheduledArrivalUtc, input.scheduledDepartureUtc, Instant.parse(now()))) {
+            "AdHoc scheduled arrival must be within the next 12 hours or overdue."
+        }
         if (previous == null && flight.rowVersion == LOCAL_ADHOC_VERSION) check(context.canCreate) { "AdHoc creation is not permitted." }
         val detail = flight.copy(customerId = input.customerId, flightNumber = input.flightNumber,
             scheduledArrivalUtc = input.scheduledArrivalUtc, scheduledDepartureUtc = input.scheduledDepartureUtc)

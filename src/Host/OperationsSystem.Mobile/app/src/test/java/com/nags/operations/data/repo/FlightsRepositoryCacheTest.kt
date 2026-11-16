@@ -1,6 +1,7 @@
 package com.nags.operations.data.repo
 
 import com.nags.operations.data.CustomerLogoDownload
+import com.nags.operations.data.withVisibilityReports
 
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.AssignedEmployee
@@ -749,12 +750,19 @@ class FlightsRepositoryCacheTest {
     }
 
     @Test
-    fun rollingWindowPrunesSavedRowsAndTheirDetailsAtTheInclusiveBoundary() = runBlocking {
+    fun terminalRetentionPrunesSavedRowsAndTheirDetailsAtTheInclusiveBoundary() = runBlocking {
         serverItems = listOf(
             item("long").copy(scheduledArrivalUtc = "2026-11-02T00:00:00Z"),
             item("boundary").copy(scheduledArrivalUtc = "2026-11-03T21:00:00Z",
                 scheduledDepartureUtc = "2026-11-03T22:00:00Z"),
         )
+        val employee = AssignedEmployee("staff", "Employee", "E1")
+        detailLoader = { id ->
+            val row = serverItems.first { it.id == id }
+            detail(id).copy(scheduledArrivalUtc = row.scheduledArrivalUtc, scheduledDepartureUtc = row.scheduledDepartureUtc,
+                departureSubmissions = listOf(com.nags.operations.data.FlightDepartureSubmission(id, employee,
+                    row.scheduledDepartureUtc, employee, isAccepted = true, createdAtUtc = clock)))
+        }
         val repository = repository()
         repository.refreshCache()
         repository.flight("boundary")
@@ -1028,7 +1036,7 @@ class FlightsRepositoryCacheTest {
         val snapshot = dao.snapshot(owner.value!!)!!
         val payload = Json.parseToJsonElement(snapshot.payloadJson).jsonObject
         val oldRows = JsonArray(payload.getValue("items").jsonArray.map { row ->
-            JsonObject(row.jsonObject - setOf("hasArrivalSubmission", "hasDepartureSubmission", "hasCancellationSubmission"))
+            JsonObject(row.jsonObject - setOf("hasArrivalSubmission", "hasDepartureSubmission", "hasCancellationSubmission", "visibilityPolicyVersion"))
         })
         dao.putSnapshot(snapshot.copy(payloadJson = JsonObject(payload + ("items" to oldRows)).toString()))
         val oneDetail = dao.detail(owner.value!!, "one")!!
@@ -1390,6 +1398,42 @@ class FlightsRepositoryCacheTest {
         assertTrue(observedSets.any { "created" in it })
         online = false
         assertEquals("created-ack", repository.flight("created").rowVersion)
+    }
+
+    @Test fun oldOnGroundFlightsSurviveFullSyncOfflinePruningAndDetailReads() = runBlocking {
+        val employee = AssignedEmployee("staff", "Employee", "E1")
+        val ground = detail("one").copy(scheduledArrivalUtc = "2026-10-01T10:00:00Z", scheduledDepartureUtc = "2026-10-01T11:00:00Z",
+            arrivalSubmissions = listOf(com.nags.operations.data.FlightArrivalSubmission("arrival", employee, "2026-10-01T10:00:00Z",
+                "aircraft", "A320", "TAIL", receivedByEmployee = employee, isAccepted = true, createdAtUtc = clock)))
+        serverItems = listOf(item("one").copy(scheduledArrivalUtc = ground.scheduledArrivalUtc,
+            scheduledDepartureUtc = ground.scheduledDepartureUtc).withVisibilityReports(ground))
+        detailLoader = { ground }
+        val repository = repository()
+        repository.refreshCache()
+        online = false
+        clock = "2026-12-01T10:00:00Z"
+        repository.pruneExpired()
+        assertEquals(listOf("one"), repository.flights().items.map { it.id })
+        assertTrue(repository.flight("one").fromCache)
+        assertEquals(1, repository.syncStatus.first().itemCount)
+    }
+
+    @Test fun correctingDepartureToAnEarlierTimeRecomputesActualRetentionFromCompleteDetail() = runBlocking {
+        val employee = AssignedEmployee("staff", "Employee", "E1")
+        val original = com.nags.operations.data.FlightDepartureSubmission("departure", employee, clock,
+            employee, isAccepted = true, createdAtUtc = clock)
+        serverItems = listOf(item("one").withVisibilityReports(detail("one").copy(departureSubmissions = listOf(original))))
+        detailLoader = { detail(it).copy(departureSubmissions = listOf(original)) }
+        val repository = repository()
+        repository.refreshCache()
+        repository.recordDeparture("one", com.nags.operations.data.FlightDepartureSaved(
+            original.copy(atd = "2026-11-03T23:00:00Z"), "new-version"))
+        online = false
+        assertEquals("2026-11-03T23:00:00Z", repository.flights().items.first { it.id == "one" }.latestDepartureAtUtc)
+        clock = "2026-11-04T11:00:00.000000001Z"
+        repository.pruneExpired()
+        assertFalse(repository.flights().items.any { it.id == "one" })
+        assertTrue(runCatching { repository.flight("one") }.isFailure)
     }
 
     private fun scoped(page: FlightPage): FlightPage {

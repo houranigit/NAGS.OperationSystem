@@ -2,6 +2,7 @@ package com.nags.operations.ui.flights
 
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
+import com.nags.operations.data.withVisibilityReports
 
 internal data class FlightFormWorkTarget(val key: String, val completed: Boolean)
 
@@ -27,4 +28,10 @@ internal fun FlightDetail.formCardSummary(listItem: FlightListItem?, targets: Li
         latestReturnToRampSequence = returnToRamps.maxOfOrNull { it.sequence } ?: listItem?.latestReturnToRampSequence,
         activeWorkCount = targets.count { !it.completed }, completedWorkCount = targets.count { it.completed },
         latestCancellationAtUtc = listItem?.latestCancellationAtUtc,
-    )
+    ).let { summary ->
+        if (listItem == null) summary.withVisibilityReports(this) else summary.copy(
+            latestDepartureAtUtc = listItem.latestDepartureAtUtc,
+            latestReturnToRampDepartureAtUtc = listItem.latestReturnToRampDepartureAtUtc,
+            visibilityPolicyVersion = listItem.visibilityPolicyVersion,
+        )
+    }

@@ -25,11 +25,11 @@ public sealed class GetMobileFlightHistoryQueryHandler(IOperationsDbContext db, 
         if (resolved.IsFailure) return resolved.Error;
         var actor = resolved.Value;
         var paging = PageRequest.From(request.Page, request.PageSize);
-        var matchingFlights = FlightListQuery.ApplySearch(db.Flights.AsNoTracking(), request.Search);
+        var visibleFlights = MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), actor);
+        var matchingFlights = FlightListQuery.ApplySearch(visibleFlights, request.Search);
         var query = from activity in db.FlightUserActivities.AsNoTracking()
             join flight in matchingFlights on activity.FlightId equals flight.Id
-            where activity.UserId == actor.UserId && flight.Station.StationId == actor.StationId &&
-                flight.Schedule.Sta <= actor.WindowEndUtc && flight.Schedule.Std >= actor.WindowStartUtc
+            where activity.UserId == actor.UserId
             select new { Flight = flight, activity.LastInteractionAtUtc, activity.UsedSearch };
         if (request.UsedSearchOnly)
             query = query.Where(item => item.UsedSearch &&
@@ -47,8 +47,7 @@ public sealed class GetMobileFlightHistoryQueryHandler(IOperationsDbContext db, 
                 .Skip(paging.Skip).Take(paging.PageSize)
                 .Select(item => new { item.Flight.Id, item.LastInteractionAtUtc }).ToListAsync(cancellationToken);
             var ids = page.Select(item => item.Id).ToArray();
-            var cards = await MobileFlightQuery.ProjectListItems(db.Flights.AsNoTracking().Where(item => ids.Contains(item.Id) &&
-                    item.Station.StationId == actor.StationId && item.Schedule.Sta <= actor.WindowEndUtc && item.Schedule.Std >= actor.WindowStartUtc),
+            var cards = await MobileFlightQuery.ProjectListItems(visibleFlights.Where(item => ids.Contains(item.Id)),
                 actor, station.TimeZoneId).ToListAsync(cancellationToken);
             var versions = await logos.GetLogoVersionsAsync(cards.Select(item => item.CustomerId).Distinct().ToArray(), cancellationToken);
             var names = await FlightWorkAttribution.NamesAsync(userNames, cards.Select(item => item.CreatedByUserId), cancellationToken);

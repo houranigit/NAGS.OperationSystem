@@ -69,9 +69,10 @@ public sealed class MobileAdHocFlightTests
     }
 
     [Theory]
+    [InlineData(-720)]
     [InlineData(-12)]
     [InlineData(12)]
-    public async Task Equal_schedule_instants_at_inclusive_mobile_window_edges_are_valid(int hours)
+    public async Task Overdue_and_inclusive_lookahead_schedule_instants_are_valid(int hours)
     {
         await using var f = new Fixture(); var instant = Now.AddHours(hours);
         var result = await f.CreateAsync(Guid.NewGuid(), f.Input with

@@ -249,7 +249,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
     }
 
     [Fact]
-    public async Task Mobile_routes_limit_categories_station_and_overlap_without_narrowing_portal_reads()
+    public async Task Mobile_routes_limit_categories_station_and_lookahead_without_expiring_overdue_flights_or_narrowing_portal_reads()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
@@ -295,10 +295,10 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         page!.StationId.ShouldBe(refs.StationId);
         page.WindowStartUtc.ShouldBe(page.AsOfUtc.AddHours(-12));
         page.WindowEndUtc.ShouldBe(page.AsOfUtc.AddHours(12));
-        page.Items.Select(f => f.Id).ShouldBe([assignedId, spanning.Id, landing.Id, ownAdHoc.Id, ownMixed.Id, otherAdHoc.Id, otherMixed.Id], ignoreOrder: true);
+        page.Items.Select(f => f.Id).ShouldBe([assignedId, spanning.Id, outdated.Id, landing.Id, ownAdHoc.Id, ownMixed.Id, otherAdHoc.Id, otherMixed.Id], ignoreOrder: true);
         page.Items.ShouldAllBe(f => f.StationId == refs.StationId);
         var mine = await client.GetFromJsonAsync<MobileFlightPageDto>($"{mobile}?category=MyFlights");
-        mine!.Items.Select(f => f.Id).ShouldBe([assignedId, spanning.Id], ignoreOrder: true);
+        mine!.Items.Select(f => f.Id).ShouldBe([assignedId, spanning.Id, outdated.Id], ignoreOrder: true);
         var perLanding = await client.GetFromJsonAsync<MobileFlightPageDto>($"{mobile}?category=PerLanding");
         perLanding!.Items.ShouldHaveSingleItem().Id.ShouldBe(landing.Id);
         var adHoc = await client.GetFromJsonAsync<MobileFlightPageDto>($"{mobile}?category=AdHoc");
@@ -308,7 +308,8 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         (await client.GetAsync($"{mobile}?category=unknown")).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await admin.GetAsync(mobile)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await client.GetAsync($"{mobile}/{spanning.Id}")).StatusCode.ShouldBe(HttpStatusCode.OK);
-        foreach (var id in new[] { outdated.Id, otherStation.Id, future.Id })
+        (await client.GetAsync($"{mobile}/{outdated.Id}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        foreach (var id in new[] { otherStation.Id, future.Id })
         {
             (await client.GetAsync($"{mobile}/{id}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
             (await client.GetAsync($"{mobile}/{id}/invitation-options")).StatusCode.ShouldBe(HttpStatusCode.NotFound);

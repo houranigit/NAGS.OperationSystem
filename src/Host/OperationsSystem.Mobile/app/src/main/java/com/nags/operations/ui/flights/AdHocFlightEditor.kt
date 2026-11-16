@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nags.operations.data.*
+import com.nags.operations.data.db.entities.FlightReturnToRampPendingEntity
 import com.nags.operations.ui.components.InlineNotice
 import com.nags.operations.ui.components.InlineNoticeKind
 import java.time.LocalDate
@@ -41,7 +42,8 @@ import kotlinx.coroutines.flow.flowOf
 /** Flight details use the same normal Arrival/work editor and atomic local save as scheduled flights. */
 @Composable
 internal fun AdHocFlightEditor(viewModel: FlightsViewModel, initialFlight: FlightDetail, onClose: () -> Unit,
-    initialNavigationKey: String? = null, progressStatus: FlightProgressStatus? = null) {
+    initialNavigationKey: String? = null, progressStatus: FlightProgressStatus? = null,
+    pendingReturnsToRamp: List<FlightReturnToRampPendingEntity>? = null) {
     val repository = checkNotNull(viewModel.adHocRepository)
     val customers by viewModel.adHocCustomers.collectAsStateWithLifecycle(initialValue = emptyList())
     val aircraft by viewModel.arrivalAircraftTypes.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -50,6 +52,8 @@ internal fun AdHocFlightEditor(viewModel: FlightsViewModel, initialFlight: Fligh
     val departures by (viewModel.departures?.changes ?: flowOf(emptyList())).collectAsStateWithLifecycle(initialValue = emptyList())
     val services by (viewModel.services?.changes ?: flowOf(emptyList())).collectAsStateWithLifecycle(initialValue = emptyList())
     val tasks by (viewModel.tasks?.changes ?: flowOf(emptyList())).collectAsStateWithLifecycle(initialValue = emptyList())
+    val observedReturns by (viewModel.returnsToRamp?.changes ?: flowOf(emptyList())).collectAsStateWithLifecycle(initialValue = emptyList())
+    val returns = pendingReturnsToRamp ?: observedReturns
     val drafts by (viewModel.services?.drafts ?: flowOf(emptyList())).collectAsStateWithLifecycle(initialValue = emptyList())
     val planning by repository.pending.collectAsStateWithLifecycle(initialValue = emptyList())
     val context by repository.context.collectAsStateWithLifecycle(initialValue = null)
@@ -85,8 +89,7 @@ internal fun AdHocFlightEditor(viewModel: FlightsViewModel, initialFlight: Fligh
         arrivalInputTime(sta, initialFlight.scheduledArrivalUtc, zone), arrivalInputTime(std, initialFlight.scheduledDepartureUtc, zone)).normalized()
     val baseline = AdHocFlightInput(initialFlight.customerId, initialFlight.flightNumber,
         initialFlight.scheduledArrivalUtc, initialFlight.scheduledDepartureUtc).normalized()
-    val requestedInWindow = initialFlight.copy(scheduledArrivalUtc = input.scheduledArrivalUtc,
-        scheduledDepartureUtc = input.scheduledDepartureUtc).isInFlightWindow(java.time.Instant.now())
+    val requestedInWindow = isWithinFlightPlanningWindow(input.scheduledArrivalUtc, input.scheduledDepartureUtc, java.time.Instant.now())
     val hasOperationalIntent = arrivals.any { it.flightId == initialFlight.id } || services.any { it.flightId == initialFlight.id } ||
         tasks.any { it.flightId == initialFlight.id } || departures.any { it.flightId == initialFlight.id }
     val scopeValid = context?.stationId == initialFlight.stationId && initialFlight.isInFlightWindow(java.time.Instant.now())
@@ -108,9 +111,16 @@ internal fun AdHocFlightEditor(viewModel: FlightsViewModel, initialFlight: Fligh
         onSaveArrival = { detail, value -> checkNotNull(viewModel.arrivals).save(detail, value) },
         onReviewArrival = { viewModel.reviewFlightInput(flight.id) }, onSaveDeparture = viewModel::saveDeparture,
         onSaveServices = viewModel::saveServices, onSaveTasks = viewModel::saveTasks,
+        pendingReturnsToRamp = returns.filter { it.flightId == flight.id },
         onSaveReturnToRamp = viewModel::saveReturnToRamp,
-        loadReturnToRampInput = { viewModel.returnsToRamp?.pendingInput(flight.id, it) },
-        loadReturnToRampSignature = { viewModel.returnToRampSignature(flight, it) },
+        onSaveReviewedReturnToRamp = { latest, occurrence, change, value, preview ->
+            checkNotNull(viewModel.returnsToRamp).saveReviewed(latest, occurrence, change, value, preview)
+        },
+        onDiscardReviewedReturnToRamp = { occurrence, change ->
+            checkNotNull(viewModel.returnsToRamp).discardReviewed(flight.id, occurrence, change)
+        },
+        loadReturnToRampInput = { occurrence, change -> viewModel.returnsToRamp?.pendingInput(flight.id, occurrence, change) },
+        loadReturnToRampSignature = { recorded, occurrence -> viewModel.returnToRampSignature(recorded, occurrence) },
         loadReturnToRampAttachment = { occurrence, kind, record, attachment, version ->
             viewModel.pendingReturnToRampAttachment(flight.id, occurrence, attachment) ?: if (version.isBlank()) null
             else if (kind == "services") viewModel.serviceAttachment(flight.id, record, attachment, version)

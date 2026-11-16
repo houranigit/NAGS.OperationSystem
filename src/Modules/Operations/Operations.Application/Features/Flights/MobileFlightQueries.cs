@@ -192,23 +192,36 @@ internal static class MobileFlightQuery
             row.Flight.TaskRecords.Count(t => t.ReturnToRampId == row.LatestReturnToRampId && t.Window.ToUtc != null),
             row.Flight.CancellationSubmissions.Select(c => (DateTimeOffset?)c.Details.CanceledAtUtc).Max(),
             row.Flight.CreatedByUserId, row.Flight.CreatedAtUtc, null,
-            row.Flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType));
+            row.Flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType, null,
+            row.Flight.DepartureSubmissions.Select(d => (DateTimeOffset?)d.Details.Atd).Max(),
+            row.Flight.ReturnToRamps.Where(r => r.DepartureDetails != null)
+                .Select(r => (DateTimeOffset?)r.DepartureDetails!.DepartedAtUtc).Max(), 1));
 
     public static IQueryable<Flight> ApplyReadScope(IQueryable<Flight> query, MobileFlightScopeContext scope,
-        MobileFlightCategory? category = null) => category.HasValue ? ApplyScope(query, scope, category) : query.Where(f =>
-            f.Station.StationId == scope.StationId && f.Schedule.Sta <= scope.WindowEndUtc && f.Schedule.Std >= scope.WindowStartUtc);
+        MobileFlightCategory? category = null) => category.HasValue ? ApplyScope(query, scope, category) : ApplyVisibility(query, scope);
+
+    private static IQueryable<Flight> ApplyVisibility(IQueryable<Flight> query, MobileFlightScopeContext scope)
+    {
+        var stationId = scope.StationId;
+        var terminalCutoff = scope.WindowStartUtc;
+        var arrivalLookahead = scope.WindowEndUtc;
+        return query.Where(f => f.Station.StationId == stationId && (
+            f.ReturnToRamps.Any(r => r.DepartureDetails == null) ||
+            f.ArrivalSubmissions.Any() && !f.DepartureSubmissions.Any() ||
+            !f.ArrivalSubmissions.Any() && !f.DepartureSubmissions.Any() && !f.CancellationSubmissions.Any() &&
+                f.Schedule.Sta <= arrivalLookahead ||
+            f.DepartureSubmissions.Any(d => d.Details.Atd >= terminalCutoff) ||
+            f.ReturnToRamps.Any(r => r.DepartureDetails != null && r.DepartureDetails.DepartedAtUtc >= terminalCutoff) ||
+            f.CancellationSubmissions.Any(c => c.Details.CanceledAtUtc >= terminalCutoff)));
+    }
 
     public static IQueryable<Flight> ApplyScope(
         IQueryable<Flight> query,
         MobileFlightScopeContext scope,
         MobileFlightCategory? category = null)
     {
-        var stationId = scope.StationId;
         var staffId = scope.StaffMemberId;
-        var fromUtc = scope.WindowStartUtc;
-        var toUtc = scope.WindowEndUtc;
-        query = query.Where(f => f.Station.StationId == stationId &&
-            f.Schedule.Sta <= toUtc && f.Schedule.Std >= fromUtc);
+        query = ApplyVisibility(query, scope);
 
         return category switch
         {

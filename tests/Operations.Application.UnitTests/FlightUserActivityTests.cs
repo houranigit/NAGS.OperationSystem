@@ -61,6 +61,8 @@ public sealed class FlightUserActivityTests
         var viewed = f.Flight("105"); var otherAccount = f.Flight("106");
         var otherStation = f.Flight("107", stationId: Guid.NewGuid());
         var expired = f.Flight("108", schedule: ScheduledTime.Create(Now.AddHours(-14), Now.AddHours(-13)).Value);
+        expired.SubmitCancellation(new(f.Actor.StaffMemberId, "Employee", "E1"), CancellationDetails.Create(Now.AddHours(-13), null).Value,
+            f.Actor.UserId, Now.AddHours(-13)).IsSuccess.ShouldBeTrue();
         var future = f.Flight("109", schedule: ScheduledTime.Create(Now.AddHours(13), Now.AddHours(14)).Value);
         f.Db.Flights.AddRange(first, second, third, fourth, viewed, otherAccount, otherStation, expired, future);
         f.Db.FlightUserActivities.AddRange(
@@ -123,7 +125,7 @@ public sealed class FlightUserActivityTests
     }
 
     [Fact]
-    public async Task Inclusive_schedule_window_and_missing_station_metadata_follow_mobile_read_contract()
+    public async Task Overdue_and_inclusive_lookahead_flights_and_missing_station_metadata_follow_mobile_read_contract()
     {
         await using var f = new Fixture();
         var left = f.Flight("501", schedule: ScheduledTime.Create(Now.AddHours(-13), Now.AddHours(-12)).Value);

@@ -23,9 +23,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import java.io.IOException
-import java.time.Duration
 import java.time.Instant
-import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import io.ktor.client.plugins.HttpRequestTimeoutException
@@ -743,18 +741,8 @@ class FlightsViewModel internal constructor(
         expiryJob?.cancel()
         expiryJob = scope.launch {
             while (true) {
-                val current = _state.value
-                val departures = current.items.map { it.scheduledDepartureUtc } +
-                    current.retainedTabs.values.flatMap { tab -> tab.items.map { it.scheduledDepartureUtc } } +
-                    normalTabs.values.flatMap { tab -> tab.items.map { it.scheduledDepartureUtc } } +
-                    listOfNotNull(current.detail?.scheduledDepartureUtc)
-                val nextExpiry = departures.mapNotNull {
-                    runCatching { parseFlightInstant(it).plus(12, ChronoUnit.HOURS) }.getOrNull()
-                }.minOrNull()
-                val delayMillis = nextExpiry?.let {
-                    (Duration.between(now(), it).toMillis() + 1).coerceIn(1, 30_000)
-                } ?: 30_000L
-                waitForExpiryCheck(delayMillis)
+                // Unresolved flights have no schedule-based expiry. A bounded tick also observes terminal edits.
+                waitForExpiryCheck(30_000L)
                 expireVisibleFlights()
                 try {
                     pruneCachedFlights()
@@ -838,7 +826,7 @@ class FlightsViewModel internal constructor(
     }
 
     private companion object {
-        const val FLIGHT_EXPIRED_MESSAGE = "This flight is outside the current 24-hour window."
+        const val FLIGHT_EXPIRED_MESSAGE = "This flight is no longer in your current operational view."
         const val PAGE_SIZE = 20
         const val INVITE_PERMISSION = "operations.flights.invite"
         const val VIEW_PERMISSION = "operations.flights.view"

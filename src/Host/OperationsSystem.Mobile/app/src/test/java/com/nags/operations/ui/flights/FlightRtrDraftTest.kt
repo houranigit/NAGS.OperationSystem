@@ -4,6 +4,8 @@ import com.nags.operations.data.FlightReturnToRampRecord
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class FlightRtrDraftTest {
@@ -30,5 +32,16 @@ class FlightRtrDraftTest {
         }))
         assertEquals(draft.fingerprint(), hydrated.fingerprint())
         assertNotEquals(draft.fingerprint(), hydrated.copy(work = FlightWorkDrafts()).fingerprint())
+    }
+
+    @Test fun reviewRestoresExplicitSignatureRemovalWithoutReintroducingPublishedInk() {
+        val saved = FlightReturnToRampRecord("rtr", 1, "2026-11-15T13:00:00Z", "staff", "Employee",
+            departedAtUtc = "2026-11-15T14:00:00Z", hasSignature = true, signatureSignedAtUtc = "2026-11-15T14:00:00Z",
+            createdByUserId = "user", createdAtUtc = "2026-11-15T13:00:00Z")
+        val input = saved.input().let { it.copy(departure = it.departure?.copy(removeSignature = true)) }
+        val restored = saved.rtrDraft(FlightOperationsCatalogs(), zone, input)
+        assertTrue(restored.removeSignature)
+        assertTrue(restored.input(zone).departure!!.removeSignature)
+        assertNull(restored.input(zone).departure!!.signatureContent)
     }
 }

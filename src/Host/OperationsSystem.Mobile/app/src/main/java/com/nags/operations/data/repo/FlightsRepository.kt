@@ -1,6 +1,7 @@
 package com.nags.operations.data.repo
 
 import com.nags.operations.data.withReturnToRampReports
+import com.nags.operations.data.latestFlightTime
 
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.AssignedEmployee
@@ -371,7 +372,8 @@ class FlightsRepository internal constructor(
                 }
             }
             updateSnapshotReportsLocked(session, id) { it.copy(hasCancellationSubmission = hasCancellation,
-                latestCancellationAtUtc = confirmedCancellations?.latestCancellationAtUtc()) }
+                latestCancellationAtUtc = confirmedCancellations?.latestCancellationAtUtc(),
+                visibilityPolicyVersion = it.visibilityPolicyVersion.takeIf { confirmedCancellations != null }) }
         }
 
         recordAdHocPartial(session, id) { detail ->
@@ -407,16 +409,22 @@ class FlightsRepository internal constructor(
         mutationMutex.withLock {
             ensureCurrent(session)
             markContentChangedLocked(session, id)
+            var acknowledgedDetail: FlightDetail? = null
             dao.detail(session.owner, id)?.let { cached ->
                 val detail = runCatching { json.decodeFromString<FlightDetail>(cached.payloadJson) }.getOrNull()
                 if (detail != null) {
                     val updated = detail.copy(departureSubmissions = detail.departureSubmissions.filterNot {
                         it.id == saved.submission.id
                     } + saved.submission, rowVersion = saved.rowVersion).restrictCapabilitiesAfterKnownWork()
+                    acknowledgedDetail = updated
                     dao.putDetails(listOf(cached.copy(payloadJson = json.encodeToString(updated))))
                 }
             }
-            updateSnapshotReportsLocked(session, id) { it.copy(hasDepartureSubmission = true) }
+            updateSnapshotReportsLocked(session, id) { row ->
+                acknowledgedDetail?.let { detail -> row.copy(hasDepartureSubmission = true,
+                    latestDepartureAtUtc = latestFlightTime(detail.departureSubmissions.map { it.atd })) }
+                    ?: row.copy(hasDepartureSubmission = true, latestDepartureAtUtc = null, visibilityPolicyVersion = null)
+            }
         }
 
         recordAdHocPartial(session, id) { detail -> detail.copy(departureSubmissions = detail.departureSubmissions.filterNot { it.id == saved.submission.id } + saved.submission, rowVersion = saved.rowVersion) }
@@ -505,7 +513,10 @@ class FlightsRepository internal constructor(
         val presenceChanged = (original.hasArrivalSubmission == true) != (updated.hasArrivalSubmission == true) ||
             (original.hasDepartureSubmission == true) != (updated.hasDepartureSubmission == true) ||
             (original.hasCancellationSubmission == true) != (updated.hasCancellationSubmission == true)
-        val reportSummaryChanged = presenceChanged || original.latestCancellationAtUtc != updated.latestCancellationAtUtc
+        val reportSummaryChanged = presenceChanged || original.latestCancellationAtUtc != updated.latestCancellationAtUtc ||
+            original.latestDepartureAtUtc != updated.latestDepartureAtUtc ||
+            original.latestReturnToRampDepartureAtUtc != updated.latestReturnToRampDepartureAtUtc ||
+            (original.hasOpenReturnToRamp == true) != (updated.hasOpenReturnToRamp == true)
         // A list response started before a report change must not undo its summary. Filling only
         // missing false metadata does not invalidate unrelated planning reads.
         if (reportSummaryChanged) listRevision++
@@ -845,7 +856,7 @@ class FlightsRepository internal constructor(
                 isMyAdHocFlight = true, isAdHocFlight = true, stationTimeZoneId = detail.stationTimeZoneId,
                 createdByUserId = detail.createdByUserId, createdByDisplayName = detail.createdByDisplayName,
                 hasArrivalSubmission = detail.arrivalSubmissions.isNotEmpty(), hasDepartureSubmission = detail.departureSubmissions.isNotEmpty(),
-                hasCancellationSubmission = detail.hasCancellationSubmission)
+                hasCancellationSubmission = detail.hasCancellationSubmission).withReturnToRampReports(detail)
         }.filter { term == null || it.matchesSearch(term) }
         val new = local.filter { row -> page.items.none { it.id == row.id } }
         return page.copy(items = new + page.items, totalCount = page.totalCount + new.size)

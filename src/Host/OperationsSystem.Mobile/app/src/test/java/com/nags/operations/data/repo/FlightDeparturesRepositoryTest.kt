@@ -630,7 +630,7 @@ class FlightDeparturesRepositoryTest {
         val other = submitted.copy(submittedByEmployee = employee.copy(staffMemberId = "22222222-2222-2222-2222-222222222222"))
         for (blocked in listOf(flight.copy(departureSubmissions = listOf(other)), flight.copy(canSaveDeparture = false),
             flight.copy(hasCancellationSubmission = true), flight.copy(currentStaffMemberId = null), flight.copy(rowVersion = "bad"),
-            flight.copy(scheduledArrivalUtc = at.minusSeconds(172800).toString(), scheduledDepartureUtc = at.minusSeconds(86400).toString()))) {
+            flight.copy(departureSubmissions = listOf(submitted.copy(atd = at.minusSeconds(86400).toString()))))) {
             assertTrue(runCatching { repo.save(blocked, input) }.isFailure)
         }
         assertTrue(dao.rows(owner.value!!).isEmpty())

@@ -3,7 +3,7 @@ package com.nags.operations.data
 import java.time.ZoneId
 import kotlinx.serialization.Serializable
 
-/** The mobile feed is restricted by station, membership and the rolling 24-hour window. */
+/** The mobile feed is restricted by station, membership and operational visibility. */
 @Serializable
 data class FlightPage(
     val items: List<FlightListItem> = emptyList(),
@@ -52,6 +52,10 @@ data class FlightListItem(
     val createdByUserId: String? = null,
     val createdByDisplayName: String? = null,
     val lastInteractionAtUtc: String? = null,
+    val latestDepartureAtUtc: String? = null,
+    val latestReturnToRampDepartureAtUtc: String? = null,
+    // Missing evidence in older snapshots keeps the earlier schedule-only visibility rule.
+    val visibilityPolicyVersion: Int? = null,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
 }

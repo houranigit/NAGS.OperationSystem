@@ -403,7 +403,8 @@ fun FlightsScreen(
                     val catalogs by viewModel.operationsCatalogs.collectAsStateWithLifecycle(initialValue = FlightOperationsCatalogs())
                     if ((state.detail ?: flight).isAdHocFlight && viewModel.adHocRepository != null) {
                         AdHocFlightEditor(viewModel, state.detail ?: flight, closeForm,
-                            initialNavigationKey = recordingInitialNavigationKey, progressStatus = progressStatus)
+                            initialNavigationKey = recordingInitialNavigationKey, progressStatus = progressStatus,
+                            pendingReturnsToRamp = pendingReturns.filter { it.flightId == flight.id })
                     } else FlightOperationsForm(state.detail ?: flight, aircraftTypes, viewModel::customerLogo, onClose = closeForm, catalogs = catalogs.forStation(flight.stationId),
                         listItem = state.items.firstOrNull { it.id == flight.id },
                         initialNavigationKey = recordingInitialNavigationKey,
@@ -414,9 +415,16 @@ fun FlightsScreen(
                         onSaveServices = viewModel::saveServices,
                         pendingTasks = pendingTasks.filter { it.flightId == flight.id },
                         onSaveTasks = viewModel::saveTasks,
+                        pendingReturnsToRamp = pendingReturns.filter { it.flightId == flight.id },
                         onSaveReturnToRamp = viewModel::saveReturnToRamp,
-                        loadReturnToRampInput = { viewModel.returnsToRamp?.pendingInput(flight.id, it) },
-                        loadReturnToRampSignature = { viewModel.returnToRampSignature(state.detail ?: flight, it) },
+                        onSaveReviewedReturnToRamp = { latest, occurrence, change, input, preview ->
+                            checkNotNull(viewModel.returnsToRamp).saveReviewed(latest, occurrence, change, input, preview)
+                        },
+                        onDiscardReviewedReturnToRamp = { occurrence, change ->
+                            checkNotNull(viewModel.returnsToRamp).discardReviewed(flight.id, occurrence, change)
+                        },
+                        loadReturnToRampInput = { occurrence, change -> viewModel.returnsToRamp?.pendingInput(flight.id, occurrence, change) },
+                        loadReturnToRampSignature = { recorded, occurrence -> viewModel.returnToRampSignature(recorded, occurrence) },
                         loadReturnToRampAttachment = { occurrence, kind, record, attachment, version ->
                             viewModel.pendingReturnToRampAttachment(flight.id, occurrence, attachment) ?: if (version.isBlank()) null
                             else if (kind == "services") viewModel.serviceAttachment(flight.id, record, attachment, version)
@@ -610,10 +618,10 @@ private fun FlightListPage(
                     }
                     val flightServices = savedServices.filter { it.flightId == flight.id }
                     val flightTasks = savedTasks.filter { it.flightId == flight.id }
+                    val flightReturns = savedReturns.filter { it.flightId == flight.id }
                     val navigationTarget = (if (needsReview) flightReviewTargets(arrivalsById[flight.id], departuresById[flight.id],
-                        flightServices, flightTasks) else flightPendingTargets(arrivalsById[flight.id], departuresById[flight.id],
-                        flightServices, flightTasks)).firstOrNull()?.navigationKey()
-                        ?: localReturn?.let { "returns-to-ramp:${it.occurrenceId}" }
+                        flightServices, flightTasks, flightReturns) else flightPendingTargets(arrivalsById[flight.id], departuresById[flight.id],
+                        flightServices, flightTasks, flightReturns)).firstOrNull()?.navigationKey()
                         ?: cancellationsById[flight.id]?.let { "cancellation" }
                         ?: adHocById[flight.id]?.let { "adhoc" }
                     val navigateToPending: (() -> Unit)? = navigationTarget?.let { target -> {

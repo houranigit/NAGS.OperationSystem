@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlightLand
 import androidx.compose.material.icons.filled.FlightTakeoff
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +33,8 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.Alignment
 import com.nags.operations.R
 import com.nags.operations.data.*
+import com.nags.operations.data.db.entities.FlightReturnToRampPendingEntity
+import java.util.Base64
 import com.nags.operations.ui.util.operationLocalTime
 import com.nags.operations.ui.util.stationTimeZone
 import java.time.Instant
@@ -56,12 +60,13 @@ internal data class FlightRtrDraft(
     val arrival: FlightWorkPeriod = FlightWorkPeriod(), val arrivalRemarks: String = "",
     val departure: FlightWorkPeriod = FlightWorkPeriod(), val departureRemarks: String = "",
     val work: FlightWorkDrafts = FlightWorkDrafts(), val signature: String = "", val signedAtUtc: String? = null,
+    val removeSignature: Boolean = false,
 ) {
     fun input(zone: ZoneId) = SaveFlightReturnToRampRequest(
         FlightReturnToRampArrivalInput(arrivalInputTime(arrival.start, arrival.originalStartUtc, zone), arrivalRemarks),
         departure.start.takeIf(String::isNotBlank)?.let {
             FlightReturnToRampDepartureInput(arrivalInputTime(it, departure.originalStartUtc, zone), departureRemarks,
-                signatureSignedAtUtc = signedAtUtc)
+                signatureSignedAtUtc = signedAtUtc, removeSignature = removeSignature)
         }, work.services.map { FlightReturnToRampServiceInput(it.id, it.serviceInput(zone)) },
         work.tasks.map { FlightReturnToRampTaskInput(it.id, it.taskInput(zone)) }).normalized()
 
@@ -76,10 +81,11 @@ internal fun FlightReturnToRampRecord.rtrDraft(catalogs: FlightOperationsCatalog
     FlightWorkPeriod(input.departure?.let { operationLocalTime(it.departedAtUtc, zone) }.orEmpty(),
         originalStartUtc = input.departure?.departedAtUtc), input.departure?.remarks.orEmpty(),
     FlightWorkDrafts(input.services.map { entry ->
-        val old = services.firstOrNull { it.id == entry.recordId }
+        val old = services.firstOrNull { it.id == entry.recordId && it.serviceId == entry.input.serviceId }
         entry.input.toEditorDraft(entry.recordId, old?.serviceName ?: catalogs.services.firstOrNull { it.id == entry.input.serviceId }?.name.orEmpty(), old, catalogs, zone)
     }, input.tasks.map { it.input.toTaskEditorDraft(it.recordId, tasks.firstOrNull { old -> old.id == it.recordId }, catalogs, zone) }),
-    signedAtUtc = input.departure?.signatureSignedAtUtc ?: signatureSignedAtUtc)
+    signedAtUtc = input.departure?.signatureSignedAtUtc ?: signatureSignedAtUtc,
+    removeSignature = input.departure?.removeSignature == true)
 
 /** Validate through the same service/task editors with the occurrence's own actual-time bounds. */
 internal fun FlightRtrDraft.errors(flight: FlightDetail, catalogs: FlightOperationsCatalogs, zone: ZoneId,
@@ -158,14 +164,14 @@ internal fun FlightRtrFields(draft: FlightRtrDraft, flight: FlightDetail, catalo
             else {
                 FlightWorkOptionalRemoval(baseline?.departedAtUtc == null, "${draft.id}:departure",
                     stringResource(R.string.work_remove_item, stringResource(R.string.operations_actual_departure)),
-                    onRemove = { onChange(draft.copy(departure = FlightWorkPeriod(), departureRemarks = "", signature = "", signedAtUtc = null)) },
+                    onRemove = { onChange(draft.copy(departure = FlightWorkPeriod(), departureRemarks = "", signature = "", signedAtUtc = null, removeSignature = true)) },
                     enabled = enabled, compactDelete = true) {
                     FlightFormDateTimeField(draft.departure.start, stringResource(R.string.operations_actual_departure),
                         stringResource(R.string.operations_choose_atd), enabled = enabled, leadingPadding = 0.dp,
                         displayPattern = "dd/MM/yy HH:mm", prominentLabel = true, onClick = { open("departure") })
                 }
                 FlightFormDivider()
-                FlightSignatureField(draft.signature, baseline?.hasSignature == true, savedSignature,
+                FlightSignatureField(draft.signature, !draft.removeSignature && (baseline?.hasSignature == true || savedSignature != null), savedSignature,
                     enabled = enabled, onOpen = { open("signature") })
                 FlightFormDivider()
                 FlightFormRemarks(draft.departureRemarks, { onChange(draft.copy(departureRemarks = it)) },
@@ -182,51 +188,92 @@ internal fun FlightRtrFields(draft: FlightRtrDraft, flight: FlightDetail, catalo
                 else onChange(draft.copy(departure = draft.departure.copy(start = it.toString()))) },
             onDismiss = { picker = null }, title = stringResource(if (arrival) R.string.arrival_ata else R.string.operations_atd), showTitle = false)
     }
-    if (picker == "signature") FlightSignatureSheet(draft.signature, baseline?.hasSignature == true, savedSignature, loading = false, onRetry = {},
-        onValueChange = { onChange(draft.copy(signature = it, signedAtUtc = Instant.now().toString())) }, onDismiss = { picker = null })
+    if (picker == "signature") FlightSignatureSheet(draft.signature, !draft.removeSignature && (baseline?.hasSignature == true || savedSignature != null), savedSignature, loading = false, onRetry = {},
+        onValueChange = { onChange(draft.copy(signature = it, signedAtUtc = Instant.now().toString(), removeSignature = false)) }, onDismiss = { picker = null })
 }
 
 @Composable
 internal fun FlightRtrUpdateForm(flight: FlightDetail, record: FlightReturnToRampRecord,
     catalogs: FlightOperationsCatalogs, loadLogo: (String) -> Flow<ByteArray?>,
-    loadInput: suspend () -> SaveFlightReturnToRampRequest?, loadSignature: suspend () -> ByteArray?,
+    pending: FlightReturnToRampPendingEntity?,
+    loadInput: suspend () -> SaveFlightReturnToRampRequest?, loadSignature: suspend (FlightDetail) -> ByteArray?,
     loadAttachment: suspend (String, String, String, String) -> String?,
     onSave: suspend (FlightDetail, String, SaveFlightReturnToRampRequest, FlightReturnToRampRecord) -> Unit,
+    onSaveReviewed: suspend (FlightDetail, String, String, SaveFlightReturnToRampRequest, FlightReturnToRampRecord) -> Unit,
+    onDiscardReviewed: suspend (String, String) -> Unit,
     onReload: suspend () -> FlightDetail, onClose: () -> Unit,
 ) {
     val zone = stationTimeZone(flight.stationTimeZoneId)
+    val reviewing = pending?.status?.let { it != "pending" } == true
+    val recordedBaseline = remember(pending?.reviewedOccurrenceJson) {
+        pending?.reviewedOccurrenceJson?.let { Json.decodeFromString<FlightReturnToRampRecord>(it) }
+    }
+    val entryFlight = remember(flight, pending) {
+        if (pending == null || reviewing) flight else flight.copy(rowVersion = pending.rowVersion,
+            returnToRamps = flight.returnToRamps.filterNot { it.id == record.id } + listOfNotNull(recordedBaseline))
+    }
     var draftJson by rememberSaveable { mutableStateOf(Json.encodeToString(record.rtrDraft(catalogs, zone))) }
     var baseline by rememberSaveable { mutableStateOf(Json.decodeFromString<FlightRtrDraft>(draftJson).fingerprint()) }
-    var reviewedJson by rememberSaveable { mutableStateOf(Json.encodeToString(flight)) }
+    var reviewedJson by rememberSaveable { mutableStateOf(Json.encodeToString(entryFlight)) }
+    var cachedReview by rememberSaveable { mutableStateOf(flight.fromCache) }
+    var initialized by rememberSaveable { mutableStateOf(false) }
+    var localDiscarded by rememberSaveable { mutableStateOf(false) }
+    var useLocalSignature by rememberSaveable { mutableStateOf(false) }
     val reviewed = remember(reviewedJson) { Json.decodeFromString<FlightDetail>(reviewedJson) }
+    val onlineRecord = reviewed.returnToRamps.firstOrNull { it.id == record.id }
     val draft = remember(draftJson) { Json.decodeFromString<FlightRtrDraft>(draftJson) }
     var saving by remember { mutableStateOf(false) }
     var ready by remember { mutableStateOf(false) }
+    var loadAttempt by remember { mutableStateOf(0) }
     var attempted by rememberSaveable { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
-    var signature by remember { mutableStateOf<ByteArray?>(null) }
+    var localSignature by remember { mutableStateOf<ByteArray?>(null) }
+    var onlineSignature by remember { mutableStateOf<ByteArray?>(null) }
     var discard by rememberSaveable { mutableStateOf(false) }
-    var reviewConfirmed by rememberSaveable { mutableStateOf(record.localStatus == null || record.localStatus == "pending") }
     val scope = rememberCoroutineScope()
     val validation = rememberFlightFormValidationState()
     val media = rememberFlightMediaSession()
-    val errors = if (attempted) draft.errors(reviewed, catalogs, zone, record) else emptyMap()
-    fun update(value: FlightRtrDraft) { draftJson = Json.encodeToString(value) }
-    LaunchedEffect(record.id) {
+    fun update(value: FlightRtrDraft) {
+        if (draft.departure.start.isNotBlank() && value.departure.start.isBlank()) {
+            useLocalSignature = false
+            localSignature = null
+        }
+        draftJson = Json.encodeToString(value)
+    }
+    LaunchedEffect(record.id, loadAttempt) {
+        ready = false
         try {
-            val pending = loadInput()
-            if (pending != null && draft.fingerprint() == baseline) {
-                val restored = record.rtrDraft(catalogs, zone, pending)
-                update(restored); baseline = restored.fingerprint()
+            val input = if (localDiscarded) null else loadInput()
+            if (pending != null && !localDiscarded) checkNotNull(input) { "The saved RTR changed. Reopen it before reviewing." }
+            val latest = if (reviewing && !initialized) onReload() else reviewed
+            val online = latest.returnToRamps.firstOrNull { it.id == record.id }
+            localSignature = input?.departure?.signatureContent?.let { Base64.getDecoder().decode(it) }
+            if (!initialized) {
+                val staged = if (reviewing && input != null) mergeReturnToRampReview(online, input, recordedBaseline)
+                    else input ?: online?.input() ?: record.input()
+                val restored = (online ?: record).rtrDraft(catalogs, zone, staged)
+                update(restored)
+                baseline = restored.fingerprint()
+                useLocalSignature = staged.departure?.signatureContent != null
+                reviewedJson = Json.encodeToString(latest)
+                cachedReview = latest.fromCache
+                initialized = true
             }
-            signature = loadSignature()
+            // Queued signature bytes belong to the editable input, never the online comparison.
+            onlineSignature = if (online?.hasSignature == true) {
+                try { loadSignature(latest) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { null }
+            } else null
+            ready = true
+            error = null
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) { error = failure.userMessage() }
-        finally { ready = true }
     }
     val attachmentKeys = draft.work.services.flatMap { row -> row.attachments.map { Triple("services", row.id, it) } } +
         draft.work.tasks.flatMap { row -> row.attachments.map { Triple("tasks", row.id, it) } }
-    LaunchedEffect(attachmentKeys.map { it.third.id }) {
+    LaunchedEffect(ready, attachmentKeys.map { it.third.id }) {
+        if (!ready) return@LaunchedEffect
         for ((kind, recordId, attachment) in attachmentKeys) {
             if (attachment.uri.isNotBlank()) continue
             try {
@@ -241,50 +288,102 @@ internal fun FlightRtrUpdateForm(flight: FlightDetail, record: FlightReturnToRam
         }
     }
     val changed = draft.fingerprint() != baseline
+    val eligible = reviewed.canSaveReturnsToRamp && !reviewed.hasCancellationSubmission &&
+        (onlineRecord?.canEdit ?: reviewed.canAddReturnToRamp())
+    val enabled = ready && eligible && !saving
     val close = { media.clear(); onClose() }
-    FlightRecordingFormScaffold(reviewed, stringResource(R.string.rtr_form_title), stringResource(R.string.operations_save),
+    val title = if (reviewing) stringResource(R.string.flight_review_action) else stringResource(R.string.rtr_form_number, record.sequence)
+    FlightRecordingFormScaffold(reviewed, title, stringResource(R.string.operations_save),
         loadLogo, onRequestClose = { if (!saving) { if (changed) discard = true else close() } },
-        saveEnabled = ready && !saving && reviewConfirmed && (changed || record.localStatus?.let { it != "pending" } == true),
+        saveEnabled = enabled && (changed || reviewing && !localDiscarded),
         saveLoading = saving, compact = true, navigationIcon = Icons.AutoMirrored.Filled.ArrowBack,
-        headerTitle = stringResource(R.string.rtr_form_number, record.sequence), validationState = validation, identityContent = {},
+        headerTitle = title, validationState = validation, identityContent = {},
         onSave = {
             attempted = true
-            val fields = draft.errors(reviewed, catalogs, zone, record)
+            val fields = draft.errors(reviewed, catalogs, zone, onlineRecord)
             if (fields.isEmpty() && !media.hasActiveRecording) {
                 saving = true; error = null
                 scope.launch {
                     try {
-                        val png = draft.signature.takeIf(String::isNotBlank)?.let { withContext(Dispatchers.Default) { signaturePngContent(it) } }
+                        val png = when {
+                            draft.departure.start.isBlank() || draft.removeSignature -> null
+                            draft.signature.isNotBlank() -> withContext(Dispatchers.Default) { signaturePngContent(draft.signature) }
+                            useLocalSignature && !localDiscarded -> localSignature?.let { Base64.getEncoder().encodeToString(it) }
+                                ?: error("The saved signature is unavailable. Select it again before saving.")
+                            else -> null
+                        }
                         val input = draft.input(zone).let { it.copy(departure = it.departure?.copy(signatureContent = png)) }
-                        onSave(reviewed, draft.id, input, draft.preview(reviewed, catalogs, record)); close()
+                        val preview = draft.preview(reviewed, catalogs, onlineRecord).let {
+                            if (png != null && input.departure != null) it.copy(hasSignature = true, signatureSignedAtUtc = input.departure.signatureSignedAtUtc) else it
+                        }
+                        if (reviewing && !localDiscarded) onSaveReviewed(reviewed, draft.id, checkNotNull(pending).changeId, input, preview)
+                        else onSave(reviewed, draft.id, input, preview)
+                        close()
                     } catch (cancelled: CancellationException) { throw cancelled }
-                    catch (failure: Exception) { error = failure.userMessage() }
-                    finally { saving = false }
+                    catch (failure: Exception) {
+                        error = failure.userMessage()
+                        androidx.compose.runtime.withFrameNanos { }
+                        validation.revealTarget("rtr-save-error")
+                    } finally { saving = false }
                 }
             } else scope.launch { androidx.compose.runtime.withFrameNanos { }; validation.revealFirstError() }
         }) {
-        error?.let { InlineNotice(it, kind = InlineNoticeKind.Error) }
-        if (record.localStatus?.let { it != "pending" } == true) {
-            FlightSavedDetailsCard { FlightRtrSummary(reviewed.returnToRamps.firstOrNull { it.id == record.id } ?: record, reviewed) }
+        error?.let { InlineNotice(it, modifier = Modifier.flightFormNavigationTarget("rtr-save-error"), kind = InlineNoticeKind.Error) }
+        if (!ready) {
+            if (error == null) CircularProgressIndicator()
+            else TextButton(onClick = { loadAttempt++ }) { Text(stringResource(R.string.flights_retry)) }
         }
-        if (!reviewConfirmed) {
-            androidx.compose.material3.TextButton(enabled = !saving, onClick = {
-                saving = true
-                scope.launch {
-                    try { reviewedJson = Json.encodeToString(onReload()); reviewConfirmed = true; error = null }
-                    catch (cancelled: CancellationException) { throw cancelled }
-                    catch (failure: Exception) { error = failure.userMessage() }
-                    finally { saving = false }
-                }
-            }) { Text(stringResource(R.string.flight_review_action)) }
+        if (reviewing && ready) {
+            pending?.error?.takeUnless { localDiscarded }?.let { InlineNotice(it, kind = InlineNoticeKind.Warning) }
+            FlightReviewOnlineHeading(cachedReview)
+            if (onlineRecord != null) {
+                FlightRtrOnlineReview(reviewed, onlineRecord, catalogs, onlineSignature)
+            } else Text(stringResource(R.string.flight_review_empty_online), Modifier.padding(horizontal = 14.dp),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!localDiscarded) FlightReviewLocalHeading()
         }
-        CompositionLocalProvider(LocalFlightMediaSession provides media) {
-            FlightRtrFields(draft, reviewed, catalogs, enabled = ready && !saving && reviewConfirmed,
-                attempted = attempted, baseline = record, savedSignature = signature, onChange = ::update)
+        if (ready) CompositionLocalProvider(LocalFlightMediaSession provides media) {
+            FlightRtrFields(draft, reviewed, catalogs, enabled = enabled, attempted = attempted,
+                baseline = onlineRecord, savedSignature = when {
+                    draft.removeSignature -> null
+                    useLocalSignature && !localDiscarded -> localSignature
+                    else -> onlineSignature
+                },
+                onChange = ::update)
         }
+        if (reviewing && !localDiscarded && ready) FlightReviewActions(!saving, onDiscard = {
+            saving = true; error = null
+            scope.launch {
+                try {
+                    onDiscardReviewed(record.id, checkNotNull(pending).changeId)
+                    val reset = onlineRecord?.rtrDraft(catalogs, zone) ?: FlightRtrDraft(id = record.id, sequence = record.sequence)
+                    update(reset); baseline = reset.fingerprint()
+                    useLocalSignature = false; localSignature = null; localDiscarded = true
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) { error = failure.userMessage() }
+                finally { saving = false }
+            }
+        })
     }
     if (discard) FlightFormDiscardDialog(stringResource(R.string.operations_discard_title),
         onDismiss = { discard = false }, onDiscard = close)
+}
+
+/** Reuse the submitted cards so the complete recorded RTR, including work, can be compared read-only. */
+@Composable
+private fun FlightRtrOnlineReview(flight: FlightDetail, record: FlightReturnToRampRecord,
+    catalogs: FlightOperationsCatalogs, signature: ByteArray?) {
+    val zone = stationTimeZone(flight.stationTimeZoneId)
+    FlightSavedDetailsCard {
+        FlightRtrSummary(record, flight)
+        if (record.hasSignature) FlightSignatureField("", true, signature, enabled = false, onOpen = {})
+    }
+    val recordedFlight = flight.copy(services = record.services, tasks = record.tasks)
+    val work = record.rtrDraft(catalogs, zone).work
+    val serviceMetadata = flightServiceRecordMetadata(recordedFlight, emptyList())
+    val taskMetadata = flightTaskRecordMetadata(recordedFlight, emptyList())
+    work.services.forEach { FlightSubmittedServiceCard(it, serviceMetadata.getValue(it.id), zone) }
+    work.tasks.forEachIndexed { index, task -> FlightSubmittedTaskCard(task, index + 1, taskMetadata.getValue(task.id), zone) }
 }
 
 @Composable
@@ -353,7 +452,8 @@ internal fun FlightRtrDraft.preview(flight: FlightDetail, catalogs: FlightOperat
         baseline?.receivedByStaffMemberId ?: flight.currentStaffMemberId.orEmpty(), baseline?.receivedByFullName ?: actor?.fullName.orEmpty(),
         input.arrival.remarks, input.departure?.departedAtUtc, input.departure?.remarks,
         if (input.departure != null) flight.currentStaffMemberId else null, if (input.departure != null) actor?.fullName else null,
-        signature.isNotBlank() || baseline?.hasSignature == true, signedAtUtc ?: baseline?.signatureSignedAtUtc,
+        input.departure != null && !removeSignature && (signature.isNotBlank() || baseline?.hasSignature == true),
+        if (input.departure == null || removeSignature) null else signedAtUtc ?: baseline?.signatureSignedAtUtc,
         baseline?.createdByUserId ?: actorId, baseline?.createdAtUtc ?: now, actorId, if (signature.isBlank()) baseline?.updatedAtUtc else now,
         baseline?.createdByDisplayName ?: actor?.fullName, actor?.fullName, true, input.departure == null, services, tasks)
 }

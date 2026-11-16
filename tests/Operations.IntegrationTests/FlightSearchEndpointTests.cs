@@ -31,26 +31,28 @@ public sealed partial class FlightVisibilityScopeTests
             new(adHoc ? WellKnownMasterDataIds.AdHocOperationType : refs.OperationTypeId, "Operation"),
             FlightNumber.Create(number).Value, ScheduledTime.Create(now.AddHours(hours), now.AddHours(hours + 1)).Value,
             null, [new(refs.ServiceId, "Service")], [], Guid.NewGuid(), now).Value;
+        var overdue = Seed("8888", refs.StationId, hours: -14);
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
             db.Flights.AddRange(Seed("8885", refs.StationId, adHoc: true), Seed("8886", Guid.NewGuid()),
-                Seed("8887", refs.StationId, hours: 13), Seed("8888", refs.StationId, hours: -14));
+                Seed("8887", refs.StationId, hours: 13), overdue);
             await db.SaveChangesAsync();
         }
         var path = $"{Base}/flights/mobile/search/offline";
         var all = (await client.GetFromJsonAsync<MobileFlightPageDto>($"{path}?pageSize=100&stationId={Guid.NewGuid()}&fromUtc=2000-01-01&toUtc=2100-01-01"))!;
-        all.Items.Select(item => item.Id).ShouldBe([firstId, secondId], ignoreOrder: true);
-        all.TotalCount.ShouldBe(2); all.StationId.ShouldBe(refs.StationId);
+        all.Items.Select(item => item.Id).ShouldBe([firstId, secondId, overdue.Id], ignoreOrder: true);
+        all.TotalCount.ShouldBe(3); all.StationId.ShouldBe(refs.StationId);
         all.WindowStartUtc.ShouldBe(all.AsOfUtc.AddHours(-12)); all.WindowEndUtc.ShouldBe(all.AsOfUtc.AddHours(12));
         all.Items.ShouldAllBe(item => item.StationId == refs.StationId && !item.IsMyFlight && !item.IsAdHocFlight && !item.IsPerLanding);
         all.Items.ShouldAllBe(item => !string.IsNullOrWhiteSpace(item.StationTimeZoneId) && item.CustomerLogoVersion != null);
         var first = (await client.GetFromJsonAsync<MobileFlightPageDto>($"{path}?pageSize=1"))!;
         var second = (await client.GetFromJsonAsync<MobileFlightPageDto>($"{path}?page=2&pageSize=1"))!;
-        first.HasNextPage.ShouldBeTrue(); second.HasPreviousPage.ShouldBeTrue(); second.HasNextPage.ShouldBeFalse();
-        first.Items.Concat(second.Items).Select(item => item.Id).ShouldBe(all.Items.Select(item => item.Id));
-        var empty = (await client.GetFromJsonAsync<MobileFlightPageDto>($"{path}?page=3&pageSize=1"))!;
-        empty.Items.ShouldBeEmpty(); empty.TotalCount.ShouldBe(2); empty.StationId.ShouldBe(refs.StationId);
+        var third = (await client.GetFromJsonAsync<MobileFlightPageDto>($"{path}?page=3&pageSize=1"))!;
+        first.HasNextPage.ShouldBeTrue(); second.HasPreviousPage.ShouldBeTrue(); third.HasNextPage.ShouldBeFalse();
+        first.Items.Concat(second.Items).Concat(third.Items).Select(item => item.Id).ShouldBe(all.Items.Select(item => item.Id));
+        var empty = (await client.GetFromJsonAsync<MobileFlightPageDto>($"{path}?page=4&pageSize=1"))!;
+        empty.Items.ShouldBeEmpty(); empty.TotalCount.ShouldBe(3); empty.StationId.ShouldBe(refs.StationId);
         var detail = await OperationsBatchDetailAsync(client, firstId);
         detail.AssignedEmployees.ShouldBeEmpty(); detail.IsUnassignedSearchFlight.ShouldBeTrue();
         detail.CanSaveArrival.ShouldBeFalse(); detail.CanSaveServices.ShouldBeFalse(); detail.CanSaveTasks.ShouldBeFalse();

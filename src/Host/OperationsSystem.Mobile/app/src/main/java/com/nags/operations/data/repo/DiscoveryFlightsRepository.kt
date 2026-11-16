@@ -293,7 +293,9 @@ class DiscoveryFlightsRepository internal constructor(
         val detail = acknowledged.restrictCapabilitiesAfterKnownWork()
         val owner = currentOwner() ?: return
         transaction {
-            if (owner != currentOwner() || !eligible(owner, detail)) return@transaction
+            // A successful write may move a formerly active flight past terminal retention. Persist that
+            // evidence too, so its old open/overdue cache cannot keep authorizing a shared view.
+            if (owner != currentOwner() || dao.station(owner)?.stationId != detail.stationId) return@transaction
             val previous = dao.interaction(owner, detail.id)
             dao.putInteraction(previous?.copy(payloadJson = json.encodeToString(detail), acknowledged = true, viewRevoked = false)
                 ?: FlightLocalInteractionEntity(owner, detail.id, detail.stationId, json.encodeToString(detail), now(), detail.isUnassignedSearchFlight, acknowledged = true))

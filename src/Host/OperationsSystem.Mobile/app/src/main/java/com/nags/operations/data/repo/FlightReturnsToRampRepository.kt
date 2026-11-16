@@ -49,7 +49,7 @@ class FlightReturnsToRampRepository(
     }
 
     suspend fun save(flight: FlightDetail, occurrenceId: String, input: SaveFlightReturnToRampRequest,
-        preview: FlightReturnToRampRecord) = operationGate.withLock { operationSave {
+        preview: FlightReturnToRampRecord, expectedChangeId: String? = null) = operationGate.withLock { operationSave {
         val owner = checkNotNull(currentOwner()) { "Sign in to save a return to ramp." }
         check(accepting && validArrivalId(occurrenceId) && occurrenceId == preview.id) { "Reopen the return to ramp before saving." }
         check(flight.isInFlightWindow(now()) && flight.canSaveReturnsToRamp && !flight.hasCancellationSubmission) {
@@ -64,7 +64,11 @@ class FlightReturnsToRampRepository(
             "Complete the required return-to-ramp fields and work periods before saving."
         }
         val existing = dao.rows(owner).firstOrNull { it.flightId == flight.id && it.occurrenceId == occurrenceId }
-        val pending = existing?.status == "pending"
+        if (expectedChangeId != null) {
+            check(existing?.changeId == expectedChangeId) { "This saved input changed. Reopen Review before continuing." }
+            check(existing?.attemptInputJson == null) { "Retry synchronization before reviewing a request whose result is unknown." }
+        }
+        val pending = existing?.status == "pending" && expectedChangeId == null
         resetAcknowledgments(owner)
         val version = if (existing?.attemptInputJson != null) existing.rowVersion
             else acknowledgedVersion(flight.id, if (pending) checkNotNull(existing).rowVersion else flight.rowVersion)
@@ -130,9 +134,15 @@ class FlightReturnsToRampRepository(
     }
     suspend fun hasSavedInput(id: String) = pendingForFlight(id).isNotEmpty()
     suspend fun hasUnacknowledgedAttempt(id: String) = pendingForFlight(id).any { it.attemptInputJson != null }
-    suspend fun pendingInput(id: String, occurrenceId: String): SaveFlightReturnToRampRequest? = operationGate.withLock {
-        pendingForFlight(id).firstOrNull { it.occurrenceId == occurrenceId }?.let { hydrate(it.inputJson, it.filesJson) }
+    suspend fun pendingInput(id: String, occurrenceId: String, expectedChangeId: String? = null): SaveFlightReturnToRampRequest? = operationGate.withLock {
+        val row = pendingForFlight(id).firstOrNull { it.occurrenceId == occurrenceId }
+        if (expectedChangeId != null) check(row?.changeId == expectedChangeId) { "This saved input changed. Reopen Review before continuing." }
+        row?.let { hydrate(it.inputJson, it.filesJson) }
     }
+    suspend fun saveReviewed(flight: FlightDetail, occurrenceId: String, expectedChangeId: String,
+        input: SaveFlightReturnToRampRequest, preview: FlightReturnToRampRecord) =
+        save(flight, occurrenceId, input, preview, expectedChangeId)
+    suspend fun discardReviewed(id: String, occurrenceId: String, expectedChangeId: String) = discard(id, occurrenceId, expectedChangeId)
     suspend fun signaturePreview(id: String, occurrenceId: String): ByteArray? = operationGate.withLock {
         pendingForFlight(id).firstOrNull { it.occurrenceId == occurrenceId }?.filesJson?.let(::files)?.get("signature")?.let { mediaStore.read(it) }
     }
@@ -228,9 +238,13 @@ class FlightReturnsToRampRepository(
         }
         schedule()
     }
-    suspend fun discard(id: String, occurrenceId: String) = operationGate.withLock {
-        val owner = currentOwner() ?: return@withLock
-        dao.rows(owner).firstOrNull { it.flightId == id && it.occurrenceId == occurrenceId }?.let {
+    suspend fun discard(id: String, occurrenceId: String, expectedChangeId: String? = null) = operationGate.withLock {
+        val owner = currentOwner()
+        if (expectedChangeId != null) check(owner != null) { "Sign in to review this return to ramp." }
+        if (owner == null) return@withLock
+        val row = dao.rows(owner).firstOrNull { it.flightId == id && it.occurrenceId == occurrenceId }
+        if (expectedChangeId != null) check(row?.changeId == expectedChangeId) { "This saved input changed. Reopen Review before continuing." }
+        row?.let {
             check(it.attemptInputJson == null) { "Retry synchronization before discarding a request whose result is unknown." }
             dao.delete(owner, id, occurrenceId, it.changeId)
         }

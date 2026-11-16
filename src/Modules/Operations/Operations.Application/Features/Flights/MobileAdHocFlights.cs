@@ -142,8 +142,8 @@ internal static class MobileAdHocFlights
     }
 
     internal static Result InWindow(ScheduledTime schedule, MobileFlightScopeContext actor) =>
-        schedule.Sta <= actor.WindowEndUtc && schedule.Std >= actor.WindowStartUtc ? Result.Success() :
-            Error.Validation("The flight schedule must overlap the current mobile window.", "Operations.Mobile.ScheduleOutsideWindow");
+        schedule.Sta <= actor.WindowEndUtc ? Result.Success() :
+            Error.Validation("Scheduled arrival must be within the next 12 hours or overdue.", "Operations.Mobile.ScheduleOutsideWindow");
 
     internal static string Fingerprint(Guid stationId, SaveMobileAdHocFlightDetailsRequest input, ParsedDetails parsed) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new object[]

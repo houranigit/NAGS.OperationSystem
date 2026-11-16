@@ -310,7 +310,7 @@ class FlightArrivalsRepositoryTest {
         val foreign = submitted.copy(submittedByEmployee = employee.copy(staffMemberId = otherStaff))
         for (blocked in listOf(flight.copy(arrivalSubmissions = listOf(foreign)), flight.copy(canSaveArrival = false),
             flight.copy(hasCancellationSubmission = true), flight.copy(currentStaffMemberId = null), flight.copy(rowVersion = "bad"),
-            flight.copy(scheduledArrivalUtc = at.minusSeconds(86400 * 2).toString(), scheduledDepartureUtc = at.minusSeconds(86400).toString()))) {
+            flight.copy(scheduledArrivalUtc = at.plusSeconds(86400).toString(), scheduledDepartureUtc = at.plusSeconds(90000).toString()))) {
             assertTrue(runCatching { repo.save(blocked, input) }.isFailure)
         }
         assertTrue(dao.rows(owner.value!!).isEmpty())

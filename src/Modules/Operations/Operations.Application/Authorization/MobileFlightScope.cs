@@ -9,7 +9,9 @@ public sealed record MobileFlightScopeContext(
     Guid UserId,
     DateTimeOffset AsOfUtc)
 {
+    /// <summary>Departed/canceled flights remain visible through twelve hours after their actual terminal time.</summary>
     public DateTimeOffset WindowStartUtc => AsOfUtc.AddHours(-12);
+    /// <summary>Unrecorded flights become visible twelve hours before scheduled arrival and remain visible while overdue.</summary>
     public DateTimeOffset WindowEndUtc => AsOfUtc.AddHours(12);
 }
 

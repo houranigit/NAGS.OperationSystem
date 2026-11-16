@@ -104,6 +104,7 @@ import com.nags.operations.data.requiresArrivalRemarks
 import com.nags.operations.data.userMessage
 import com.nags.operations.data.db.entities.FlightArrivalPendingEntity
 import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
+import com.nags.operations.data.db.entities.FlightReturnToRampPendingEntity
 import com.nags.operations.data.arrivalInputTime
 import com.nags.operations.data.parentTimeRelaxesBounds
 import com.nags.operations.data.FlightServiceChange
@@ -153,9 +154,12 @@ internal fun FlightOperationsForm(
     identityNote: (@Composable () -> Unit)? = null,
     identityHasChanges: Boolean = false,
     identityValidation: (() -> String?)? = null,
+    pendingReturnsToRamp: List<FlightReturnToRampPendingEntity> = emptyList(),
     onSaveReturnToRamp: suspend (FlightDetail, String, com.nags.operations.data.SaveFlightReturnToRampRequest, com.nags.operations.data.FlightReturnToRampRecord) -> Unit = { _, _, _, _ -> error("RTR saving is unavailable.") },
-    loadReturnToRampInput: suspend (String) -> com.nags.operations.data.SaveFlightReturnToRampRequest? = { null },
-    loadReturnToRampSignature: suspend (String) -> ByteArray? = { null },
+    onSaveReviewedReturnToRamp: suspend (FlightDetail, String, String, com.nags.operations.data.SaveFlightReturnToRampRequest, com.nags.operations.data.FlightReturnToRampRecord) -> Unit = { _, _, _, _, _ -> error("RTR review saving is unavailable.") },
+    onDiscardReviewedReturnToRamp: suspend (String, String) -> Unit = { _, _ -> error("RTR review discard is unavailable.") },
+    loadReturnToRampInput: suspend (String, String?) -> com.nags.operations.data.SaveFlightReturnToRampRequest? = { _, _ -> null },
+    loadReturnToRampSignature: suspend (FlightDetail, String) -> ByteArray? = { _, _ -> null },
     loadReturnToRampAttachment: suspend (String, String, String, String, String) -> String? = { _, _, _, _, _ -> null },
 ) {
     val entryTimeZoneId = rememberSaveable { flight.stationTimeZoneId }
@@ -165,6 +169,15 @@ internal fun FlightOperationsForm(
     val rtrDraft = remember(rtrDraftJson) { rtrDraftJson?.let { Json.decodeFromString<FlightRtrDraft>(it) } }
     var rtrUpdateJson by rememberSaveable { mutableStateOf<String?>(null) }
     var rtrUpdateFlightJson by rememberSaveable { mutableStateOf<String?>(null) }
+    var rtrUpdatePendingJson by rememberSaveable { mutableStateOf<String?>(null) }
+    val rtrOccurrences = flight.withPendingReturns(pendingReturnsToRamp).returnToRamps
+    fun openRtrUpdate(occurrence: com.nags.operations.data.FlightReturnToRampRecord,
+        row: FlightReturnToRampPendingEntity? = pendingReturnsToRamp.firstOrNull { it.occurrenceId == occurrence.id }) {
+        rtrUpdateJson = Json.encodeToString(occurrence)
+        rtrUpdateFlightJson = Json.encodeToString(flight)
+        // Occurrence.localStatus is transient; retain the exact durable change separately.
+        rtrUpdatePendingJson = row?.let { Json.encodeToString(it) }
+    }
     val rtrErrors = rtrDraft?.errors(flight, catalogs, entryZone, null).orEmpty()
     val rtrValidationMessage = stringResource(R.string.rtr_form_invalid_actuals)
     val arrival = flight.visibleArrival()
@@ -270,11 +283,16 @@ internal fun FlightOperationsForm(
     val formScope = rememberCoroutineScope()
     val validationState = rememberFlightFormValidationState()
     var initialNavigationConsumed by rememberSaveable(flight.id, initialNavigationKey) { mutableStateOf(false) }
-    LaunchedEffect(initialNavigationKey) {
+    LaunchedEffect(initialNavigationKey, pendingReturnsToRamp, rtrOccurrences) {
         if (!initialNavigationConsumed && initialNavigationKey != null) {
             if (initialNavigationKey.startsWith("returns-to-ramp:")) {
-                flight.returnToRamps.firstOrNull { it.id == initialNavigationKey.substringAfter(":") }?.let {
-                    rtrUpdateJson = Json.encodeToString(it); rtrUpdateFlightJson = Json.encodeToString(flight)
+                rtrOccurrences.firstOrNull { it.id == initialNavigationKey.substringAfter(":") }?.let {
+                    withFrameNanos { }
+                    validationState.revealTarget(initialNavigationKey)
+                    // Queue links must wait for durable metadata; localStatus is lost in JSON snapshots.
+                    // An already acknowledged/discarded link simply reveals the recorded section.
+                    val row = pendingReturnsToRamp.firstOrNull { row -> row.occurrenceId == it.id } ?: return@LaunchedEffect
+                    openRtrUpdate(it, row)
                     initialNavigationConsumed = true
                     return@LaunchedEffect
                 }
@@ -797,13 +815,20 @@ internal fun FlightOperationsForm(
     val deletedTaskCards = pendingDeletedTaskDrafts(flight, pendingTasks, catalogs, entryZone)
     val submittedServices = (workDrafts.services.filter { it.id in serviceMetadata } + deletedServiceCards).distinctBy { it.id }
     val submittedTasks = (workDrafts.tasks.filter { it.id in taskMetadata } + deletedTaskCards).distinctBy { it.id }
-    val reviewTargets = flightReviewTargets(pending, pendingDeparture, pendingServices, pendingTasks)
+    val reviewTargets = flightReviewTargets(pending, pendingDeparture, pendingServices, pendingTasks, pendingReturnsToRamp)
     fun openReview(target: FlightOperationReviewTarget) {
         if (saving) return
         if (mediaSession.hasActiveRecording) { saveError = finishRecordingMessage; validationRequest++; return }
         mediaSession.stopAudio(); saving = true; saveError = null
         formScope.launch {
             try {
+                if (target.kind == "returns-to-ramp") {
+                    val row = pendingReturnsToRamp.first { it.occurrenceId == target.recordId && it.changeId == target.changeId }
+                    val occurrence = rtrOccurrences.firstOrNull { it.id == row.occurrenceId } ?: row.preview(Json)
+                    validationState.revealTarget(target.navigationKey())
+                    openRtrUpdate(occurrence, row)
+                    return@launch
+                }
                 val latest = when (target.kind) { "service" -> onReviewServices(); "task" -> onReviewTasks(); else -> onReviewArrival() }
                 val reviewZone = stationTimeZone(latest.stationTimeZoneId)
                 when (target.kind) {
@@ -852,7 +877,7 @@ internal fun FlightOperationsForm(
             taskNumber = (submittedTasks.indexOfFirst { it.id == task?.id } + 1).coerceAtLeast(1)))
     }
     val workTargets = workDrafts.navigationTargets()
-    val cardFlight = flight.formCardSummary(listItem, workTargets).copy(stationTimeZoneId = entryTimeZoneId)
+    val cardFlight = flight.withPendingReturns(pendingReturnsToRamp).formCardSummary(listItem, workTargets).copy(stationTimeZoneId = entryTimeZoneId)
     var activeTargetIndex by remember { mutableIntStateOf(0) }
     var completedTargetIndex by remember { mutableIntStateOf(0) }
     fun navigateWork(completed: Boolean) {
@@ -865,11 +890,12 @@ internal fun FlightOperationsForm(
     val needsReview = progressStatus in listOf(FlightProgressStatus.ArrivalNeedsReview,
         FlightProgressStatus.DepartureNeedsReview, FlightProgressStatus.CancellationNeedsReview) ||
         pending?.let { it.status != "pending" } == true || pendingDeparture?.let { it.status != "pending" } == true ||
-        pendingServices.any { it.status != "pending" } || pendingTasks.any { it.status != "pending" }
+        pendingServices.any { it.status != "pending" } || pendingTasks.any { it.status != "pending" } ||
+        pendingReturnsToRamp.any { it.status != "pending" }
     val pendingLabel = when {
         needsReview -> stringResource(R.string.flight_card_needs_review)
         progressStatus == FlightProgressStatus.CancellationRevertPending -> stringResource(R.string.flight_card_revert_pending)
-        pending != null || pendingDeparture != null || pendingServices.isNotEmpty() || pendingTasks.isNotEmpty() ||
+        pending != null || pendingDeparture != null || pendingServices.isNotEmpty() || pendingTasks.isNotEmpty() || pendingReturnsToRamp.isNotEmpty() ||
             progressStatus == FlightProgressStatus.CancellationPendingSync -> stringResource(R.string.flight_card_pending_sync)
         else -> null
     }
@@ -895,7 +921,7 @@ internal fun FlightOperationsForm(
                                 FlightProgressStatus.CancellationNeedsReview, FlightProgressStatus.CancellationRevertPending)),
                         pendingSyncLabel = pendingLabel, hasSyncError = needsReview,
                         onReviewClick = reviewTargets.firstOrNull()?.let { target -> { openReview(target) } },
-                        onPendingClick = flightPendingTargets(pending, pendingDeparture, pendingServices, pendingTasks).firstOrNull()?.let { target ->
+                        onPendingClick = flightPendingTargets(pending, pendingDeparture, pendingServices, pendingTasks, pendingReturnsToRamp).firstOrNull()?.let { target ->
                             { formScope.launch { validationState.revealTarget(target.navigationKey()) }; }
                         },
                         onActiveWorkClick = if (workTargets.any { !it.completed }) ({ navigateWork(false) }) else null,
@@ -1136,19 +1162,23 @@ internal fun FlightOperationsForm(
             }
         }
         Column(Modifier.flightFormNavigationTarget("returns-to-ramp", highlight = true), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            FlightFormSectionTitle(stringResource(R.string.rtr_form_section, flight.returnToRamps.size + if (rtrDraft != null) 1 else 0))
-            flight.returnToRamps.sortedBy { it.sequence }.forEach { occurrence ->
+            FlightFormSectionTitle(stringResource(R.string.rtr_form_section, rtrOccurrences.size + if (rtrDraft != null) 1 else 0))
+            rtrOccurrences.sortedBy { it.sequence }.forEach { occurrence ->
                 androidx.compose.runtime.key(occurrence.id) {
+                    val row = pendingReturnsToRamp.firstOrNull { it.occurrenceId == occurrence.id }
+                    val rtrNeedsReview = row?.status?.let { it != "pending" } == true
                     Column(Modifier.padding(bottom = 18.dp).flightFormNavigationTarget("returns-to-ramp:${occurrence.id}", highlight = true), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         FlightSavedDetailsCard { FlightRtrSummary(occurrence, flight) }
-                        FlightSubmissionNote(occurrence.createdByDisplayName ?: occurrence.receivedByFullName, occurrence.localSavedAtUtc ?: occurrence.createdAtUtc, entryZone,
-                            savedLocally = occurrence.localStatus != null, needsReview = occurrence.localStatus?.let { it != "pending" } == true,
+                        FlightSubmissionNote(occurrence.createdByDisplayName ?: occurrence.receivedByFullName, row?.savedAtUtc ?: occurrence.localSavedAtUtc ?: occurrence.createdAtUtc, entryZone,
+                            savedLocally = row != null || occurrence.localStatus != null,
                             updatedByDisplayName = occurrence.updatedByDisplayName, updatedAtUtc = occurrence.updatedAtUtc,
-                            updateLabel = stringResource(if (occurrence.localStatus?.let { it != "pending" } == true) R.string.flight_review_action else R.string.rtr_form_update),
-                            onUpdate = if (!saving && (occurrence.canEdit || occurrence.localStatus != null)) ({
-                                rtrUpdateJson = Json.encodeToString(occurrence)
-                                rtrUpdateFlightJson = Json.encodeToString(flight)
+                            updateLabel = stringResource(R.string.rtr_form_update),
+                            onUpdate = if (!saving && !rtrNeedsReview && (occurrence.canEdit || row != null || occurrence.localStatus != null)) ({
+                                openRtrUpdate(occurrence, row)
                             }) else null)
+                        if (rtrNeedsReview) FlightFailedSubmissionNote({
+                            reviewTargets.firstOrNull { it.kind == "returns-to-ramp" && it.recordId == occurrence.id }?.let(::openReview)
+                        })
                     }
                 }
             }
@@ -1158,12 +1188,12 @@ internal fun FlightOperationsForm(
             } else {
                 FlightFormFieldGroup {
                     FlightWorkAddRow(stringResource(R.string.rtr_form_add), enabled = !saving && flight.canSaveReturnsToRamp &&
-                        flight.departureSubmissions.isNotEmpty() && !flight.hasCancellationSubmission && flight.returnToRamps.none { it.isOpen }, onClick = {
+                        flight.departureSubmissions.isNotEmpty() && !flight.hasCancellationSubmission && rtrOccurrences.none { it.isOpen }, onClick = {
                         rtrDraftJson = Json.encodeToString(FlightRtrDraft(sequence = maxOf(flight.lastReturnToRampSequence,
-                            flight.returnToRamps.maxOfOrNull { it.sequence } ?: 0) + 1, arrival = FlightWorkPeriod.now(entryZone)))
+                            rtrOccurrences.maxOfOrNull { it.sequence } ?: 0) + 1, arrival = FlightWorkPeriod.now(entryZone)))
                     })
                 }
-                if (flight.departureSubmissions.isEmpty() || flight.returnToRamps.any { it.isOpen })
+                if (flight.departureSubmissions.isEmpty() || rtrOccurrences.any { it.isOpen })
                     Text(stringResource(R.string.rtr_form_prerequisite), Modifier.padding(horizontal = 12.dp),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -1172,12 +1202,16 @@ internal fun FlightOperationsForm(
     if (rtrUpdateJson != null && rtrUpdateFlightJson != null) {
         val occurrence = remember(rtrUpdateJson) { Json.decodeFromString<com.nags.operations.data.FlightReturnToRampRecord>(checkNotNull(rtrUpdateJson)) }
         val snapshot = remember(rtrUpdateFlightJson) { Json.decodeFromString<FlightDetail>(checkNotNull(rtrUpdateFlightJson)) }
-        androidx.compose.runtime.key(occurrence.id) {
+        val rtrPending = remember(rtrUpdatePendingJson) { rtrUpdatePendingJson?.let { Json.decodeFromString<FlightReturnToRampPendingEntity>(it) } }
+        androidx.compose.runtime.key(occurrence.id, rtrPending?.changeId) {
             FlightRtrUpdateForm(snapshot, occurrence, catalogs, loadCustomerLogo,
-                loadInput = { loadReturnToRampInput(occurrence.id) }, loadSignature = { loadReturnToRampSignature(occurrence.id) },
+                pending = rtrPending,
+                loadInput = { loadReturnToRampInput(occurrence.id, rtrPending?.changeId) },
+                loadSignature = { recorded -> loadReturnToRampSignature(recorded, occurrence.id) },
                 loadAttachment = { kind, record, attachment, version -> loadReturnToRampAttachment(occurrence.id, kind, record, attachment, version) },
                 onSave = onSaveReturnToRamp, onReload = onReviewArrival,
-                onClose = { rtrUpdateJson = null; rtrUpdateFlightJson = null })
+                onSaveReviewed = onSaveReviewedReturnToRamp, onDiscardReviewed = onDiscardReviewedReturnToRamp,
+                onClose = { rtrUpdateJson = null; rtrUpdateFlightJson = null; rtrUpdatePendingJson = null })
         }
     }
     if (picker == "ata" || picker == "atd") {

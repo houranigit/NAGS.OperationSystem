@@ -91,7 +91,7 @@ fun FlightListItem.withReturnToRampReports(detail: FlightDetail): FlightListItem
     val tasks = latest?.tasks ?: detail.tasks
     return copy(hasOpenReturnToRamp = detail.returnToRamps.any { it.isOpen }, latestReturnToRampSequence = latest?.sequence,
         activeWorkCount = services.count { it.endUtc == null } + tasks.count { it.endUtc == null },
-        completedWorkCount = services.count { it.endUtc != null } + tasks.count { it.endUtc != null })
+        completedWorkCount = services.count { it.endUtc != null } + tasks.count { it.endUtc != null }).withVisibilityReports(detail)
 }
 private fun canonicalRtrTime(value: String) = runCatching { OffsetDateTime.parse(value).toInstant().toString() }.getOrDefault(value)
 private fun rtrInstant(value: String) = runCatching { OffsetDateTime.parse(value).takeIf { it.year in 1..9999 }?.toInstant() }.getOrNull()

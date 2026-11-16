@@ -530,6 +530,44 @@ class DiscoveryFlightsRepositoryTest {
         println("OFFLINE_SEARCH_STRESS flights=2500 fullManifestReads=${f.dao.fullQueryReads} prepareMs=$syncMs warmLookups=500 lookupMs=$lookupsMs")
     }
 
+    @Test fun oldOverdueFlightsRemainSearchableAndReadableFromPreparedOfflineMembership() = runBlocking {
+        val f = Fixture()
+        val old = f.detail("overdue").copy(scheduledArrivalUtc = "2026-10-01T00:00:00Z", scheduledDepartureUtc = "2026-10-01T01:00:00Z")
+        val row = f.row("overdue").copy(scheduledArrivalUtc = old.scheduledArrivalUtc,
+            scheduledDepartureUtc = old.scheduledDepartureUtc).withVisibilityReports(old)
+        f.fetch = { _, _, number, size -> f.page(listOf(row), number, size) }
+        val repo = f.repository()
+        repo.page(FlightDiscoverySource.Search, "SV123")
+        repo.recordFetched(old, repo.detailRevision("overdue"))
+        f.online = false
+        f.time = "2026-12-01T10:00:00Z"
+        assertEquals(listOf("overdue"), repo.page(FlightDiscoverySource.Search, "SV123").items.map { it.id })
+        assertNotNull(repo.cachedFlight("overdue"))
+    }
+
+    @Test fun terminalAcknowledgmentReplacesPreviouslyUnresolvedEvidenceEvenWhenItImmediatelyExpires() = runBlocking {
+        val f = Fixture()
+        val old = f.detail("overdue").copy(scheduledArrivalUtc = "2026-10-01T00:00:00Z", scheduledDepartureUtc = "2026-10-01T01:00:00Z")
+        val row = f.row("overdue").copy(scheduledArrivalUtc = old.scheduledArrivalUtc,
+            scheduledDepartureUtc = old.scheduledDepartureUtc).withVisibilityReports(old)
+        f.fetch = { _, _, number, size -> f.page(listOf(row), number, size) }
+        val repo = f.repository()
+        repo.page(FlightDiscoverySource.Search, "SV123")
+        repo.page(FlightDiscoverySource.History)
+        repo.recordFetched(old, repo.detailRevision("overdue"))
+        repo.recordLocalSave(old)
+        val employee = AssignedEmployee("staff", "Employee", "E1")
+        f.pending = true // Acknowledgment must not discard this account's separate retained queue intent.
+        repo.recordDeparture("overdue", FlightDepartureSaved(FlightDepartureSubmission("departure", employee,
+            "2026-11-12T00:00:00Z", employee, isAccepted = true, createdAtUtc = f.time), "ack-version"))
+        f.online = false
+        assertTrue(repo.page(FlightDiscoverySource.Search, "SV123").items.isEmpty())
+        assertTrue(repo.page(FlightDiscoverySource.History).items.isEmpty())
+        assertNull(repo.cachedFlight("overdue"))
+        assertTrue(repo.logoFlights().isEmpty())
+        assertTrue(f.pending)
+    }
+
     private class Fixture {
         val firstOwner = "api|account"
         val owner = MutableStateFlow<String?>(firstOwner)

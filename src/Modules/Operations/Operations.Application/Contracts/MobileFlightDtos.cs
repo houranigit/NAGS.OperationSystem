@@ -29,9 +29,12 @@ public sealed record MobileFlightListItemDto(
     DateTimeOffset? CreatedAtUtc = null,
     string? CreatedByDisplayName = null,
     bool IsAdHocFlight = false,
-    DateTimeOffset? LastInteractionAtUtc = null);
+    DateTimeOffset? LastInteractionAtUtc = null,
+    DateTimeOffset? LatestDepartureAtUtc = null,
+    DateTimeOffset? LatestReturnToRampDepartureAtUtc = null,
+    int VisibilityPolicyVersion = 1);
 
-/// <summary>A page from the caller's station within the server's current rolling 24-hour window.</summary>
+/// <summary>A station-scoped page: WindowStartUtc is the terminal-record cutoff and WindowEndUtc the pending-arrival lookahead.</summary>
 public sealed record MobileFlightPageDto(
     IReadOnlyList<MobileFlightListItemDto> Items,
     int Page,

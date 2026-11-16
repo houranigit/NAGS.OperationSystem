@@ -13,6 +13,10 @@ class FlightReviewNavigationTest {
     private val end = "2026-11-10T12:10:00Z"
     private val zone = ZoneId.of("Asia/Riyadh")
     private fun id(value: Int) = "00000000-0000-0000-0000-${value.toString().padStart(12, '0')}"
+    private fun rtr(sequence: Int, status: String = "pending", occurrenceId: String = id(sequence)) =
+        FlightReturnToRampPendingEntity("owner", "flight", occurrenceId, "SV100", "$occurrenceId-change", "{}",
+            Json.encodeToString(FlightReturnToRampRecord(occurrenceId, sequence, start, id(90), "Employee",
+                createdByUserId = id(91), createdAtUtc = start)), "version", null, start, status)
 
     @Test fun cachedReviewSourceSurvivesSavedNavigationEvenThoughFlightCacheFlagIsTransient() {
         val cached = FlightDetail(id(1), "SV100", "customer", customerName = "Customer", stationId = "station",
@@ -69,6 +73,44 @@ class FlightReviewNavigationTest {
         assertEquals(id(11), roundTrip.performers.single().id)
         assertEquals(end, roundTrip.performers.single().endUtc)
         assertEquals("content://selected/new", roundTrip.attachments?.single { it.id == selectedFile.id }?.contentUri)
+    }
+
+    @Test fun reviewNavigationIncludesFailedReturnsAfterDepartureInOccurrenceOrderInsteadOfSaveTime() {
+        val departure = FlightDeparturePendingEntity("owner", "flight", "SV100", "staff", "departure-change", "{}", "version", "[]", start, status = "failed")
+        val first = rtr(1, "conflict").copy(savedAtUtc = end)
+        val second = rtr(2, "failed")
+        val sameSequence = rtr(2, "conflict", id(22))
+        val latest = rtr(3)
+
+        val targets = flightReviewTargets(null, departure, emptyList(), emptyList(),
+            returns = listOf(latest, sameSequence, second, first))
+
+        assertEquals(listOf("departure", "returns-to-ramp:${first.occurrenceId}",
+            "returns-to-ramp:${second.occurrenceId}", "returns-to-ramp:${sameSequence.occurrenceId}"),
+            targets.map { it.navigationKey() })
+        assertEquals(first.changeId, targets[1].changeId)
+        assertEquals(second.changeId, targets[2].changeId)
+        assertTrue(targets.none { it.recordId == latest.occurrenceId })
+        assertEquals(listOf(targets[1], targets[2]), flightReviewTargets(null, null, emptyList(), emptyList(),
+            returns = listOf(latest, second, first)))
+    }
+
+    @Test fun pendingNavigationKeepsExactQueuedReturnIdsAndSkipsAnOlderFailedReturn() {
+        val departure = FlightDeparturePendingEntity("owner", "flight", "SV100", "staff", "departure-change", "{}", "version", "[]", start)
+        val failed = rtr(1, "failed")
+        val second = rtr(2).copy(savedAtUtc = end)
+        val latest = rtr(3)
+
+        val targets = flightPendingTargets(null, departure, emptyList(), emptyList(),
+            returns = listOf(latest, failed, second))
+
+        assertEquals(listOf("departure", "returns-to-ramp:${second.occurrenceId}", "returns-to-ramp:${latest.occurrenceId}"),
+            targets.map { it.navigationKey() })
+        assertEquals(second.changeId, targets[1].changeId)
+        assertEquals(latest.changeId, targets[2].changeId)
+        assertTrue(targets.none { it.recordId == failed.occurrenceId })
+        assertTrue(targets.all { !it.useLocalSource && it.stagedInputJson == null })
+        assertTrue(flightPendingTargets(null, null, emptyList(), emptyList(), returns = listOf(failed)).isEmpty())
     }
 
     @Test fun taskPatchSurvivesEditorRoundTripWithCompletedResourcesAndRetainedMedia() {

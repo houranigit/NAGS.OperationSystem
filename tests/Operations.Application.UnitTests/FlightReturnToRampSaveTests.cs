@@ -140,6 +140,16 @@ public sealed class FlightReturnToRampSaveTests
         f.Storage.Files.ShouldBeEmpty(); (await f.Db.Flights.Include(x => x.ReturnToRamps).SingleAsync()).ReturnToRamps.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task Open_rtr_remains_writable_after_normal_departure_retention_expires()
+    {
+        await using var f = await Fixture.Create(assigned: false);
+        var id = Guid.NewGuid(); (await f.Save(id, f.Empty)).IsSuccess.ShouldBeTrue();
+        var laterScope = new ScopeImpl(new(f.Reader.StationId, f.OwnerStaff, f.Owner, Now.AddDays(5)));
+        var result = await f.Save(id, f.Full, scopeOverride: laterScope);
+        result.IsSuccess.ShouldBeTrue(); result.Value.ReturnToRamps!.Single().IsOpen.ShouldBeFalse();
+    }
+
     private static void AssertUnassignedPermissions(FlightDetailDto detail)
     {
         detail.IsUnassignedSearchFlight.ShouldBeTrue(); detail.CanSaveReturnsToRamp.ShouldBeTrue();

@@ -204,9 +204,10 @@ public sealed class MobileFlightTests
     [InlineData(12, 15, true)]
     [InlineData(-30, 30, true)]
     [InlineData(0, 0, true)]
-    [InlineData(-14, -13, false)]
+    [InlineData(-14, -13, true)]
+    [InlineData(-240, -239, true)]
     [InlineData(13, 14, false)]
-    public async Task FeedAndDetail_UseInclusiveArrivalDepartureOverlap(int arrivalHours, int departureHours, bool visible)
+    public async Task PendingFlights_UseArrivalLookaheadAndRetainOverdueSchedules(int arrivalHours, int departureHours, bool visible)
     {
         await using var db = NewDb();
         var flight = FlightFor("100", assigned: true,
@@ -231,6 +232,84 @@ public sealed class MobileFlightTests
     }
 
     [Theory]
+    [InlineData("arrived", -240, true)]
+    [InlineData("early-arrival", -1, true)]
+    [InlineData("arrival-canceled", -240, true)]
+    [InlineData("departed", -12, true)]
+    [InlineData("departed", -12.0001, false)]
+    [InlineData("departed-future-schedule", -1, true)]
+    [InlineData("canceled", -12, true)]
+    [InlineData("canceled", -12.0001, false)]
+    [InlineData("canceled-future-schedule", -1, true)]
+    [InlineData("open-rtr", -48, true)]
+    [InlineData("closed-rtr", -12, true)]
+    [InlineData("closed-rtr", -12.0001, false)]
+    [InlineData("multiple-departures", -1, true)]
+    [InlineData("multiple-cancellations", -1, true)]
+    public async Task LifecycleVisibility_IsSharedByListSearchHistoryDetailAndNotificationTargets(
+        string scenario, double terminalHours, bool visible)
+    {
+        await using var db = NewDb();
+        var futureSchedule = scenario is "early-arrival" or "departed-future-schedule" or "canceled-future-schedule";
+        var flight = FlightFor("100", assigned: true, sta: Now.AddHours(futureSchedule ? 48 : -300),
+            std: Now.AddHours(futureSchedule ? 49 : -299));
+        var employee = new StaffMemberSnapshot(StaffId, "Assigned staff", "E1");
+        var colleague = new StaffMemberSnapshot(Guid.NewGuid(), "Colleague", "E2");
+        if (scenario.Contains("cancel", StringComparison.Ordinal))
+        {
+            flight.SubmitCancellation(colleague, CancellationDetails.Create(Now.AddHours(terminalHours), null).Value,
+                Guid.NewGuid(), Now).IsSuccess.ShouldBeTrue();
+            if (scenario == "multiple-cancellations")
+                flight.SubmitCancellation(new(Guid.NewGuid(), "Earlier reporter", "E3"),
+                    CancellationDetails.Create(Now.AddHours(-48), null).Value, Guid.NewGuid(), Now).IsSuccess.ShouldBeTrue();
+        }
+        if (!scenario.StartsWith("canceled", StringComparison.Ordinal) && scenario != "multiple-cancellations")
+            flight.SubmitArrival(employee, ArrivalDetails.Create(null, Now.AddHours(-250),
+                new(Guid.NewGuid(), "Airbus", "A320"), "HZ-TEST", employee, null).Value, UserId, Now).IsSuccess.ShouldBeTrue();
+        if (scenario.StartsWith("departed", StringComparison.Ordinal) || scenario.EndsWith("rtr", StringComparison.Ordinal) || scenario == "multiple-departures")
+            flight.SubmitDeparture(employee, DepartureDetails.Create(Now.AddHours(scenario.EndsWith("rtr", StringComparison.Ordinal) ? -72 : terminalHours),
+                null, employee, null).Value, UserId, Now).IsSuccess.ShouldBeTrue();
+        if (scenario == "multiple-departures")
+            flight.SubmitDeparture(colleague, DepartureDetails.Create(Now.AddHours(-48), null, colleague, null).Value,
+                Guid.NewGuid(), Now).IsSuccess.ShouldBeTrue();
+        if (scenario.EndsWith("rtr", StringComparison.Ordinal))
+        {
+            var occurrence = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddHours(-60), employee, null).Value, UserId, Now).Value;
+            if (scenario == "closed-rtr")
+            {
+                var workWindow = TimeWindow.Create(Now.AddHours(-60), Now.AddHours(-59)).Value;
+                flight.AddTask(FlightTaskType.Minor, null, null, workWindow, null, UserId, Now, occurrence.Id,
+                    [new FlightTaskPerformerInput(employee, workWindow)]).IsSuccess.ShouldBeTrue();
+                flight.CloseReturnToRamp(occurrence.Id, RtrDepartureDetails.Create(Now.AddHours(terminalHours), null, employee, null).Value,
+                    UserId, Now).IsSuccess.ShouldBeTrue();
+            }
+        }
+        db.Flights.Add(flight);
+        db.FlightUserActivities.Add(FlightUserActivity.Create(UserId, flight.Id, Now, usedSearch: true));
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        var reader = new SchedulingMasterDataReader();
+        var list = await new GetMobileFlightsQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance, reader)
+            .Handle(new(Category: "MyFlights"), default);
+        var search = await new GetMobileFlightSearchQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance, reader)
+            .Handle(new(flight.FlightNumber.Value), default);
+        var history = await new GetMobileFlightHistoryQueryHandler(db, Scope(), NoopCustomerLogoReader.Instance, reader)
+            .Handle(new(UsedSearchOnly: true), default);
+        var detail = await new GetMobileFlightByIdQueryHandler(db, Scope(), reader).Handle(new(flight.Id), default);
+        var targets = await new GetFlightNotificationTargetsQueryHandler(db, null!, Scope())
+            .Handle(new([flight.Id], MobileOnly: true), default);
+
+        list.Value.Items.Count.ShouldBe(visible ? 1 : 0); search.Value.Items.Count.ShouldBe(visible ? 1 : 0);
+        history.Value.Items.Count.ShouldBe(visible ? 1 : 0); detail.IsSuccess.ShouldBe(visible);
+        targets.Value.Count.ShouldBe(visible ? 1 : 0);
+        if (visible)
+        {
+            var card = list.Value.Items.Single(); card.VisibilityPolicyVersion.ShouldBe(1);
+            card.LatestDepartureAtUtc.ShouldBe(flight.DepartureSubmissions.Select(d => (DateTimeOffset?)d.Details.Atd).Max());
+            card.LatestReturnToRampDepartureAtUtc.ShouldBe(flight.ReturnToRamps.Select(r => r.DepartureDetails?.DepartedAtUtc).Max());
+        }
+    }
+
+    [Theory]
     [InlineData("outdated")]
     [InlineData("other-station")]
     public async Task HiddenFlights_CannotBeReadByDetailLogoOrInvitationRoutes(string reason)
@@ -240,6 +319,9 @@ public sealed class MobileFlightTests
             stationId: reason == "other-station" ? Guid.NewGuid() : StationId,
             sta: reason == "outdated" ? Now.AddDays(-2) : Now,
             std: reason == "outdated" ? Now.AddDays(-2).AddHours(1) : Now.AddHours(1));
+        if (reason == "outdated")
+            flight.SubmitCancellation(new(StaffId, "Assigned staff", "E1"),
+                CancellationDetails.Create(Now.AddHours(-13), null).Value, UserId, Now).IsSuccess.ShouldBeTrue();
         db.Flights.Add(flight);
         await db.SaveChangesAsync();
         var reader = new SchedulingMasterDataReader();

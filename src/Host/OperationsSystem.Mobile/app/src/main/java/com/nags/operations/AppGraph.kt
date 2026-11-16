@@ -343,7 +343,7 @@ class AppGraph private constructor(context: Context) {
             isAccepted = true, createdAtUtc = it.createdAtUtc, updatedAtUtc = it.updatedAtUtc, signatureVersion = it.signatureVersion, hasSignature = it.hasSignature)
     })
     suspend fun loadReturnToRampSignature(flight: FlightDetail, occurrenceId: String): ByteArray? {
-        flightReturnsToRamp.signaturePreview(flight.id, occurrenceId)?.let { return it }
+        // The RTR editor hydrates retained local ink separately from this recorded comparison.
         val adapted = flight.asReturnToRampSignatureFlight().let { it.copy(departureSubmissions = it.departureSubmissions.filter { row -> row.id == occurrenceId }) }
         return returnToRampSignaturePreviews.load(adapted, null)
     }

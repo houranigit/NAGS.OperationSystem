@@ -829,12 +829,12 @@ class FlightsViewModelTest {
     }
 
     @Test
-    fun anExpiredNotificationDetailIsNeverDisplayed() {
+    fun anOverdueNotificationWithoutRecordedDepartureOrCancellationRemainsVisible() {
         val vm = model(now = { Instant.parse("2026-11-04T00:00:00.000000001Z") })
         vm.openFlight("one")
-        assertNull(vm.state.value.detail)
-        assertNull(vm.state.value.selectedFlightId)
-        assertEquals("one", vm.state.value.lastUnavailableFlightId)
+        assertNotNull(vm.state.value.detail)
+        assertEquals("one", vm.state.value.selectedFlightId)
+        assertNull(vm.state.value.lastUnavailableFlightId)
     }
 
     @Test
@@ -1345,6 +1345,23 @@ class FlightsViewModelTest {
         now = now, waitForExpiryCheck = expiryWait, pruneCachedFlights = pruneCache,
         waitForSearchDebounce = searchDebounce, isDiscoveryFeed = discovery,
     )
+
+    @Test fun offlineClockDoesNotExpireOverdueUnresolvedRowsOrTheirDetails() {
+        var at = Instant.parse("2026-11-04T00:00:00Z")
+        val ticks = Channel<Unit>(Channel.UNLIMITED)
+        val waits = mutableListOf<Long>()
+        val vm = model(now = { at }, expiryWait = { millis -> waits += millis; ticks.receive() }, list = { _, _, _ ->
+            page("one").copy(items = listOf(row("one").copy(visibilityPolicyVersion = 1, hasArrivalSubmission = false,
+                hasDepartureSubmission = false, hasCancellationSubmission = false, hasOpenReturnToRamp = false)))
+        })
+        vm.refresh()
+        vm.openFlight("one")
+        at = at.plusSeconds(30 * 86400)
+        ticks.trySend(Unit)
+        assertEquals(listOf("one"), vm.state.value.items.map { it.id })
+        assertNotNull(vm.state.value.detail)
+        assertTrue(waits.all { it == 30_000L })
+    }
 
     private fun page(id: String) = FlightPage(items = listOf(row(id)), totalCount = 1)
     private fun row(id: String) = FlightListItem(id, "123", customerName = "Airline", stationIataCode = "JED",

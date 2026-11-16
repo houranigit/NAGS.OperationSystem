@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
@@ -102,6 +103,82 @@ class FlightReturnsToRampRepositoryTest {
         repository.onPriorWriteAcknowledged(flight.id, "AAAAAAAAAAE=", "AAAAAAAAAAM=")
         assertEquals("AAAAAAAAAAE=", dao.rows(owner.value!!).single().attemptRowVersion)
         assertEquals("AAAAAAAAAAE=", dao.rows(owner.value!!).single().rowVersion)
+    }
+
+    @Test fun staleReviewCannotReadReplaceOrDiscardNewerSavedInput() = runBlocking {
+        val repository = repo()
+        repository.save(flight, id, input, preview)
+        val staleId = dao.rows(owner.value!!).single().changeId
+        repository.save(flight, id, input.copy(arrival = input.arrival.copy(remarks = "Newer saved input")), preview)
+        val retained = dao.rows(owner.value!!).single()
+        assertTrue(runCatching { repository.pendingInput(flight.id, id, staleId) }.isFailure)
+        assertTrue(runCatching { repository.saveReviewed(flight, id, staleId, input, preview) }.isFailure)
+        assertTrue(runCatching { repository.discardReviewed(flight.id, id, staleId) }.isFailure)
+        assertEquals(retained, dao.rows(owner.value!!).single())
+        assertEquals("Newer saved input", repository.pendingInput(flight.id, id, retained.changeId)!!.arrival.remarks)
+    }
+
+    @Test fun unknownOutcomeReviewCannotReplaceOrDiscardTheFrozenAttempt() = runBlocking {
+        val repository = repo()
+        repository.save(flight, id, input, preview)
+        online = true; failure = IOException("lost response")
+        repository.syncPending()
+        val retained = dao.rows(owner.value!!).single()
+        assertTrue(runCatching { repository.saveReviewed(flight, id, retained.changeId,
+            input.copy(arrival = input.arrival.copy(remarks = "Review replacement")), preview) }.isFailure)
+        assertTrue(runCatching { repository.discardReviewed(flight.id, id, retained.changeId) }.isFailure)
+        assertEquals(retained, dao.rows(owner.value!!).single())
+        assertNotNull(retained.attemptInputJson)
+    }
+
+    @Test fun reviewedSaveUsesTheComparedOnlineVersionAndBaseline() = runBlocking {
+        val before = preview.copy(arrivalRemarks = "Before")
+        val repository = repo()
+        repository.save(flight.copy(returnToRamps = listOf(before)), id, input, preview)
+        val row = dao.rows(owner.value!!).single().copy(status = "conflict", error = "Changed online")
+        dao.put(row)
+        val recorded = before.copy(arrivedAtUtc = at.plusSeconds(30).toString(), arrivalRemarks = "Colleague")
+        val reviewed = flight.copy(rowVersion = "AAAAAAAAAAM=", returnToRamps = listOf(recorded))
+        val staged = mergeReturnToRampReview(recorded, repository.pendingInput(flight.id, id, row.changeId)!!, before)
+        repository.saveReviewed(reviewed, id, row.changeId, staged, preview.copy(arrivedAtUtc = recorded.arrivedAtUtc))
+        val saved = dao.rows(owner.value!!).single()
+        assertEquals("pending", saved.status)
+        assertNull(saved.error)
+        assertNotEquals(row.changeId, saved.changeId)
+        assertEquals(reviewed.rowVersion, saved.rowVersion)
+        assertEquals(recorded, Json.decodeFromString<FlightReturnToRampRecord>(saved.reviewedOccurrenceJson!!))
+        assertEquals("arrival", repository.pendingInput(flight.id, id, saved.changeId)!!.arrival.remarks)
+        assertEquals(recorded.arrivedAtUtc, repository.pendingInput(flight.id, id, saved.changeId)!!.arrival.arrivedAtUtc)
+    }
+
+    @Test fun failedReviewValidationRetainsItsOriginalQueueRow() = runBlocking {
+        val repository = repo()
+        repository.save(flight, id, input, preview)
+        val retained = dao.rows(owner.value!!).single().copy(status = "failed", error = "Invalid online")
+        dao.put(retained)
+        assertTrue(runCatching { repository.saveReviewed(flight, id, retained.changeId,
+            input.copy(arrival = input.arrival.copy(arrivedAtUtc = "invalid")), preview) }.isFailure)
+        assertEquals(retained, dao.rows(owner.value!!).single())
+    }
+
+    @Test fun explicitlyReviewedUnsentInputUsesTheComparedVersionInsteadOfItsOldQueueVersion() = runBlocking {
+        val repository = repo()
+        repository.save(flight, id, input, preview)
+        val pending = dao.rows(owner.value!!).single()
+        val reviewed = flight.copy(rowVersion = "AAAAAAAAAAM=")
+        repository.saveReviewed(reviewed, id, pending.changeId, input, preview)
+        assertEquals(reviewed.rowVersion, dao.rows(owner.value!!).single().rowVersion)
+    }
+
+    @Test fun reviewedDiscardRemovesOnlyItsExactOccurrence() = runBlocking {
+        val repository = repo()
+        repository.save(flight, id, input, preview)
+        val first = dao.rows(owner.value!!).single()
+        val secondId = "99999999-9999-9999-9999-999999999999"
+        val second = first.copy(occurrenceId = secondId, changeId = "other-change", previewJson = Json.encodeToString(preview.copy(id = secondId, sequence = 2)))
+        dao.put(second)
+        repository.discardReviewed(flight.id, id, first.changeId)
+        assertEquals(listOf(second), dao.rows(owner.value!!))
     }
 
     @Test fun predecessorAcknowledgedBeforeTheRtrWasStagedStillUsesOnlyKnownVersionLineage() = runBlocking {
