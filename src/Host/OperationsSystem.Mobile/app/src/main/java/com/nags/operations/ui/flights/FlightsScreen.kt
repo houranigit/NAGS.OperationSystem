@@ -230,7 +230,7 @@ fun FlightsScreen(
         if (discoverySource == null) FlightTabSearchHeader(isSearchOpen = state.isSearchOpen, query = state.search,
             onQueryChange = viewModel::setSearch, onOpenSearch = viewModel::openSearch,
             onCloseSearch = ::closeSearch, autoFocusOnOpen = interactionEnabled,
-            interactionEnabled = interactionEnabled) {
+            interactionEnabled = interactionEnabled, collapsedHeight = 44.dp) {
             FlightsPageTabs(pagerState = pagerState, onSelectTab = selectTab, enabled = !state.isSearchOpen)
         }
         else {
@@ -668,14 +668,14 @@ private fun FlightsPageTabs(
                         .selectable(selected = selected, enabled = enabled, onClick = { onSelectTab(index) }, role = Role.Tab)
                         .widthIn(min = 48.dp, max = maximumTabWidth)
                         .padding(horizontal = 8.dp)
-                        .heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+                        .heightIn(min = 44.dp), contentAlignment = Alignment.Center) {
                         // Keep the label's measured width stable throughout the swipe.
                         Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
-                            fontWeight = FontWeight.Bold, color = Color.Transparent, maxLines = 1,
+                            fontWeight = FontWeight.SemiBold, color = Color.Transparent, maxLines = 1,
                             softWrap = false, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.clearAndSetSemantics { })
                         Text(label, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
-                            fontWeight = FontWeight.Bold, color = lerp(inactiveInk, activeInk, emphasis), maxLines = 1,
+                            fontWeight = FontWeight.SemiBold, color = lerp(inactiveInk, activeInk, emphasis), maxLines = 1,
                             softWrap = false, overflow = TextOverflow.Ellipsis)
                     }
                 }

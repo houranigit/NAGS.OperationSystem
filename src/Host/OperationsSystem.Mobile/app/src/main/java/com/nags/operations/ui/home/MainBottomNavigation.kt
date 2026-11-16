@@ -76,7 +76,7 @@ internal fun MainBottomNavigation(
     )
 
     Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp).height(64.dp)
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp).height(56.dp)
             .dropShadow(dockShape, Shadow(radius = 8.dp, color = Color.Black.copy(alpha = 0.10f),
                 offset = DpOffset(0.dp, (-2).dp)))
             .shadow(4.dp, dockShape, clip = false).clip(dockShape).background(colors.surface)

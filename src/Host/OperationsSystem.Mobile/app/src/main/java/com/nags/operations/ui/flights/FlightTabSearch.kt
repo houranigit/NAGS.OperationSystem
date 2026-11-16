@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -62,6 +63,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nags.operations.R
@@ -79,6 +81,7 @@ internal fun FlightTabSearchHeader(
     onOpenSearch: () -> Unit,
     onCloseSearch: () -> Unit,
     modifier: Modifier = Modifier,
+    collapsedHeight: Dp = 48.dp,
     searchDescription: String = stringResource(R.string.flights_search),
     placeholder: String = stringResource(R.string.flights_search_placeholder),
     openSearchDescription: String = stringResource(R.string.flights_search_open),
@@ -123,7 +126,7 @@ internal fun FlightTabSearchHeader(
 
     Column(modifier.fillMaxWidth()) {
         HorizontalDivider(color = foreground.copy(alpha = 0.1f))
-        BoxWithConstraints(Modifier.fillMaxWidth().height(48.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(collapsedHeight + (48.dp - collapsedHeight) * progress)) {
             HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = foreground.copy(alpha = 0.1f))
             val controlWidth = 48.dp + (maxWidth - 32.dp - 48.dp) * progress
             val tabPlacement = if (searchAtPhysicalRight) {
@@ -141,7 +144,7 @@ internal fun FlightTabSearchHeader(
                 .then(if (isSearchOpen) Modifier.clearAndSetSemantics { } else Modifier)) {
                 tabs()
             }
-            Row(searchPlacement.width(controlWidth).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(searchPlacement.width(controlWidth).requiredHeight(48.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f).height(48.dp).clipToBounds()) {
                     Box(Modifier.fillMaxSize().padding(horizontal = 6.dp * (1f - progress), vertical = 6.dp)
                         .background(searchSurface, RoundedCornerShape(24.dp)))
