@@ -7,11 +7,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -76,7 +75,7 @@ internal fun MainBottomNavigation(
     )
 
     Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp).height(56.dp)
+        modifier = modifier.padding(horizontal = 12.dp).height(56.dp)
             .dropShadow(dockShape, Shadow(radius = 8.dp, color = Color.Black.copy(alpha = 0.10f),
                 offset = DpOffset(0.dp, (-2).dp)))
             .shadow(4.dp, dockShape, clip = false).clip(dockShape).background(colors.surface)
@@ -94,7 +93,7 @@ internal fun MainBottomNavigation(
             val selected = selectedPage == index
             val foreground = if (selected) Color.White else colors.onSurfaceVariant
             Box(
-                modifier = Modifier.weight(1f).fillMaxHeight().widthIn(min = 48.dp)
+                modifier = Modifier.width(48.dp).fillMaxHeight()
                     .selectable(selected = selected, role = Role.Tab, onClick = { onSelectPage(index) })
                     .semantics { contentDescription = descriptions[index] },
                 contentAlignment = Alignment.Center,
