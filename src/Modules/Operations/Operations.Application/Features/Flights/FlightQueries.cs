@@ -163,8 +163,8 @@ internal static class FlightDetails
             canEditFlightDetails && currentUserId is { } userId && flight.CanEditAdHocDetails(userId),
             flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType, search, canSaveServices && canAdd, canSaveTasks && canAdd,
             flight.ReturnToRamps.OrderBy(r => r.Sequence).Select(r => FlightReturnToRampDto.Map(flight, r, currentUserId,
-                canSaveTasks && assignedWorkCorrection && !search, allowedServiceIds, userDisplayNames)).ToList(),
-            canSaveTasks && assignedWorkCorrection && !search, flight.LastReturnToRampSequence);
+                canSaveTasks, allowedServiceIds, userDisplayNames)).ToList(),
+            canSaveTasks, flight.LastReturnToRampSequence);
     }
 }
 

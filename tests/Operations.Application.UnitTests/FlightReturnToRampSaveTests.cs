@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using Microsoft.EntityFrameworkCore;
 using Operations.Application.Authorization;
@@ -8,6 +9,7 @@ using Operations.Application.Contracts;
 using Operations.Application.Features.Flights;
 using Operations.Contracts;
 using Operations.Domain.Flights;
+using Operations.Domain.Authorization;
 using Operations.Domain.ValueObjects;
 using Operations.Infrastructure.Persistence;
 using Shouldly;
@@ -66,12 +68,87 @@ public sealed class FlightReturnToRampSaveTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Missing_departure_or_unassigned_regular_search_cannot_create_rtr(bool noDeparture)
+    public async Task Missing_departure_prevents_rtr_for_assigned_and_unassigned_staff(bool assigned)
     {
-        await using var f = await Fixture.Create(departure: !noDeparture, assigned: noDeparture);
+        await using var f = await Fixture.Create(departure: false, assigned: assigned);
         var result = await f.Save(Guid.NewGuid(), f.Empty);
-        result.Error.Code.ShouldBe(noDeparture ? "Operations.ReturnToRamp.DepartureRequired" : "Operations.ReturnToRamp.AssignmentRequired");
+        result.Error.Code.ShouldBe("Operations.ReturnToRamp.DepartureRequired");
         f.Storage.Files.ShouldBeEmpty(); (await f.Db.Flights.Include(x => x.ReturnToRamps).SingleAsync()).ReturnToRamps.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Unassigned_searcher_can_create_start_and_close_rtr_without_gaining_normal_work_rights(bool foreignOccurrence)
+    {
+        await using var f = await Fixture.Create(assigned: false);
+        await f.SeedNormalWorkClosedByOther();
+        var before = await f.Detail(); before.IsSuccess.ShouldBeTrue();
+        AssertUnassignedPermissions(before.Value);
+        var id = Guid.NewGuid();
+        var created = await f.Save(id, f.Empty, other: foreignOccurrence);
+        created.IsSuccess.ShouldBeTrue(); created.Value.ReturnToRamps!.Single().IsOpen.ShouldBeTrue();
+        var reloaded = await f.Detail(); reloaded.IsSuccess.ShouldBeTrue();
+        reloaded.Value.ReturnToRamps!.Single().CanEdit.ShouldBeTrue(); AssertUnassignedPermissions(reloaded.Value);
+        (await f.Save(Guid.NewGuid(), f.Empty)).Error.Code.ShouldBe("Operations.ReturnToRamp.OpenExists");
+
+        var full = f.Full;
+        var openWork = full with
+        {
+            Departure = null,
+            Services = full.Services!.Select(s => s with { Input = s.Input with
+            {
+                EndUtc = null,
+                Performers = s.Input.Performers.Select(p => p with { EndUtc = null }).ToArray()
+            } }).ToArray(),
+            Tasks = full.Tasks!.Select(t => t with { Input = t.Input with
+            {
+                EndUtc = null,
+                Performers = t.Input.Performers.Select(p => p with { EndUtc = null }).ToArray()
+            } }).ToArray()
+        };
+        var started = await f.Save(id, openWork); started.IsSuccess.ShouldBeTrue();
+        var active = started.Value.ReturnToRamps!.Single();
+        active.IsOpen.ShouldBeTrue(); active.CanEdit.ShouldBeTrue();
+        active.Services.Single().EndUtc.ShouldBeNull(); active.Tasks.Single().EndUtc.ShouldBeNull();
+        AssertUnassignedPermissions(started.Value);
+
+        var closed = await f.Save(id, full); closed.IsSuccess.ShouldBeTrue();
+        var occurrence = closed.Value.ReturnToRamps!.Single();
+        occurrence.IsOpen.ShouldBeFalse(); occurrence.HasSignature.ShouldBeTrue();
+        occurrence.CreatedByUserId.ShouldBe(foreignOccurrence ? f.Other : f.Owner);
+        occurrence.HandledByStaffMemberId.ShouldBe(f.OwnerStaff);
+        occurrence.Services.Single().EndUtc.ShouldNotBeNull(); occurrence.Tasks.Single().EndUtc.ShouldNotBeNull();
+        AssertUnassignedPermissions(closed.Value);
+        var final = await f.Detail(); final.IsSuccess.ShouldBeTrue(); AssertUnassignedPermissions(final.Value);
+        final.Value.ReturnToRamps!.Single().IsOpen.ShouldBeFalse();
+
+        var readOnly = await f.Detail(canOperate: false); readOnly.IsSuccess.ShouldBeTrue();
+        readOnly.Value.CanSaveReturnsToRamp.ShouldBeFalse(); readOnly.Value.ReturnToRamps!.Single().CanEdit.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Unassigned_rtr_authoring_does_not_widen_station_or_time_window(bool differentStation)
+    {
+        await using var f = await Fixture.Create(assigned: false);
+        var scope = new ScopeImpl(new(differentStation ? Guid.NewGuid() : f.Reader.StationId,
+            f.OwnerStaff, f.Owner, differentStation ? Now : Now.AddHours(15)));
+        var result = await f.Save(Guid.NewGuid(), f.Empty, scopeOverride: scope);
+        result.Error.Code.ShouldBe("Operations.Flight.NotFound");
+        f.Storage.Files.ShouldBeEmpty(); (await f.Db.Flights.Include(x => x.ReturnToRamps).SingleAsync()).ReturnToRamps.ShouldBeEmpty();
+    }
+
+    private static void AssertUnassignedPermissions(FlightDetailDto detail)
+    {
+        detail.IsUnassignedSearchFlight.ShouldBeTrue(); detail.CanSaveReturnsToRamp.ShouldBeTrue();
+        detail.AssignedEmployees.ShouldNotContain(employee => employee.StaffMemberId == detail.CurrentStaffMemberId);
+        detail.CanAddServices.ShouldBe(false); detail.CanAddTasks.ShouldBe(false);
+        detail.CanSaveCancellation.ShouldBeFalse(); detail.CanEditFlightDetails.ShouldBeFalse();
+        var service = detail.Services!.Single(); var task = detail.Tasks!.Single();
+        service.CanEdit.ShouldBeTrue(); service.CanSetEnd.ShouldBeFalse(); service.CanDelete.ShouldBeFalse(); service.CanChangeService.ShouldBeFalse();
+        task.CanEdit.ShouldBeTrue(); task.CanSetEnd.ShouldBeFalse(); task.CanDelete.ShouldBeFalse();
     }
 
     [Fact]
@@ -102,11 +179,30 @@ public sealed class FlightReturnToRampSaveTests
             [new(_service, new(Reader.ServiceId, Now.AddMinutes(5), Now.AddMinutes(15), "WP-1", "Service", [new(_performer, OwnerStaff, Now.AddMinutes(5), Now.AddMinutes(15))], [new(_image, 0, "photo.png", "image/png", Png)]))],
             [new(_task, new(0, null, Now.AddMinutes(10), Now.AddMinutes(20), null, "Task", [new(_taskPerformer, OwnerStaff, Now.AddMinutes(10), Now.AddMinutes(20))], [], [], []))]);
         public IMobileFlightScope Scope(bool other) => new ScopeImpl(new(Reader.StationId, other ? OtherStaff : OwnerStaff, other ? Other : Owner, Now));
-        public async Task<Result<FlightDetailDto>> Save(Guid id, SaveFlightReturnToRampRequest input, bool other = false, byte[]? version = null)
+        public async Task<Result<FlightDetailDto>> Save(Guid id, SaveFlightReturnToRampRequest input, bool other = false, byte[]? version = null, IMobileFlightScope? scopeOverride = null)
         {
             Db.ChangeTracker.Clear(); var rowVersion = version ?? (await Db.Flights.SingleAsync()).RowVersion;
-            return await new SaveFlightReturnToRampCommandHandler(Db, Scope(other), new(Reader), Reader, Storage, new Clock(), NoopMobileSyncBroadcaster.Instance,
+            return await new SaveFlightReturnToRampCommandHandler(Db, scopeOverride ?? Scope(other), new(Reader), Reader, Storage, new Clock(), NoopMobileSyncBroadcaster.Instance,
                 new WorkUserNames(new() { [Owner] = "Original", [Other] = "Colleague" })).Handle(new(FlightId, id, input, rowVersion), default);
+        }
+        public Task<Result<FlightDetailDto>> Detail(bool canOperate = true) =>
+            new GetMobileFlightByIdQueryHandler(Db, Scope(false), Reader, new User(Owner, canOperate)).Handle(new(FlightId), default);
+        public async Task SeedNormalWorkClosedByOther()
+        {
+            Db.ChangeTracker.Clear(); var flight = await Db.Flights.SingleAsync();
+            var employee = new StaffMemberSnapshot(OwnerStaff, "Original", "E1");
+            var start = Now.AddMinutes(-40); var end = Now.AddMinutes(-20);
+            var serviceId = Guid.NewGuid(); var service = new ServiceSnapshot(Reader.ServiceId, "Normal service"); var person = Guid.NewGuid();
+            flight.SaveService(serviceId, service, null, TimeWindow.Create(start, null).Value, null,
+                [new(employee, TimeWindow.Create(start, null).Value, person)], Owner, Now).IsSuccess.ShouldBeTrue();
+            flight.SaveService(serviceId, service, null, TimeWindow.Create(start, end).Value, null,
+                [new(employee, TimeWindow.Create(start, end).Value, person)], Other, Now).IsSuccess.ShouldBeTrue();
+            var taskId = Guid.NewGuid(); var taskPerson = Guid.NewGuid();
+            flight.SaveTask(taskId, (FlightTaskType)0, null, null, TimeWindow.Create(start, null).Value, "Normal task",
+                [new(employee, TimeWindow.Create(start, null).Value, null, taskPerson)], [], [], [], Owner, Now).IsSuccess.ShouldBeTrue();
+            flight.SaveTask(taskId, (FlightTaskType)0, null, null, TimeWindow.Create(start, end).Value, "Normal task",
+                [new(employee, TimeWindow.Create(start, end).Value, null, taskPerson)], [], [], [], Other, Now).IsSuccess.ShouldBeTrue();
+            await Db.SaveChangesAsync(); Db.ChangeTracker.Clear();
         }
         public async Task ChangeVersion()
         {
@@ -127,6 +223,14 @@ public sealed class FlightReturnToRampSaveTests
         public ValueTask DisposeAsync() => Db.DisposeAsync();
     }
     private sealed class ScopeImpl(MobileFlightScopeContext value) : IMobileFlightScope { public Task<Result<MobileFlightScopeContext>> ResolveAsync(CancellationToken ct) => Task.FromResult(Result.Success(value)); }
+    private sealed class User(Guid id, bool canOperate) : IUserContext
+    {
+        public bool IsAuthenticated => true;
+        public Guid? UserId => id;
+        public UserType? UserType => BuildingBlocks.Contracts.Authorization.UserType.StationStaff;
+        public Guid? ExternalReferenceId => null;
+        public bool HasPermission(string permission) => canOperate && permission == OperationsPermissions.Flights.Operate;
+    }
     private sealed class Clock : TimeProvider { public override DateTimeOffset GetUtcNow() => Now; }
     private sealed class MemoryStorage : IFileStorage
     {

@@ -35,8 +35,6 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
         var actor = resolved.Value;
         var flight = await FlightServiceWrites.Load(db, actor).SingleOrDefaultAsync(f => f.Id == request.FlightId, ct);
         if (flight is null) return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
-        if (!flight.CanCorrectOperationalWork(actor.StaffMemberId))
-            return Error.Forbidden("Only assigned employees can record or update return to ramp.", "Operations.ReturnToRamp.AssignmentRequired");
         if (flight.CancellationSubmissions.Count > 0) return FlightServiceWrites.Cancellation();
         if (flight.DepartureSubmissions.Count == 0)
             return Error.Conflict("Record flight departure before adding RTR.", "Operations.ReturnToRamp.DepartureRequired");
@@ -191,7 +189,8 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
     }
 
     private static FlightDetailDto Detail(Flight flight, string zone, MobileFlightScopeContext actor, IReadOnlyList<Guid> allowed, IReadOnlyDictionary<Guid, string> names) =>
-        FlightDetails.Map(flight, zone, actor.StaffMemberId, true, true, false, allowed.Count > 0, actor.UserId, allowed, true, true, names, true);
+        FlightDetails.Map(flight, zone, actor.StaffMemberId, true, true, false, allowed.Count > 0, actor.UserId, allowed, true,
+            flight.CanCorrectOperationalWork(actor.StaffMemberId), names, true);
     private async Task<Result<AttachmentDetails>> StoreAttachment(SaveFlightServiceAttachmentRequest input, List<string> keys, CancellationToken ct)
     {
         using var stream = new MemoryStream(input.Content!, false);
