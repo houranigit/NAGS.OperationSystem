@@ -2,7 +2,6 @@ package com.nags.operations.ui.flights
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -27,12 +26,8 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material3.Icon
-import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Alignment
 import com.nags.operations.R
 import com.nags.operations.data.*
@@ -297,35 +292,14 @@ internal fun FlightRtrSummary(record: FlightReturnToRampRecord, flight: FlightDe
     val zone = stationTimeZone(flight.stationTimeZoneId)
     val green = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF81C995) else Color(0xFF248A3D)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        FlightRtrSummaryHeader(record.arrivedAtUtc, record.departedAtUtc, zone) {
             Text(stringResource(R.string.rtr_form_number, record.sequence), style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(stringResource(if (record.isOpen) R.string.rtr_sheet_open else R.string.rtr_sheet_closed),
                 style = MaterialTheme.typography.labelMedium, color = if (record.isOpen) MaterialTheme.colorScheme.primary else green)
+            Text(stringResource(R.string.rtr_form_work_summary, record.services.size, record.tasks.size),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            for (arrival in listOf(true, false)) {
-                Column(horizontalAlignment = if (arrival) Alignment.Start else Alignment.End) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(if (arrival) Icons.Filled.FlightLand else Icons.Filled.FlightTakeoff, null,
-                            Modifier.size(14.dp), tint = green)
-                        Text(stringResource(if (arrival) R.string.arrival_ata_short else R.string.operations_atd_short),
-                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    val time = if (arrival) record.arrivedAtUtc else record.departedAtUtc
-                    Text(time?.let { com.nags.operations.ui.util.formatIsoTimeForDisplay(it, zone) } ?: "—",
-                        style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 22.sp,
-                            fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"), maxLines = 1, softWrap = false)
-                }
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.CalendarMonth, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(com.nags.operations.ui.util.formatFlightDateRangeForDisplay(record.arrivedAtUtc, record.departedAtUtc ?: record.arrivedAtUtc, zone),
-                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Text(stringResource(R.string.rtr_form_work_summary, record.services.size, record.tasks.size),
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         listOf(R.string.operations_arrival_remarks_heading to record.arrivalRemarks,
             R.string.operations_departure_remarks_heading to record.departureRemarks).forEach { (label, remarks) ->
             remarks?.takeIf(String::isNotBlank)?.let {
