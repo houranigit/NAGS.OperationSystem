@@ -518,7 +518,6 @@
     <string name="rtr_sheet_title">Return to ramp #%1$d</string>
     <string name="rtr_sheet_open">On ground</string>
     <string name="rtr_sheet_closed">Departed</string>
-    <string name="rtr_sheet_submitted">Submitted by %1$s on %2$s at %3$s</string>
     <string name="rtr_form_section">Returns to ramp (%1$d)</string>
     <string name="rtr_form_number">RTR #%1$d</string>
     <string name="rtr_form_add">RTR</string>

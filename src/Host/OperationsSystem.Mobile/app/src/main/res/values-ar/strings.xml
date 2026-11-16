@@ -494,7 +494,6 @@
     <string name="rtr_sheet_title">العودة إلى الساحة رقم %1$d</string>
     <string name="rtr_sheet_open">على الأرض</string>
     <string name="rtr_sheet_closed">غادرت</string>
-    <string name="rtr_sheet_submitted">أرسلها %1$s في %2$s الساعة %3$s</string>
     <string name="rtr_form_section">العودة إلى الموقف (%1$d)</string>
     <string name="rtr_form_number">العودة إلى الموقف #%1$d</string>
     <string name="rtr_form_add">عودة إلى الموقف</string>

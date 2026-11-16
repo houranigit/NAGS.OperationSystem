@@ -23,8 +23,6 @@ import androidx.compose.ui.unit.dp
 import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightReturnToRampRecord
-import com.nags.operations.ui.util.formatFlightDateRangeForDisplay
-import com.nags.operations.ui.util.formatIsoTimeForDisplay
 import com.nags.operations.ui.util.parseOffsetDateTime
 import com.nags.operations.ui.util.stationTimeZone
 import java.time.Instant
@@ -80,11 +78,6 @@ private fun ReturnToRampSummary(occurrence: FlightReturnToRampRecord, zone: Zone
         if (occurrence.localStatus != null) {
             Text(stringResource(if (occurrence.localStatus == "pending") R.string.flight_actuals_saved_locally else R.string.flight_card_needs_review),
                 style = label, color = if (occurrence.localStatus == "pending") muted else MaterialTheme.colorScheme.error)
-        }
-        occurrence.createdByDisplayName?.takeIf { it.isNotBlank() && occurrence.localStatus == null }?.let { name ->
-            Text(stringResource(R.string.rtr_sheet_submitted, name,
-                formatFlightDateRangeForDisplay(occurrence.createdAtUtc, occurrence.createdAtUtc, zone),
-                formatIsoTimeForDisplay(occurrence.createdAtUtc, zone)), style = label, color = muted)
         }
     }
     HorizontalDivider(thickness = .5.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .06f))

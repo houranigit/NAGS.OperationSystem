@@ -147,7 +147,9 @@ internal fun FlightSheetWork(
                     Text(stringResource(R.string.sheet_work_no_active), Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
                         style = MaterialTheme.typography.bodySmall, color = muted)
                 } else {
-                    Row(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 4.dp),
+                    // The first work row adds 12dp below this heading; keep the visible gaps equal.
+                    Row(Modifier.padding(start = 14.dp, end = 14.dp,
+                        top = if (summaryHeader != null) 16.dp else 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         Icon(Icons.Outlined.AccessTime, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
                         Text(stringResource(R.string.sheet_work_active, active.size), style = MaterialTheme.typography.bodySmall,
