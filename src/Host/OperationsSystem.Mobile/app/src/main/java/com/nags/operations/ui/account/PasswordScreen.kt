@@ -1,5 +1,7 @@
 package com.nags.operations.ui.account
 
+import com.nags.operations.ui.theme.LoadingIndicatorGray
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -58,7 +60,7 @@ internal fun PasswordScreen(viewModel: PasswordViewModel, onBack: () -> Unit, on
             Button(onClick = { viewModel.save(); validationAttempt++ }, enabled = state.isOnline && !state.isSaving,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)) {
                 if (state.isSaving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onPrimary)
+                    color = LoadingIndicatorGray)
                 Text(stringResource(R.string.password_update), Modifier.padding(horizontal = 8.dp), fontWeight = FontWeight.SemiBold)
             }
         }

@@ -1,5 +1,7 @@
 package com.nags.operations.ui.flights
 
+import com.nags.operations.ui.theme.LoadingIndicatorGray
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -510,7 +512,7 @@ private fun FlightListPage(
                 modifier = Modifier.align(Alignment.TopCenter),
                 isRefreshing = state.showRefreshIndicator, state = refreshState,
                 containerColor = MaterialTheme.colorScheme.surface,
-                color = Color(0xFF757575),
+                color = LoadingIndicatorGray,
             )
         }, onRefresh = onRefresh,
         modifier = if (active) Modifier.fillMaxSize() else Modifier.fillMaxSize().clearAndSetSemantics { }) {

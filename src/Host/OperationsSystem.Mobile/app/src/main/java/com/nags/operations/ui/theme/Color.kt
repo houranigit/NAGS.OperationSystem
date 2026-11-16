@@ -18,3 +18,6 @@ val OnSurfaceSecondary = Color(0xFF5C4B4D)
 // Semantic accents kept consistent with the portal's status colors.
 val AccentBlue = Color(0xFF1E5BB8)
 val AccentRed = Color(0xFFC52424)
+
+// Shared neutral for loading and refresh indicators.
+val LoadingIndicatorGray = Color(0xFF757575)

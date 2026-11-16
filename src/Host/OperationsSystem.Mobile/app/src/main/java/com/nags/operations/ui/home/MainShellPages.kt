@@ -1,5 +1,7 @@
 package com.nags.operations.ui.home
 
+import com.nags.operations.ui.theme.LoadingIndicatorGray
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -83,7 +85,7 @@ internal fun AdHocFlightShell(graph: com.nags.operations.AppGraph, factory: com.
         androidx.compose.material3.TextButton(onClick = onClose) { Text("Close") }
         if (error != null) com.nags.operations.ui.components.InlineNotice(checkNotNull(error),
             kind = com.nags.operations.ui.components.InlineNoticeKind.Warning, onRetry = { retry++ })
-        else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator() }
+        else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { androidx.compose.material3.CircularProgressIndicator(color = LoadingIndicatorGray) }
     }
 }
 

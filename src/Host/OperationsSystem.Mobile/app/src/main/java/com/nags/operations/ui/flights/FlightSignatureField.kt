@@ -1,5 +1,7 @@
 package com.nags.operations.ui.flights
 
+import com.nags.operations.ui.theme.LoadingIndicatorGray
+
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.rememberScrollState
@@ -116,7 +118,7 @@ internal fun FlightSignatureField(value: String, hasSavedSignature: Boolean = fa
                     } else if (preview != null) {
                         Image(preview, null, Modifier.width(88.dp).height(32.dp).background(Color.White).clearAndSetSemantics {}, contentScale = ContentScale.Fit)
                     } else if (loading) {
-                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = LoadingIndicatorGray)
                     } else {
                         FlightFormValueText(if (hasSavedSignature) stringResource(R.string.operations_signature_captured) else "",
                             Modifier.weight(1f), isPlaceholder = !hasSavedSignature)
@@ -202,7 +204,7 @@ internal fun FlightSignatureSheet(value: String, hasSavedSignature: Boolean, sav
                     if (session.viewingOriginal && ink.strokes.isEmpty()) {
                         when {
                             preview != null -> Image(preview, null, Modifier.fillMaxSize().padding(8.dp).background(Color.White), contentScale = ContentScale.Fit)
-                            loading -> CircularProgressIndicator(Modifier.size(28.dp))
+                            loading -> CircularProgressIndicator(Modifier.size(28.dp), color = LoadingIndicatorGray)
                             else -> Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(stringResource(R.string.operations_signature_preview_unavailable),
                                     style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center,

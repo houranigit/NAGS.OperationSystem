@@ -1,5 +1,7 @@
 package com.nags.operations.ui.invite
 
+import com.nags.operations.ui.theme.LoadingIndicatorGray
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -51,7 +53,7 @@ fun InviteEmployeesDialog(state: FlightsUiState, viewModel: FlightsViewModel) {
                     }
                 }
                 if (state.isLoadingInvitations) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = LoadingIndicatorGray)
                 } else if (state.invitationOptions.isEmpty() && state.invitationOptionsLoaded) {
                     Text(stringResource(R.string.flights_invite_empty))
                 }
@@ -83,7 +85,7 @@ fun InviteEmployeesDialog(state: FlightsUiState, viewModel: FlightsViewModel) {
         },
         confirmButton = {
             TextButton(onClick = viewModel::inviteSelectedEmployees, enabled = canSend) {
-                if (state.isInviting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                if (state.isInviting) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = LoadingIndicatorGray)
                 else Text(stringResource(R.string.flights_invite_send))
             }
         },

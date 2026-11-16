@@ -1,5 +1,7 @@
 package com.nags.operations.ui.sync
 
+import com.nags.operations.ui.theme.LoadingIndicatorGray
+
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.HorizontalDivider
@@ -457,7 +459,7 @@ private fun ConnectivityPill(isOnline: Boolean) {
 private fun RefreshNowButton(isSyncing: Boolean, isOnline: Boolean, onClick: () -> Unit) {
     Button(onClick, enabled = !isSyncing && isOnline, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         shape = RoundedCornerShape(12.dp)) {
-        if (isSyncing) CircularProgressIndicator(Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+        if (isSyncing) CircularProgressIndicator(Modifier.size(18.dp), color = LoadingIndicatorGray, strokeWidth = 2.dp)
         else Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
         Text(stringResource(when {
             isSyncing -> R.string.sync_center_refreshing

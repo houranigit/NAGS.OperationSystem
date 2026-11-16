@@ -1,5 +1,7 @@
 package com.nags.operations.ui.account
 
+import com.nags.operations.ui.theme.LoadingIndicatorGray
+
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -45,7 +47,7 @@ fun AccountScreen(viewModel: AccountViewModel, onBack: () -> Unit, onLogout: () 
                     state.profile?.email?.let { Text(it, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
-                if (state.isLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                if (state.isLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = LoadingIndicatorGray)
             }
             state.error?.let { InlineNotice(it, kind = InlineNoticeKind.Error,
                 onRetry = if (state.isOnline && !state.isLoading) viewModel::refresh else null) }

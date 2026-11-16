@@ -1,5 +1,7 @@
 package com.nags.operations.ui.login
 
+import com.nags.operations.ui.theme.LoadingIndicatorGray
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -247,7 +249,7 @@ fun LoginScreen(
                 if (state.isLoading) {
                     CircularProgressIndicator(
                         modifier = Modifier.height(20.dp),
-                        color = Color.White,
+                        color = LoadingIndicatorGray,
                         strokeWidth = 2.dp,
                     )
                     Text(

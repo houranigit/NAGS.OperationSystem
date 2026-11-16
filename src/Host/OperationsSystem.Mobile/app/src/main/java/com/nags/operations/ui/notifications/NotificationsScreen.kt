@@ -1,5 +1,7 @@
 package com.nags.operations.ui.notifications
 
+import com.nags.operations.ui.theme.LoadingIndicatorGray
+
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -307,7 +309,7 @@ private fun NotificationList(
                     modifier = Modifier.align(Alignment.TopCenter),
                     isRefreshing = state.isRefreshing, state = refreshState,
                     containerColor = MaterialTheme.colorScheme.surface,
-                    color = Color(0xFF757575),
+                    color = LoadingIndicatorGray,
                 )
             },
             onRefresh = { viewModel.refresh(userInitiated = true) }, modifier = Modifier.weight(1f).fillMaxWidth()
@@ -355,7 +357,7 @@ private fun NotificationList(
                     if (state.isLoadingMore) {
                         item(key = "paging") {
                             Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                                CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = LoadingIndicatorGray)
                             }
                         }
                     }
@@ -433,7 +435,7 @@ private fun NotificationCard(notification: NotificationDto, now: Instant, isNew:
                     colors = ButtonDefaults.buttonColors(containerColor = NotificationDeleteRed, contentColor = Color.White,
                         disabledContainerColor = NotificationDeleteRed.copy(alpha = 0.65f), disabledContentColor = Color.White),
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)) {
-                    if (busy) CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    if (busy) CircularProgressIndicator(Modifier.size(16.dp), color = LoadingIndicatorGray, strokeWidth = 2.dp)
                     else Text(stringResource(R.string.notifications_delete), style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold, maxLines = 1)
                 }

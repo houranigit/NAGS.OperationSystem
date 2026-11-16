@@ -1,5 +1,7 @@
 package com.nags.operations.ui.flights
 
+import com.nags.operations.ui.theme.LoadingIndicatorGray
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,7 +76,7 @@ internal fun AdHocFlightEditor(viewModel: FlightsViewModel, initialFlight: Fligh
         catch (_: Exception) { /* Last authorized station context remains available offline. */ }
     }
     if (!initialized) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = LoadingIndicatorGray) }
         return
     }
     val pending = planning.firstOrNull { it.flightId == initialFlight.id }
