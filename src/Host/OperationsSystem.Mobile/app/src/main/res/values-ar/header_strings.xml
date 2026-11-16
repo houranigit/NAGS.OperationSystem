@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_employee_identity">%1$s - %2$s</string>
+    <string name="home_station_unavailable">المحطة</string>
+    <string name="home_time_unavailable">—:—</string>
+    <string name="home_station_local_time">التوقيت المحلي للمحطة: %1$s</string>
+    <string name="home_status_loading">جارٍ التحقق من المزامنة…</string>
+    <string name="home_status_syncing">جارٍ المزامنة…</string>
+    <string name="home_status_review">تحتاج إلى مراجعة: %1$d</string>
+    <string name="home_status_pending">تغييرات معلقة: %1$d</string>
+    <string name="home_status_sync_error">المزامنة تحتاج إلى متابعة</string>
+    <string name="home_status_synced">تمت مزامنة جميع التغييرات</string>
+</resources>

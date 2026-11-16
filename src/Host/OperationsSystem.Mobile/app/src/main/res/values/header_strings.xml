@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_employee_identity">%1$s - %2$s</string>
+    <string name="home_station_unavailable">Station</string>
+    <string name="home_time_unavailable">—:—</string>
+    <string name="home_station_local_time">Station local time: %1$s</string>
+    <string name="home_status_loading">Checking sync…</string>
+    <string name="home_status_syncing">Syncing…</string>
+    <string name="home_status_review">Needs review: %1$d</string>
+    <string name="home_status_pending">Pending changes: %1$d</string>
+    <string name="home_status_sync_error">Sync needs attention</string>
+    <string name="home_status_synced">All changes synced</string>
+</resources>

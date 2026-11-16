@@ -37,7 +37,7 @@ public sealed class GetMobileAdHocFlightContextQueryHandler(IMobileFlightScope s
         if (allowed.IsFailure) return allowed.Error;
         return new MobileAdHocFlightContextDto(station.Id, station.IataCode, station.Name, station.TimeZoneId,
             actor.Value.StaffMemberId, true, true, true, allowed.Value.Count > 0, true, allowed.Value,
-            actor.Value.AsOfUtc, actor.Value.WindowStartUtc, actor.Value.WindowEndUtc);
+            actor.Value.AsOfUtc, actor.Value.WindowStartUtc, actor.Value.WindowEndUtc, station.City);
     }
 }
 

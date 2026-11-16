@@ -94,6 +94,8 @@ fun MainShellScreen(
         .collectAsStateWithLifecycle(initialValue = 0)
     val flights: FlightsViewModel = viewModel(key = "flights:$subject", factory = factory)
     val flightState by flights.state.collectAsStateWithLifecycle()
+    val headerFlow = remember(graph, subject) { observeMainHeader(graph) }
+    val headerState by headerFlow.collectAsStateWithLifecycle(initialValue = MainHeaderState(displayName = displayName))
     var selectedPage by rememberSaveable(subject) { mutableIntStateOf(0) }
     var selectedFlightTab by rememberSaveable(subject) { mutableIntStateOf(0) }
     val pageState = rememberSaveableStateHolder()
@@ -161,7 +163,7 @@ fun MainShellScreen(
             contentWindowInsets = ScaffoldDefaults.contentWindowInsets.only(WindowInsetsSides.Horizontal),
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
-                AppHeader(displayName = displayName, onProfileClick = {
+                AppHeader(state = headerState, onSyncClick = onOpenSyncCenter, onProfileClick = {
                     keyboard?.hide(); focusManager.clearFocus()
                     drawerScope.launch { drawer.open() }
                 },

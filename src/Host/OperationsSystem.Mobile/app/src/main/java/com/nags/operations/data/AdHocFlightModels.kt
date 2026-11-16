@@ -27,7 +27,7 @@ data class AdHocFlightContext(val stationId: String, val stationIata: String, va
     val stationTimeZoneId: String, val currentStaffMemberId: String, val canCreate: Boolean,
     val canSaveArrival: Boolean, val canSaveDeparture: Boolean, val canSaveServices: Boolean,
     val canSaveTasks: Boolean, val allowedServiceIds: List<String>, val asOfUtc: String,
-    val windowStartUtc: String, val windowEndUtc: String) {
+    val windowStartUtc: String, val windowEndUtc: String, val stationCity: String? = null) {
     fun isValid() = validArrivalId(stationId) && validArrivalId(currentStaffMemberId) &&
         runCatching { ZoneId.of(stationTimeZoneId); FlightScope(stationId, asOfUtc, windowStartUtc, windowEndUtc).isValid() }.getOrDefault(false)
 }

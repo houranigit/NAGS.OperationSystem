@@ -7,4 +7,4 @@ public sealed record SaveMobileAdHocFlightDetailsRequest(Guid CustomerId, string
 public sealed record MobileAdHocFlightContextDto(Guid StationId, string StationIata, string StationName,
     string StationTimeZoneId, Guid CurrentStaffMemberId, bool CanCreate, bool CanSaveArrival,
     bool CanSaveDeparture, bool CanSaveServices, bool CanSaveTasks, IReadOnlyList<Guid> AllowedServiceIds,
-    DateTimeOffset AsOfUtc, DateTimeOffset WindowStartUtc, DateTimeOffset WindowEndUtc);
+    DateTimeOffset AsOfUtc, DateTimeOffset WindowStartUtc, DateTimeOffset WindowEndUtc, string? StationCity = null);

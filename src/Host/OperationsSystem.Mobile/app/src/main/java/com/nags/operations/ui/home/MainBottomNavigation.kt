@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nags.operations.R
+import com.nags.operations.ui.theme.BrandRed
 
 /** Five icon-only destinations; AdHoc creation belongs to the header. */
 @Composable
@@ -84,14 +85,14 @@ internal fun MainBottomNavigation(
                 val itemWidth = size.width / icons.size
                 val logicalCenter = itemWidth * (highlightPosition + 0.5f)
                 val center = if (layoutDirection == LayoutDirection.Rtl) size.width - logicalCenter else logicalCenter
-                drawCircle(color = colors.primaryContainer, radius = 20.dp.toPx(),
+                drawCircle(color = BrandRed, radius = 20.dp.toPx(),
                     center = Offset(center, size.height / 2f))
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         icons.forEachIndexed { index, icon ->
             val selected = selectedPage == index
-            val foreground = if (selected) colors.primary else colors.onSurfaceVariant
+            val foreground = if (selected) Color.White else colors.onSurfaceVariant
             Box(
                 modifier = Modifier.weight(1f).fillMaxHeight().widthIn(min = 48.dp)
                     .selectable(selected = selected, role = Role.Tab, onClick = { onSelectPage(index) })

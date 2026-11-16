@@ -8,7 +8,7 @@ namespace MasterData.Contracts.Readers;
 
 public sealed record CustomerReadSnapshot(Guid Id, string? IataCode, string? IcaoCode, string Name, bool IsActive);
 
-public sealed record StationReadSnapshot(Guid Id, string IataCode, string? IcaoCode, string Name, bool IsActive, string TimeZoneId);
+public sealed record StationReadSnapshot(Guid Id, string IataCode, string? IcaoCode, string Name, bool IsActive, string TimeZoneId, string? City = null);
 
 public sealed record AtaChapterReadSnapshot(Guid Id, Guid CategoryId, string CategoryName, string Code, string Title, bool IsActive, bool CategoryIsActive);
 
