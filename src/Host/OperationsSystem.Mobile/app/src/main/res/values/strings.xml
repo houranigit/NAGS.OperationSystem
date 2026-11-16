@@ -413,7 +413,7 @@
     <string name="flight_card_due_soon">Due soon</string>
     <string name="flight_card_arrival_not_recorded">Arrival not recorded</string>
     <string name="flight_card_on_ground">On ground</string>
-    <string name="flight_card_returned_to_ramp">Returned to ramp</string>
+    <string name="flight_card_returned_to_ramp">RTR</string>
     <string name="flight_card_departed">Departed</string>
     <string name="flight_card_conflict">Conflict</string>
     <string name="flight_card_sta_in">STA in %1$s</string>

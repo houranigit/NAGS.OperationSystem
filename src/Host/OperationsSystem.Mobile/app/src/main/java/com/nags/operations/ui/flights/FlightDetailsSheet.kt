@@ -101,6 +101,9 @@ import com.nags.operations.data.FlightListItem
 import com.nags.operations.ui.components.CustomerLogo
 import com.nags.operations.ui.components.FlightAircraftOperationRow
 import com.nags.operations.ui.components.FlightReportBadge
+import com.nags.operations.ui.components.FlightNumberWithTypeBadge
+import com.nags.operations.ui.components.FlightTypeBadgeOverlap
+import com.nags.operations.ui.components.flightTypeBadgeDiameter
 import com.nags.operations.ui.components.flightReportLabel
 import com.nags.operations.ui.components.flightReportBadgeTextStyle
 import com.nags.operations.ui.components.ErrorState
@@ -398,6 +401,7 @@ private fun FlightIdentity(flight: FlightDetail, reportStatus: FlightCardReportS
     val headingStyle = MaterialTheme.typography.headlineSmall.copy(fontSize = 22.sp, lineHeight = 26.sp,
         fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
     val badgeStyle = flightReportBadgeTextStyle(compact = true)
+    val typeDiameter = flightTypeBadgeDiameter()
     val flightNumber = flight.flightNumber.ifBlank { flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—" }
     val badgeLabel = flightReportLabel(reportStatus)
     val density = LocalDensity.current
@@ -407,17 +411,19 @@ private fun FlightIdentity(flight: FlightDetail, reportStatus: FlightCardReportS
             BoxWithConstraints(Modifier.fillMaxWidth()) {
                 val heading = measurer.measure(flightNumber, headingStyle, maxLines = 1, softWrap = false)
                 val badge = measurer.measure(badgeLabel, badgeStyle, maxLines = 1, softWrap = false)
-                val identityHeight = with(density) { maxOf(48.dp, heading.size.height.toDp() + 2.dp + badge.size.height.toDp() + 4.dp) }
+                val identityHeight = with(density) { maxOf(48.dp,
+                    heading.size.height.toDp() + typeDiameter / 3 + 2.dp + badge.size.height.toDp() + 4.dp) }
                 val iconWidth = if (reportStatus == FlightCardReportStatus.Conflict || reportStatus == FlightCardReportStatus.ReturnedToRamp) 13.dp else 0.dp
-                val copyWidth = with(density) { maxOf(heading.size.width.toDp(), badge.size.width.toDp() + 12.dp + iconWidth) }
+                val copyWidth = with(density) { maxOf(heading.size.width.toDp() + typeDiameter - FlightTypeBadgeOverlap,
+                    badge.size.width.toDp() + 12.dp + iconWidth) }
                 val stacked = maxWidth < identityHeight + 10.dp + copyWidth + 8.dp + metrics.toolbarWidth
                 Column {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
                         CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(identityHeight))
                         Column(Modifier.weight(1f).height(identityHeight), verticalArrangement = Arrangement.spacedBy(2.dp),
                             horizontalAlignment = Alignment.Start) {
-                            Text(flightNumber, Modifier.fillMaxWidth(), style = headingStyle, maxLines = 1,
-                                softWrap = false, overflow = TextOverflow.Ellipsis)
+                            FlightNumberWithTypeBadge(flightNumber, flight.isPerLanding, flight.isAdHocFlight,
+                                headingStyle, Modifier.fillMaxWidth())
                             FlightReportBadge(reportStatus, compact = true)
                         }
                         if (!stacked) actions()
@@ -429,7 +435,7 @@ private fun FlightIdentity(flight: FlightDetail, reportStatus: FlightCardReportS
                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
             Box(Modifier.padding(top = 2.dp)) {
-                FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName, flight.isPerLanding,
+                FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName,
                     listItem?.latestReturnToRampSequence, listItem?.hasOpenReturnToRamp == true)
             }
         }

@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
@@ -39,8 +40,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -108,17 +108,14 @@ fun FlightCard(
                         val badgeWidth = maxWidth * 0.64f
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                flight.flightNumber.ifBlank {
+                            FlightNumberWithTypeBadge(
+                                number = flight.flightNumber.ifBlank {
                                     flight.customerIataCode?.takeIf { it.isNotBlank() } ?: "—"
                                 },
-                                modifier = Modifier.weight(1f).onGloballyPositioned {
-                                    onFlightNumberPositioned?.invoke(it.positionInWindow().y, it.size.height)
-                                },
-                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp),
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                isPerLanding = flight.isPerLanding,
+                                isAdHoc = flight.isAdHocFlight || flight.isMyAdHocFlight,
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                                modifier = Modifier.weight(1f), onNumberPositioned = onFlightNumberPositioned,
                             )
                             FlightReportBadge(reportStatus, Modifier.widthIn(max = badgeWidth))
                         }
@@ -134,7 +131,7 @@ fun FlightCard(
                 }
             }
             FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName,
-                flight.isPerLanding, flight.latestReturnToRampSequence, flight.hasOpenReturnToRamp == true)
+                flight.latestReturnToRampSequence, flight.hasOpenReturnToRamp == true)
             FlightCardSummaryRow(flight, reportStatus, now, pendingSyncLabel, hasSyncError, cancellationAtUtc,
                 onActiveWorkClick, onCompletedWorkClick, onReviewClick, onPendingClick)
             HorizontalDivider(color = flightCardDividerColor())
@@ -196,7 +193,7 @@ private fun FlightCardScheduledTimes(staLabel: String, sta: String, stdLabel: St
 
 @Composable
 internal fun FlightAircraftOperationRow(aircraftModel: String?, operationName: String,
-    isPerLanding: Boolean = false, returnToRampSequence: Int? = null, openReturnToRamp: Boolean = false) {
+    returnToRampSequence: Int? = null, openReturnToRamp: Boolean = false) {
     val labelColor = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFFB2B7C2) else Color(0xFF626873)
     val aircraftLabel = stringResource(R.string.flights_card_aircraft)
     val operationLabel = stringResource(R.string.flights_operation)
@@ -207,33 +204,30 @@ internal fun FlightAircraftOperationRow(aircraftModel: String?, operationName: S
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val measureStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
-    val perLandingStyle = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp,
-        letterSpacing = 0.1.sp, fontWeight = FontWeight.SemiBold)
-    val designationWidth = if (isPerLanding) minOf(with(density) { 72.dp.toPx() },
-        measurer.measure(stringResource(R.string.flights_per_landing), perLandingStyle).size.width + with(density) { 10.dp.toPx() }) else 0f
-    val itemCount = 3 + (if (rtrLabel != null) 1 else 0) + (if (isPerLanding) 1 else 0)
+    val itemCount = 3 + (if (rtrLabel != null) 2 else 0)
     val requiredWidth = measurer.measure("$aircraftLabel $aircraft", measureStyle).size.width +
         measurer.measure("$operationLabel $operationName", measureStyle).size.width +
-        (rtrLabel?.let { measurer.measure(it, measureStyle).size.width } ?: 0) + designationWidth +
+        (rtrLabel?.let { measurer.measure(it, measureStyle).size.width } ?: 0) +
         with(density) { (1.dp + 8.dp * (itemCount - 1)).toPx() }
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        if (requiredWidth > constraints.maxWidth) {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FlightCardField(aircraftLabel, aircraft, Modifier.weight(1f).wrapContentWidth(Alignment.Start), labelColor)
-                    if (isPerLanding) PerLandingBadge()
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (requiredWidth > constraints.maxWidth) {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FlightCardField(aircraftLabel, aircraft, Modifier.fillMaxWidth(), labelColor)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FlightCardField(operationLabel, operationName, Modifier.weight(1f).wrapContentWidth(Alignment.Start), labelColor)
+                        if (rtrLabel != null) FlightCardRtrLabel(rtrLabel)
+                    }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    FlightCardField(operationLabel, operationName, Modifier.weight(1f).wrapContentWidth(Alignment.Start), labelColor)
-                    if (rtrLabel != null) FlightCardRtrLabel(rtrLabel)
+            } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FlightCardField(aircraftLabel, aircraft, labelColor = labelColor)
+                VerticalDivider(Modifier.height(14.dp), color = flightCardDividerColor())
+                FlightCardField(operationLabel, operationName, labelColor = labelColor)
+                if (rtrLabel != null) {
+                    Spacer(Modifier.weight(1f))
+                    FlightCardRtrLabel(rtrLabel)
                 }
             }
-        } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            FlightCardField(aircraftLabel, aircraft, labelColor = labelColor)
-            VerticalDivider(Modifier.height(14.dp), color = flightCardDividerColor())
-            FlightCardField(operationLabel, operationName, labelColor = labelColor)
-            if (rtrLabel != null) FlightCardRtrLabel(rtrLabel)
-            if (isPerLanding) PerLandingBadge()
         }
     }
 }
@@ -241,7 +235,7 @@ internal fun FlightAircraftOperationRow(aircraftModel: String?, operationName: S
 @Composable
 private fun FlightCardRtrLabel(label: String) {
     Text(label, style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content),
-        fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable

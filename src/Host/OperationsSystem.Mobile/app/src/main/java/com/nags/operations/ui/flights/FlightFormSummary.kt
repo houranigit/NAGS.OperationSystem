@@ -16,7 +16,7 @@ internal fun FlightDetail.formCardSummary(listItem: FlightListItem?, targets: Li
         id = id, flightNumber = flightNumber, customerIataCode = customerIataCode, customerName = customerName,
         stationIataCode = stationIata, operationTypeName = operationTypeName,
         scheduledArrivalUtc = scheduledArrivalUtc, scheduledDepartureUtc = scheduledDepartureUtc,
-        isPerLanding = isPerLanding, aircraftTypeModel = aircraftTypeModel, customerId = customerId,
+        isPerLanding = isPerLanding, isAdHocFlight = isAdHocFlight, aircraftTypeModel = aircraftTypeModel, customerId = customerId,
         customerLogoVersion = listItem?.customerLogoVersion, stationId = stationId,
         isMyFlight = listItem?.isMyFlight ?: false, isMyAdHocFlight = listItem?.isMyAdHocFlight ?: false,
         stationTimeZoneId = stationTimeZoneId,
