@@ -2,7 +2,7 @@
 <resources>
     <string name="notice_dismiss">Dismiss message</string>
     <string name="notice_retry">Retry</string>
-    <string name="notifications_delete_all_messages">delete all messages</string>
+    <string name="notifications_delete_all_messages">Delete All</string>
     <string name="flight_arrival_before_work">Add arrival details before adding work or departure.</string>
     <string name="flight_service_overlap">This service overlaps another occurrence. Close it or choose a different period.</string>
     <string name="flight_departure_before_arrival">Actual departure cannot be before actual arrival.</string>

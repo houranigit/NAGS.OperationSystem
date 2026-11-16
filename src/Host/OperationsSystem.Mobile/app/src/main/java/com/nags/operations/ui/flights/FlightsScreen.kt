@@ -35,6 +35,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
@@ -501,7 +503,16 @@ private fun FlightListPage(
         flightDiscoveryRows(state.items, discoverySource == FlightDiscoverySource.Search &&
             state.search.isNotBlank() && (state.totalCount > 1 || state.items.size > 1))
     }
-    PullToRefreshBox(isRefreshing = state.showRefreshIndicator, onRefresh = onRefresh,
+    val refreshState = rememberPullToRefreshState()
+    PullToRefreshBox(isRefreshing = state.showRefreshIndicator, state = refreshState,
+        indicator = {
+            PullToRefreshDefaults.Indicator(
+                modifier = Modifier.align(Alignment.TopCenter),
+                isRefreshing = state.showRefreshIndicator, state = refreshState,
+                containerColor = MaterialTheme.colorScheme.surface,
+                color = Color(0xFF757575),
+            )
+        }, onRefresh = onRefresh,
         modifier = if (active) Modifier.fillMaxSize() else Modifier.fillMaxSize().clearAndSetSemantics { }) {
         when {
             discoverySource == FlightDiscoverySource.Search && state.search.isBlank() && state.items.isEmpty() ->

@@ -2,7 +2,7 @@
 <resources>
     <string name="notice_dismiss">إخفاء الرسالة</string>
     <string name="notice_retry">إعادة المحاولة</string>
-    <string name="notifications_delete_all_messages">حذف جميع الرسائل</string>
+    <string name="notifications_delete_all_messages">حذف الكل</string>
     <string name="flight_arrival_before_work">أضف تفاصيل الوصول قبل إضافة الأعمال أو المغادرة.</string>
     <string name="flight_service_overlap">تتداخل فترة هذه الخدمة مع فترة أخرى. أغلقها أو اختر فترة مختلفة.</string>
     <string name="flight_departure_before_arrival">لا يمكن أن يسبق وقت المغادرة الفعلي وقت الوصول الفعلي.</string>

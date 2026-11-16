@@ -54,7 +54,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
-import com.nags.operations.ui.components.CompactDeleteButton
 import com.nags.operations.ui.components.InlineNotice
 import com.nags.operations.ui.components.InlineNoticeKind
 import com.nags.operations.ui.components.FeedDateHeading
@@ -62,6 +61,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -179,7 +180,7 @@ fun NotificationsScreen(
                         }
                     },
                     actions = {
-                        CompactDeleteButton(stringResource(R.string.notifications_delete_all_messages),
+                        NotificationDeleteAllButton(stringResource(R.string.notifications_delete_all_messages),
                             onClick = { confirmClear = true }, enabled = state.items.isNotEmpty() && !state.isArchivingAll,
                             modifier = Modifier.padding(end = 16.dp))
                     },
@@ -226,6 +227,20 @@ fun NotificationsScreen(
 }
 
 @Composable
+private fun NotificationDeleteAllButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    TextButton(onClick = onClick, enabled = enabled, modifier = modifier,
+        colors = ButtonDefaults.textButtonColors(contentColor = NotificationDeleteRed)) {
+        Text(text, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
+            maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
 private fun NotificationsTabHeader(clearEnabled: Boolean, onClear: () -> Unit) {
     val foreground = MaterialTheme.colorScheme.onSurface
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
@@ -239,7 +254,7 @@ private fun NotificationsTabHeader(clearEnabled: Boolean, onClear: () -> Unit) {
                     fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary,
                     maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f))
-                CompactDeleteButton(stringResource(R.string.notifications_delete_all_messages), onClear, enabled = clearEnabled)
+                NotificationDeleteAllButton(stringResource(R.string.notifications_delete_all_messages), onClear, enabled = clearEnabled)
             }
         }
     }
@@ -285,7 +300,16 @@ private fun NotificationList(
             InlineNotice(stringResource(R.string.notifications_cached_list),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         }
-        PullToRefreshBox(isRefreshing = state.isRefreshing,
+        val refreshState = rememberPullToRefreshState()
+        PullToRefreshBox(isRefreshing = state.isRefreshing, state = refreshState,
+            indicator = {
+                PullToRefreshDefaults.Indicator(
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    isRefreshing = state.isRefreshing, state = refreshState,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    color = Color(0xFF757575),
+                )
+            },
             onRefresh = { viewModel.refresh(userInitiated = true) }, modifier = Modifier.weight(1f).fillMaxWidth()
                 .padding(bottom = if (embedded && state.items.isEmpty()) bottomContentPadding else 0.dp)) {
             when {
