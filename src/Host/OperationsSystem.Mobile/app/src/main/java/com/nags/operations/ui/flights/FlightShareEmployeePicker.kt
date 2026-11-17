@@ -3,6 +3,8 @@ package com.nags.operations.ui.flights
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -11,7 +13,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,11 +24,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,14 +42,21 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -65,7 +75,6 @@ import com.nags.operations.ui.components.InitialsAvatarStack
 import java.text.Collator
 import java.text.Normalizer
 import java.util.Locale
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 
 internal data class FlightShareEmployeeGroup(val letter: String, val employees: List<StaffCatalogItem>)
@@ -137,8 +146,8 @@ internal fun FlightShareEmployeePicker(
         groups.associate { group -> group.letter to next.also { next += 1 + group.employees.size } }
     }
     val list = rememberLazyListState()
-    val scope = rememberCoroutineScope()
     val keyboard = LocalSoftwareKeyboardController.current
+    val haptics = LocalHapticFeedback.current
     LaunchedEffect(search) { list.scrollToItem(0) }
     val currentLetter by remember(list, groupIndexes) {
         derivedStateOf { groupIndexes.entries.lastOrNull { it.value <= list.firstVisibleItemIndex }?.key }
@@ -198,18 +207,73 @@ internal fun FlightShareEmployeePicker(
                     }
                 }
             }
-            if (groups.size > 1 && maxHeight >= 13.dp) Column(Modifier.align(Alignment.CenterEnd)
-                .width(16.dp).heightIn(max = maxHeight).verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally) {
-                groups.forEach { group ->
-                    val label = stringResource(R.string.flight_share_jump_to_letter, group.letter)
-                    Box(Modifier.width(16.dp).heightIn(min = 13.dp)
-                        .clickable(enabled = enabled, role = Role.Button, onClickLabel = label) {
-                            keyboard?.hide()
-                            scope.launch { list.animateScrollToItem(groupIndexes.getValue(group.letter)) }
-                        }.semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
-                        Text(group.letter, style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, lineHeight = 11.sp, color = indexGreen,
-                            fontWeight = if (currentLetter == group.letter) FontWeight.Bold else FontWeight.Medium)
+            if (groups.size > 1 && maxHeight >= 13.dp) {
+                val letterBounds = remember(groups) { mutableMapOf<String, Rect>() }
+                var touchedLetter by remember { mutableStateOf<String?>(null) }
+                val naturalRowHeight = maxOf(13.dp, with(LocalDensity.current) { 11.sp.toDp() })
+                val rowHeight = minOf(naturalRowHeight, maxHeight / groups.size)
+                val textScale = rowHeight / naturalRowHeight
+                fun jumpToLetter(letter: String) {
+                    keyboard?.hide()
+                    list.requestScrollToItem(groupIndexes.getValue(letter))
+                }
+                Column(Modifier.align(Alignment.CenterEnd).width(16.dp).height(rowHeight * groups.size)
+                    .pointerInput(enabled, groups) {
+                        if (!enabled) return@pointerInput
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                            down.consume()
+                            var lastLetter: String? = null
+                            fun followFinger(y: Float) {
+                                val letter = groups.minByOrNull { group ->
+                                    letterBounds[group.letter]?.let { kotlin.math.abs(it.center.y - y) } ?: Float.POSITIVE_INFINITY
+                                }?.letter ?: return
+                                if (letter != lastLetter) {
+                                    lastLetter = letter
+                                    touchedLetter = letter
+                                    jumpToLetter(letter)
+                                    haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+                                }
+                            }
+                            try {
+                                followFinger(down.position.y)
+                                do {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    change.consume()
+                                    if (!change.pressed) break
+                                    followFinger(change.position.y)
+                                } while (true)
+                            } finally {
+                                touchedLetter = null
+                            }
+                        }
+                    }, horizontalAlignment = Alignment.CenterHorizontally) {
+                    groups.forEach { group ->
+                        val label = stringResource(R.string.flight_share_jump_to_letter, group.letter)
+                        Box(Modifier.width(16.dp).weight(1f)
+                            .onGloballyPositioned { letterBounds[group.letter] = it.boundsInParent() }
+                            .clickable(enabled = enabled, role = Role.Button, onClickLabel = label) {
+                                jumpToLetter(group.letter)
+                            }.semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
+                            Text(group.letter, style = MaterialTheme.typography.labelSmall, fontSize = 10.sp * textScale,
+                                lineHeight = 11.sp * textScale, maxLines = 1, softWrap = false, color = indexGreen,
+                                fontWeight = if ((touchedLetter ?: currentLetter) == group.letter) FontWeight.Bold else FontWeight.Medium)
+                        }
+                    }
+                }
+                touchedLetter?.let { letter ->
+                    val bubbleSize = minOf(56.dp, maxHeight)
+                    val letterIndex = groups.indexOfFirst { it.letter == letter }
+                    val center = (maxHeight - rowHeight * groups.size) / 2 + rowHeight * (letterIndex + 0.5f)
+                    val bubbleTop = (center - bubbleSize / 2).coerceIn(0.dp, maxOf(0.dp, maxHeight - bubbleSize))
+                    Surface(Modifier.align(Alignment.TopEnd).offset(x = (-28).dp, y = bubbleTop)
+                        .size(bubbleSize).clearAndSetSemantics { }, shape = CircleShape,
+                        color = FlightShareActionGreen, contentColor = Color.White, shadowElevation = 4.dp) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(letter, style = MaterialTheme.typography.headlineMedium, fontSize = 28.sp,
+                                lineHeight = 32.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
+                        }
                     }
                 }
             }
