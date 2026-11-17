@@ -1,25 +1,50 @@
 package com.nags.operations.ui.flights
 
-import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,13 +53,23 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.nags.operations.R
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.FlightDetail
@@ -45,7 +80,6 @@ import com.nags.operations.data.withReturnToRampReports
 import com.nags.operations.ui.components.FlightCard
 import com.nags.operations.ui.components.InlineNotice
 import com.nags.operations.ui.components.InlineNoticeKind
-import com.nags.operations.ui.theme.LoadingIndicatorGray
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -76,8 +110,9 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
 ) {
     var message by rememberSaveable(flight.id) { mutableStateOf("") }
     var selectedJson by rememberSaveable(flight.id) { mutableStateOf("[]") }
-    val selected = Json.decodeFromString<List<String>>(selectedJson)
+    val selected = Json.decodeFromString<List<String>>(selectedJson).toSet()
     var search by rememberSaveable(flight.id) { mutableStateOf("") }
+    var messageStep by rememberSaveable(flight.id) { mutableStateOf(false) }
     var attemptJson by rememberSaveable(flight.id) { mutableStateOf<String?>(null) }
     var attemptedFlight by rememberSaveable(flight.id) { mutableStateOf<String?>(null) }
     var busy by remember(flight.id) { mutableStateOf(false) }
@@ -85,8 +120,20 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
         confirmValueChange = { !busy || it != SheetValue.Hidden })
     var error by rememberSaveable(flight.id) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val frozen = attemptJson != null
+    val composing = messageStep || frozen
     val canPublish = online && !busy && (frozen || flight.canShare && !flight.hasCancellationSubmission) && message.length <= 2000
+    fun changeStep(showMessage: Boolean) {
+        if (busy || frozen) return
+        focus.clearFocus()
+        keyboard?.hide()
+        messageStep = showMessage
+    }
+    fun removeEmployee(id: String) {
+        if (!busy && !frozen) selectedJson = Json.encodeToString((selected - id).toList())
+    }
     fun publish() {
         if (!canPublish) return
         val attempt = attemptJson?.let { Json.decodeFromString<FlightShareAttempt>(it) }
@@ -97,6 +144,8 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
         val requestFlight = attemptedFlight?.let { Json.decodeFromString<FlightDetail>(it) } ?: flight
         busy = true
         error = null
+        focus.clearFocus()
+        keyboard?.hide()
         scope.launch {
             try {
                 onPublish(requestFlight, attempt.id, attempt.message, attempt.staffMemberIds)
@@ -117,48 +166,94 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
             }
         }
     }
-    val title = stringResource(R.string.flight_share_title)
-    val ground = if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) Color.White else MaterialTheme.colorScheme.surface
+    val title = if (composing) stringResource(R.string.flight_share_title)
+        else stringResource(R.string.flight_share_station_staff, flight.stationIata)
+    val ground = flightSharePageBackground()
     val card = remember(flight, listItem) { flight.formCardSummary(listItem, emptyList()).withReturnToRampReports(flight) }
+    val stationCount = remember(stationStaff, flight.stationId) {
+        stationStaff.filter { it.stationId.equals(flight.stationId, true) }.distinctBy { it.id }.size
+    }
     ModalBottomSheet(onDismissRequest = { if (!busy) onDismiss() }, sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), containerColor = ground,
-        tonalElevation = 0.dp, scrimColor = Color.Black.copy(alpha = 0.28f)) {
+        dragHandle = null, tonalElevation = 0.dp, scrimColor = Color.Black.copy(alpha = 0.28f)) {
+        BackHandler(enabled = composing && !busy && !frozen) { changeStep(false) }
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.94f).imePadding().semantics { paneTitle = title }) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                TextButton(onClick = ::publish, enabled = canPublish) {
-                    if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = LoadingIndicatorGray)
-                    else Text(stringResource(if (frozen) R.string.flight_share_retry else R.string.flight_share_publish))
+            Box(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                IconButton(onClick = { if (composing && !frozen) changeStep(false) else onDismiss() },
+                    enabled = !busy, modifier = Modifier.size(48.dp).align(Alignment.CenterStart)) {
+                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)) {
+                        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                            Icon(if (composing && !frozen) Icons.AutoMirrored.Outlined.ArrowBack else Icons.Outlined.Close,
+                                stringResource(if (composing && !frozen) R.string.account_back else R.string.flight_form_close_picker), Modifier.size(24.dp))
+                        }
+                    }
+                }
+                Column(Modifier.align(Alignment.Center).fillMaxWidth().padding(horizontal = 88.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(buildAnnotatedString {
+                        append(title)
+                        if (!composing && flight.stationIata.isNotBlank()) {
+                            val stationStart = title.indexOf(flight.stationIata)
+                            if (stationStart >= 0) addStyle(SpanStyle(fontWeight = FontWeight.ExtraBold),
+                                stationStart, stationStart + flight.stationIata.length)
+                        }
+                    }, style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp, lineHeight = 19.sp),
+                        fontWeight = if (composing) FontWeight.SemiBold else FontWeight.Normal,
+                        textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (!composing) Text(if (selected.isEmpty()) stringResource(R.string.flight_share_all_staff)
+                        else stringResource(R.string.flight_share_selection_count, selected.size, stationCount),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 14.sp), textAlign = TextAlign.Center)
+                }
+                Box(Modifier.align(Alignment.CenterEnd).heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+                    Button(onClick = { if (composing) publish() else changeStep(true) },
+                        enabled = if (composing) canPublish else !busy,
+                        modifier = Modifier.defaultMinSize(minWidth = 56.dp).heightIn(min = 32.dp),
+                        shape = CircleShape, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = FlightShareActionGreen, contentColor = Color.White)) {
+                        if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                        else Text(stringResource(if (!composing) R.string.flight_share_next else if (frozen) R.string.flight_share_retry else R.string.flight_share_publish),
+                            style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, lineHeight = 16.sp), fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
-            FlightShareEmployeePicker(stationStaff = stationStaff, stationId = flight.stationId,
-                selected = selected.toSet(), search = search, onSearchChange = { search = it },
-                onToggle = { id -> selectedJson = Json.encodeToString(if (id in selected) selected - id else selected + id) },
-                enabled = !busy && !frozen, modifier = Modifier.weight(1f), headerContent = {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        FlightCard(card, onClick = null, loadCustomerLogo = loadCustomerLogo, reportStatus = reportStatus, compact = true)
-                        Surface(shape = RoundedCornerShape(14.dp), color = ground,
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant)) {
-                            FlightFormRemarks(message, { if (it.length <= 2000) message = it },
-                                description = stringResource(R.string.flight_share_message),
-                                heading = stringResource(R.string.flight_share_message), enabled = !busy && !frozen, inGroup = true)
+            AnimatedContent(targetState = composing, modifier = Modifier.weight(1f), label = "Share step",
+                transitionSpec = {
+                    val direction = if (targetState) 1 else -1
+                    (slideInHorizontally(tween(220)) { it * direction } + fadeIn(tween(160))) togetherWith
+                        (slideOutHorizontally(tween(220)) { -it * direction } + fadeOut(tween(120)))
+                }) { showMessage ->
+                if (!showMessage) FlightShareEmployeePicker(stationStaff = stationStaff, stationId = flight.stationId,
+                    selected = selected, search = search, onSearchChange = { search = it },
+                    onToggle = { id -> selectedJson = Json.encodeToString((if (id in selected) selected - id else selected + id).toList()) },
+                    enabled = !busy && !frozen, modifier = Modifier.fillMaxSize())
+                else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                    val messageFocus = remember { FocusRequester() }
+                    LaunchedEffect(Unit) { if (!frozen) messageFocus.requestFocus() }
+                    Surface(shape = RoundedCornerShape(24.dp), color = flightShareListBackground()) {
+                        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.Top) {
+                            Icon(Icons.Outlined.Edit, null, Modifier.padding(top = 10.dp).size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            FlightFormTextInput(message, { if (it.length <= 2000) message = it },
+                                placeholder = stringResource(R.string.flight_share_message), label = stringResource(R.string.flight_share_message),
+                                modifier = Modifier.weight(1f).focusRequester(messageFocus), multiline = true, textAlign = TextAlign.Left,
+                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done), enabled = !busy && !frozen)
                         }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically) {
-                            Text(if (selected.isEmpty()) stringResource(R.string.flight_share_whole_station)
-                                else stringResource(R.string.flight_share_selected_count, selected.size),
-                                modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                            if (selected.isNotEmpty()) TextButton(onClick = { selectedJson = "[]" }, enabled = !busy && !frozen) {
-                                Text(stringResource(R.string.flight_share_clear_recipients))
-                            }
-                        }
-                        if (!online) InlineNotice(stringResource(R.string.flight_share_online_required), kind = InlineNoticeKind.Warning)
-                        error?.let { InlineNotice(it, kind = InlineNoticeKind.Error) }
-                        if (frozen && !busy) InlineNotice(stringResource(R.string.flight_share_retry_hint), kind = InlineNoticeKind.Warning)
                     }
-                })
+                    if (!online) InlineNotice(stringResource(R.string.flight_share_online_required), kind = InlineNoticeKind.Warning)
+                    error?.let { InlineNotice(it, kind = InlineNoticeKind.Error) }
+                    if (frozen && !busy) InlineNotice(stringResource(R.string.flight_share_retry_hint), kind = InlineNoticeKind.Warning)
+                    FlightCard(card, onClick = null, loadCustomerLogo = loadCustomerLogo, reportStatus = reportStatus, compact = true)
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(if (selected.isEmpty()) stringResource(R.string.flight_share_whole_station)
+                            else stringResource(R.string.flight_share_selected_count, selected.size),
+                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        FlightShareSelectedEmployees(stationStaff, selected, ::removeEmployee, enabled = !busy && !frozen,
+                            modifier = Modifier.fillMaxWidth().background(flightShareListBackground(), RoundedCornerShape(16.dp)),
+                            onAdd = { changeStep(false) }, wrap = true)
+                    }
+                }
+            }
         }
     }
 }

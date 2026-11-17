@@ -510,6 +510,14 @@
     <string name="rtr_sync_discard">تجاهل العودة إلى الساحة المحفوظة</string>
     <string name="rtr_sync_discard_message">هل تريد تجاهل التغييرات المحلية لهذه العودة إلى الساحة، بما فيها العمل والوسائط المحفوظة؟ تبقى السجلات الموجودة على الخادم دون تغيير.</string>
     <string name="rtr_sync_action_failed">تعذر تحديث العودة إلى الساحة المحفوظة. حاول مجددًا أو راجع البيانات المحفوظة.</string>
+    <string name="flight_share_station_staff">موظفو %1$s</string>
+    <string name="flight_share_all_staff">الجميع</string>
+    <string name="flight_share_selection_count">%1$d/%2$d</string>
+    <string name="flight_share_next">التالي</string>
+    <string name="flight_share_remove_employee">إزالة %1$s</string>
+    <string name="flight_share_add_label">إضافة</string>
+    <string name="flight_share_add_employees">إضافة موظفين</string>
+    <string name="flight_share_employee">موظف</string>
     <string name="flight_share_title">مشاركة الرحلة</string>
     <string name="flight_share_whole_station">إلى: جميع موظفي المحطة</string>
     <string name="flight_share_selected_count">الموظفون المختارون: %1$d</string>
@@ -561,4 +569,5 @@
         <item quantity="many">منذ %1$d يومًا</item>
         <item quantity="other">منذ %1$d يوم</item>
     </plurals>
+    <string name="flight_shares_see_more">عرض المزيد</string>
 </resources>

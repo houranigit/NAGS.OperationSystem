@@ -11,14 +11,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -64,6 +63,7 @@ import androidx.compose.ui.semantics.dismiss
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -82,6 +82,8 @@ internal fun FlightDetailsSheetFrame(
     onClose: () -> Unit,
     onBack: () -> Unit,
     trailingHeaderAction: (@Composable () -> Unit)? = null,
+    trailingHeaderActionWidth: Dp = 48.dp,
+    trailingHeaderActionHeight: Dp = 48.dp,
     content: @Composable (ScrollState) -> Unit,
 ) {
     val headerDrag = remember { FlightSheetDragReversal() }
@@ -116,6 +118,7 @@ internal fun FlightDetailsSheetFrame(
     }
     val isLight = MaterialTheme.colorScheme.surface.luminance() > 0.5f
     val ground = if (isLight) FlightFormGround else MaterialTheme.colorScheme.background
+    val headerHeight = if (trailingHeaderAction != null) maxOf(48.dp, trailingHeaderActionHeight) else 48.dp
     val detailsTitle = stringResource(R.string.flights_details)
     val expanded = sheetState.targetValue == SheetValue.Expanded
     val toggleLabel = stringResource(if (expanded) R.string.flight_sheet_collapse else R.string.flight_sheet_expand)
@@ -172,11 +175,11 @@ internal fun FlightDetailsSheetFrame(
                     Column(
                         Modifier.fillMaxWidth().height(expandedHeight)
                             .nestedScroll(contentFlingBoundary)
-                            .pointerInput(sheetState, headerDrag) {
+                            .pointerInput(sheetState, headerDrag, headerHeight) {
                                 try {
                                     awaitEachGesture {
                                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                                        if (down.position.y in 0f..48.dp.toPx()) {
+                                        if (down.position.y in 0f..headerHeight.toPx()) {
                                             headerDrag.start(sheetState.currentValue == SheetValue.Expanded, viewConfiguration.touchSlop)
                                         } else headerDrag.clear()
                                         do {
@@ -199,14 +202,12 @@ internal fun FlightDetailsSheetFrame(
                         // Drive the same content state from the stationary chrome so a downward
                         // drag reaches the content's top before native nested scroll moves the sheet.
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                            Row(
-                                Modifier.fillMaxWidth().height(48.dp)
+                            Box(
+                                Modifier.fillMaxWidth().height(headerHeight)
                                     .scrollable(scroll, Orientation.Vertical, reverseDirection = true),
-                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                if (trailingHeaderAction != null) Spacer(Modifier.width(48.dp))
                                 Box(
-                                    Modifier.weight(1f).height(48.dp)
+                                    Modifier.fillMaxSize()
                                         .clickable(
                                             role = Role.Button,
                                             onClickLabel = toggleLabel,
@@ -230,7 +231,11 @@ internal fun FlightDetailsSheetFrame(
                                     Box(Modifier.size(width = 34.dp, height = 4.dp)
                                         .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f), CircleShape))
                                 }
-                                if (trailingHeaderAction != null) Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                                if (trailingHeaderAction != null) Box(
+                                    Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)
+                                        .width(trailingHeaderActionWidth).height(trailingHeaderActionHeight),
+                                    contentAlignment = Alignment.Center,
+                                ) {
                                     trailingHeaderAction()
                                 }
                             }

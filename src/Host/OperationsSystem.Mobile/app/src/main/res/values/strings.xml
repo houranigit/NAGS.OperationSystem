@@ -534,6 +534,14 @@
     <string name="rtr_sync_discard">Discard saved return to ramp</string>
     <string name="rtr_sync_discard_message">Discard the local changes to this return to ramp, including its saved work and media? Existing online records stay unchanged.</string>
     <string name="rtr_sync_action_failed">Could not update the saved return to ramp. Try again or review its saved input.</string>
+    <string name="flight_share_station_staff">%1$s Staff</string>
+    <string name="flight_share_all_staff">Everyone</string>
+    <string name="flight_share_selection_count">%1$d/%2$d</string>
+    <string name="flight_share_next">Next</string>
+    <string name="flight_share_remove_employee">Remove %1$s</string>
+    <string name="flight_share_add_label">Add</string>
+    <string name="flight_share_add_employees">Add employees</string>
+    <string name="flight_share_employee">Employee</string>
     <string name="flight_share_title">Share flight</string>
     <string name="flight_share_whole_station">To: Whole station</string>
     <string name="flight_share_selected_count">Selected employees: %1$d</string>
@@ -569,4 +577,5 @@
         <item quantity="one">%1$d day ago</item>
         <item quantity="other">%1$d days ago</item>
     </plurals>
+    <string name="flight_shares_see_more">See more</string>
 </resources>

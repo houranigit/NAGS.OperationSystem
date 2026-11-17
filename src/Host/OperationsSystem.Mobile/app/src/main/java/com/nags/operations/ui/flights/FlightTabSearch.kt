@@ -92,6 +92,7 @@ internal fun FlightTabSearchHeader(
     searchAtPhysicalRight: Boolean = false,
     searchSurface: Color = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
         MaterialTheme.colorScheme.surfaceContainerHigh else SearchSurface,
+    showDividers: Boolean = true,
     tabs: @Composable () -> Unit,
 ) {
     val transition = updateTransition(isSearchOpen, label = "Flight search")
@@ -125,9 +126,9 @@ internal fun FlightTabSearchHeader(
     }
 
     Column(modifier.fillMaxWidth()) {
-        HorizontalDivider(color = foreground.copy(alpha = 0.1f))
+        if (showDividers) HorizontalDivider(color = foreground.copy(alpha = 0.1f))
         BoxWithConstraints(Modifier.fillMaxWidth().height(collapsedHeight + (48.dp - collapsedHeight) * progress)) {
-            HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = foreground.copy(alpha = 0.1f))
+            if (showDividers) HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = foreground.copy(alpha = 0.1f))
             val controlWidth = 48.dp + (maxWidth - 32.dp - 48.dp) * progress
             val tabPlacement = if (searchAtPhysicalRight) {
                 Modifier.align(AbsoluteAlignment.BottomLeft).fillMaxWidth().absolutePadding(right = 72.dp)

@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.HorizontalDivider
@@ -35,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
@@ -42,9 +42,10 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import com.nags.operations.ui.components.flightStatusColors
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -130,20 +131,18 @@ private fun SharedFlightsFeed(viewModel: SharedFlightsViewModel, bottomContentPa
             PullToRefreshDefaults.Indicator(isRefreshing = state.refreshing, state = refresh,
                 modifier = Modifier.align(Alignment.TopCenter), color = LoadingIndicatorGray)
         }) {
-        HorizontalDivider(Modifier.align(Alignment.TopCenter), color = MaterialTheme.colorScheme.outlineVariant)
+        HorizontalDivider(Modifier.align(Alignment.TopCenter).zIndex(1f), thickness = 1.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 8.dp, end = 16.dp, top = 16.dp, bottom = bottomContentPadding),
-            verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            contentPadding = PaddingValues(start = 8.dp, end = 16.dp, top = 6.dp, bottom = bottomContentPadding),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.fromCache || !state.online) item(key = "cached") {
                 InlineNotice(stringResource(R.string.flight_shares_cached), kind = InlineNoticeKind.Info)
             }
             state.error?.let { error -> item(key = "error") {
                 InlineNotice(error, kind = InlineNoticeKind.Error, onRetry = { viewModel.refresh() })
             } }
-            if (state.loading && state.items.isEmpty()) item(key = "loading") {
-                Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = LoadingIndicatorGray)
-                }
+            if (state.loading && state.items.isEmpty()) items(3, key = { "loading:$it" }) {
+                FlightShareSkeleton()
             }
             else if (state.loaded && state.items.isEmpty()) item(key = "empty") {
                 EmptyState(icon = Icons.Outlined.Share,
@@ -155,9 +154,7 @@ private fun SharedFlightsFeed(viewModel: SharedFlightsViewModel, bottomContentPa
                     loadCustomerLogo = loadCustomerLogo)
             }
             if (state.loadingMore) item(key = "paging") {
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(24.dp), color = LoadingIndicatorGray)
-                }
+                FlightShareSkeleton()
             }
             state.moreError?.let { error -> item(key = "paging-error") {
                 InlineNotice(error, kind = InlineNoticeKind.Error, onRetry = viewModel::loadMore)
@@ -206,20 +203,23 @@ private fun FlightShareEntry(post: FlightSharePost, now: Instant, onClick: () ->
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(0.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(post.authorFullName, modifier = Modifier.alignByBaseline(), fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold,
+                Text(post.authorFullName, modifier = Modifier.alignByBaseline(), style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, platformStyle = PlatformTextStyle(includeFontPadding = false), lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)),
                     color = MaterialTheme.colorScheme.onSurface)
-                Text(shareTimestamp(post, now), modifier = Modifier.alignByBaseline(), fontSize = 11.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(shareTimestamp(post, now), modifier = Modifier.alignByBaseline(), style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 16.sp, platformStyle = PlatformTextStyle(includeFontPadding = false), lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(audienceText, fontSize = 11.sp, lineHeight = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            post.message?.takeIf { it.isNotBlank() }?.let {
-                Text("“" + it + "”", fontSize = 13.sp, lineHeight = 19.sp, fontStyle = FontStyle.Italic,
-                    color = MaterialTheme.colorScheme.onSurface, modifier = Modifier)
+            Text(audienceText, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 13.sp, platformStyle = PlatformTextStyle(includeFontPadding = false), lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.padding(top = 6.dp)) {
+                post.message?.takeIf { it.isNotBlank() }?.let {
+                    Box(Modifier.padding(top = 2.dp, bottom = 4.dp)) {
+                        ExpandableShareMessage(it)
+                    }
+                }
+                FlightCard(post.flight, onClick, modifier = Modifier,
+                    loadCustomerLogo = loadCustomerLogo, compact = true)
             }
-            FlightCard(post.flight, onClick, modifier = Modifier,
-                loadCustomerLogo = loadCustomerLogo, compact = true)
         }
     }
-    HorizontalDivider(Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    HorizontalDivider(Modifier.padding(top = 10.dp), thickness = 1.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
     }
 }
 
