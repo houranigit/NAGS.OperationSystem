@@ -128,6 +128,9 @@ fun FlightsScreen(
     externalPendingNavigationKey: String? = null,
     onExternalPendingHandled: () -> Unit = {},
     interactionEnabled: Boolean = true,
+    onPublishShare: (suspend (FlightDetail, String, String?, List<String>) -> Unit)? = null,
+    onSharePublished: () -> Unit = {},
+    customFeed: (@Composable ((String) -> Unit) -> Unit)? = null,
 ) {
     val observedState by viewModel.state.collectAsStateWithLifecycle()
     val pendingReturns by (viewModel.returnsToRamp?.changes ?: kotlinx.coroutines.flow.flowOf(emptyList()))
@@ -152,7 +155,7 @@ fun FlightsScreen(
     }
     BackHandler(enabled = interactionEnabled && discoverySource == null && state.isSearchOpen && state.selectedFlightId == null) { closeSearch() }
     val pagerState = rememberPagerState(initialPage = selectedTab) { if (discoverySource == null) FlightCategory.entries.size else 1 }
-    LaunchedEffect(viewModel, discoverySource) { if (discoverySource != null) viewModel.openSearch() }
+    LaunchedEffect(viewModel, discoverySource) { if (discoverySource != null && customFeed == null) viewModel.openSearch() }
     val pagerScope = rememberCoroutineScope()
     val notifyTabSelection by rememberUpdatedState(onSelectTab)
     val requestedTab = if (notificationOpenRequest != null) 0 else selectedTab
@@ -175,7 +178,7 @@ fun FlightsScreen(
         }
     }
     LifecycleResumeEffect(viewModel) {
-        viewModel.refreshSilently()
+        if (customFeed == null) viewModel.refreshSilently()
         onPauseOrDispose { }
     }
     LaunchedEffect(notificationOpenRequest) {
@@ -233,7 +236,8 @@ fun FlightsScreen(
     val listTopPadding = if (cacheNoticeVisible) 0.dp else 16.dp
     val isLight = MaterialTheme.colorScheme.surface.luminance() > 0.5f
     val ground = if (isLight) Color.White else MaterialTheme.colorScheme.background
-    Column(Modifier.fillMaxSize().background(ground).imePadding()) {
+    if (customFeed != null) customFeed(viewModel::openFlight)
+    else Column(Modifier.fillMaxSize().background(ground).imePadding()) {
         if (discoverySource == null) FlightTabSearchHeader(isSearchOpen = state.isSearchOpen, query = state.search,
             onQueryChange = viewModel::setSearch, onOpenSearch = viewModel::openSearch,
             onCloseSearch = ::closeSearch, autoFocusOnOpen = interactionEnabled,
@@ -315,6 +319,8 @@ fun FlightsScreen(
             pendingServices.any { it.flightId == state.selectedFlightId } || pendingTasks.any { it.flightId == state.selectedFlightId } ||
             state.detail?.services?.isNotEmpty() == true || state.detail?.tasks?.isNotEmpty() == true
         val ownsCancellation = state.detail?.hasOwnCancellation() == true || pendingCancellation != null
+        var shareOpen by rememberSaveable { mutableStateOf(false) }
+        val sharingFlight = state.detail
         var confirmRevert by rememberSaveable { mutableStateOf(false) }
         var revertError by rememberSaveable { mutableStateOf<String?>(null) }
         var reverting by remember { mutableStateOf(false) }
@@ -377,6 +383,8 @@ fun FlightsScreen(
         FlightDetailsSheet(state = state, actuals = actuals, reportStatus = sheetReportStatus, listItem = sheetListItem, workItems = sheetWork,
             showCancellation = !ownsWork && !ownsCancellation && state.detail?.cancellationEditable() == true,
             showOperations = !ownsCancellation,
+            showShare = onPublishShare != null && state.detail?.canShowShareAction(ownsCancellation) == true,
+            onShare = { shareOpen = true },
             showRevertCancellation = !reverting && state.detail?.canSaveCancellation == true &&
                 (state.detail?.ownCancellation() != null || pendingCancellation?.operation == "save") &&
                 (pendingCancellation?.operation != "revert" || pendingCancellation.status != "pending"),
@@ -387,6 +395,13 @@ fun FlightsScreen(
             onOperations = { openRecordingForm("operations") },
             onCanceled = { openRecordingForm("cancellation") },
             loadCustomerLogo = viewModel::customerLogo)
+        if (shareOpen && sharingFlight != null && onPublishShare != null) FlightShareBottomSheet(
+            flight = sharingFlight, stationStaff = sheetCatalogs.forStation(sharingFlight.stationId).stationStaff,
+            online = state.isOnline, listItem = sheetListItem, reportStatus = sheetReportStatus,
+            loadCustomerLogo = viewModel::customerLogo, onDismiss = { shareOpen = false }, onPublish = { requestFlight, id, message, recipients ->
+                onPublishShare(requestFlight, id, message, recipients)
+                onSharePublished()
+            })
         // An ordinary silent detail refresh must not replace an open form or discard its edits.
         val flight = recordingFlight ?: state.detail
         val activeForm = recordingForm

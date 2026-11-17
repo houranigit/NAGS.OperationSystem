@@ -121,6 +121,7 @@ data class FlightDetail(
     val returnToRamps: List<FlightReturnToRampRecord> = emptyList(),
     val canSaveReturnsToRamp: Boolean = false,
     val lastReturnToRampSequence: Int = 0,
+    val canShare: Boolean = false,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
 }

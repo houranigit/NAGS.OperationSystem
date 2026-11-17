@@ -18,6 +18,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
 
     public DbSet<Flight> Flights => Set<Flight>();
     public DbSet<FlightUserActivity> FlightUserActivities => Set<FlightUserActivity>();
+    public DbSet<FlightShare> FlightShares => Set<FlightShare>();
     public DbSet<FlightReminderSchedule> FlightReminderSchedules => Set<FlightReminderSchedule>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();

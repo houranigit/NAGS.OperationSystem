@@ -26,11 +26,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetScaffoldState
@@ -84,6 +81,7 @@ import kotlinx.coroutines.launch
 internal fun FlightDetailsSheetFrame(
     onClose: () -> Unit,
     onBack: () -> Unit,
+    trailingHeaderAction: (@Composable () -> Unit)? = null,
     content: @Composable (ScrollState) -> Unit,
 ) {
     val headerDrag = remember { FlightSheetDragReversal() }
@@ -206,7 +204,7 @@ internal fun FlightDetailsSheetFrame(
                                     .scrollable(scroll, Orientation.Vertical, reverseDirection = true),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Spacer(Modifier.width(48.dp))
+                                if (trailingHeaderAction != null) Spacer(Modifier.width(48.dp))
                                 Box(
                                     Modifier.weight(1f).height(48.dp)
                                         .clickable(
@@ -232,22 +230,8 @@ internal fun FlightDetailsSheetFrame(
                                     Box(Modifier.size(width = 34.dp, height = 4.dp)
                                         .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f), CircleShape))
                                 }
-                                Box(
-                                    Modifier.size(48.dp)
-                                        .clickable(
-                                            role = Role.Button,
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = null,
-                                            onClick = closeOnce,
-                                        )
-                                        .semantics { contentDescription = closeLabel },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Box(Modifier.size(32.dp)
-                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f), CircleShape),
-                                        contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Outlined.Close, null, Modifier.size(18.dp))
-                                    }
+                                if (trailingHeaderAction != null) Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                                    trailingHeaderAction()
                                 }
                             }
                         }

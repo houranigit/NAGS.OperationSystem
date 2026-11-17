@@ -101,10 +101,10 @@ class AppGraph private constructor(context: Context) {
         confirmAdHocStation = { adHocFlights.confirmStation(it) },
         additionalCachedFlight = { discoveryFlights.cachedFlight(it) },
         beginAdditionalDetailRead = { discoveryFlights.detailRevision(it) },
-        recordAdditionalFetched = { detail, revision -> discoveryFlights.recordFetched(detail, revision) },
-        recordAdditionalAcknowledged = { discoveryFlights.recordAcknowledged(it) },
-        prepareAdditionalOffline = { discoveryFlights.refreshKnownAndPrepare() },
-        confirmAdditionalStation = { discoveryFlights.confirmStation(it) }, revokeAdditional = { owner, id -> discoveryFlights.revokeForOwner(owner, id) },
+        recordAdditionalFetched = { detail, revision -> discoveryFlights.recordFetched(detail, revision).also { sharedFlightsRepository.recordAcknowledged(it) } },
+        recordAdditionalAcknowledged = { discoveryFlights.recordAcknowledged(it); sharedFlightsRepository.recordAcknowledged(it) },
+        prepareAdditionalOffline = { discoveryFlights.refreshKnownAndPrepare(); sharedFlightsRepository.refreshAll() },
+        confirmAdditionalStation = { discoveryFlights.confirmStation(it); sharedFlightsRepository.confirmStation(it) }, revokeAdditional = { owner, id -> discoveryFlights.revokeForOwner(owner, id); sharedFlightsRepository.revokeForOwner(owner, id) },
         additionalLogoFlights = { discoveryFlights.logoFlights() })
     private val flightOperationsSyncMutex = FlightOperationsGate()
     private val flightSubmissionGate = Mutex()
@@ -123,7 +123,7 @@ class AppGraph private constructor(context: Context) {
         groupedRetry = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.retry("arrival", id, recordId) } },
         groupedDiscard = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.discard("arrival", id, recordId) } },
         online = { networkMonitor.isOnline.value }, send = operationsApi::saveArrival,
-        accepted = { id, saved -> flightsRepository.recordArrival(id, saved); discoveryFlights.recordArrival(id, saved); flightOperationsBatches.legacyArrivalAccepted(id, saved) },
+        accepted = { id, saved -> flightsRepository.recordArrival(id, saved); discoveryFlights.recordArrival(id, saved); sharedFlightsRepository.recordPartialAcknowledged(id); flightOperationsBatches.legacyArrivalAccepted(id, saved) },
         schedule = {
             FlightArrivalSyncWorker.schedule(appContext)
             appScope.launch { syncFlightOperations() }
@@ -266,7 +266,7 @@ class AppGraph private constructor(context: Context) {
         groupedDiscard = { id, recordId -> flightOperationsSyncMutex.withLock { flightOperationsBatches.discard("departure", id, recordId) } },
         batchFiles = { flightOperationsBatches.fileReferences("departure") },
         online = { networkMonitor.isOnline.value }, send = operationsApi::saveDeparture,
-        accepted = { id, saved -> flightsRepository.recordDeparture(id, saved); discoveryFlights.recordDeparture(id, saved); flightOperationsBatches.legacyDepartureAccepted(id, saved) },
+        accepted = { id, saved -> flightsRepository.recordDeparture(id, saved); discoveryFlights.recordDeparture(id, saved); sharedFlightsRepository.recordPartialAcknowledged(id); flightOperationsBatches.legacyDepartureAccepted(id, saved) },
         schedule = {
             FlightArrivalSyncWorker.schedule(appContext)
             appScope.launch { syncFlightOperations() }
@@ -366,8 +366,8 @@ class AppGraph private constructor(context: Context) {
             else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
         },
         online = { networkMonitor.isOnline.value }, send = operationsApi::saveCancellation, revert = operationsApi::revertCancellation,
-        accepted = { id, saved -> flightsRepository.recordCancellation(id, saved); discoveryFlights.recordCancellation(id, saved) },
-        onReverted = { id, saved -> flightsRepository.recordCancellationReverted(id, saved); discoveryFlights.recordCancellationReverted(id, saved) },
+        accepted = { id, saved -> flightsRepository.recordCancellation(id, saved); discoveryFlights.recordCancellation(id, saved); sharedFlightsRepository.recordPartialAcknowledged(id) },
+        onReverted = { id, saved -> flightsRepository.recordCancellationReverted(id, saved); discoveryFlights.recordCancellationReverted(id, saved); sharedFlightsRepository.recordPartialAcknowledged(id) },
         onLocalSaved = { discoveryFlights.recordLocalSave(it) }, transaction = { work -> catalogDatabase.withTransaction { work() } },
         schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } },
         json = HttpClientFactory.json, submissionGate = flightSubmissionGate,
@@ -474,6 +474,17 @@ class AppGraph private constructor(context: Context) {
             prepareLogos = customerLogos::prefetch)
     }
 
+    val sharedFlightsRepository: com.nags.operations.data.repo.SharedFlightsRepository by lazy {
+        val api = com.nags.operations.data.api.SharedFlightsApi(httpClient)
+        com.nags.operations.data.repo.SharedFlightsRepository(
+            store = com.nags.operations.data.repo.DiskSharedFlightsStore(File(appContext.noBackupFilesDir, "shared-flight-posts")),
+            currentOwner = { if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject()) },
+            currentStation = flightsRepository::trustedCachedStation,
+            online = { networkMonitor.isOnline.value }, fetchPage = api::page, publishPost = api::publish,
+            beginScopeRead = flightsRepository::beginExternalScopeRead, confirmScopeRead = flightsRepository::confirmExternalPage,
+            cachedFlight = flightsRepository::cachedFlight)
+    }
+
     private suspend fun pendingFlightOperationIds(): Set<String> {
         val owner = if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
         if (owner == null) return emptySet()
@@ -496,6 +507,7 @@ class AppGraph private constructor(context: Context) {
         clearCatalogs = {
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
+            sharedFlightsRepository.clear()
         },
         appScope = appScope,
         refreshFlightCache = {
@@ -576,6 +588,7 @@ class AppGraph private constructor(context: Context) {
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
+            sharedFlightsRepository.clear()
             adHocFlights.clear()
             discoveryFlights.clear()
             flightOperationsBatches.clear()
@@ -744,6 +757,7 @@ class AppGraph private constructor(context: Context) {
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
+            sharedFlightsRepository.clear()
             adHocFlights.clear()
             discoveryFlights.clear()
             flightOperationsBatches.clear()

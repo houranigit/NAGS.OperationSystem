@@ -8,5 +8,6 @@ public interface IOperationsDbContext : IOutboxDbContext
 {
     public DbSet<Flight> Flights { get; }
     public DbSet<FlightUserActivity> FlightUserActivities { get; }
+    public DbSet<FlightShare> FlightShares { get; }
     public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] rowVersion) where TEntity : class;
 }

@@ -73,14 +73,11 @@
     <string name="home_greeting_fallback">Hello, there</string>
     <string name="home_adhoc">AdHoc</string>
     <string name="home_nav_flights">Flights</string>
-    <string name="home_nav_invitations">Invitations</string>
+    <string name="home_nav_invitations">Shared Flights</string>
     <string name="home_nav_search">Search</string>
     <string name="home_nav_my_work">My Work</string>
     <string name="home_create_adhoc">Create AdHoc flight</string>
     <string name="home_close_adhoc">Close AdHoc creation</string>
-    <string name="home_invitations_received">Received</string>
-    <string name="home_invitations_sent">Sent</string>
-    <string name="home_search_invitations">Search invitations</string>
     <string name="home_search_flight_number">Flight number</string>
     <string name="home_search_my_work">Search my work</string>
     <string name="flights_tab_my">Scheduled</string>
@@ -109,7 +106,7 @@
     </plurals>
     <string name="flights_schedule">Schedule Details</string>
     <string name="flights_details">Flight details</string>
-    <string name="flights_send">Send Flight</string>
+    <string name="flights_send">Share Flight</string>
     <string name="flights_edit">Edit flight</string>
     <string name="flights_operate">Open Flight</string>
     <string name="flights_cancel_flight">Cancel Flight</string>
@@ -537,4 +534,39 @@
     <string name="rtr_sync_discard">Discard saved return to ramp</string>
     <string name="rtr_sync_discard_message">Discard the local changes to this return to ramp, including its saved work and media? Existing online records stay unchanged.</string>
     <string name="rtr_sync_action_failed">Could not update the saved return to ramp. Try again or review its saved input.</string>
+    <string name="flight_share_title">Share flight</string>
+    <string name="flight_share_whole_station">To: Whole station</string>
+    <string name="flight_share_selected_count">Selected employees: %1$d</string>
+    <string name="flight_share_audience_hint">Select employees, or leave the list empty to share with your whole station.</string>
+    <string name="flight_share_message">Message (optional)</string>
+    <string name="flight_share_find_employee">Find station employees</string>
+    <string name="flight_share_jump_to_letter">Jump to %1$s</string>
+    <string name="flight_share_no_employees">No matching station employees.</string>
+    <string name="flight_share_online_required">Connect to publish a share. Saved shared flights remain available offline.</string>
+    <string name="flight_share_retry_hint">Sharing could not be confirmed. Retry the same post, or check Shared Flights before sharing again.</string>
+    <string name="flight_share_retry">Retry sharing</string>
+    <string name="flight_share_publish">Share</string>
+    <string name="flight_shares_cached">Showing saved shared flights.</string>
+    <string name="flight_share_clear_recipients">Clear selected employees</string>
+    <string name="flight_shares_empty">No shared flights yet</string>
+    <string name="flight_shares_empty_hint">Flights shared by you, with you, or with your station appear here.</string>
+    <string name="flight_shares_with_employee">Shared with %1$s</string>
+    <string name="flight_shares_with_station">Shared with @%1$s staff</string>
+    <string name="flight_shares_just_now">Just now</string>
+    <plurals name="flight_shares_with_others">
+        <item quantity="one">Shared with %1$s and %2$d other</item>
+        <item quantity="other">Shared with %1$s and %2$d others</item>
+    </plurals>
+    <plurals name="flight_shares_minutes_ago">
+        <item quantity="one">%1$d minute ago</item>
+        <item quantity="other">%1$d minutes ago</item>
+    </plurals>
+    <plurals name="flight_shares_hours_ago">
+        <item quantity="one">%1$d hour ago</item>
+        <item quantity="other">%1$d hours ago</item>
+    </plurals>
+    <plurals name="flight_shares_days_ago">
+        <item quantity="one">%1$d day ago</item>
+        <item quantity="other">%1$d days ago</item>
+    </plurals>
 </resources>

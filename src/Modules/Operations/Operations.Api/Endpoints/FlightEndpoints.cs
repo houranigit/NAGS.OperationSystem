@@ -23,6 +23,16 @@ internal static class FlightEndpoints
         var flights = group.MapGroup("/flights").WithTags("Operations.Flights");
 
         var mobile = flights.MapGroup("/mobile");
+        mobile.MapPut("/{flightId:guid}/shares/{shareId:guid}", async (Guid flightId, Guid shareId,
+            PublishFlightShareRequest request, ISender sender, CancellationToken ct) =>
+            (await sender.Send(new PublishFlightShareCommand(flightId, shareId, request), ct)).ToOk())
+            .RequirePermission(OperationsPermissions.Flights.Operate);
+
+        mobile.MapGet("/shares", async (ISender sender, CancellationToken ct, string direction = "all",
+            string? search = null, int page = 1, int pageSize = 20) =>
+            (await sender.Send(new GetMobileFlightSharesQuery(direction, search, page, pageSize), ct)).ToOk())
+            .RequirePermission(OperationsPermissions.Flights.View);
+
         mobile.MapGet("/search/offline", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 100) =>
         {

@@ -376,6 +376,76 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.ToTable("flight_service_performers", "operations");
                 });
 
+            modelBuilder.Entity("Operations.Domain.Flights.FlightShare", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AuthorEmployeeId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("AuthorFullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("AuthorStaffMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AuthorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FlightId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("StationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FlightId");
+
+                    b.HasIndex("StationId", "CreatedAtUtc", "Id");
+
+                    b.HasIndex("AuthorUserId", "StationId", "CreatedAtUtc", "Id");
+
+                    b.ToTable("flight_shares", "operations");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightShareRecipient", b =>
+                {
+                    b.Property<Guid>("ShareId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("StaffMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EmployeeId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("ShareId", "StaffMemberId");
+
+                    b.HasIndex("StaffMemberId", "ShareId");
+
+                    b.ToTable("flight_share_recipients", "operations");
+                });
+
             modelBuilder.Entity("Operations.Domain.Flights.FlightTask", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1553,6 +1623,24 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Operations.Domain.Flights.FlightShare", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.Flight", null)
+                        .WithMany()
+                        .HasForeignKey("FlightId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightShareRecipient", b =>
+                {
+                    b.HasOne("Operations.Domain.Flights.FlightShare", null)
+                        .WithMany("Recipients")
+                        .HasForeignKey("ShareId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Operations.Domain.Flights.FlightTask", b =>
                 {
                     b.HasOne("Operations.Domain.Flights.Flight", null)
@@ -2025,6 +2113,11 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Navigation("Attachments");
 
                     b.Navigation("Performers");
+                });
+
+            modelBuilder.Entity("Operations.Domain.Flights.FlightShare", b =>
+                {
+                    b.Navigation("Recipients");
                 });
 
             modelBuilder.Entity("Operations.Domain.Flights.FlightTask", b =>

@@ -6,6 +6,7 @@ import com.nags.operations.AppGraph
 import com.nags.operations.data.FlightDiscoverySource
 import com.nags.operations.ui.account.AccountViewModel
 import com.nags.operations.ui.flights.FlightsViewModel
+import com.nags.operations.ui.flights.SharedFlightsViewModel
 import com.nags.operations.ui.login.LoginViewModel
 import com.nags.operations.ui.notifications.NotificationsViewModel
 import com.nags.operations.ui.sync.SyncCenterViewModel
@@ -15,6 +16,7 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
     override fun <T : ViewModel> create(modelClass: Class<T>): T = when (modelClass) {
         LoginViewModel::class.java -> LoginViewModel(graph.authRepository)
         FlightsViewModel::class.java -> flights()
+        SharedFlightsViewModel::class.java -> SharedFlightsViewModel(graph.sharedFlightsRepository, graph.networkMonitor)
         AccountViewModel::class.java -> AccountViewModel(graph.authRepository, graph.networkMonitor)
         SyncCenterViewModel::class.java -> SyncCenterViewModel(
             graph.sharedCatalogsRepository, graph.flightsRepository, graph.networkMonitor, graph.catalogConnectionState,

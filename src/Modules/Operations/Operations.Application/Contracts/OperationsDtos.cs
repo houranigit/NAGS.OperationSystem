@@ -64,4 +64,4 @@ public sealed record FlightDetailDto(
     bool IsUnassignedSearchFlight = false,
     bool? CanAddServices = null,
     bool? CanAddTasks = null,
-    IReadOnlyList<FlightReturnToRampDto>? ReturnToRamps = null, bool CanSaveReturnsToRamp = false, int LastReturnToRampSequence = 0);
+    IReadOnlyList<FlightReturnToRampDto>? ReturnToRamps = null, bool CanSaveReturnsToRamp = false, int LastReturnToRampSequence = 0, bool CanShare = false);

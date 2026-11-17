@@ -41,14 +41,11 @@
     <string name="home_greeting_fallback">مرحبًا بك</string>
     <string name="home_adhoc">AdHoc</string>
     <string name="home_nav_flights">الرحلات</string>
-    <string name="home_nav_invitations">الدعوات</string>
+    <string name="home_nav_invitations">الرحلات المشتركة</string>
     <string name="home_nav_search">بحث</string>
     <string name="home_nav_my_work">أعمالي</string>
     <string name="home_create_adhoc">إنشاء رحلة AdHoc</string>
     <string name="home_close_adhoc">إغلاق إنشاء رحلة AdHoc</string>
-    <string name="home_invitations_received">الواردة</string>
-    <string name="home_invitations_sent">المرسلة</string>
-    <string name="home_search_invitations">البحث في الدعوات</string>
     <string name="home_search_flight_number">رقم الرحلة</string>
     <string name="home_search_my_work">البحث في أعمالي</string>
     <string name="flights_tab_my">المجدولة</string>
@@ -81,7 +78,7 @@
     </plurals>
     <string name="flights_schedule">تفاصيل الجدول</string>
     <string name="flights_details">تفاصيل الرحلة</string>
-    <string name="flights_send">إرسال الرحلة</string>
+    <string name="flights_send">مشاركة الرحلة</string>
     <string name="flights_edit">تعديل الرحلة</string>
     <string name="flights_operate">فتح الرحلة</string>
     <string name="flights_cancel_flight">إلغاء الرحلة</string>
@@ -513,4 +510,55 @@
     <string name="rtr_sync_discard">تجاهل العودة إلى الساحة المحفوظة</string>
     <string name="rtr_sync_discard_message">هل تريد تجاهل التغييرات المحلية لهذه العودة إلى الساحة، بما فيها العمل والوسائط المحفوظة؟ تبقى السجلات الموجودة على الخادم دون تغيير.</string>
     <string name="rtr_sync_action_failed">تعذر تحديث العودة إلى الساحة المحفوظة. حاول مجددًا أو راجع البيانات المحفوظة.</string>
+    <string name="flight_share_title">مشاركة الرحلة</string>
+    <string name="flight_share_whole_station">إلى: جميع موظفي المحطة</string>
+    <string name="flight_share_selected_count">الموظفون المختارون: %1$d</string>
+    <string name="flight_share_audience_hint">اختر موظفين، أو اترك القائمة فارغة للمشاركة مع جميع موظفي محطتك.</string>
+    <string name="flight_share_message">رسالة (اختياري)</string>
+    <string name="flight_share_find_employee">البحث عن موظفي المحطة</string>
+    <string name="flight_share_jump_to_letter">الانتقال إلى %1$s</string>
+    <string name="flight_share_no_employees">لا يوجد موظفون مطابقون.</string>
+    <string name="flight_share_online_required">اتصل بالإنترنت لنشر المشاركة. تبقى الرحلات المحفوظة متاحة دون اتصال.</string>
+    <string name="flight_share_retry_hint">تعذر تأكيد المشاركة. أعد المحاولة بنفس المنشور، أو تحقق من الرحلات المشتركة قبل المشاركة مجدداً.</string>
+    <string name="flight_share_retry">إعادة محاولة المشاركة</string>
+    <string name="flight_share_publish">مشاركة</string>
+    <string name="flight_shares_cached">تُعرض الرحلات المشتركة المحفوظة.</string>
+    <string name="flight_share_clear_recipients">إلغاء اختيار الموظفين</string>
+    <string name="flight_shares_empty">لا توجد رحلات مشتركة بعد</string>
+    <string name="flight_shares_empty_hint">ستظهر هنا الرحلات التي تشاركها والمشتركة معك أو مع محطتك.</string>
+    <string name="flight_shares_with_employee">تمت المشاركة مع %1$s</string>
+    <string name="flight_shares_with_station">تمت المشاركة مع موظفي @%1$s</string>
+    <string name="flight_shares_just_now">الآن</string>
+    <plurals name="flight_shares_with_others">
+        <item quantity="zero">تمت المشاركة مع %1$s</item>
+        <item quantity="one">تمت المشاركة مع %1$s وشخص آخر</item>
+        <item quantity="two">تمت المشاركة مع %1$s وشخصين آخرين</item>
+        <item quantity="few">تمت المشاركة مع %1$s و%2$d آخرين</item>
+        <item quantity="many">تمت المشاركة مع %1$s و%2$d آخرين</item>
+        <item quantity="other">تمت المشاركة مع %1$s و%2$d آخرين</item>
+    </plurals>
+    <plurals name="flight_shares_minutes_ago">
+        <item quantity="zero">الآن</item>
+        <item quantity="one">منذ دقيقة</item>
+        <item quantity="two">منذ دقيقتين</item>
+        <item quantity="few">منذ %1$d دقائق</item>
+        <item quantity="many">منذ %1$d دقيقة</item>
+        <item quantity="other">منذ %1$d دقيقة</item>
+    </plurals>
+    <plurals name="flight_shares_hours_ago">
+        <item quantity="zero">الآن</item>
+        <item quantity="one">منذ ساعة</item>
+        <item quantity="two">منذ ساعتين</item>
+        <item quantity="few">منذ %1$d ساعات</item>
+        <item quantity="many">منذ %1$d ساعة</item>
+        <item quantity="other">منذ %1$d ساعة</item>
+    </plurals>
+    <plurals name="flight_shares_days_ago">
+        <item quantity="zero">اليوم</item>
+        <item quantity="one">منذ يوم</item>
+        <item quantity="two">منذ يومين</item>
+        <item quantity="few">منذ %1$d أيام</item>
+        <item quantity="many">منذ %1$d يومًا</item>
+        <item quantity="other">منذ %1$d يوم</item>
+    </plurals>
 </resources>

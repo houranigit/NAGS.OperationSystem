@@ -205,7 +205,7 @@ public sealed class FlightDepartureSaveTests
     {
         public Func<CancellationToken, Task<int>>? Save { get; set; }
         public bool ThrowOnActivityRead { get; set; }
-        public DbSet<Flight> Flights => db.Flights;
+        public DbSet<Flight> Flights => db.Flights; public DbSet<FlightShare> FlightShares => db.FlightShares;
         public DbSet<FlightUserActivity> FlightUserActivities => ThrowOnActivityRead ? throw new IOException("Injected activity read failure") : db.FlightUserActivities;
         public DbSet<OutboxMessage> OutboxMessages => db.OutboxMessages;
         public DbSet<InboxMessage> InboxMessages => db.InboxMessages;

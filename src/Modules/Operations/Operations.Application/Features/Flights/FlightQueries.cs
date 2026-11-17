@@ -164,7 +164,10 @@ internal static class FlightDetails
             flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType, search, canSaveServices && canAdd, canSaveTasks && canAdd,
             flight.ReturnToRamps.OrderBy(r => r.Sequence).Select(r => FlightReturnToRampDto.Map(flight, r, currentUserId,
                 canSaveTasks, allowedServiceIds, userDisplayNames)).ToList(),
-            canSaveTasks, flight.LastReturnToRampSequence);
+            canSaveTasks, flight.LastReturnToRampSequence,
+            canSaveTasks && flight.CancellationSubmissions.Count == 0 && currentStaffMemberId is { } sharingStaffId &&
+            flight.OperationType.OperationTypeId != MasterData.Contracts.Seeding.WellKnownMasterDataIds.AdHocOperationType && !flight.IsPerLanding &&
+            flight.AssignedEmployees.Any(employee => employee.Employee.StaffMemberId == sharingStaffId));
     }
 }
 

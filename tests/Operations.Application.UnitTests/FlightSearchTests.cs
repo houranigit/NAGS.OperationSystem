@@ -278,7 +278,7 @@ public sealed class FlightSearchTests
     private sealed class WriteBoundary(OperationsDbContext db) : IOperationsDbContext
     {
         public int SaveCalls { get; private set; }
-        public DbSet<Flight> Flights => db.Flights; public DbSet<FlightUserActivity> FlightUserActivities => db.FlightUserActivities;
+        public DbSet<Flight> Flights => db.Flights; public DbSet<FlightShare> FlightShares => db.FlightShares; public DbSet<FlightUserActivity> FlightUserActivities => db.FlightUserActivities;
         public DbSet<OutboxMessage> OutboxMessages => db.OutboxMessages; public DbSet<InboxMessage> InboxMessages => db.InboxMessages;
         public void SetOriginalRowVersion<TEntity>(TEntity entity, byte[] version) where TEntity : class => db.SetOriginalRowVersion(entity, version);
         public Task<int> SaveChangesAsync(CancellationToken ct = default) { SaveCalls++; return db.SaveChangesAsync(ct); }

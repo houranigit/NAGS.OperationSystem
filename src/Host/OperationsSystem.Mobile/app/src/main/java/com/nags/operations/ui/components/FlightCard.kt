@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -42,6 +43,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -82,31 +84,34 @@ fun FlightCard(
     onFlightNumberPositioned: ((Float, Int) -> Unit)? = null,
     onReviewClick: (() -> Unit)? = null,
     onPendingClick: (() -> Unit)? = null,
+    compact: Boolean = false,
 ) {
+    val scale = if (compact) 0.85f else 1f
+    val cardModifier = modifier.fillMaxWidth().then(if (compact) Modifier.heightIn(min = 48.dp) else Modifier)
     val statusColors = flightStatusColors(reportStatus)
     val content: @Composable ColumnScope.() -> Unit = {
         Column(
             modifier = Modifier.fillMaxWidth()
                 .drawBehind {
-                    val stripeWidth = 3.dp.toPx()
+                    val stripeWidth = (3.dp * scale).toPx()
                     drawRect(
                         color = statusColors.stripe,
                         topLeft = Offset(if (layoutDirection == LayoutDirection.Rtl) size.width - stripeWidth else 0f, 0f),
                         size = Size(stripeWidth, size.height),
                     )
                 }
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 12.dp * scale, vertical = 10.dp * scale),
+            verticalArrangement = Arrangement.spacedBy(8.dp * scale),
         ) {
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp * scale),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(32.dp))
+                CustomerLogo(flight.customerId, loadCustomerLogo, Modifier.size(32.dp * scale))
                 Column(Modifier.weight(1f)) {
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
                         val badgeWidth = maxWidth * 0.64f
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp * scale),
                             verticalAlignment = Alignment.CenterVertically) {
                             FlightNumberWithTypeBadge(
                                 number = flight.flightNumber.ifBlank {
@@ -114,16 +119,16 @@ fun FlightCard(
                                 },
                                 isPerLanding = flight.isPerLanding,
                                 isAdHoc = flight.isAdHocFlight || flight.isMyAdHocFlight,
-                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold).cardScale(scale),
                                 modifier = Modifier.weight(1f), onNumberPositioned = onFlightNumberPositioned,
                             )
-                            FlightReportBadge(reportStatus, Modifier.widthIn(max = badgeWidth))
+                            FlightReportBadge(reportStatus, Modifier.widthIn(max = badgeWidth), compact = compact)
                         }
                     }
                     Text(
                         flight.customerName,
                         modifier = Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodySmall.cardScale(scale),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -131,28 +136,28 @@ fun FlightCard(
                 }
             }
             FlightAircraftOperationRow(flight.aircraftTypeModel, flight.operationTypeName,
-                flight.latestReturnToRampSequence, flight.hasOpenReturnToRamp == true)
+                flight.latestReturnToRampSequence, flight.hasOpenReturnToRamp == true, scale = scale)
             FlightCardSummaryRow(flight, reportStatus, now, pendingSyncLabel, hasSyncError, cancellationAtUtc,
-                onActiveWorkClick, onCompletedWorkClick, onReviewClick, onPendingClick)
+                onActiveWorkClick, onCompletedWorkClick, onReviewClick, onPendingClick, scale)
             HorizontalDivider(color = flightCardDividerColor())
-            FlightCardScheduleFooter(flight)
+            FlightCardScheduleFooter(flight, scale)
         }
     }
     if (onClick == null) Card(
-        modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+        modifier = cardModifier, shape = RoundedCornerShape(16.dp * scale),
         border = BorderStroke(1.dp, statusColors.border),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), content = content,
     ) else Card(
-        onClick = onClick, modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
+        onClick = onClick, modifier = cardModifier, shape = RoundedCornerShape(16.dp * scale),
         border = BorderStroke(1.dp, statusColors.border),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp, pressedElevation = 4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp * scale, pressedElevation = 4.dp * scale),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), content = content,
     )
 }
 
 @Composable
-private fun FlightCardScheduleFooter(flight: FlightListItem) {
+private fun FlightCardScheduleFooter(flight: FlightListItem, scale: Float) {
     val zone = stationTimeZone(flight.stationTimeZoneId)
     val date = formatFlightDateRangeForDisplay(flight.scheduledArrivalUtc, flight.scheduledDepartureUtc, zone)
     val sta = formatIsoTimeForDisplay(flight.scheduledArrivalUtc, zone)
@@ -160,40 +165,40 @@ private fun FlightCardScheduleFooter(flight: FlightListItem) {
     val staLabel = stringResource(R.string.flights_card_sta)
     val stdLabel = stringResource(R.string.flights_card_std)
     val dateStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium,
-        textDirection = TextDirection.Content)
-    val timeStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+        textDirection = TextDirection.Content).cardScale(scale)
+    val timeStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold).cardScale(scale)
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val requiredWidth = measurer.measure(date, dateStyle).size.width +
         measurer.measure("$staLabel $sta", timeStyle).size.width +
-        measurer.measure("$stdLabel $std", timeStyle).size.width + with(density) { 25.dp.toPx() }
+        measurer.measure("$stdLabel $std", timeStyle).size.width + with(density) { (25.dp * scale).toPx() }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         if (requiredWidth > constraints.maxWidth) {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp * scale)) {
                 Text(date, style = dateStyle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                FlightCardScheduledTimes(staLabel, sta, stdLabel, std, Modifier.fillMaxWidth())
+                FlightCardScheduledTimes(staLabel, sta, stdLabel, std, Modifier.fillMaxWidth(), scale)
             }
-        } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+        } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp * scale),
             verticalAlignment = Alignment.CenterVertically) {
             Text(date, Modifier.weight(1f).wrapContentWidth(Alignment.Start), style = dateStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            FlightCardScheduledTimes(staLabel, sta, stdLabel, std)
+            FlightCardScheduledTimes(staLabel, sta, stdLabel, std, scale = scale)
         }
     }
 }
 
 @Composable
 private fun FlightCardScheduledTimes(staLabel: String, sta: String, stdLabel: String, std: String,
-    modifier: Modifier = Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
-        FlightCardField(staLabel, sta)
-        VerticalDivider(Modifier.height(14.dp), color = flightCardDividerColor())
-        FlightCardField(stdLabel, std)
+    modifier: Modifier = Modifier, scale: Float = 1f) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp * scale, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+        FlightCardField(staLabel, sta, scale = scale)
+        VerticalDivider(Modifier.height(14.dp * scale), color = flightCardDividerColor())
+        FlightCardField(stdLabel, std, scale = scale)
     }
 }
 
 @Composable
 internal fun FlightAircraftOperationRow(aircraftModel: String?, operationName: String,
-    returnToRampSequence: Int? = null, openReturnToRamp: Boolean = false) {
+    returnToRampSequence: Int? = null, openReturnToRamp: Boolean = false, scale: Float = 1f) {
     val labelColor = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFFB2B7C2) else Color(0xFF626873)
     val aircraftLabel = stringResource(R.string.flights_card_aircraft)
     val operationLabel = stringResource(R.string.flights_operation)
@@ -203,29 +208,29 @@ internal fun FlightAircraftOperationRow(aircraftModel: String?, operationName: S
     }
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    val measureStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+    val measureStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold).cardScale(scale)
     val itemCount = 3 + (if (rtrLabel != null) 2 else 0)
     val requiredWidth = measurer.measure("$aircraftLabel $aircraft", measureStyle).size.width +
         measurer.measure("$operationLabel $operationName", measureStyle).size.width +
         (rtrLabel?.let { measurer.measure(it, measureStyle).size.width } ?: 0) +
-        with(density) { (1.dp + 8.dp * (itemCount - 1)).toPx() }
+        with(density) { (1.dp + 8.dp * scale * (itemCount - 1)).toPx() }
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             if (requiredWidth > constraints.maxWidth) {
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FlightCardField(aircraftLabel, aircraft, Modifier.fillMaxWidth(), labelColor)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        FlightCardField(operationLabel, operationName, Modifier.weight(1f).wrapContentWidth(Alignment.Start), labelColor)
-                        if (rtrLabel != null) FlightCardRtrLabel(rtrLabel)
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp * scale)) {
+                    FlightCardField(aircraftLabel, aircraft, Modifier.fillMaxWidth(), labelColor, scale)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp * scale), verticalAlignment = Alignment.CenterVertically) {
+                        FlightCardField(operationLabel, operationName, Modifier.weight(1f).wrapContentWidth(Alignment.Start), labelColor, scale)
+                        if (rtrLabel != null) FlightCardRtrLabel(rtrLabel, scale)
                     }
                 }
-            } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                FlightCardField(aircraftLabel, aircraft, labelColor = labelColor)
-                VerticalDivider(Modifier.height(14.dp), color = flightCardDividerColor())
-                FlightCardField(operationLabel, operationName, labelColor = labelColor)
+            } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp * scale), verticalAlignment = Alignment.CenterVertically) {
+                FlightCardField(aircraftLabel, aircraft, labelColor = labelColor, scale = scale)
+                VerticalDivider(Modifier.height(14.dp * scale), color = flightCardDividerColor())
+                FlightCardField(operationLabel, operationName, labelColor = labelColor, scale = scale)
                 if (rtrLabel != null) {
                     Spacer(Modifier.weight(1f))
-                    FlightCardRtrLabel(rtrLabel)
+                    FlightCardRtrLabel(rtrLabel, scale)
                 }
             }
         }
@@ -233,8 +238,8 @@ internal fun FlightAircraftOperationRow(aircraftModel: String?, operationName: S
 }
 
 @Composable
-private fun FlightCardRtrLabel(label: String) {
-    Text(label, style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content),
+private fun FlightCardRtrLabel(label: String, scale: Float) {
+    Text(label, style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content).cardScale(scale),
         fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
@@ -243,7 +248,7 @@ private fun flightCardDividerColor(): Color =
     if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF494949) else Color(0xFFE0E0E0)
 
 @Composable
-private fun FlightCardField(label: String, value: String, modifier: Modifier = Modifier, labelColor: Color = Color.Unspecified) {
+private fun FlightCardField(label: String, value: String, modifier: Modifier = Modifier, labelColor: Color = Color.Unspecified, scale: Float = 1f) {
     Text(
         buildAnnotatedString {
             if (label.isNotBlank()) withStyle(SpanStyle(color = labelColor)) { append(label); append(" ") }
@@ -252,7 +257,7 @@ private fun FlightCardField(label: String, value: String, modifier: Modifier = M
             }
         },
         modifier = modifier,
-        style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content),
+        style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content).cardScale(scale),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -262,7 +267,7 @@ private fun FlightCardField(label: String, value: String, modifier: Modifier = M
 @Composable
 private fun FlightCardSummaryRow(flight: FlightListItem, status: FlightCardReportStatus, now: Instant,
     pendingSyncLabel: String?, hasSyncError: Boolean, cancellationAtUtc: String?,
-    onActiveWorkClick: (() -> Unit)?, onCompletedWorkClick: (() -> Unit)?, onReviewClick: (() -> Unit)?, onPendingClick: (() -> Unit)?) {
+    onActiveWorkClick: (() -> Unit)?, onCompletedWorkClick: (() -> Unit)?, onReviewClick: (() -> Unit)?, onPendingClick: (() -> Unit)?, scale: Float) {
     val active = flight.activeWorkCount?.takeIf { it >= 0 }
     val done = flight.completedWorkCount?.takeIf { it >= 0 }
     val minutes = flight.cardStaMinutes(now)
@@ -289,8 +294,8 @@ private fun FlightCardSummaryRow(flight: FlightListItem, status: FlightCardRepor
     if (text == null && pendingSyncLabel == null) return
     val staTiming = status == FlightCardReportStatus.DueSoon || status == FlightCardReportStatus.ArrivalNotRecorded
     val summaryStyle = if (staTiming) MaterialTheme.typography.bodySmall.copy(
-        fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, textDirection = TextDirection.Content)
-    else MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content)
+        fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Bold, textDirection = TextDirection.Content).cardScale(scale)
+    else MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content).cardScale(scale)
     val color = when {
         status == FlightCardReportStatus.Canceled || status == FlightCardReportStatus.DueSoon ||
             status == FlightCardReportStatus.ArrivalNotRecorded || status == FlightCardReportStatus.Conflict -> flightStatusColors(status).foreground
@@ -306,14 +311,14 @@ private fun FlightCardSummaryRow(flight: FlightListItem, status: FlightCardRepor
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val noticeWidth = if (text != null) maxWidth * 0.5f else maxWidth
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp * scale), verticalAlignment = Alignment.CenterVertically) {
             if (text != null) Row(Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(4.dp, if (staTiming) AbsoluteAlignment.Left else Alignment.Start),
+                horizontalArrangement = Arrangement.spacedBy(4.dp * scale, if (staTiming) AbsoluteAlignment.Left else Alignment.Start),
                 verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, null, Modifier.size(if (staTiming) 12.dp else 13.dp), tint = color)
+                Icon(icon, null, Modifier.size((if (staTiming) 12.dp else 13.dp) * scale), tint = color)
                 if (workVisible && (onActiveWorkClick != null || onCompletedWorkClick != null) &&
                     ((active ?: 0) > 0 || (done ?: 0) > 0)) {
-                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp * scale), verticalAlignment = Alignment.CenterVertically) {
                         if ((active ?: 0) > 0) Text(stringResource(R.string.flight_card_work_active, active!!),
                             Modifier.weight(1f, fill = false).then(if (onActiveWorkClick != null) Modifier.clickable(role = Role.Button, onClick = onActiveWorkClick) else Modifier),
                             style = summaryStyle, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -330,9 +335,9 @@ private fun FlightCardSummaryRow(flight: FlightListItem, status: FlightCardRepor
                 val syncAction = if (hasSyncError) onReviewClick ?: onPendingClick else onPendingClick
                 // Clickable expands its touch bounds without forcing a tall visual summary row.
                 Row(Modifier.widthIn(max = noticeWidth).then(if (syncAction != null) Modifier.clickable(role = Role.Button, onClick = syncAction) else Modifier),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (hasSyncError) Icons.Outlined.WarningAmber else Icons.Outlined.Sync, null, Modifier.size(13.dp), tint = syncColor)
-                    Text(pendingSyncLabel, style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content), color = syncColor,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp * scale), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (hasSyncError) Icons.Outlined.WarningAmber else Icons.Outlined.Sync, null, Modifier.size(13.dp * scale), tint = syncColor)
+                    Text(pendingSyncLabel, style = MaterialTheme.typography.bodySmall.copy(textDirection = TextDirection.Content).cardScale(scale), color = syncColor,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
@@ -346,3 +351,9 @@ private fun cardDuration(minutes: Long): String = when {
     minutes % 60 == 0L -> stringResource(R.string.flight_card_duration_hours, minutes / 60)
     else -> stringResource(R.string.flight_card_duration_hours_minutes, minutes / 60, minutes % 60)
 }
+
+/** Scale layout typography in sp, retaining the current font family and device accessibility scaling. */
+private fun TextStyle.cardScale(scale: Float): TextStyle = if (scale == 1f) this else copy(
+    fontSize = fontSize * scale,
+    lineHeight = lineHeight * scale,
+)

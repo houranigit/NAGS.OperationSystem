@@ -1257,7 +1257,7 @@ public sealed class FlightServiceSaveTests
     {
         public Func<CancellationToken, Task<int>>? Save { get; set; }
         public int SaveCalls { get; private set; }
-        public DbSet<Flight> Flights => db.Flights;
+        public DbSet<Flight> Flights => db.Flights; public DbSet<FlightShare> FlightShares => db.FlightShares;
         public DbSet<FlightUserActivity> FlightUserActivities => db.FlightUserActivities;
         public DbSet<OutboxMessage> OutboxMessages => db.OutboxMessages;
         public DbSet<InboxMessage> InboxMessages => db.InboxMessages;

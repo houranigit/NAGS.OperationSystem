@@ -128,6 +128,8 @@ internal fun FlightDetailsSheet(
     workItems: List<FlightSheetWorkItem>,
     showCancellation: Boolean,
     showOperations: Boolean,
+    showShare: Boolean = false,
+    onShare: () -> Unit = {},
     showRevertCancellation: Boolean,
     showReviewCancellation: Boolean,
     onRevertCancellation: () -> Unit,
@@ -143,7 +145,6 @@ internal fun FlightDetailsSheet(
         if (showCancellation) add(FlightRecordingAction.Cancel)
         if (showReviewCancellation) add(FlightRecordingAction.Review)
         if (showRevertCancellation) add(FlightRecordingAction.Revert)
-        add(FlightRecordingAction.Send)
         if (showOperations) add(FlightRecordingAction.Operate)
     }
     val actionMetrics = flightActionMetrics()
@@ -153,10 +154,25 @@ internal fun FlightDetailsSheet(
     }
     var contentOrigin by remember(state.selectedFlightId) { mutableStateOf(Offset.Zero) }
     var expandedActionBounds by remember(state.selectedFlightId) { mutableStateOf<Rect?>(null) }
+    val shareLabel = stringResource(R.string.flights_send)
+    val headerShareAction: (@Composable () -> Unit)? = if (showShare) ({
+        Box(Modifier.size(48.dp)
+            .clickable(role = Role.Button, onClickLabel = shareLabel,
+                interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                expandedAction = null
+                expandedActionBounds = null
+                onShare()
+            }.semantics { contentDescription = shareLabel }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(32.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f), CircleShape),
+                contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Share, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    }) else null
     FlightDetailsSheetFrame(onClose = onClose, onBack = {
         if (expandedAction != null) { expandedAction = null; expandedActionBounds = null }
         else onClose()
-    }) { contentScroll ->
+    }, trailingHeaderAction = headerShareAction) { contentScroll ->
         key(state.selectedFlightId) {
             BackHandler(enabled = expandedAction != null) { expandedAction = null; expandedActionBounds = null }
             var staffExpanded by rememberSaveable { mutableStateOf(false) }
@@ -277,7 +293,7 @@ private fun flightActionMetrics(): FlightActionMetrics {
     return FlightActionMetrics(heading, face, maxOf(48.dp, maxOf(36.dp, face) + 4.dp))
 }
 
-private enum class FlightRecordingAction { Cancel, Review, Revert, Send, Operate }
+private enum class FlightRecordingAction { Cancel, Review, Revert, Operate }
 
 /** First tap reveals one action; a second tap opens its existing flow. */
 @Composable
@@ -318,7 +334,6 @@ private fun FlightRecordingActions(
                     val faceHeight = metrics.collapsedFaceSize + (metrics.expandedFaceHeight - metrics.collapsedFaceSize) * expansion
                     val accent = when {
                         expanded && action == FlightRecordingAction.Cancel -> AccentRed
-                        expanded && action == FlightRecordingAction.Send -> AccentBlue
                         else -> null
                     }
                     val containerColor = accent ?: DetailFill
@@ -327,7 +342,6 @@ private fun FlightRecordingActions(
                         FlightRecordingAction.Cancel -> R.string.flights_cancel_flight
                         FlightRecordingAction.Review -> R.string.cancellation_review
                         FlightRecordingAction.Revert -> R.string.cancellation_revert
-                        FlightRecordingAction.Send -> R.string.flights_send
                         FlightRecordingAction.Operate -> R.string.flights_operate
                     })
                     val label = when (action) {
@@ -339,7 +353,6 @@ private fun FlightRecordingActions(
                         FlightRecordingAction.Cancel -> Icons.Outlined.EventBusy
                         FlightRecordingAction.Review -> Icons.Outlined.Edit
                         FlightRecordingAction.Revert -> Icons.AutoMirrored.Outlined.Undo
-                        FlightRecordingAction.Send -> Icons.Outlined.Share
                         FlightRecordingAction.Operate -> Icons.Outlined.Edit
                     }
                     val labelLimit = metrics.expandedFaceWidth - 16.dp - metrics.iconSize - 6.dp
@@ -360,7 +373,6 @@ private fun FlightRecordingActions(
                                 when (action) {
                                     FlightRecordingAction.Cancel, FlightRecordingAction.Review -> onCanceled()
                                     FlightRecordingAction.Revert -> onRevertCancellation()
-                                    FlightRecordingAction.Send -> Unit
                                     FlightRecordingAction.Operate -> onOperations()
                                 }
                             } else onExpandedActionChange(action)

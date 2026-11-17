@@ -60,6 +60,7 @@ import com.nags.operations.ui.components.AppHeader
 import com.nags.operations.ui.components.NotificationPermissionPrompt
 import com.nags.operations.ui.flights.FlightsScreen
 import com.nags.operations.ui.flights.FlightsViewModel
+import com.nags.operations.ui.flights.SharedFlightsScreen
 import com.nags.operations.ui.notifications.NotificationsScreen
 import com.nags.operations.ui.notifications.NotificationsViewModel
 import kotlin.math.abs
@@ -228,6 +229,11 @@ fun MainShellScreen(
                                             externalPendingFlightId = externalPendingFlightId,
                                             externalPendingNavigationKey = externalPendingNavigationKey,
                                             onExternalPendingHandled = onExternalPendingHandled,
+                                            interactionEnabled = pageInteractionEnabled,
+                                            onPublishShare = { flight, id, message, recipients -> graph.sharedFlightsRepository.publish(flight, id, message, recipients) })
+                                    } else if (activePage == 1) {
+                                        SharedFlightsScreen(graph, factory, subject,
+                                            bottomContentPadding = maxOf(80.dp, navigationHeight + 10.dp),
                                             interactionEnabled = pageInteractionEnabled)
                                     } else if (activePage == 4) {
                                         val notifications: NotificationsViewModel = viewModel(key = "notifications:$subject", factory = factory)
@@ -242,8 +248,9 @@ fun MainShellScreen(
                                         val sourceFlights: FlightsViewModel = viewModel(key = "discovery:$subject:${source.key}", factory = sourceFactory)
                                         FlightsScreen(viewModel = sourceFlights, discoverySource = source,
                                             interactionEnabled = pageInteractionEnabled,
-                                            bottomContentPadding = maxOf(80.dp, navigationHeight + 10.dp))
-                                    } else MainShellPage(page = activePage)
+                                            bottomContentPadding = maxOf(80.dp, navigationHeight + 10.dp),
+                                            onPublishShare = { flight, id, message, recipients -> graph.sharedFlightsRepository.publish(flight, id, message, recipients) })
+                                    }
                                 }
                             }.map { it.measure(childConstraints) }
                             layout(constraints.maxWidth, constraints.maxHeight) {
