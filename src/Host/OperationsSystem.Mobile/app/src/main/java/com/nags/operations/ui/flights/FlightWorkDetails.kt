@@ -52,7 +52,8 @@ internal fun FlightWorkEmployeeList(
     val keyboard = LocalSoftwareKeyboardController.current
     val choices = remember(options) {
         options.sortedBy { it.fullName }.map {
-            FlightWorkChoice(it.id, it.fullName, listOf(it.employeeId, it.manpowerTypeName).filter(String::isNotBlank).joinToString(" · "))
+            FlightWorkChoice(it.id, it.fullName, it.manpowerTypeName.ifBlank { it.employeeId },
+                searchText = it.employeeId, avatarName = it.fullName)
         }
     }
     fun openPicker(id: String?) {

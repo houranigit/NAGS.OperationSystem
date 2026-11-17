@@ -47,12 +47,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -93,6 +97,8 @@ internal fun FlightTabSearchHeader(
     searchSurface: Color = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
         MaterialTheme.colorScheme.surfaceContainerHigh else SearchSurface,
     showDividers: Boolean = true,
+    onSearchFocusChanged: (Boolean) -> Unit = {},
+    onSearchBoundsChanged: (Rect) -> Unit = {},
     tabs: @Composable () -> Unit,
 ) {
     val transition = updateTransition(isSearchOpen, label = "Flight search")
@@ -146,15 +152,18 @@ internal fun FlightTabSearchHeader(
                 tabs()
             }
             Row(searchPlacement.width(controlWidth).requiredHeight(48.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f).height(48.dp).clipToBounds()) {
+                Box(Modifier.weight(1f).height(48.dp).clipToBounds()
+                    .onGloballyPositioned { onSearchBoundsChanged(it.boundsInWindow()) }) {
                     Box(Modifier.fillMaxSize().padding(horizontal = 6.dp * (1f - progress), vertical = 6.dp)
                         .background(searchSurface, RoundedCornerShape(24.dp)))
                     Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                         if (isSearchOpen) {
-                            Box(Modifier.size(48.dp).pointerInput(focusRequester, keyboard) {
+                            Box(Modifier.size(48.dp).pointerInput(focusRequester, keyboard, interactionEnabled) {
                                 detectTapGestures {
-                                    focusRequester.requestFocus()
-                                    keyboard?.show()
+                                    if (interactionEnabled) {
+                                        focusRequester.requestFocus()
+                                        keyboard?.show()
+                                    }
                                 }
                             }, contentAlignment = Alignment.Center) {
                                 Icon(searchIcon, contentDescription = null,
@@ -181,6 +190,7 @@ internal fun FlightTabSearchHeader(
                                     .padding(end = if (query.isEmpty()) 12.dp else 0.dp)
                                     .graphicsLayer { alpha = progress }
                                     .focusRequester(focusRequester)
+                                    .onFocusChanged { onSearchFocusChanged(it.hasFocus) }
                                     .semantics { contentDescription = searchDescription },
                                 decorationBox = { innerTextField ->
                                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
@@ -195,7 +205,7 @@ internal fun FlightTabSearchHeader(
                                     onQueryChange("")
                                     focusRequester.requestFocus()
                                     keyboard?.show()
-                                }, enabled = isSearchOpen,
+                                }, enabled = isSearchOpen && interactionEnabled,
                                     modifier = Modifier.size(48.dp).graphicsLayer { alpha = progress }) {
                                     Icon(Icons.Default.Cancel, stringResource(R.string.flights_search_clear),
                                         tint = secondary, modifier = Modifier.size(20.dp))

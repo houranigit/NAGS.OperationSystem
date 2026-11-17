@@ -115,6 +115,10 @@
     <string name="operations_signature_clear_action">مسح</string>
     <string name="operations_save">حفظ عمليات الرحلة</string>
     <string name="arrival_no_aircraft">لا توجد أنواع طائرات في البيانات المحفوظة.</string>
+    <string name="arrival_saved_aircraft_group">الطائرات المحفوظة</string>
+    <string name="flight_picker_hide_keyboard">إخفاء لوحة المفاتيح</string>
+    <string name="flight_picker_expand">توسيع القائمة</string>
+    <string name="flight_picker_collapse">طي القائمة</string>
     <string name="arrival_no_results">لا توجد نتائج مطابقة</string>
     <string name="arrival_search_aircraft">ابحث عن نوع الطائرة</string>
     <string name="operations_discard_title">تجاهل بيانات العمليات؟</string>

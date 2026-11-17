@@ -422,7 +422,9 @@ internal fun FlightSubmissionUpdateForm(
         onValueChange = { time = it.toString() }, onDismiss = { picker = null },
         title = stringResource(if (isArrival) R.string.arrival_ata else R.string.operations_atd), showTitle = false)
     if (picker == "aircraft") FlightWorkPicker(title = stringResource(R.string.arrival_aircraft_type), searchLabel = stringResource(R.string.arrival_search_aircraft),
-        emptyLabel = stringResource(R.string.arrival_no_aircraft), options = aircraftTypes.sortedBy { it.model }.map { FlightWorkChoice(it.id, it.model, it.manufacturer) },
+        emptyLabel = stringResource(R.string.arrival_no_aircraft), options = aircraftTypes.sortedBy { it.model }.map {
+            FlightWorkChoice(it.id, it.model, it.manufacturer, groupKey = it.manufacturer, groupTitle = it.manufacturer)
+        },
         selectedId = aircraftId, onDismiss = { picker = null }, onSelect = { aircraftId = it })
     if (picker == "signature") FlightSignatureSheet(signature, reviewedDeparture?.hasSignature == true || applyLocalSignature, savedPreview, previewLoading, onRetry = { previewRetry++ },
         onValueChange = { signature = it; applyLocalSignature = false; signedAt = if (it.isBlank()) null else Instant.now().toString() }, onDismiss = { picker = null })

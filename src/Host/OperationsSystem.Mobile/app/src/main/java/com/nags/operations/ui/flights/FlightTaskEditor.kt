@@ -195,7 +195,10 @@ internal fun FlightTaskSection(
 
     val activeTask = items.firstOrNull { it.id == pickerTaskId }
     if (activeTask != null && enabled && canEdit(activeTask.id)) {
-        val choices = catalogs.ataChapters.map { FlightWorkChoice(it.id, "${it.code} · ${it.title}", it.categoryName) }
+        val choices = catalogs.ataChapters.map {
+            FlightWorkChoice(it.id, "${it.code} · ${it.title}", it.categoryName,
+                groupKey = it.categoryId, groupTitle = it.categoryName)
+        }
         FlightWorkPicker(
             title = stringResource(R.string.work_ata_chapter),
             searchLabel = stringResource(R.string.work_search_ata),

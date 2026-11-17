@@ -1220,10 +1220,17 @@ internal fun FlightOperationsForm(
             onValueChange = { if (isArrival) ata = it.toString() else atd = it.toString() }, onDismiss = { picker = null },
             title = stringResource(if (isArrival) R.string.arrival_ata else R.string.operations_atd), showTitle = false)
     }
-    if (picker == "aircraft") FlightWorkPicker(title = stringResource(R.string.arrival_aircraft_type),
-        searchLabel = stringResource(R.string.arrival_search_aircraft), emptyLabel = stringResource(R.string.arrival_no_aircraft),
-        options = aircraftChoices.map { FlightWorkChoice(it.id, it.title, it.subtitle) }, selectedId = aircraftId,
-        onDismiss = { picker = null }, onSelect = { aircraftId = it })
+    if (picker == "aircraft") {
+        val manufacturers = remember(aircraftTypes) { aircraftTypes.associate { it.id to it.manufacturer } }
+        val savedAircraftGroup = stringResource(R.string.arrival_saved_aircraft_group)
+        FlightWorkPicker(title = stringResource(R.string.arrival_aircraft_type),
+            searchLabel = stringResource(R.string.arrival_search_aircraft), emptyLabel = stringResource(R.string.arrival_no_aircraft),
+            options = aircraftChoices.map { choice ->
+                val manufacturer = manufacturers[choice.id]
+                FlightWorkChoice(choice.id, choice.title, choice.subtitle,
+                    groupKey = manufacturer ?: "saved-aircraft", groupTitle = manufacturer ?: savedAircraftGroup)
+            }, selectedId = aircraftId, onDismiss = { picker = null }, onSelect = { aircraftId = it })
+    }
     if (picker == "signature") FlightSignatureSheet(signature, hasSavedSignature, savedSignaturePreview,
         signaturePreviewLoading, onRetry = { signaturePreviewRetry++ }, onValueChange = {
         signature = it

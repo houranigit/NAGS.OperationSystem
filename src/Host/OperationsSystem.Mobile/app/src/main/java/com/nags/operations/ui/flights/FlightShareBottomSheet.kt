@@ -142,7 +142,7 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
     }
     val title = if (composing) stringResource(R.string.flight_share_title)
         else stringResource(R.string.flight_share_station_staff, flight.stationIata)
-    val ground = flightSharePageBackground()
+    val ground = flightPickerPageBackground()
     val card = remember(flight, listItem) { flight.formCardSummary(listItem, emptyList()).withReturnToRampReports(flight) }
     val stationCount = remember(stationStaff, flight.stationId) {
         stationStaff.filter { it.stationId.equals(flight.stationId, true) }.distinctBy { it.id }.size
@@ -245,7 +245,7 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                         enabled = if (composing) canPublish else !busy,
                         modifier = Modifier.defaultMinSize(minWidth = 56.dp).heightIn(min = 32.dp),
                         shape = CircleShape, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (composing) AccentBlue else FlightShareActionGreen, contentColor = Color.White)) {
+                        colors = ButtonDefaults.buttonColors(containerColor = if (composing) AccentBlue else FlightPickerActionGreen, contentColor = Color.White)) {
                         if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                         else Text(stringResource(if (!composing) R.string.flight_share_next else if (frozen) R.string.flight_share_retry else R.string.flight_share_publish),
                             style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, lineHeight = 16.sp), fontWeight = FontWeight.SemiBold)
@@ -271,7 +271,7 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             FlightFormSectionTitle(stringResource(R.string.flight_share_message_title))
                             Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned { messageBounds = it.boundsInWindow() },
-                                shape = RoundedCornerShape(24.dp), color = flightShareListBackground()) {
+                                shape = RoundedCornerShape(24.dp), color = flightPickerCardBackground()) {
                                 FlightFormTextInput(message, { if (it.length <= 2000) message = it },
                                     placeholder = stringResource(R.string.flight_share_message), label = stringResource(R.string.flight_share_message),
                                     modifier = Modifier.padding(16.dp).focusRequester(messageFocus)
@@ -285,7 +285,7 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             FlightFormSectionTitle(stringResource(R.string.flight_share_list_title))
                             FlightShareSelectedEmployees(stationStaff, selected, ::removeEmployee, enabled = !busy && !frozen,
-                                modifier = Modifier.fillMaxWidth().background(flightShareListBackground(), RoundedCornerShape(16.dp)),
+                                modifier = Modifier.fillMaxWidth().background(flightPickerCardBackground(), RoundedCornerShape(16.dp)),
                                 onAdd = { changeStep(false) }, wrap = true)
                             if (selected.isEmpty()) Text(stringResource(R.string.flight_share_whole_station_note),
                                 Modifier.fillMaxWidth().padding(horizontal = 14.dp),

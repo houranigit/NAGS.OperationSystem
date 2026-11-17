@@ -143,6 +143,10 @@
     <string name="operations_signature_clear_action">Clear</string>
     <string name="operations_save">Save flight operations</string>
     <string name="arrival_no_aircraft">No aircraft types are available in saved data.</string>
+    <string name="arrival_saved_aircraft_group">Saved aircraft</string>
+    <string name="flight_picker_hide_keyboard">Hide keyboard</string>
+    <string name="flight_picker_expand">Expand list</string>
+    <string name="flight_picker_collapse">Collapse list</string>
     <string name="arrival_no_results">No matching results</string>
     <string name="arrival_search_aircraft">Search aircraft types</string>
     <string name="operations_discard_title">Discard operations details?</string>
