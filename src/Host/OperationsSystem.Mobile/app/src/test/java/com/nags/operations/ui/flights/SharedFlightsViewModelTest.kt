@@ -73,6 +73,89 @@ class SharedFlightsViewModelTest {
         assertTrue(vm.state.value.items.isEmpty())
     }
 
+    @Test fun cacheInvalidationUpdatesLiveRowsWithoutChangingTheirLiveProvenance() = runBlocking {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        var reads = 0
+        val vm = model(fetch = { _, _, _, _ -> reads++; page("live") },
+            cached = { _, _, _, _ -> page("reconciled").copy(fromCache = true) }, changes = changes)
+        vm.refresh()
+        changes.emit(Unit)
+        assertEquals(listOf("reconciled"), vm.state.value.items.map { it.id })
+        assertFalse(vm.state.value.fromCache)
+        assertTrue(vm.state.value.online)
+        assertEquals(1, reads)
+    }
+
+    @Test fun genuineCachedFallbackStaysMarkedUntilAFreshNetworkRefreshSucceeds() = runBlocking {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        var fallback = true
+        val vm = model(fetch = { _, _, _, _ -> page(if (fallback) "saved" else "fresh").copy(fromCache = fallback) },
+            cached = { _, _, _, _ -> page("saved-update").copy(fromCache = true) }, changes = changes)
+        vm.refresh()
+        assertTrue(vm.state.value.online)
+        assertTrue(vm.state.value.fromCache)
+        changes.emit(Unit)
+        assertTrue(vm.state.value.fromCache)
+        fallback = false
+        vm.refresh()
+        assertEquals(listOf("fresh"), vm.state.value.items.map { it.id })
+        assertFalse(vm.state.value.fromCache)
+        changes.emit(Unit)
+        assertFalse(vm.state.value.fromCache)
+    }
+
+    @Test fun cachedPagesRemainMarkedWhenPagingMixesFreshAndFallbackResults() {
+        listOf(1, 2).forEach { cachedPage ->
+            val vm = model(fetch = { _, _, number, _ ->
+                page("post-$number").copy(page = number, totalCount = 2,
+                    hasNextPage = number == 1, fromCache = number == cachedPage)
+            })
+            vm.refresh(); vm.loadMore()
+            assertEquals(listOf("post-1", "post-2"), vm.state.value.items.map { it.id })
+            assertTrue(vm.state.value.fromCache)
+        }
+    }
+
+    @Test fun cacheReconciliationDoesNotCompleteAnInFlightRefreshOrEraseItsFailure() = runBlocking {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val response = CompletableDeferred<FlightSharePage>()
+        var refreshing = false
+        val vm = model(fetch = { _, _, _, _ -> if (refreshing) response.await() else page("live") },
+            cached = { _, _, _, _ -> page("reconciled").copy(fromCache = true) }, changes = changes)
+        vm.refresh()
+        refreshing = true
+        vm.refresh()
+        assertTrue(vm.state.value.refreshing)
+        changes.emit(Unit)
+        assertTrue(vm.state.value.refreshing)
+        assertFalse(vm.state.value.fromCache)
+        response.completeExceptionally(java.io.IOException("Refresh failed"))
+        assertFalse(vm.state.value.refreshing)
+        assertNotNull(vm.state.value.error)
+        changes.emit(Unit)
+        assertNotNull(vm.state.value.error)
+        assertFalse(vm.state.value.fromCache)
+    }
+
+    @Test fun aSlowCacheInvalidationCannotOverwriteANetworkResponseAcceptedDuringItsRead() = runBlocking {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val network = CompletableDeferred<FlightSharePage>()
+        val local = CompletableDeferred<FlightSharePage?>()
+        val cacheStarted = CompletableDeferred<Unit>()
+        var reads = 0
+        val vm = model(fetch = { _, _, _, _ -> if (++reads == 1) page("initial") else network.await() },
+            cached = { _, _, _, _ -> cacheStarted.complete(Unit); local.await() }, changes = changes)
+        vm.refresh()
+        vm.refresh()
+        changes.emit(Unit)
+        cacheStarted.await()
+        network.complete(page("fresh"))
+        local.complete(page("old-cache").copy(fromCache = true))
+        assertEquals(listOf("fresh"), vm.state.value.items.map { it.id })
+        assertFalse(vm.state.value.fromCache)
+        assertFalse(vm.state.value.refreshing)
+    }
+
     @Test fun combinedFeedRequestsAllPostsWithoutAQueryAcrossPages() {
         val requests = mutableListOf<Pair<FlightShareDirection, String>>()
         val vm = model(fetch = { direction, query, number, _ ->
@@ -115,10 +198,11 @@ class SharedFlightsViewModelTest {
     }
 
     private fun model(fetch: suspend (FlightShareDirection, String, Int, Int) -> FlightSharePage = { _, _, _, _ -> page("one") },
+        cached: suspend (FlightShareDirection, String, Int, Int) -> FlightSharePage? = { _, _, _, _ -> null },
         changes: kotlinx.coroutines.flow.Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
         scopeCurrent: suspend (String, String?) -> Boolean = { _, _ -> true },
         reconcile: suspend (List<FlightSharePost>, String?) -> List<FlightSharePost> = { rows, _ -> rows },
-    ) = SharedFlightsViewModel(fetch, { _, _, _, _ -> null }, changes = changes, scope = scope, now = { at },
+    ) = SharedFlightsViewModel(fetch, cached, changes = changes, scope = scope, now = { at },
         scopeCurrent = scopeCurrent, reconcile = reconcile)
 
     private fun page(id: String) = FlightSharePage(listOf(post(id)), totalCount = 1, stationId = "station",

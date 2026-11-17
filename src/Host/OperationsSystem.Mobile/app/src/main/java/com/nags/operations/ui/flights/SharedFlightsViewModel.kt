@@ -61,6 +61,7 @@ internal class SharedFlightsViewModel(
     val state = _state.asStateFlow()
     private var request: Job? = null
     private var revision = 0L
+    private var acceptedRevision = 0L
 
     init {
         work.launch {
@@ -110,13 +111,14 @@ internal class SharedFlightsViewModel(
     private suspend fun refreshCached() {
         val target = _state.value
         val stamp = revision
+        val acceptedStamp = acceptedRevision
         try {
             val pages = (1..target.page).map { cached(FlightShareDirection.All, "", it, PAGE_SIZE) }
-            if (stamp != revision || _state.value.loadingMore) return
+            if (stamp != revision || acceptedStamp != acceptedRevision || _state.value.loadingMore) return
             if (pages.any { it == null }) {
                 val stillAuthorized = target.stationId?.let { scopeCurrent(it, target.ownerSessionKey) } == true
                 val retained = if (stillAuthorized) reconcile(target.items, target.ownerSessionKey) else emptyList()
-                if (stamp != revision) return
+                if (stamp != revision || acceptedStamp != acceptedRevision) return
                 _state.update { it.copy(items = retained,
                     totalCount = if (stillAuthorized) (it.totalCount - (target.items.size - retained.size)).coerceAtLeast(0) else 0,
                     hasMore = stillAuthorized && it.hasMore) }
@@ -137,15 +139,24 @@ internal class SharedFlightsViewModel(
     }
 
     private fun accept(result: FlightSharePage, append: Boolean, keepPage: Boolean = false) {
+        if (!keepPage) acceptedRevision++
         val at = now()
         _state.update { current ->
             val sameStation = current.stationId == null || current.stationId == result.stationId
+            val sameSource = current.stationId == result.stationId && current.ownerSessionKey == result.ownerSessionKey
             val previous = if (append && sameStation) current.items else emptyList()
+            // Cache invalidations reconcile the displayed rows; they are not another network result.
+            val fromCache = when {
+                keepPage && current.loaded && sameSource -> current.fromCache
+                append && sameSource -> current.fromCache || result.fromCache
+                else -> result.fromCache
+            }
             current.copy(items = (previous + result.items).distinctBy { it.id }.filter { it.flight.isInFlightWindow(at) },
                 stationId = result.stationId, ownerSessionKey = result.ownerSessionKey, page = if (keepPage) current.page else result.page,
                 totalCount = result.totalCount, hasMore = result.hasNextPage, loaded = true,
-                loading = false, refreshing = false, loadingMore = false, fromCache = result.fromCache,
-                error = null, moreError = null)
+                loading = keepPage && current.loading, refreshing = keepPage && current.refreshing,
+                loadingMore = keepPage && current.loadingMore, fromCache = fromCache,
+                error = if (keepPage) current.error else null, moreError = if (keepPage) current.moreError else null)
         }
     }
 

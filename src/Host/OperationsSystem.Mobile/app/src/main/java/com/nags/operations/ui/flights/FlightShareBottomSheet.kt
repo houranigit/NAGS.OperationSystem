@@ -9,6 +9,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -17,11 +18,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -49,27 +52,33 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -80,6 +89,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Velocity
 import com.nags.operations.R
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.FlightDetail
@@ -92,6 +102,7 @@ import com.nags.operations.ui.components.InlineNotice
 import com.nags.operations.ui.components.InlineNoticeKind
 import com.nags.operations.ui.theme.AccentBlue
 import java.util.UUID
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -127,18 +138,39 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
     var attemptJson by rememberSaveable(flight.id) { mutableStateOf<String?>(null) }
     var attemptedFlight by rememberSaveable(flight.id) { mutableStateOf<String?>(null) }
     var busy by remember(flight.id) { mutableStateOf(false) }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
-        confirmValueChange = { !busy || it != SheetValue.Hidden })
+    var closing by remember { mutableStateOf(false) }
+    var dismissed by remember { mutableStateOf(false) }
+    var searchFocused by remember { mutableStateOf(false) }
+    var keyboardShown by remember { mutableStateOf(false) }
+    var dismissKeyboardRequest by remember { mutableIntStateOf(0) }
+    var messageFocused by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false, confirmValueChange = { value ->
+        when {
+            busy && value == SheetValue.Hidden -> false
+            !closing && value != SheetValue.Expanded && (searchFocused || messageFocused || keyboardShown) -> {
+                dismissKeyboardRequest++
+                false
+            }
+            else -> true
+        }
+    })
     var error by rememberSaveable(flight.id) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    var messageFocused by remember { mutableStateOf(false) }
+    var searchBounds by remember { mutableStateOf<Rect?>(null) }
     var messageBounds by remember { mutableStateOf<Rect?>(null) }
     var sheetOrigin by remember { mutableStateOf(Offset.Zero) }
+    val currentDismiss by rememberUpdatedState(onDismiss)
+    fun finishDismiss() {
+        if (!dismissed) {
+            dismissed = true
+            currentDismiss()
+        }
+    }
     val frozen = attemptJson != null
     val composing = messageStep || frozen
-    val canPublish = online && !busy && (frozen || flight.canShare && !flight.hasCancellationSubmission) && message.length <= 2000
+    val canPublish = online && !busy && !closing && (frozen || flight.canShare && !flight.hasCancellationSubmission) && message.length <= 2000
     fun removeEmployee(id: String) {
-        if (!busy && !frozen) selectedJson = Json.encodeToString((selected - id).toList())
+        if (!busy && !frozen && !closing) selectedJson = Json.encodeToString((selected - id).toList())
     }
     val title = if (composing) stringResource(R.string.flight_share_title)
         else stringResource(R.string.flight_share_station_staff, flight.stationIata)
@@ -147,16 +179,46 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
     val stationCount = remember(stationStaff, flight.stationId) {
         stationStaff.filter { it.stationId.equals(flight.stationId, true) }.distinctBy { it.id }.size
     }
-    ModalBottomSheet(onDismissRequest = { if (!busy) onDismiss() }, sheetState = sheetState,
+    val flingBoundary = remember(sheetState) {
+        object : NestedScrollConnection {
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                // A scroll reaching its top must not fling the expanded sheet closed.
+                val atExpanded = runCatching { sheetState.requireOffset() <= 0.5f }.getOrDefault(false)
+                return if (available.y > 0f && atExpanded) Velocity(0f, available.y) else Velocity.Zero
+            }
+        }
+    }
+    ModalBottomSheet(onDismissRequest = { if (!busy) finishDismiss() }, sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), containerColor = ground,
-        sheetGesturesEnabled = !composing || !messageFocused,
+        sheetGesturesEnabled = !busy && !closing && !searchFocused && !messageFocused && !keyboardShown,
         dragHandle = null, tonalElevation = 0.dp, scrimColor = Color.Black.copy(alpha = 0.28f)) {
         val focus = LocalFocusManager.current
         val keyboard = LocalSoftwareKeyboardController.current
-        fun changeStep(showMessage: Boolean) {
-            if (busy || frozen) return
+        val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        fun hideKeyboard() {
             focus.clearFocus()
             keyboard?.hide()
+        }
+        fun expand() {
+            if (!closing) scope.launch { if (!closing) sheetState.expand() }
+        }
+        fun close() {
+            if (!busy && !closing) {
+                closing = true
+                hideKeyboard()
+                scope.launch { sheetState.hide(); finishDismiss() }
+            }
+        }
+        LaunchedEffect(imeVisible) {
+            val wasVisible = keyboardShown
+            keyboardShown = imeVisible
+            if (wasVisible && !imeVisible) focus.clearFocus()
+            if (imeVisible && !closing && sheetState.targetValue != SheetValue.Expanded) expand()
+        }
+        LaunchedEffect(dismissKeyboardRequest) { if (dismissKeyboardRequest > 0) hideKeyboard() }
+        fun changeStep(showMessage: Boolean) {
+            if (busy || frozen || closing) return
+            hideKeyboard()
             messageStep = showMessage
         }
         fun publish() {
@@ -175,8 +237,9 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                 try {
                     onPublish(requestFlight, attempt.id, attempt.message, attempt.staffMemberIds)
                     busy = false
+                    closing = true
                     sheetState.hide()
-                    onDismiss()
+                    finishDismiss()
                 } catch (cancelled: CancellationException) {
                     busy = false
                     throw cancelled
@@ -191,8 +254,16 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                 }
             }
         }
-        BackHandler(enabled = composing && !busy && !frozen) { changeStep(false) }
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.94f).imePadding().semantics { paneTitle = title }
+        BackHandler(enabled = composing && !busy && !frozen && !closing) { changeStep(false) }
+        BackHandler(enabled = !closing && (searchFocused || messageFocused || imeVisible)) { hideKeyboard() }
+        // Preserve the native sheet anchors; only scrollable content measures into the visible area.
+        val viewportModifier = Modifier.layout { measurable, constraints ->
+            val offset = runCatching { sheetState.requireOffset() }.getOrDefault(0f).roundToInt().coerceAtLeast(0)
+            val visibleHeight = (constraints.maxHeight - offset).coerceIn(0, constraints.maxHeight)
+            val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = visibleHeight))
+            layout(constraints.maxWidth, constraints.maxHeight) { placeable.placeRelative(0, 0) }
+        }
+        Column(Modifier.fillMaxWidth().fillMaxHeight().semantics { paneTitle = title }
             .onGloballyPositioned { sheetOrigin = it.positionInWindow() }
             .pointerInput(focus, keyboard) {
                 // Observe taps after child controls, without turning scrolls into keyboard dismissals.
@@ -207,16 +278,23 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                         }) isTap = false
                         event.changes.firstOrNull { it.id == down.id }?.let { release = it.position }
                     } while (event.changes.any { it.pressed })
-                    val bounds = messageBounds
-                    if (messageFocused && isTap && bounds != null && !bounds.contains(release + sheetOrigin)) {
-                        focus.clearFocus()
-                        keyboard?.hide()
-                    }
+                    val bounds = if (searchFocused) searchBounds else if (messageFocused) messageBounds else null
+                    if (isTap && bounds != null && !bounds.contains(release + sheetOrigin)) hideKeyboard()
                 }
             }) {
+            val expanded = sheetState.targetValue == SheetValue.Expanded
+            val handleLabel = stringResource(if (searchFocused || messageFocused || imeVisible) R.string.flight_picker_hide_keyboard
+                else if (expanded) R.string.flight_picker_collapse else R.string.flight_picker_expand)
+            Box(Modifier.fillMaxWidth().height(24.dp).clickable(enabled = !busy && !closing, role = Role.Button, onClickLabel = handleLabel) {
+                if (searchFocused || messageFocused || imeVisible) hideKeyboard()
+                else scope.launch { if (expanded) sheetState.partialExpand() else sheetState.expand() }
+            }.semantics { contentDescription = handleLabel }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(width = 32.dp, height = 4.dp)
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f), CircleShape))
+            }
             Box(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
-                IconButton(onClick = { if (composing && !frozen) changeStep(false) else onDismiss() },
-                    enabled = !busy, modifier = Modifier.size(48.dp).align(Alignment.CenterStart)) {
+                IconButton(onClick = { if (composing && !frozen) changeStep(false) else close() },
+                    enabled = !busy && !closing, modifier = Modifier.size(48.dp).align(Alignment.CenterStart)) {
                     Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)) {
                         Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
                             Icon(if (composing && !frozen) Icons.AutoMirrored.Outlined.ArrowBack else Icons.Outlined.Close,
@@ -242,7 +320,7 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                 }
                 Box(Modifier.align(Alignment.CenterEnd).heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
                     Button(onClick = { if (composing) publish() else changeStep(true) },
-                        enabled = if (composing) canPublish else !busy,
+                        enabled = if (composing) canPublish else !busy && !closing,
                         modifier = Modifier.defaultMinSize(minWidth = 56.dp).heightIn(min = 32.dp),
                         shape = CircleShape, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = if (composing) AccentBlue else FlightPickerActionGreen, contentColor = Color.White)) {
@@ -252,7 +330,7 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                     }
                 }
             }
-            AnimatedContent(targetState = composing, modifier = Modifier.weight(1f), label = "Share step",
+            AnimatedContent(targetState = composing, modifier = Modifier.weight(1f).nestedScroll(flingBoundary), label = "Share step",
                 transitionSpec = {
                     val direction = if (targetState) 1 else -1
                     (slideInHorizontally(tween(220)) { it * direction } + fadeIn(tween(160))) togetherWith
@@ -261,12 +339,13 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                 if (!showMessage) FlightShareEmployeePicker(stationStaff = stationStaff, stationId = flight.stationId,
                     selected = selected, search = search, onSearchChange = { search = it },
                     onToggle = { id -> selectedJson = Json.encodeToString((if (id in selected) selected - id else selected + id).toList()) },
-                    enabled = !busy && !frozen, modifier = Modifier.fillMaxSize())
+                    enabled = !busy && !frozen && !closing, modifier = Modifier.fillMaxSize(),
+                    listViewportModifier = viewportModifier,
+                    onSearchFocusChanged = { focused -> searchFocused = focused; if (focused) expand() },
+                    onSearchBoundsChanged = { searchBounds = it })
                 else CompositionLocalProvider(LocalFlightFormCompact provides true) {
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+                    Column(Modifier.fillMaxSize().then(viewportModifier).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                        val messageFocus = remember { FocusRequester() }
-                        LaunchedEffect(Unit) { if (!frozen) messageFocus.requestFocus() }
                         FlightCard(card, onClick = null, loadCustomerLogo = loadCustomerLogo, reportStatus = reportStatus, compact = true)
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             FlightFormSectionTitle(stringResource(R.string.flight_share_message_title))
@@ -274,9 +353,9 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                                 shape = RoundedCornerShape(24.dp), color = flightPickerCardBackground()) {
                                 FlightFormTextInput(message, { if (it.length <= 2000) message = it },
                                     placeholder = stringResource(R.string.flight_share_message), label = stringResource(R.string.flight_share_message),
-                                    modifier = Modifier.padding(16.dp).focusRequester(messageFocus)
-                                        .onFocusChanged { messageFocused = it.hasFocus }, multiline = true, textAlign = TextAlign.Left,
-                                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done), enabled = !busy && !frozen)
+                                    modifier = Modifier.padding(16.dp)
+                                        .onFocusChanged { messageFocused = it.hasFocus; if (it.hasFocus) expand() }, multiline = true, textAlign = TextAlign.Left,
+                                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done), enabled = !busy && !frozen && !closing)
                             }
                         }
                         if (!online) InlineNotice(stringResource(R.string.flight_share_online_required), kind = InlineNoticeKind.Warning)
@@ -284,7 +363,7 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                         if (frozen && !busy) InlineNotice(stringResource(R.string.flight_share_retry_hint), kind = InlineNoticeKind.Warning)
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             FlightFormSectionTitle(stringResource(R.string.flight_share_list_title))
-                            FlightShareSelectedEmployees(stationStaff, selected, ::removeEmployee, enabled = !busy && !frozen,
+                            FlightShareSelectedEmployees(stationStaff, selected, ::removeEmployee, enabled = !busy && !frozen && !closing,
                                 modifier = Modifier.fillMaxWidth().background(flightPickerCardBackground(), RoundedCornerShape(16.dp)),
                                 onAdd = { changeStep(false) }, wrap = true)
                             if (selected.isEmpty()) Text(stringResource(R.string.flight_share_whole_station_note),

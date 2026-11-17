@@ -42,7 +42,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -107,6 +109,9 @@ internal fun FlightShareEmployeePicker(
     onToggle: (String) -> Unit,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    listViewportModifier: Modifier = Modifier,
+    onSearchFocusChanged: (Boolean) -> Unit = {},
+    onSearchBoundsChanged: (Rect) -> Unit = {},
 ) {
     val ground = flightPickerPageBackground()
     val locale = LocalLocale.current.platformLocale
@@ -118,6 +123,7 @@ internal fun FlightShareEmployeePicker(
         groups.associate { group -> group.letter to next.also { next += 1 + group.employees.size } }
     }
     val list = rememberLazyListState()
+    val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(search) { list.scrollToItem(0) }
     val currentLetter by remember(list, groupIndexes) {
@@ -128,13 +134,15 @@ internal fun FlightShareEmployeePicker(
         FlightTabSearchHeader(isSearchOpen = true, query = search, onQueryChange = onSearchChange,
             onOpenSearch = {}, onCloseSearch = {}, modifier = Modifier.fillMaxWidth(),
             searchDescription = findEmployees, placeholder = findEmployees,
-            showCloseButton = false, autoFocusOnOpen = false, interactionEnabled = enabled, showDividers = false, searchSurface = flightPickerCardBackground(), tabs = {})
+            showCloseButton = false, autoFocusOnOpen = false, interactionEnabled = enabled,
+            onSearchFocusChanged = onSearchFocusChanged, onSearchBoundsChanged = onSearchBoundsChanged,
+            showDividers = false, searchSurface = flightPickerCardBackground(), tabs = {})
         if (selected.isNotEmpty()) FlightShareSelectedEmployees(
             stationStaff = stationStaff.filter { it.stationId.equals(stationId, true) }, selected = selected,
             onRemove = onToggle, enabled = enabled,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 8.dp)
                 .background(flightPickerCardBackground(), RoundedCornerShape(20.dp)))
-        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).then(listViewportModifier)) {
             LazyColumn(state = list, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
                 if (groups.isEmpty()) item(key = "no-employees", contentType = "empty") {
                     Text(stringResource(R.string.flight_share_no_employees), Modifier.padding(horizontal = 16.dp, vertical = 20.dp),
@@ -179,6 +187,7 @@ internal fun FlightShareEmployeePicker(
                 }
             }
             FlightListIndex(groups.map { it.letter }, currentLetter, enabled) { letter ->
+                focus.clearFocus()
                 keyboard?.hide()
                 list.requestScrollToItem(groupIndexes.getValue(letter))
             }
