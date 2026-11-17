@@ -519,10 +519,11 @@
     <string name="flight_share_add_employees">إضافة موظفين</string>
     <string name="flight_share_employee">موظف</string>
     <string name="flight_share_title">مشاركة الرحلة</string>
-    <string name="flight_share_whole_station">إلى: جميع موظفي المحطة</string>
-    <string name="flight_share_selected_count">الموظفون المختارون: %1$d</string>
+    <string name="flight_share_whole_station_note">ستتم مشاركة هذه الرحلة مع جميع موظفي المحطة.</string>
+    <string name="flight_share_list_title">قائمة المشاركة</string>
     <string name="flight_share_audience_hint">اختر موظفين، أو اترك القائمة فارغة للمشاركة مع جميع موظفي محطتك.</string>
     <string name="flight_share_message">رسالة (اختياري)</string>
+    <string name="flight_share_message_title">الرسالة</string>
     <string name="flight_share_find_employee">البحث عن موظفي المحطة</string>
     <string name="flight_share_jump_to_letter">الانتقال إلى %1$s</string>
     <string name="flight_share_no_employees">لا يوجد موظفون مطابقون.</string>

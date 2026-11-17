@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -231,8 +229,7 @@ private fun FlightShareSelectionCircle(selected: Boolean, enabled: Boolean) {
     }
 }
 
-/** The same selected-avatar tiles serve the picker strip and wrapping message-page recipient group. */
-@OptIn(ExperimentalLayoutApi::class)
+/** The same selected-avatar tiles serve the picker strip and five-column message-page recipient group. */
 @Composable
 internal fun FlightShareSelectedEmployees(
     stationStaff: List<StaffCatalogItem>,
@@ -246,17 +243,29 @@ internal fun FlightShareSelectedEmployees(
     if (selected.isEmpty() && onAdd == null) return
     val byId = remember(stationStaff) { stationStaff.associateBy { it.id } }
     val fallback = stringResource(R.string.flight_share_employee)
-    val tiles: @Composable () -> Unit = {
-        if (onAdd != null) FlightShareAddEmployeesTile(onAdd, enabled)
-        selected.forEach { id ->
-            val employee = byId[id]
-            FlightShareSelectedEmployeeTile(employee?.fullName?.takeIf { it.isNotBlank() } ?: fallback,
-                id, enabled, onRemove = { onRemove(id) })
+    if (wrap) {
+        val slots = buildList<String?> {
+            if (onAdd != null) add(null)
+            addAll(selected)
         }
-    }
-    if (wrap) FlowRow(modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { tiles() }
-    else {
+        Column(modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            slots.chunked(5).forEach { row ->
+                Row(Modifier.fillMaxWidth()) {
+                    // Empty trailing slots retain the same column alignment on the final row.
+                    repeat(5) { column ->
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            if (column < row.size) {
+                                val id = row[column]
+                                if (id == null) onAdd?.let { FlightShareAddEmployeesTile(it, enabled) }
+                                else FlightShareSelectedEmployeeTile(byId[id]?.fullName?.takeIf { it.isNotBlank() } ?: fallback,
+                                    id, enabled, onRemove = { onRemove(id) })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
         val orderedIds = selected.toList()
         val selectedList = rememberLazyListState()
         var previousIds by remember { mutableStateOf(orderedIds.toSet()) }

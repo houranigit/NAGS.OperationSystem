@@ -32,7 +32,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -262,33 +262,36 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                     selected = selected, search = search, onSearchChange = { search = it },
                     onToggle = { id -> selectedJson = Json.encodeToString((if (id in selected) selected - id else selected + id).toList()) },
                     enabled = !busy && !frozen, modifier = Modifier.fillMaxSize())
-                else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    val messageFocus = remember { FocusRequester() }
-                    LaunchedEffect(Unit) { if (!frozen) messageFocus.requestFocus() }
-                    Surface(modifier = Modifier.onGloballyPositioned { messageBounds = it.boundsInWindow() },
-                        shape = RoundedCornerShape(24.dp), color = flightShareListBackground()) {
-                        Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.Top) {
-                            Icon(Icons.Outlined.Edit, null, Modifier.padding(top = 10.dp).size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            FlightFormTextInput(message, { if (it.length <= 2000) message = it },
-                                placeholder = stringResource(R.string.flight_share_message), label = stringResource(R.string.flight_share_message),
-                                modifier = Modifier.weight(1f).focusRequester(messageFocus)
-                                    .onFocusChanged { messageFocused = it.hasFocus }, multiline = true, textAlign = TextAlign.Left,
-                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done), enabled = !busy && !frozen)
+                else CompositionLocalProvider(LocalFlightFormCompact provides true) {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                        val messageFocus = remember { FocusRequester() }
+                        LaunchedEffect(Unit) { if (!frozen) messageFocus.requestFocus() }
+                        FlightCard(card, onClick = null, loadCustomerLogo = loadCustomerLogo, reportStatus = reportStatus, compact = true)
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            FlightFormSectionTitle(stringResource(R.string.flight_share_message_title))
+                            Surface(modifier = Modifier.fillMaxWidth().onGloballyPositioned { messageBounds = it.boundsInWindow() },
+                                shape = RoundedCornerShape(24.dp), color = flightShareListBackground()) {
+                                FlightFormTextInput(message, { if (it.length <= 2000) message = it },
+                                    placeholder = stringResource(R.string.flight_share_message), label = stringResource(R.string.flight_share_message),
+                                    modifier = Modifier.padding(16.dp).focusRequester(messageFocus)
+                                        .onFocusChanged { messageFocused = it.hasFocus }, multiline = true, textAlign = TextAlign.Left,
+                                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done), enabled = !busy && !frozen)
+                            }
                         }
-                    }
-                    if (!online) InlineNotice(stringResource(R.string.flight_share_online_required), kind = InlineNoticeKind.Warning)
-                    error?.let { InlineNotice(it, kind = InlineNoticeKind.Error) }
-                    if (frozen && !busy) InlineNotice(stringResource(R.string.flight_share_retry_hint), kind = InlineNoticeKind.Warning)
-                    FlightCard(card, onClick = null, loadCustomerLogo = loadCustomerLogo, reportStatus = reportStatus, compact = true)
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(if (selected.isEmpty()) stringResource(R.string.flight_share_whole_station)
-                            else stringResource(R.string.flight_share_selected_count, selected.size),
-                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        FlightShareSelectedEmployees(stationStaff, selected, ::removeEmployee, enabled = !busy && !frozen,
-                            modifier = Modifier.fillMaxWidth().background(flightShareListBackground(), RoundedCornerShape(16.dp)),
-                            onAdd = { changeStep(false) }, wrap = true)
+                        if (!online) InlineNotice(stringResource(R.string.flight_share_online_required), kind = InlineNoticeKind.Warning)
+                        error?.let { InlineNotice(it, kind = InlineNoticeKind.Error) }
+                        if (frozen && !busy) InlineNotice(stringResource(R.string.flight_share_retry_hint), kind = InlineNoticeKind.Warning)
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            FlightFormSectionTitle(stringResource(R.string.flight_share_list_title))
+                            FlightShareSelectedEmployees(stationStaff, selected, ::removeEmployee, enabled = !busy && !frozen,
+                                modifier = Modifier.fillMaxWidth().background(flightShareListBackground(), RoundedCornerShape(16.dp)),
+                                onAdd = { changeStep(false) }, wrap = true)
+                            if (selected.isEmpty()) Text(stringResource(R.string.flight_share_whole_station_note),
+                                Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 18.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }

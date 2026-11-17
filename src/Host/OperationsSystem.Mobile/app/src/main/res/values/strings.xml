@@ -543,10 +543,11 @@
     <string name="flight_share_add_employees">Add employees</string>
     <string name="flight_share_employee">Employee</string>
     <string name="flight_share_title">Share flight</string>
-    <string name="flight_share_whole_station">To: Whole station</string>
-    <string name="flight_share_selected_count">Selected employees: %1$d</string>
+    <string name="flight_share_whole_station_note">This flight will be shared with all station employees.</string>
+    <string name="flight_share_list_title">Share List</string>
     <string name="flight_share_audience_hint">Select employees, or leave the list empty to share with your whole station.</string>
     <string name="flight_share_message">Message (optional)</string>
+    <string name="flight_share_message_title">Message</string>
     <string name="flight_share_find_employee">Find station employees</string>
     <string name="flight_share_jump_to_letter">Jump to %1$s</string>
     <string name="flight_share_no_employees">No matching station employees.</string>
