@@ -39,8 +39,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,6 +68,7 @@ import java.text.Collator
 import java.text.Normalizer
 import java.util.Locale
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 internal data class FlightShareEmployeeGroup(val letter: String, val employees: List<StaffCatalogItem>)
 
@@ -146,7 +150,7 @@ internal fun FlightShareEmployeePicker(
         FlightTabSearchHeader(isSearchOpen = true, query = search, onQueryChange = onSearchChange,
             onOpenSearch = {}, onCloseSearch = {}, modifier = Modifier.fillMaxWidth(),
             searchDescription = findEmployees, placeholder = findEmployees,
-            showCloseButton = false, autoFocusOnOpen = false, interactionEnabled = enabled, showDividers = false, tabs = {})
+            showCloseButton = false, autoFocusOnOpen = false, interactionEnabled = enabled, showDividers = false, searchSurface = flightShareListBackground(), tabs = {})
         if (selected.isNotEmpty()) FlightShareSelectedEmployees(
             stationStaff = stationStaff.filter { it.stationId.equals(stationId, true) }, selected = selected,
             onRemove = onToggle, enabled = enabled,
@@ -252,13 +256,28 @@ internal fun FlightShareSelectedEmployees(
     }
     if (wrap) FlowRow(modifier.padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { tiles() }
-    else LazyRow(modifier, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        items(selected.toList(), key = { it }) { id ->
-            FlightShareSelectedEmployeeTile(byId[id]?.fullName?.takeIf { it.isNotBlank() } ?: fallback,
-                id, enabled, onRemove = { onRemove(id) })
+    else {
+        val orderedIds = selected.toList()
+        val selectedList = rememberLazyListState()
+        var previousIds by remember { mutableStateOf(orderedIds.toSet()) }
+        LaunchedEffect(orderedIds) {
+            val added = orderedIds.lastOrNull { it !in previousIds }
+            previousIds = orderedIds.toSet()
+            if (added != null) {
+                // Wait for the new tile's layout; removals and unrelated recompositions never reposition the strip.
+                val itemCount = orderedIds.size + if (onAdd != null) 1 else 0
+                snapshotFlow { selectedList.layoutInfo.totalItemsCount }.first { it >= itemCount }
+                selectedList.animateScrollToItem(orderedIds.indexOf(added))
+            }
         }
-        if (onAdd != null) item(key = "add-employees") { FlightShareAddEmployeesTile(onAdd, enabled) }
+        LazyRow(modifier, state = selectedList, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            items(orderedIds, key = { it }) { id ->
+                FlightShareSelectedEmployeeTile(byId[id]?.fullName?.takeIf { it.isNotBlank() } ?: fallback,
+                    id, enabled, onRemove = { onRemove(id) })
+            }
+            if (onAdd != null) item(key = "add-employees") { FlightShareAddEmployeesTile(onAdd, enabled) }
+        }
     }
 }
 

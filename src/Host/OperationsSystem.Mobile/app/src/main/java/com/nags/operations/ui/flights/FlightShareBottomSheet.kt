@@ -9,6 +9,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Box
@@ -55,7 +57,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -80,6 +90,7 @@ import com.nags.operations.data.withReturnToRampReports
 import com.nags.operations.ui.components.FlightCard
 import com.nags.operations.ui.components.InlineNotice
 import com.nags.operations.ui.components.InlineNoticeKind
+import com.nags.operations.ui.theme.AccentBlue
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -120,51 +131,14 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
         confirmValueChange = { !busy || it != SheetValue.Hidden })
     var error by rememberSaveable(flight.id) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val focus = LocalFocusManager.current
-    val keyboard = LocalSoftwareKeyboardController.current
+    var messageFocused by remember { mutableStateOf(false) }
+    var messageBounds by remember { mutableStateOf<Rect?>(null) }
+    var sheetOrigin by remember { mutableStateOf(Offset.Zero) }
     val frozen = attemptJson != null
     val composing = messageStep || frozen
     val canPublish = online && !busy && (frozen || flight.canShare && !flight.hasCancellationSubmission) && message.length <= 2000
-    fun changeStep(showMessage: Boolean) {
-        if (busy || frozen) return
-        focus.clearFocus()
-        keyboard?.hide()
-        messageStep = showMessage
-    }
     fun removeEmployee(id: String) {
         if (!busy && !frozen) selectedJson = Json.encodeToString((selected - id).toList())
-    }
-    fun publish() {
-        if (!canPublish) return
-        val attempt = attemptJson?.let { Json.decodeFromString<FlightShareAttempt>(it) }
-            ?: FlightShareAttempt.create(UUID.randomUUID().toString(), message, selected).also {
-                attemptJson = Json.encodeToString(it)
-                attemptedFlight = Json.encodeToString(flight)
-            }
-        val requestFlight = attemptedFlight?.let { Json.decodeFromString<FlightDetail>(it) } ?: flight
-        busy = true
-        error = null
-        focus.clearFocus()
-        keyboard?.hide()
-        scope.launch {
-            try {
-                onPublish(requestFlight, attempt.id, attempt.message, attempt.staffMemberIds)
-                busy = false
-                sheetState.hide()
-                onDismiss()
-            } catch (cancelled: CancellationException) {
-                busy = false
-                throw cancelled
-            } catch (failure: Exception) {
-                // A definite 4xx rejection did not publish this body. Transport/5xx outcomes remain frozen.
-                if (failure is ApiException && failure.statusCode in 400..499 && failure.statusCode !in setOf(408, 429)) {
-                    attemptJson = null
-                    attemptedFlight = null
-                }
-                error = failure.userMessage()
-                busy = false
-            }
-        }
     }
     val title = if (composing) stringResource(R.string.flight_share_title)
         else stringResource(R.string.flight_share_station_staff, flight.stationIata)
@@ -175,9 +149,71 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
     }
     ModalBottomSheet(onDismissRequest = { if (!busy) onDismiss() }, sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), containerColor = ground,
+        sheetGesturesEnabled = !composing || !messageFocused,
         dragHandle = null, tonalElevation = 0.dp, scrimColor = Color.Black.copy(alpha = 0.28f)) {
+        val focus = LocalFocusManager.current
+        val keyboard = LocalSoftwareKeyboardController.current
+        fun changeStep(showMessage: Boolean) {
+            if (busy || frozen) return
+            focus.clearFocus()
+            keyboard?.hide()
+            messageStep = showMessage
+        }
+        fun publish() {
+            if (!canPublish) return
+            val attempt = attemptJson?.let { Json.decodeFromString<FlightShareAttempt>(it) }
+                ?: FlightShareAttempt.create(UUID.randomUUID().toString(), message, selected).also {
+                    attemptJson = Json.encodeToString(it)
+                    attemptedFlight = Json.encodeToString(flight)
+                }
+            val requestFlight = attemptedFlight?.let { Json.decodeFromString<FlightDetail>(it) } ?: flight
+            busy = true
+            error = null
+            focus.clearFocus()
+            keyboard?.hide()
+            scope.launch {
+                try {
+                    onPublish(requestFlight, attempt.id, attempt.message, attempt.staffMemberIds)
+                    busy = false
+                    sheetState.hide()
+                    onDismiss()
+                } catch (cancelled: CancellationException) {
+                    busy = false
+                    throw cancelled
+                } catch (failure: Exception) {
+                    // A definite 4xx rejection did not publish this body. Transport/5xx outcomes remain frozen.
+                    if (failure is ApiException && failure.statusCode in 400..499 && failure.statusCode !in setOf(408, 429)) {
+                        attemptJson = null
+                        attemptedFlight = null
+                    }
+                    error = failure.userMessage()
+                    busy = false
+                }
+            }
+        }
         BackHandler(enabled = composing && !busy && !frozen) { changeStep(false) }
-        Column(Modifier.fillMaxWidth().fillMaxHeight(0.94f).imePadding().semantics { paneTitle = title }) {
+        Column(Modifier.fillMaxWidth().fillMaxHeight(0.94f).imePadding().semantics { paneTitle = title }
+            .onGloballyPositioned { sheetOrigin = it.positionInWindow() }
+            .pointerInput(focus, keyboard) {
+                // Observe taps after child controls, without turning scrolls into keyboard dismissals.
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    var isTap = true
+                    var release = down.position
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Final)
+                        if (event.changes.size > 1 || event.changes.any {
+                            (it.position - down.position).getDistance() > viewConfiguration.touchSlop
+                        }) isTap = false
+                        event.changes.firstOrNull { it.id == down.id }?.let { release = it.position }
+                    } while (event.changes.any { it.pressed })
+                    val bounds = messageBounds
+                    if (messageFocused && isTap && bounds != null && !bounds.contains(release + sheetOrigin)) {
+                        focus.clearFocus()
+                        keyboard?.hide()
+                    }
+                }
+            }) {
             Box(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
                 IconButton(onClick = { if (composing && !frozen) changeStep(false) else onDismiss() },
                     enabled = !busy, modifier = Modifier.size(48.dp).align(Alignment.CenterStart)) {
@@ -209,7 +245,7 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                         enabled = if (composing) canPublish else !busy,
                         modifier = Modifier.defaultMinSize(minWidth = 56.dp).heightIn(min = 32.dp),
                         shape = CircleShape, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = FlightShareActionGreen, contentColor = Color.White)) {
+                        colors = ButtonDefaults.buttonColors(containerColor = if (composing) AccentBlue else FlightShareActionGreen, contentColor = Color.White)) {
                         if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                         else Text(stringResource(if (!composing) R.string.flight_share_next else if (frozen) R.string.flight_share_retry else R.string.flight_share_publish),
                             style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp, lineHeight = 16.sp), fontWeight = FontWeight.SemiBold)
@@ -230,13 +266,15 @@ internal fun FlightShareBottomSheet(flight: FlightDetail, stationStaff: List<Sta
                     verticalArrangement = Arrangement.spacedBy(20.dp)) {
                     val messageFocus = remember { FocusRequester() }
                     LaunchedEffect(Unit) { if (!frozen) messageFocus.requestFocus() }
-                    Surface(shape = RoundedCornerShape(24.dp), color = flightShareListBackground()) {
+                    Surface(modifier = Modifier.onGloballyPositioned { messageBounds = it.boundsInWindow() },
+                        shape = RoundedCornerShape(24.dp), color = flightShareListBackground()) {
                         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.Top) {
                             Icon(Icons.Outlined.Edit, null, Modifier.padding(top = 10.dp).size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             FlightFormTextInput(message, { if (it.length <= 2000) message = it },
                                 placeholder = stringResource(R.string.flight_share_message), label = stringResource(R.string.flight_share_message),
-                                modifier = Modifier.weight(1f).focusRequester(messageFocus), multiline = true, textAlign = TextAlign.Left,
+                                modifier = Modifier.weight(1f).focusRequester(messageFocus)
+                                    .onFocusChanged { messageFocused = it.hasFocus }, multiline = true, textAlign = TextAlign.Left,
                                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done), enabled = !busy && !frozen)
                         }
                     }
