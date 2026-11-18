@@ -32,8 +32,8 @@
     <string name="flight_submission_timestamp">%1$s at %2$s</string>
     <string name="app_name">Operations</string>
     <string name="notification_channel_id" translatable="false">flight_assignments</string>
-    <string name="notification_channel_name" translatable="false">Flight assignments</string>
-    <string name="notification_channel_description" translatable="false">Alerts when a teammate assigns you to a flight</string>
+    <string name="notification_channel_name" translatable="false">Flight and sync alerts</string>
+    <string name="notification_channel_description" translatable="false">Flight assignments, schedules, shared flights, reminders and saved-work sync alerts</string>
     <string name="notification_assigned_title" translatable="false">You were assigned to a flight</string>
     <string name="notification_assigned_body" translatable="false">%1$s added you to flight %2$s.</string>
     <string name="notification_fallback_teammate" translatable="false">A teammate</string>

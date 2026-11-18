@@ -11,6 +11,19 @@ internal static class NotificationEndpoints
 {
     public static void Map(IEndpointRouteBuilder group)
     {
+        group.MapGet("/me/preferences", async (ISender sender, CancellationToken cancellationToken) =>
+        {
+            var result = await sender.Send(new GetMyNotificationPreferencesQuery(), cancellationToken);
+            return result.ToOk();
+        }).WithName("GetMyNotificationPreferences");
+
+        group.MapPatch("/me/preferences", async (
+            UpdateNotificationPreferenceRequest request, ISender sender, CancellationToken cancellationToken) =>
+        {
+            var result = await sender.Send(new UpdateMyNotificationPreferenceCommand(request.Key, request.Enabled), cancellationToken);
+            return result.ToOk();
+        }).WithName("UpdateMyNotificationPreference");
+
         group.MapGet("/me", async (
             ISender sender,
             CancellationToken cancellationToken,
@@ -96,3 +109,5 @@ internal static class NotificationEndpoints
         }).WithName("RevokeNotificationDevice");
     }
 }
+
+internal sealed record UpdateNotificationPreferenceRequest(string? Key, bool? Enabled);

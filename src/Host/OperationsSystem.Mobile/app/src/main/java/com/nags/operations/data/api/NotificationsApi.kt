@@ -9,10 +9,14 @@ import com.nags.operations.data.notifications.ReadNotificationInboxRequest
 import com.nags.operations.data.notifications.RegisterDeviceTokenRequest
 import com.nags.operations.data.notifications.RevokeDeviceTokenRequest
 import com.nags.operations.data.notifications.UnreadNotificationCountDto
+import com.nags.operations.data.notifications.NotificationPreferences
+import com.nags.operations.data.notifications.NotificationPreferenceKey
+import com.nags.operations.data.notifications.UpdateNotificationPreferenceRequest
 import com.nags.operations.data.api.HttpClientFactory.bodyOrThrow
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -39,6 +43,15 @@ class NotificationsApi(
 
     suspend fun unreadState(): UnreadNotificationCountDto =
         client.get(url("me/unread-count")).bodyOrThrow()
+
+    suspend fun preferences(): NotificationPreferences =
+        client.get(url("me/preferences")).bodyOrThrow()
+
+    suspend fun updatePreference(key: NotificationPreferenceKey, enabled: Boolean): NotificationPreferences =
+        client.patch(url("me/preferences")) {
+            contentType(ContentType.Application.Json)
+            setBody(UpdateNotificationPreferenceRequest(key.wireName, enabled))
+        }.bodyOrThrow()
 
     suspend fun readCategory(category: NotificationCategory, throughCreatedAtUtc: String): CategoryReadReceiptDto =
         client.post(url("me/read-category")) {

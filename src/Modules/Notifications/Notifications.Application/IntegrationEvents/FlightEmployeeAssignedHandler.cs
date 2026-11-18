@@ -28,7 +28,8 @@ public sealed class FlightEmployeeAssignedHandler(
             // stable notification id; portal/mobile clients dedupe that id.
             var persisted = await db.Notifications
                 .FirstOrDefaultAsync(notification => notification.Id == integrationEvent.EventId, cancellationToken);
-            if (persisted is not null && persisted.DeliveredAtUtc is null)
+            if (persisted is not null && persisted.DeliveredAtUtc is null &&
+                await NotificationPreferenceFilter.IsEnabledAsync(db, persisted.RecipientUserId, persisted.Kind, cancellationToken))
             {
                 await pusher.PushAsync(persisted.RecipientUserId, NotificationMapper.ToDto(persisted), cancellationToken);
                 persisted.MarkDelivered(timeProvider.GetUtcNow());
@@ -44,6 +45,15 @@ public sealed class FlightEmployeeAssignedHandler(
         // for this event and are recorded in the inbox so at-least-once delivery cannot revisit them.
         if (recipient?.LinkedUserId is not { } recipientUserId ||
             recipientUserId == integrationEvent.AssignedByUserId)
+        {
+            db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var notificationKind = integrationEvent.Source == FlightAssignmentSource.Invite
+            ? NotificationKind.EmployeeInvitedToFlight : NotificationKind.StaffAssignedToFlight;
+        if (!await NotificationPreferenceFilter.IsEnabledAsync(db, recipientUserId, notificationKind, cancellationToken))
         {
             db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
             await db.SaveChangesAsync(cancellationToken);
@@ -70,9 +80,7 @@ public sealed class FlightEmployeeAssignedHandler(
         var created = Notification.Create(
             integrationEvent.EventId,
             recipientUserId,
-            integrationEvent.Source == FlightAssignmentSource.Invite
-                ? NotificationKind.EmployeeInvitedToFlight
-                : NotificationKind.StaffAssignedToFlight,
+            notificationKind,
             "You were assigned to a flight",
             $"{inviterNameEn} added you to flight {integrationEvent.FlightNumber}.",
             "تم تعيينك في رحلة",

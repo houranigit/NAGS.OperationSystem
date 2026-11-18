@@ -16,6 +16,19 @@ public sealed record NotificationDto(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? ReadAtUtc);
 
+public sealed record NotificationPreferencesDto(
+    bool Enabled = true,
+    bool FlightAssignments = true,
+    bool FlightInvitations = true,
+    bool ScheduleChanges = true,
+    bool ColleagueEdits = true,
+    bool SyncIssues = true,
+    bool DirectShares = true,
+    bool StationShares = true,
+    bool FlightReminders = true);
+
+public sealed record UpdateNotificationPreferenceRequest(string Key, bool Enabled);
+
 public sealed record UnreadNotificationCount(int Count, int? Invitations = null, int? Reminders = null, int? FlightUpdates = null)
 {
     public int? ForCategory(string category) => category switch

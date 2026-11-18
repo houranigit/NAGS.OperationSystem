@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Notifications.Application.Abstractions;
 using Notifications.Domain.Devices;
 using Notifications.Domain.Notifications;
+using Notifications.Domain.Preferences;
 
 namespace Notifications.Infrastructure.Persistence;
 
@@ -15,6 +16,7 @@ public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbConte
 
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
+    public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
 

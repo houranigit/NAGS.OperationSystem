@@ -11,7 +11,7 @@ using Operations.Contracts;
 
 namespace Notifications.Application.IntegrationEvents;
 
-/// <summary>Creates one generic schedule notification for one recipient of a bulk scheduling action.</summary>
+/// <summary>Creates one schedule notification for bulk additions or a retained assignee's schedule edit.</summary>
 public sealed class FlightScheduleUpdatedHandler(
     INotificationsDbContext db,
     IStaffNotificationReader staffReader,
@@ -28,7 +28,8 @@ public sealed class FlightScheduleUpdatedHandler(
             // transport failed, retry fan-out with the same stable notification id.
             var persisted = await db.Notifications
                 .FirstOrDefaultAsync(notification => notification.Id == integrationEvent.EventId, cancellationToken);
-            if (persisted is not null && persisted.DeliveredAtUtc is null)
+            if (persisted is not null && persisted.DeliveredAtUtc is null &&
+                await NotificationPreferenceFilter.IsEnabledAsync(db, persisted.RecipientUserId, persisted.Kind, cancellationToken))
             {
                 await pusher.PushAsync(persisted.RecipientUserId, NotificationMapper.ToDto(persisted), cancellationToken);
                 persisted.MarkDelivered(timeProvider.GetUtcNow());
@@ -46,19 +47,34 @@ public sealed class FlightScheduleUpdatedHandler(
             return;
         }
 
-        var payload = JsonSerializer.Serialize(new Dictionary<string, string>(StringComparer.Ordinal)
+        if (!await NotificationPreferenceFilter.IsEnabledAsync(db, recipientUserId, NotificationKind.FlightScheduleUpdated, cancellationToken))
+        {
+            db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var values = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["flightCount"] = integrationEvent.FlightCount.ToString(CultureInfo.InvariantCulture)
-        });
+        };
+        if (integrationEvent.FlightId is { } flightId)
+        {
+            values["flightId"] = flightId.ToString();
+            if (!string.IsNullOrWhiteSpace(integrationEvent.FlightNumber))
+                values["flightNumber"] = integrationEvent.FlightNumber;
+        }
+        var payload = JsonSerializer.Serialize(values);
+        var changedFlight = integrationEvent.FlightId.HasValue;
 
         var created = Notification.Create(
             integrationEvent.EventId,
             recipientUserId,
             NotificationKind.FlightScheduleUpdated,
             "Your schedule was updated",
-            "New flights were added to your schedule.",
+            changedFlight ? $"The schedule for flight {integrationEvent.FlightNumber} has changed." : "New flights were added to your schedule.",
             "تم تحديث جدولك",
-            "تمت إضافة رحلات جديدة إلى جدولك.",
+            changedFlight ? $"تم تغيير جدول الرحلة {integrationEvent.FlightNumber}." : "تمت إضافة رحلات جديدة إلى جدولك.",
             payload,
             integrationEvent.OccurredOnUtc);
         if (created.IsFailure)

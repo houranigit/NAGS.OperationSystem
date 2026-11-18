@@ -25,6 +25,8 @@ public static class NotificationPresentation
     {
         "StaffAssignedToFlight" => UiStrings.Notifications.FlightAssignment,
         "FlightScheduleUpdated" => UiStrings.Notifications.ScheduleUpdated,
+        "FlightSharedWithEmployee" => "Shared with you",
+        "FlightSharedWithStation" => "Shared with your station",
         _ => CategoryLabel(Category(notification))
     };
 
@@ -32,6 +34,7 @@ public static class NotificationPresentation
     {
         "EmployeeInvitedToFlight" => "person_add",
         "FlightReminder" => "alarm",
+        "FlightSharedWithEmployee" or "FlightSharedWithStation" => "share",
         "FlightScheduleUpdated" or "FlightSubmissionUpdated" => "event_repeat",
         _ => "flight_takeoff"
     };
@@ -40,7 +43,7 @@ public static class NotificationPresentation
     {
         "FlightReminder" => "notification-tone--reminder",
         "EmployeeInvitedToFlight" => "notification-tone--invitation",
-        "FlightScheduleUpdated" or "FlightSubmissionUpdated" => "notification-tone--info",
+        "FlightScheduleUpdated" or "FlightSubmissionUpdated" or "FlightSharedWithEmployee" or "FlightSharedWithStation" => "notification-tone--info",
         _ => "notification-tone--assignment"
     };
 

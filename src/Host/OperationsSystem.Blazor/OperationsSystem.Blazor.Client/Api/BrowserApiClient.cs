@@ -39,6 +39,9 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
     public Task PostAsync(string path, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Post, path, body: null, ifMatch: null, cancellationToken);
 
+    public Task<TResponse> PatchAsync<TRequest, TResponse>(string path, TRequest body, CancellationToken cancellationToken = default) =>
+        SendAsync<TResponse>(HttpMethod.Patch, path, body, ifMatch: null, cancellationToken);
+
     public Task PutAsync<TRequest>(string path, TRequest body, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Put, path, body, ifMatch: null, cancellationToken);
 

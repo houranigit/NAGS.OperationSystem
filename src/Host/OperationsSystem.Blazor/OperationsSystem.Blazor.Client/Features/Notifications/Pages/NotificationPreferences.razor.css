@@ -1,0 +1,192 @@
+.notification-preferences {
+    display: grid;
+    gap: var(--os-space-4);
+    width: min(100%, 44rem);
+    margin-inline: auto;
+    color: var(--os-color-text);
+}
+
+.notification-preferences-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    width: fit-content;
+    min-height: 2.75rem;
+    color: var(--os-color-primary-strong);
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.notification-preferences-group {
+    display: grid;
+    gap: var(--os-space-2);
+}
+
+.notification-preferences-group h2 {
+    margin: var(--os-space-2) var(--os-space-4) 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.notification-preferences-rows {
+    overflow: hidden;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-lg);
+    background: var(--os-color-surface);
+}
+
+.notification-preferences-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--os-space-4);
+    width: 100%;
+    min-height: 3.5rem;
+    padding: var(--os-space-3) var(--os-space-4);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+
+.notification-preferences-row + .notification-preferences-row::before {
+    content: "";
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: var(--os-space-4);
+    height: 1px;
+    background: var(--os-color-border);
+}
+
+.notification-preferences-row:hover:not(:disabled) {
+    background: var(--os-color-surface-hover);
+}
+
+.notification-preferences-row:focus-visible {
+    z-index: 1;
+    outline: 2px solid var(--os-color-primary);
+    outline-offset: -3px;
+}
+
+.notification-preferences-row:disabled {
+    cursor: default;
+    opacity: 0.55;
+}
+
+.notification-preferences-copy {
+    display: grid;
+    gap: var(--os-space-1);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.notification-preferences-copy strong {
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.notification-preferences-copy > span {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    line-height: 1.5;
+}
+
+.notification-preferences-switch {
+    display: inline-flex;
+    align-items: center;
+    width: 2.625rem;
+    height: 1.625rem;
+    flex: 0 0 auto;
+    padding: 0.1875rem;
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-text-muted);
+    transition: background var(--os-transition);
+}
+
+.notification-preferences-switch::after {
+    content: "";
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-surface);
+    transform: translateX(0);
+    transition: transform var(--os-transition);
+}
+
+.notification-preferences-row[aria-checked="true"] .notification-preferences-switch {
+    background: var(--os-color-success);
+}
+
+.notification-preferences-row[aria-checked="true"] .notification-preferences-switch::after {
+    transform: translateX(1rem);
+}
+
+.notification-preferences-feedback,
+.notification-preferences-note {
+    margin: 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    line-height: 1.5;
+}
+
+.notification-preferences-feedback {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--os-space-2);
+    min-height: 1.5rem;
+}
+
+.notification-preferences-feedback button {
+    min-height: 2.75rem;
+    padding-inline: var(--os-space-3);
+    border: 1px solid var(--os-color-border-strong);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface);
+    color: var(--os-color-primary-strong);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.notification-preferences-error {
+    color: var(--os-color-danger);
+}
+
+.notification-preferences-note a {
+    color: var(--os-color-primary-strong);
+    text-underline-offset: 0.15em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .notification-preferences-switch,
+    .notification-preferences-switch::after {
+        transition: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .notification-preferences-switch {
+        outline: 1px solid ButtonText;
+        background: Canvas;
+    }
+
+    .notification-preferences-switch::after {
+        background: ButtonText;
+    }
+
+    .notification-preferences-row[aria-checked="true"] .notification-preferences-switch {
+        background: Highlight;
+    }
+
+    .notification-preferences-row[aria-checked="true"] .notification-preferences-switch::after {
+        background: HighlightText;
+    }
+}

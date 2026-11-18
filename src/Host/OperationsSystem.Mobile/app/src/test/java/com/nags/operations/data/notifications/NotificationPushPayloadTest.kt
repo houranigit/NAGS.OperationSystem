@@ -10,6 +10,21 @@ import org.junit.Test
 
 class NotificationPushPayloadTest {
     @Test
+    fun acceptsDirectAndStationSharePayloadsAndKeepsFlightNavigation() {
+        listOf(NotificationKinds.FlightSharedWithEmployee, NotificationKinds.FlightSharedWithStation).forEach { kind ->
+            val payload = requireNotNull(NotificationPushPayload.fromData(mapOf(
+                "notificationId" to "share-notification",
+                "kind" to kind,
+                "recipientUserId" to "recipient",
+                "payloadJson" to """{"flightId":"flight-1","flightNumber":"SV123","shareId":"share-1","stationId":"station-1"}""",
+            )))
+            assertEquals("flight-1", payload.openRequest()?.flightId)
+            assertEquals("recipient", payload.openRequest()?.recipientUserId)
+            assertTrue(NotificationCategory.FlightUpdates.includes(kind))
+        }
+    }
+
+    @Test
     fun supportsSubmissionUpdateAndOpensItsFlight() {
         val payload = requireNotNull(NotificationPushPayload.fromData(mapOf(
             "notificationId" to "submission-update-1",

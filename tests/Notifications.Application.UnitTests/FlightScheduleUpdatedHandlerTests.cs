@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MasterData.Contracts.Readers;
 using Microsoft.EntityFrameworkCore;
 using Notifications.Application.Abstractions;
@@ -105,6 +106,38 @@ public sealed class FlightScheduleUpdatedHandlerTests
         (await db.Notifications.SingleAsync()).DeliveredAtUtc.ShouldBe(Now);
         (await db.Notifications.CountAsync()).ShouldBe(1);
         (await db.InboxMessages.CountAsync()).ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Schedule_messages_distinguish_existing_flight_changes_from_compatible_bulk_additions(bool editedFlight)
+    {
+        await using var db = NewDb();
+        var flightId = Guid.NewGuid(); var message = new FlightScheduleUpdated
+        {
+            StaffMemberId = Guid.NewGuid(), FlightCount = editedFlight ? 1 : 3,
+            FlightId = editedFlight ? flightId : null, FlightNumber = editedFlight ? "SV123" : null
+        };
+        var push = new CapturingPusher(); var handler = new FlightScheduleUpdatedHandler(db,
+            new FakeStaffReader(new StaffNotificationRecipient(message.StaffMemberId, "Recipient", Guid.NewGuid())),
+            push, new StaticTimeProvider(Now));
+
+        await handler.HandleAsync(message);
+        await handler.HandleAsync(message);
+
+        var item = await db.Notifications.SingleAsync(); push.Items.ShouldHaveSingleItem();
+        using var payload = JsonDocument.Parse(item.PayloadJson);
+        if (editedFlight)
+        {
+            item.BodyEn.ShouldBe("The schedule for flight SV123 has changed.");
+            payload.RootElement.GetProperty("flightId").GetString().ShouldBe(flightId.ToString());
+        }
+        else
+        {
+            item.BodyEn.ShouldBe("New flights were added to your schedule.");
+            payload.RootElement.TryGetProperty("flightId", out _).ShouldBeFalse();
+        }
     }
 
     private static FlightScheduleUpdated Event(Guid staffMemberId, Guid updatedByUserId) =>

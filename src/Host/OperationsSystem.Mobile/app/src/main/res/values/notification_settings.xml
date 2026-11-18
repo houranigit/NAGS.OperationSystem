@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notification_settings_allow">Allow notifications</string>
+    <string name="notification_settings_scope">Choose which new notifications you receive across Android and the web. Changes save to your account. Existing notifications stay in your inbox.</string>
+    <string name="notification_settings_flights">Flights</string>
+    <string name="notification_settings_assignments">Flight assignments</string>
+    <string name="notification_settings_invitations">Flight invitations</string>
+    <string name="notification_settings_schedule">Schedule additions and changes</string>
+    <string name="notification_settings_edits">Changes to my input</string>
+    <string name="notification_settings_reminders">Flight reminders</string>
+    <string name="notification_settings_sharing">Shared flights</string>
+    <string name="notification_settings_direct_shares">Shared directly with me</string>
+    <string name="notification_settings_station_shares">Shared with my station</string>
+    <string name="notification_settings_saved_work">Saved work</string>
+    <string name="notification_settings_sync_issues">Sync failures and review</string>
+    <string name="notification_settings_device">This device</string>
+    <string name="notification_settings_android">Android notification settings</string>
+    <string name="notification_settings_device_allowed">Notifications allowed · Sound and permissions</string>
+    <string name="notification_settings_device_blocked">Notifications blocked · Open device settings to allow</string>
+    <string name="notification_settings_offline">Connect to change your account preferences. Saved settings are shown when available.</string>
+    <string name="notification_settings_loading">Loading preferences…</string>
+    <string name="notification_settings_saving">Saving preference…</string>
+    <string name="notification_sync_issue_title">Saved work needs attention</string>
+    <string name="notification_sync_issue_body">Some records could not sync or need review. Open Sync Hub to review your saved work.</string>
+</resources>

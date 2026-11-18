@@ -22,7 +22,8 @@ public sealed class FlightSubmissionUpdatedHandler(
         if (await db.HasProcessedAsync(integrationEvent.EventId, Consumer, cancellationToken))
         {
             var persisted = await db.Notifications.SingleOrDefaultAsync(n => n.Id == integrationEvent.EventId, cancellationToken);
-            if (persisted is not null && persisted.DeliveredAtUtc is null)
+            if (persisted is not null && persisted.DeliveredAtUtc is null &&
+                await NotificationPreferenceFilter.IsEnabledAsync(db, persisted.RecipientUserId, persisted.Kind, cancellationToken))
             {
                 await pusher.PushAsync(persisted.RecipientUserId, NotificationMapper.ToDto(persisted), cancellationToken);
                 persisted.MarkDelivered(timeProvider.GetUtcNow());
@@ -35,6 +36,13 @@ public sealed class FlightSubmissionUpdatedHandler(
         // relink must not route the original user's submission notification to a different user.
         var recipientUserId = integrationEvent.SubmittedByUserId;
         if (recipientUserId == Guid.Empty || recipientUserId == integrationEvent.UpdatedByUserId)
+        {
+            db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (!await NotificationPreferenceFilter.IsEnabledAsync(db, recipientUserId, NotificationKind.FlightSubmissionUpdated, cancellationToken))
         {
             db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
             await db.SaveChangesAsync(cancellationToken);

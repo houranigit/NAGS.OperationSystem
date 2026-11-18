@@ -97,6 +97,8 @@ object NotificationKinds {
     const val FlightScheduleUpdated = "FlightScheduleUpdated"
     const val FlightSubmissionUpdated = "FlightSubmissionUpdated"
     const val FlightReminder = "FlightReminder"
+    const val FlightSharedWithEmployee = "FlightSharedWithEmployee"
+    const val FlightSharedWithStation = "FlightSharedWithStation"
 }
 
 @Serializable
@@ -169,6 +171,8 @@ data class NotificationPushPayload(
             NotificationKinds.FlightScheduleUpdated,
             NotificationKinds.FlightSubmissionUpdated,
             NotificationKinds.FlightReminder,
+            NotificationKinds.FlightSharedWithEmployee,
+            NotificationKinds.FlightSharedWithStation,
         )
 
         fun fromData(

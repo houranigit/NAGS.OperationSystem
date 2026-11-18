@@ -355,7 +355,8 @@ public sealed class UpdateScheduledFlightCommandHandler(
             }
         }
 
-        var planningChanged = flight.Schedule != schedule.Value || flight.AircraftType != aircraft.Value
+        var scheduleChanged = flight.Schedule != schedule.Value;
+        var planningChanged = scheduleChanged || flight.AircraftType != aircraft.Value
             || !flight.PlannedServices.Select(service => service.Service).OrderBy(service => service.ServiceId)
                 .SequenceEqual(services.Value.OrderBy(service => service.ServiceId))
             || (employees is not null && !flight.AssignedEmployees.Select(employee => employee.Employee)
@@ -370,6 +371,24 @@ public sealed class UpdateScheduledFlightCommandHandler(
         {
             FlightAssignmentEvents.Enqueue(db, flight,
                 employees.Select(employee => employee.StaffMemberId).Except(currentIds), user, auditContext, now);
+        }
+
+        if (scheduleChanged)
+        {
+            // New assignees receive their assignment alert; removed assignees have no new schedule.
+            foreach (var staffId in flight.AssignedEmployees.Select(employee => employee.Employee.StaffMemberId)
+                .Where(currentIds.Contains).Distinct())
+            {
+                db.Enqueue(new FlightScheduleUpdated
+                {
+                    StaffMemberId = staffId,
+                    FlightCount = 1,
+                    FlightId = flight.Id,
+                    FlightNumber = flight.FlightNumber.Value,
+                    UpdatedByUserId = user.UserId,
+                    OccurredOnUtc = now
+                });
+            }
         }
 
         db.SetOriginalRowVersion(flight, request.RowVersion);

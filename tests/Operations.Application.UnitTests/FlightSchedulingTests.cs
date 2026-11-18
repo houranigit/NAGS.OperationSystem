@@ -519,6 +519,45 @@ public sealed class FlightSchedulingTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task Planning_schedule_edits_notify_retained_assignees_once_without_duplicating_new_assignments(bool changeTimes)
+    {
+        await using var db = NewDb(); var reader = new SchedulingMasterDataReader();
+        var retained = new StaffMemberSnapshot(Guid.NewGuid(), "Retained", "E1");
+        var removed = new StaffMemberSnapshot(Guid.NewGuid(), "Removed", "E2");
+        var added = new StaffMemberSnapshot(Guid.NewGuid(), "Added", "E3");
+        foreach (var employee in new[] { retained, removed, added })
+            reader.StaffMembers.Add(employee.StaffMemberId, new(employee.StaffMemberId, employee.FullName,
+                employee.EmployeeId, reader.StationId, Guid.NewGuid(), true));
+        var flight = NewFlight(reader.StationId, [retained, removed]); db.Flights.Add(flight); await db.SaveChangesAsync();
+        var user = new TestUser();
+        var handler = new UpdateScheduledFlightCommandHandler(db, AdminScope(), new MasterDataResolver(reader),
+            user, new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance);
+        var shift = changeTimes ? TimeSpan.FromDays(1) : TimeSpan.Zero;
+        var command = new UpdateScheduledFlightCommand(flight.Id, flight.Customer.CustomerId, reader.StationId,
+            flight.OperationType.OperationTypeId, flight.Schedule.Sta + shift, flight.Schedule.Std + shift, null,
+            [reader.ServiceId], flight.RowVersion, [retained.StaffMemberId, added.StaffMemberId, added.StaffMemberId]);
+
+        (await handler.Handle(command, default)).IsSuccess.ShouldBeTrue();
+        (await handler.Handle(command, default)).IsSuccess.ShouldBeTrue();
+
+        var rows = await db.OutboxMessages.ToListAsync();
+        var assignments = rows.Where(row => row.Type.Contains(nameof(FlightEmployeeAssigned)))
+            .Select(row => JsonSerializer.Deserialize<FlightEmployeeAssigned>(row.Content)!).ToList();
+        assignments.ShouldHaveSingleItem().StaffMemberId.ShouldBe(added.StaffMemberId);
+        var updates = rows.Where(row => row.Type.Contains(nameof(FlightScheduleUpdated)))
+            .Select(row => JsonSerializer.Deserialize<FlightScheduleUpdated>(row.Content)!).ToList();
+        if (changeTimes)
+        {
+            var update = updates.ShouldHaveSingleItem(); update.StaffMemberId.ShouldBe(retained.StaffMemberId);
+            update.FlightId.ShouldBe(flight.Id); update.FlightNumber.ShouldBe(flight.FlightNumber.Value);
+            update.FlightCount.ShouldBe(1); update.UpdatedByUserId.ShouldBe(user.UserId);
+        }
+        else updates.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Roster_changes_notify_only_new_employees_and_leave_repeats_and_removals_silent(bool throughPlanningEdit)
     {
         await using var db = NewDb();

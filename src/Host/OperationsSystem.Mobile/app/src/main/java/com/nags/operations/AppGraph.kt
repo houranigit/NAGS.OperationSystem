@@ -42,6 +42,7 @@ import com.nags.operations.data.repo.DiskDepartureSignatureStore
 import com.nags.operations.data.repo.DepartureSignaturePreviews
 import com.nags.operations.data.outbox.FlightArrivalSyncWorker
 import com.nags.operations.data.repo.NotificationsRepository
+import com.nags.operations.data.repo.NotificationPreferencesRepository
 import com.nags.operations.data.repo.SharedCatalogsRepository
 import com.nags.operations.data.realtime.CatalogRealtimeChannel
 import com.nags.operations.data.sync.CatalogSyncScheduler
@@ -49,14 +50,18 @@ import com.nags.operations.data.sync.SyncTarget
 import com.nags.operations.notifications.DeviceTokenManager
 import com.nags.operations.notifications.NotificationNavigationCoordinator
 import com.nags.operations.notifications.SystemNotificationManager
+import com.nags.operations.notifications.SyncIssueAlertTracker
+import com.nags.operations.notifications.observeSyncIssues
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -76,6 +81,7 @@ class AppGraph private constructor(context: Context) {
     private val authApi: AuthApi = AuthApi(tokenStore, httpClient)
     val operationsApi: OperationsApi = OperationsApi(tokenStore, httpClient)
     private val notificationsApi: NotificationsApi = NotificationsApi(tokenStore, httpClient)
+    val notificationPreferences = NotificationPreferencesRepository(context.applicationContext, tokenStore, notificationsApi)
     private val sharedCatalogsApi = SharedCatalogsApi(tokenStore, httpClient)
     private val database = NotificationsDatabase.get(context.applicationContext)
     private val catalogDatabase = CatalogDatabase.get(context.applicationContext)
@@ -535,6 +541,8 @@ class AppGraph private constructor(context: Context) {
     val notificationNavigation = NotificationNavigationCoordinator(context.applicationContext)
     private val systemNotificationManager = SystemNotificationManager(context.applicationContext)
     private val notificationDisplayGate = NotificationDisplayGate()
+    private val syncIssueAlerts = SyncIssueAlertTracker(context.applicationContext)
+    private val notificationChecks = MutableStateFlow(0L)
     val deviceTokenManager = DeviceTokenManager(
         context = context.applicationContext,
         tokenStore = tokenStore,
@@ -574,6 +582,26 @@ class AppGraph private constructor(context: Context) {
             legacyWorkCancellation.join()
             secureStorageReady = true
             resumeSessionServices()
+            notificationChecks.value++
+        }
+        appScope.launch {
+            combine(observeSyncIssues(this@AppGraph, logoOwners), networkMonitor.isOnline, notificationChecks) { snapshot, online, _ ->
+                snapshot to online
+            }.collectLatest { (snapshot, online) ->
+                if (!secureStorageReady || snapshot == null || !online) return@collectLatest
+                val (owner, records) = snapshot
+                // Fetch the account setting before a new local alert, including changes made in the portal.
+                val values = try { notificationPreferences.refresh() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { return@collectLatest }
+                val subject = tokenStore.getSessionSubject() ?: return@collectLatest
+                if (sharedCatalogOwnerKey(HttpClientFactory.baseUrl, subject) != owner) return@collectLatest
+                notificationDisplayGate.runIfCurrent(subject) { active ->
+                    if (syncIssueAlerts.update(owner, records, values.enabled && values.syncIssues)) {
+                        systemNotificationManager.showSyncIssue(active)
+                    }
+                }
+            }
         }
     }
 
@@ -729,6 +757,7 @@ class AppGraph private constructor(context: Context) {
     /** Recheck read-only caches and the inbox badge when the app returns to the foreground. */
     fun onForeground() {
         if (secureStorageReady) {
+            notificationChecks.value++
             catalogSyncScheduler.refreshNow()
             appScope.launch {
                 if (tokenStore.getAccessToken() != null) {

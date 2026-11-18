@@ -35,7 +35,8 @@ public sealed class FlightReminderDueHandler(
         {
             var persisted = await db.Notifications
                 .FirstOrDefaultAsync(notification => notification.Id == integrationEvent.EventId, cancellationToken);
-            if (persisted is not null && persisted.DeliveredAtUtc is null)
+            if (persisted is not null && persisted.DeliveredAtUtc is null &&
+                await NotificationPreferenceFilter.IsEnabledAsync(db, persisted.RecipientUserId, persisted.Kind, cancellationToken))
             {
                 if (!await IsEligibleAsync(integrationEvent, cancellationToken))
                 {
@@ -53,6 +54,13 @@ public sealed class FlightReminderDueHandler(
 
         var recipient = await staffReader.GetStaffRecipientAsync(integrationEvent.StaffMemberId, cancellationToken);
         if (recipient?.LinkedUserId is not { } recipientUserId)
+        {
+            db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        if (!await NotificationPreferenceFilter.IsEnabledAsync(db, recipientUserId, NotificationKind.FlightReminder, cancellationToken))
         {
             db.MarkProcessed(integrationEvent.EventId, Consumer, timeProvider);
             await db.SaveChangesAsync(cancellationToken);

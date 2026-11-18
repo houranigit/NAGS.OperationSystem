@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notification_settings_allow">السماح بالإشعارات</string>
+    <string name="notification_settings_scope">اختر الإشعارات الجديدة التي تصلك على أندرويد والويب. تُحفظ التغييرات في حسابك، وتبقى الإشعارات السابقة في صندوق الوارد.</string>
+    <string name="notification_settings_flights">الرحلات</string>
+    <string name="notification_settings_assignments">التكليف بالرحلات</string>
+    <string name="notification_settings_invitations">دعوات الرحلات</string>
+    <string name="notification_settings_schedule">إضافات الجدول وتعديلاته</string>
+    <string name="notification_settings_edits">تعديلات الآخرين على إدخالاتي</string>
+    <string name="notification_settings_reminders">تذكيرات الرحلات</string>
+    <string name="notification_settings_sharing">الرحلات المُشاركة</string>
+    <string name="notification_settings_direct_shares">المُشاركة معي مباشرة</string>
+    <string name="notification_settings_station_shares">المُشاركة مع محطتي</string>
+    <string name="notification_settings_saved_work">العمل المحفوظ</string>
+    <string name="notification_settings_sync_issues">فشل المزامنة والحاجة للمراجعة</string>
+    <string name="notification_settings_device">هذا الجهاز</string>
+    <string name="notification_settings_android">إعدادات إشعارات أندرويد</string>
+    <string name="notification_settings_device_allowed">الإشعارات مسموحة · الصوت والأذونات</string>
+    <string name="notification_settings_device_blocked">الإشعارات محظورة · افتح إعدادات الجهاز للسماح بها</string>
+    <string name="notification_settings_offline">اتصل بالإنترنت لتغيير تفضيلات حسابك. تُعرض الإعدادات المحفوظة عند توفرها.</string>
+    <string name="notification_settings_loading">جارٍ تحميل التفضيلات…</string>
+    <string name="notification_settings_saving">جارٍ حفظ التفضيل…</string>
+    <string name="notification_sync_issue_title">العمل المحفوظ يحتاج إلى متابعة</string>
+    <string name="notification_sync_issue_body">تعذرت مزامنة بعض السجلات أو أنها تحتاج إلى مراجعة. افتح مركز المزامنة لمراجعة عملك المحفوظ.</string>
+</resources>

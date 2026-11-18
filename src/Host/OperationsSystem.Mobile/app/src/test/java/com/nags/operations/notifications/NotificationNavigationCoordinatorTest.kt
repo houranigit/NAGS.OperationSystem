@@ -13,6 +13,24 @@ import org.junit.Test
 
 class NotificationNavigationCoordinatorTest {
     @Test
+    fun localSyncAlertRetainsItsAccountAndSyncHubKindWithoutAFlightReference() {
+        val preferences = TestPreferences()
+        val coordinator = NotificationNavigationCoordinator(preferences.value)
+        coordinator.acceptIntentData(mapOf(
+            "notificationId" to "local-sync-issues:user-1",
+            "recipientUserId" to "user-1",
+            "kind" to SYNC_ISSUE_NOTIFICATION_KIND,
+        )) { }
+
+        val restored = NotificationNavigationCoordinator(preferences.value).pending.value
+        assertEquals("user-1", restored?.recipientUserId)
+        assertEquals(SYNC_ISSUE_NOTIFICATION_KIND, restored?.kind)
+        assertNull(restored?.flightId)
+        coordinator.consume(restored?.notificationId)
+        assertNull(NotificationNavigationCoordinator(preferences.value).pending.value)
+    }
+
+    @Test
     fun acceptedTapIsPersistedBeforeTheRetainedIntentIsCleared() {
         val preferences = TestPreferences()
         val coordinator = NotificationNavigationCoordinator(preferences.value)

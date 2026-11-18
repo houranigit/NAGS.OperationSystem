@@ -312,6 +312,10 @@
                                     <RadzenIcon Icon="account_circle" />
                                     <span>@UiStrings.Account.Title</span>
                                 </button>
+                                <a href="/account/notifications" class="os-profile-item" @onclick="CloseProfile">
+                                    <RadzenIcon Icon="notifications_none" />
+                                    <span>Notification settings</span>
+                                </a>
                                 <button type="button" class="os-profile-item os-profile-item--danger" @onclick="LogoutAsync">
                                     <RadzenIcon Icon="logout" />
                                     <span>@UiStrings.Common.SignOut</span>

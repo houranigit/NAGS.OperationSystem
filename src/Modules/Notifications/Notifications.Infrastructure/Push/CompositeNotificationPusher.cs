@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Notifications.Application.Abstractions;
+using Notifications.Application.Features;
 using Notifications.Contracts;
 
 namespace Notifications.Infrastructure.Push;
@@ -7,10 +8,14 @@ namespace Notifications.Infrastructure.Push;
 /// <summary>Runs every delivery transport independently and preserves the persisted inbox on failures.</summary>
 public sealed class CompositeNotificationPusher(
     IEnumerable<INotificationTransport> transports,
-    ILogger<CompositeNotificationPusher> logger) : INotificationPusher
+    ILogger<CompositeNotificationPusher> logger,
+    INotificationsDbContext db) : INotificationPusher
 {
     public async Task PushAsync(Guid recipientUserId, NotificationDto notification, CancellationToken cancellationToken = default)
     {
+        if (!await NotificationPreferenceFilter.IsEnabledAsync(db, recipientUserId, notification.Kind, cancellationToken))
+            return;
+
         var attempts = await Task.WhenAll(
             transports.Select(transport => PushSafelyAsync(transport, recipientUserId, notification, cancellationToken)));
         var failures = attempts.OfType<Exception>().ToList();

@@ -8,4 +8,6 @@ public static class NotificationKind
     public const string FlightScheduleUpdated = "FlightScheduleUpdated";
     public const string FlightReminder = "FlightReminder";
     public const string FlightSubmissionUpdated = "FlightSubmissionUpdated";
+    public const string FlightSharedWithEmployee = "FlightSharedWithEmployee";
+    public const string FlightSharedWithStation = "FlightSharedWithStation";
 }

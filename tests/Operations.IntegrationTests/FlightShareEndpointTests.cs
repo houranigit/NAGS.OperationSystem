@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Operations.Application.Contracts;
+using Operations.Contracts;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
 using Operations.Infrastructure.Persistence;
@@ -99,6 +101,11 @@ public sealed partial class FlightVisibilityScopeTests
         assigned.Items.ShouldBeEmpty();
         await using var scope = factory.Services.CreateAsyncScope(); var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
         (await db.FlightShares.CountAsync(item => item.FlightId == flightId)).ShouldBe(3);
+        var shareEvents = (await db.OutboxMessages.Where(item => item.Type.StartsWith("Operations.Contracts.FlightShared,")).ToListAsync())
+            .Select(item => JsonSerializer.Deserialize<FlightShared>(item.Content)!).Where(item => item.FlightId == flightId).ToList();
+        // Both concurrent attempts commit just one direct-recipient event with the immutable post.
+        shareEvents.Where(item => item.ShareId == id).ShouldHaveSingleItem().StaffMemberId.ShouldBe(recipient.StaffId);
+        shareEvents.ShouldNotContain(item => item.StaffMemberId == author.StaffId);
         // Only the earlier Arrival created a work interaction; posting is not operational work.
         (await db.FlightUserActivities.CountAsync(item => item.FlightId == flightId)).ShouldBe(1);
     }

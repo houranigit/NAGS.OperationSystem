@@ -32,6 +32,8 @@ import androidx.navigation.compose.rememberNavController
 import com.nags.operations.AppGraph
 import com.nags.operations.ui.account.AccountScreen
 import com.nags.operations.ui.account.AccountViewModel
+import com.nags.operations.ui.account.NotificationSettingsScreen
+import com.nags.operations.ui.account.NotificationSettingsViewModel
 import com.nags.operations.ui.home.AdHocFlightShell
 import com.nags.operations.ui.home.MainShellScreen
 import com.nags.operations.ui.login.LoginScreen
@@ -40,6 +42,7 @@ import com.nags.operations.ui.notifications.NotificationsScreen
 import com.nags.operations.ui.notifications.NotificationsViewModel
 import com.nags.operations.ui.sync.SyncCenterScreen
 import com.nags.operations.ui.sync.SyncCenterViewModel
+import com.nags.operations.notifications.SYNC_ISSUE_NOTIFICATION_KIND
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -48,6 +51,7 @@ private object Routes {
     const val Flights = "flights"
     const val Notifications = "notifications"
     const val Account = "account"
+    const val NotificationSettings = "account/notifications"
     const val SyncCenter = "sync"
     const val Password = "password"
     const val AdHoc = "adhoc-create"
@@ -106,6 +110,11 @@ fun OperationsApp() {
             graph.notificationNavigation.discardForWrongAccount()
             return@LaunchedEffect
         }
+        if (request.kind == SYNC_ISSUE_NOTIFICATION_KIND) {
+            navController.navigate(Routes.SyncCenter) { launchSingleTop = true }
+            graph.notificationNavigation.consume(request.notificationId)
+            return@LaunchedEffect
+        }
         request.notificationId?.let { id ->
             graph.notificationsRepository.markReadOnOpen(id)
         }
@@ -153,6 +162,7 @@ fun OperationsApp() {
                 onOpenAccount = { navController.navigate(Routes.Account) { launchSingleTop = true } },
                 onOpenSyncCenter = { navController.navigate(Routes.SyncCenter) { launchSingleTop = true } },
                 onOpenPassword = { navController.navigate(Routes.Password) { launchSingleTop = true } },
+                onOpenNotificationSettings = { navController.navigate(Routes.NotificationSettings) { launchSingleTop = true } },
                 onLogout = { confirmSignOut = true },
                 externalPendingFlightId = pendingReviewFlightId,
                 externalPendingNavigationKey = pendingReviewKey,
@@ -164,7 +174,18 @@ fun OperationsApp() {
             val model: AccountViewModel = viewModel(key = "account:$subject", factory = factory)
             AccountScreen(viewModel = model, onBack = { navController.popBackStack() }, onLogout = { confirmSignOut = true },
                 onOpenSyncCenter = { navController.navigate(Routes.SyncCenter) { launchSingleTop = true } },
-                onOpenPassword = { navController.navigate(Routes.Password) { launchSingleTop = true } }, cachedName = cachedName)
+                onOpenPassword = { navController.navigate(Routes.Password) { launchSingleTop = true } },
+                onOpenNotificationSettings = { navController.navigate(Routes.NotificationSettings) { launchSingleTop = true } },
+                cachedName = cachedName)
+        }
+        composable(Routes.NotificationSettings) {
+            val settingsFactory = remember(graph) { object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                    NotificationSettingsViewModel(graph.notificationPreferences, graph.networkMonitor.isOnline) as T
+            } }
+            val model: NotificationSettingsViewModel = viewModel(key = "notification-settings:$subject", factory = settingsFactory)
+            NotificationSettingsScreen(model, onBack = { navController.popBackStack() })
         }
         composable(Routes.Password) {
             val passwordFactory = remember(graph) { object : ViewModelProvider.Factory {

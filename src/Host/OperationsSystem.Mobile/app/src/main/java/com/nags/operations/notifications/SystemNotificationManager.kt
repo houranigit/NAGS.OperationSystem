@@ -81,11 +81,23 @@ class SystemNotificationManager(private val context: Context) {
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setGroup(GROUP_FLIGHT_ASSIGNMENTS)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(payload.kind == SYNC_ISSUE_NOTIFICATION_KIND)
             .setContentIntent(pendingIntent)
             .build()
         rememberPostedNotification(recipientUserId, payload.id)
         NotificationManagerCompat.from(context).notify(payload.id.hashCode(), notification)
     }
+
+    /** Local saved records belong to this device; their alert opens Sync Hub rather than a server inbox row. */
+    fun showSyncIssue(recipientUserId: String) = show(NotificationPushPayload(
+        id = "local-sync-issues:$recipientUserId",
+        kind = SYNC_ISSUE_NOTIFICATION_KIND,
+        recipientUserId = recipientUserId,
+        titleEn = context.getString(R.string.notification_sync_issue_title),
+        bodyEn = context.getString(R.string.notification_sync_issue_body),
+        titleAr = "", bodyAr = "", flightId = null, flightNumber = null, inviterName = null,
+        scheduledArrivalUtc = null, leadTimeMinutes = null, createdAtUtc = java.time.Instant.now().toString(),
+    ), recipientUserId)
 
     /** Removes only alerts posted for the account leaving this device session. */
     fun cancelForAccount(recipientUserId: String) = synchronized(preferences) {

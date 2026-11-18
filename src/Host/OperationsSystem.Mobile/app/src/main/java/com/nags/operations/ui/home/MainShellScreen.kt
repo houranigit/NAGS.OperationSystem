@@ -19,9 +19,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.platform.LocalContext
 import com.nags.operations.ui.account.ProfileMenuContent
-import com.nags.operations.ui.account.openNotificationPreferences
 import kotlinx.coroutines.launch
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
@@ -74,6 +72,7 @@ fun MainShellScreen(
     onOpenAccount: () -> Unit,
     onOpenSyncCenter: () -> Unit,
     onOpenPassword: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
     onLogout: () -> Unit,
     externalPendingFlightId: String? = null,
     externalPendingNavigationKey: String? = null,
@@ -83,7 +82,6 @@ fun MainShellScreen(
 ) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
-    val context = LocalContext.current
     var pendingMenuAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     fun openMenuDestination(action: () -> Unit) {
         pendingMenuAction = action
@@ -193,7 +191,7 @@ fun MainShellScreen(
                     onProfile = { openMenuDestination(onOpenAccount) },
                     onSync = { openMenuDestination(onOpenSyncCenter) },
                     onPassword = { openMenuDestination(onOpenPassword) },
-                    onNotificationSettings = { openMenuDestination { openNotificationPreferences(context) } },
+                    onNotificationSettings = { openMenuDestination(onOpenNotificationSettings) },
                     onLogout = { openMenuDestination(onLogout) })
             }
         }) {

@@ -8,6 +8,7 @@ using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Contracts;
 using Operations.Application.Features.Flights;
+using Operations.Contracts;
 using Operations.Domain.Authorization;
 using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
@@ -35,8 +36,27 @@ public sealed class FlightShareTests
         var after = await f.Detail(flight.Id, f.AuthorStaff, f.Author);
         JsonSerializer.Serialize(after.Value).ShouldBe(JsonSerializer.Serialize(before.Value));
         (await f.Db.FlightShares.CountAsync()).ShouldBe(1); (await f.Db.FlightUserActivities.CountAsync()).ShouldBe(0);
-        (await f.Db.OutboxMessages.CountAsync()).ShouldBe(0);
+        var notificationEvent = JsonSerializer.Deserialize<FlightShared>((await f.Db.OutboxMessages.SingleAsync()).Content)!;
+        notificationEvent.ShareId.ShouldBe(id); notificationEvent.StaffMemberId.ShouldBe(f.RecipientStaff);
+        notificationEvent.IsStationWide.ShouldBeFalse(); notificationEvent.SharedByUserId.ShouldBe(f.Author);
         f.Db.ChangeTracker.Entries<Flight>().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Station_share_queues_each_active_station_employee_once_and_excludes_the_author()
+    {
+        await using var f = new Fixture(); var flight = await f.Seed();
+        var inactive = Guid.NewGuid(); var elsewhere = Guid.NewGuid();
+        f.Reader.StaffMembers[inactive] = new(inactive, "Inactive", "E4", f.Reader.StationId, Guid.NewGuid(), false);
+        f.Reader.StaffMembers[elsewhere] = new(elsewhere, "Elsewhere", "E5", Guid.NewGuid(), Guid.NewGuid(), true);
+        var id = Guid.NewGuid();
+        (await f.Publish(flight.Id, id, new())).IsSuccess.ShouldBeTrue();
+        (await f.Publish(flight.Id, id, new())).IsSuccess.ShouldBeTrue();
+
+        var events = (await f.Db.OutboxMessages.ToListAsync()).Select(row => JsonSerializer.Deserialize<FlightShared>(row.Content)!).ToList();
+        events.Select(item => item.StaffMemberId).ShouldBe([f.RecipientStaff, f.OtherStaff], ignoreOrder: true);
+        events.Select(item => item.EventId).Distinct().Count().ShouldBe(2);
+        events.ShouldAllBe(item => item.ShareId == id && item.FlightId == flight.Id && item.StationId == f.Reader.StationId && item.IsStationWide);
     }
 
     [Fact]

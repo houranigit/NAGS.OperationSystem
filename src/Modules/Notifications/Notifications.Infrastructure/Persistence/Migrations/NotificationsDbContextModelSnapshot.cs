@@ -200,6 +200,24 @@ namespace Notifications.Infrastructure.Persistence.Migrations
 
                     b.ToTable("notifications", "notifications");
                 });
+
+            modelBuilder.Entity("Notifications.Domain.Preferences.NotificationPreference", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(40)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.HasKey("UserId", "Key");
+
+                    b.ToTable("notification_preferences", "notifications");
+                });
 #pragma warning restore 612, 618
         }
     }

@@ -40,6 +40,7 @@ public static class NotificationsInfrastructureExtensions
         services.AddIntegrationEventHandler<FlightScheduleUpdated, FlightScheduleUpdatedHandler>();
         services.AddIntegrationEventHandler<FlightReminderDue, FlightReminderDueHandler>();
         services.AddIntegrationEventHandler<FlightSubmissionUpdated, FlightSubmissionUpdatedHandler>();
+        services.AddIntegrationEventHandler<FlightShared, FlightSharedHandler>();
 
         return services;
     }

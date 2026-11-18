@@ -22,6 +22,13 @@ public sealed class NotificationsApiClient(BrowserApiClient api)
         return api.GetAsync<PagedResult<NotificationDto>>($"/notifications/me?{query}", ct);
     }
 
+    public Task<NotificationPreferencesDto> GetPreferencesAsync(CancellationToken ct = default) =>
+        api.GetAsync<NotificationPreferencesDto>("/notifications/me/preferences", ct);
+
+    public Task<NotificationPreferencesDto> UpdatePreferenceAsync(string key, bool enabled, CancellationToken ct = default) =>
+        api.PatchAsync<UpdateNotificationPreferenceRequest, NotificationPreferencesDto>(
+            "/notifications/me/preferences", new(key, enabled), ct);
+
     public Task<UnreadNotificationCount> GetUnreadCountAsync(CancellationToken ct = default) =>
         api.GetAsync<UnreadNotificationCount>("/notifications/me/unread-count", ct);
 

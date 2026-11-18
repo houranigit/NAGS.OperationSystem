@@ -9,6 +9,7 @@ using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Contracts;
+using Operations.Contracts;
 using Operations.Domain.Flights;
 
 namespace Operations.Application.Features.Flights;
@@ -54,6 +55,26 @@ public sealed class PublishFlightShareCommandHandler(IOperationsDbContext db, IM
         if (created.IsFailure) return created.Error;
         // Sharing owns its own immutable rows; do not attach or touch the operational flight graph.
         db.FlightShares.Add(created.Value);
+        var audience = recipients.Length == 0
+            ? (await masterData.GetActiveStaffMembersForStationAsync(actor.StationId, ct))
+                .Where(employee => employee.IsActive && employee.StationId == actor.StationId)
+                .Select(employee => employee.Id)
+            : recipients;
+        foreach (var staffId in audience.Distinct().Where(id => id != actor.StaffMemberId))
+        {
+            db.Enqueue(new FlightShared
+            {
+                ShareId = created.Value.Id,
+                FlightId = flight.Id,
+                FlightNumber = flight.FlightNumber.Value,
+                StationId = actor.StationId,
+                StaffMemberId = staffId,
+                SharedByUserId = actor.UserId,
+                SharedByDisplayName = created.Value.AuthorFullName,
+                IsStationWide = recipients.Length == 0,
+                OccurredOnUtc = created.Value.CreatedAtUtc
+            });
+        }
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException)
         {

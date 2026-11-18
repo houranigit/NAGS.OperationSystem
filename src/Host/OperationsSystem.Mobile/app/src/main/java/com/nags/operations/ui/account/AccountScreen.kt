@@ -17,7 +17,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,9 +29,9 @@ import com.nags.operations.ui.components.InlineNoticeKind
 
 @Composable
 fun AccountScreen(viewModel: AccountViewModel, onBack: () -> Unit, onLogout: () -> Unit,
-    onOpenSyncCenter: () -> Unit, onOpenPassword: () -> Unit, cachedName: String? = null) {
+    onOpenSyncCenter: () -> Unit, onOpenPassword: () -> Unit, onOpenNotificationSettings: () -> Unit,
+    cachedName: String? = null) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
     LifecycleResumeEffect(viewModel) { viewModel.refresh(); onPauseOrDispose { } }
     Scaffold(topBar = { ProfilePageHeader(stringResource(R.string.account_title), onBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
@@ -59,7 +58,7 @@ fun AccountScreen(viewModel: AccountViewModel, onBack: () -> Unit, onLogout: () 
                 ProfileMenuRow(Icons.Outlined.Lock, stringResource(R.string.profile_password), onClick = onOpenPassword)
                 HorizontalDivider(Modifier.padding(horizontal = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 ProfileMenuRow(Icons.Outlined.Notifications, stringResource(R.string.profile_notifications),
-                    onClick = { openNotificationPreferences(context) })
+                    onClick = onOpenNotificationSettings)
             }
             ProfileAppearanceSelector()
             ProfileMenuRow(Icons.AutoMirrored.Filled.Logout, stringResource(R.string.account_sign_out),

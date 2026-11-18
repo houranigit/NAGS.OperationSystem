@@ -17,12 +17,15 @@ public sealed record FlightEmployeeAssigned : IntegrationEvent
     public FlightAssignmentSource Source { get; init; } = FlightAssignmentSource.Roster;
 }
 
-/// <summary>Raised once per assigned staff member when one scheduling action creates multiple flights.</summary>
+/// <summary>Raised per assigned staff member for bulk additions or a meaningful schedule edit.</summary>
 public sealed record FlightScheduleUpdated : IntegrationEvent
 {
     public required Guid StaffMemberId { get; init; }
     public required int FlightCount { get; init; }
     public Guid? UpdatedByUserId { get; init; }
+    /// <summary>The edited flight; omitted by existing bulk-addition envelopes.</summary>
+    public Guid? FlightId { get; init; }
+    public string? FlightNumber { get; init; }
 }
 
 /// <summary>Describes the user action that added the employee without coupling Operations to notification UI.</summary>
