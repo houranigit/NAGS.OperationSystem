@@ -98,6 +98,7 @@
                     break;
                 case 1:
                     <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@services" Zone="@zone" Lookups="@lookups"
+                                             AllowedServiceIds="@flight.AllowedServiceIds"
                                              CanAdd="@(flight.CanAddServices ?? flight.CanSaveServices)" ReadOnly="@(ViewOnly || saving)"
                                              Validation="@validation" ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
                     break;

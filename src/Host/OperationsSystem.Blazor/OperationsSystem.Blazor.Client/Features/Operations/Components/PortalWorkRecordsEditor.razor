@@ -178,6 +178,12 @@
                             }
                         </p>
                     }
+                    @if (ServiceOutsideManpowerPermissions(record))
+                    {
+                        <p class="portal-work-attribution">
+                            <strong>@record.ServiceName</strong> is outside your manpower type’s permissions.
+                        </p>
+                    }
                 </div>
             </article>
         }
@@ -195,6 +201,7 @@
     [Parameter, EditorRequired] public List<PortalWorkDraft> Records { get; set; } = [];
     [Parameter, EditorRequired] public StationTimeZone Zone { get; set; } = default!;
     [Parameter, EditorRequired] public PortalWorkLookups Lookups { get; set; } = default!;
+    [Parameter] public IReadOnlyList<Guid>? AllowedServiceIds { get; set; }
     [Parameter] public bool IsTask { get; set; }
     [Parameter] public bool CanAdd { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
@@ -210,6 +217,10 @@
     private int? expandedForValidationAttempt;
 
     private bool ServiceOptionsUnavailable => !IsTask && Lookups.Services.Count == 0;
+
+    private bool ServiceOutsideManpowerPermissions(PortalWorkDraft record) =>
+        !IsTask && !record.IsNew && !record.CanEdit && !record.CanSetEnd &&
+        record.ServiceId is { } serviceId && AllowedServiceIds?.Contains(serviceId) == false;
 
     private string SubmissionTimestamp(DateTimeOffset stamp) => Zone.Format(stamp, "MMM d, yyyy 'at' HH:mm");
 
