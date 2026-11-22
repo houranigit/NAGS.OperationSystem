@@ -80,7 +80,7 @@
                                                 aria-invalid="@Invalid(record.Id, "service")" aria-describedby="@Description(record.Id, "service")" />
                                 <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "service")" />
                             </label>
-                            @CustomerReferenceField(record, edit, "Customer Ref #")
+                            @CustomerReferenceField(record, edit)
                         }
                         <PortalOperationDateField Label="Start" Time="@record.Start" Required="true" Disabled="@(!edit)"
                                                   Validation="@Validation" ValidationField="@Field(record.Id, "start")" Changed="@Changed" />
@@ -88,7 +88,7 @@
                                                   Validation="@Validation" ValidationField="@Field(record.Id, "end")" Changed="@Changed" />
                         @if (IsTask)
                         {
-                            @CustomerReferenceField(record, edit, "Customer reference")
+                            @CustomerReferenceField(record, edit)
                         }
                         <label class="portal-performer-picker portal-work-full">
                             <span>Performed by *</span>
@@ -112,15 +112,15 @@
                         @PerformerRows(record, edit, end)
                     </section>
 
-                    <PortalWorkNotes FlightId="@FlightId" RecordPath="@RecordPath(record)" Draft="@record" CanEdit="@edit"
-                                     Visible="@expanded" Validation="@Validation" Changed="@Changed" />
-
                     @if (IsTask)
                     {
                         @Resources("Tools", "tool", record, record.Tools, Lookups.Tools, edit, end)
                         @Resources("Materials", "material", record, record.Materials, Lookups.Materials, edit, end)
                         @Resources("General support", "general support", record, record.GeneralSupports, Lookups.Supports, edit, end)
                     }
+
+                    <PortalWorkNotes FlightId="@FlightId" RecordPath="@RecordPath(record)" Draft="@record" CanEdit="@edit"
+                                     Visible="@expanded" Validation="@Validation" Changed="@Changed" />
 
                     @if (record.CreatedByDisplayName is { } creator)
                     {
@@ -234,8 +234,8 @@
             await NotifyChangedAsync();
     }
 
-    private RenderFragment CustomerReferenceField(PortalWorkDraft record, bool edit, string label) => @<label>
-        <span>@label</span>
+    private RenderFragment CustomerReferenceField(PortalWorkDraft record, bool edit) => @<label>
+        <span>Customer Ref #</span>
         <RadzenTextBox @bind-Value="record.Reference" @bind-Value:after="NotifyChangedAsync" Immediate="true" Disabled="@(!edit)"
                        aria-invalid="@Invalid(record.Id, "reference")" aria-describedby="@Description(record.Id, "reference")" />
         <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "reference")" />
