@@ -13,7 +13,8 @@ public sealed record FlightListItem(
     DateTimeOffset ScheduledDepartureUtc,
     bool IsPerLanding,
     string StationTimeZoneId,
-    Guid? StationId = null);
+    Guid? StationId = null,
+    string? Status = null);
 
 public sealed record PlannedServiceModel(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId);

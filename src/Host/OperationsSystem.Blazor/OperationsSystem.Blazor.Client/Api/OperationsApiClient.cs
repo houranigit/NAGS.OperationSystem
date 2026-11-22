@@ -7,11 +7,12 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<PagedResult<FlightListItem>> GetFlightsAsync(
         int page, int pageSize, string? search = null, Guid? stationId = null, Guid? customerId = null,
         Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null,
-        string? sort = null, CancellationToken ct = default)
+        string? sort = null, CancellationToken ct = default, IReadOnlyList<string>? statuses = null)
     {
         var query = new QueryBuilder()
             .Add("page", page).Add("pageSize", pageSize).Add("search", search)
             .Add("stationId", stationId).Add("customerId", customerId).Add("operationTypeId", operationTypeId)
+            .Add("status", statuses is { Count: > 0 } ? string.Join(',', statuses) : null)
             .Add("fromUtc", fromUtc).Add("toUtc", toUtc).Add("sort", sort).Build();
         return api.GetAsync<PagedResult<FlightListItem>>($"/operations/flights{query}", ct);
     }

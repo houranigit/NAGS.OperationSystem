@@ -2,6 +2,7 @@ using BuildingBlocks.Api.Authorization;
 using BuildingBlocks.Api.Concurrency;
 using BuildingBlocks.Api.Results;
 using BuildingBlocks.Application.Persistence;
+using BuildingBlocks.Domain.Results;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -306,10 +307,15 @@ internal static class FlightEndpoints
 
         flights.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, Guid? stationId = null, Guid? customerId = null,
-            Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null) =>
+            Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null,
+            string? status = null) =>
         {
+            var statuses = ParseStatuses(status);
+            if (statuses is null)
+                return ApiResults.Problem(Error.Validation("One or more flight statuses are invalid.", "Operations.Flight.StatusInvalid"));
+
             var result = await sender.Send(new GetFlightsQuery(
-                page, pageSize, search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort), ct);
+                page, pageSize, search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
@@ -392,5 +398,23 @@ internal static class FlightEndpoints
             var result = await sender.Send(new InviteEmployeesToFlightCommand(id, request.StaffMemberIds ?? [], rowVersion), ct);
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.Flights.Invite);
+    }
+
+    private static IReadOnlyList<FlightReportStatus>? ParseStatuses(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return [];
+
+        var statuses = new List<FlightReportStatus>();
+        foreach (var item in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Enum.TryParse<FlightReportStatus>(item, ignoreCase: true, out var status)
+                || !Enum.IsDefined(status) || int.TryParse(item, out _))
+                return null;
+
+            if (!statuses.Contains(status))
+                statuses.Add(status);
+        }
+        return statuses;
     }
 }

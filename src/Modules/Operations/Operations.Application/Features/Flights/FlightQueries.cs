@@ -22,9 +22,11 @@ public sealed record GetFlightsQuery(
     Guid? OperationTypeId = null,
     DateTimeOffset? FromUtc = null,
     DateTimeOffset? ToUtc = null,
-    string? Sort = null) : IQuery<PagedResult<FlightListItemDto>>;
+    string? Sort = null,
+    IReadOnlyList<FlightReportStatus>? Statuses = null) : IQuery<PagedResult<FlightListItemDto>>;
 
-public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsScope scope, ICustomerLogoReader logos, IMasterDataReader masterData)
+public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsScope scope, ICustomerLogoReader logos,
+    IMasterDataReader masterData, TimeProvider? timeProvider = null)
     : IQueryHandler<GetFlightsQuery, PagedResult<FlightListItemDto>>
 {
     public async Task<Result<PagedResult<FlightListItemDto>>> Handle(GetFlightsQuery request, CancellationToken cancellationToken)
@@ -34,34 +36,51 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             return scopeResult.Error;
 
         var paging = PageRequest.From(request.Page, request.PageSize);
-        var query = FlightListQuery.ApplyScopeAndFilters(db.Flights.AsNoTracking(), scopeResult.Value,
+        var flights = FlightListQuery.ApplyScopeAndFilters(db.Flights.AsNoTracking(), scopeResult.Value,
             new FlightListFilter(request.Search, request.StationId, request.CustomerId,
                 request.OperationTypeId, request.FromUtc, request.ToUtc));
+        var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
+        var dueSoonBy = now.AddMinutes(30);
+        // Keep the report precedence and STA thresholds in sync with Android's FlightCardReportStatus.
+        var query =
+            from flight in FlightListQuery.ApplySort(flights, request.Sort)
+            let hasArrival = flight.ArrivalSubmissions.Any()
+            let hasDeparture = flight.DepartureSubmissions.Any()
+            let hasCancellation = flight.CancellationSubmissions.Any()
+            select new
+            {
+                flight.Id,
+                FlightNumber = flight.FlightNumber.Value,
+                CustomerIataCode = flight.Customer.IataCode,
+                CustomerName = flight.Customer.Name,
+                flight.Customer.CustomerId,
+                StationIataCode = flight.Station.IataCode,
+                flight.Station.StationId,
+                OperationTypeName = flight.OperationType.Name,
+                ScheduledArrivalUtc = flight.Schedule.Sta,
+                ScheduledDepartureUtc = flight.Schedule.Std,
+                IsPerLanding = flight.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
+                AircraftTypeModel = flight.AircraftType == null ? null : flight.AircraftType.Model,
+                HasArrivalSubmission = hasArrival,
+                HasDepartureSubmission = hasDeparture,
+                HasCancellationSubmission = hasCancellation,
+                Status = hasCancellation && (hasArrival || hasDeparture || flight.ReturnToRamps.Any()) ? FlightReportStatus.Conflict
+                    : hasCancellation ? FlightReportStatus.Canceled
+                    : flight.ReturnToRamps.Any(ramp => ramp.DepartureDetails == null) ? FlightReportStatus.ReturnedToRamp
+                    : hasDeparture ? FlightReportStatus.Departed
+                    : hasArrival ? FlightReportStatus.OnGround
+                    : flight.Schedule.Sta <= now ? FlightReportStatus.ArrivalNotRecorded
+                    : flight.Schedule.Sta <= dueSoonBy ? FlightReportStatus.DueSoon
+                    : FlightReportStatus.Scheduled
+            };
+        if (request.Statuses is { Count: > 0 } statuses)
+            query = query.Where(item => statuses.Contains(item.Status));
+
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))
             return paging.Empty<FlightListItemDto>(total);
 
-        var items = await FlightListQuery.ApplySort(query, request.Sort)
-            .Skip(paging.Skip).Take(paging.PageSize)
-            .Select(f => new
-            {
-                f.Id,
-                FlightNumber = f.FlightNumber.Value,
-                CustomerIataCode = f.Customer.IataCode,
-                CustomerName = f.Customer.Name,
-                f.Customer.CustomerId,
-                StationIataCode = f.Station.IataCode,
-                f.Station.StationId,
-                OperationTypeName = f.OperationType.Name,
-                ScheduledArrivalUtc = f.Schedule.Sta,
-                ScheduledDepartureUtc = f.Schedule.Std,
-                IsPerLanding = f.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
-                AircraftTypeModel = f.AircraftType == null ? null : f.AircraftType.Model,
-                HasArrivalSubmission = f.ArrivalSubmissions.Any(),
-                HasDepartureSubmission = f.DepartureSubmissions.Any(),
-                HasCancellationSubmission = f.CancellationSubmissions.Any()
-            })
-            .ToListAsync(cancellationToken);
+        var items = await query.Skip(paging.Skip).Take(paging.PageSize).ToListAsync(cancellationToken);
         var customerIds = items.Select(item => item.CustomerId).Distinct().ToArray();
         var versions = await logos.GetLogoVersionsAsync(customerIds, cancellationToken);
         var stations = await masterData.GetStationsAsync(items.Select(item => item.StationId).Distinct().ToArray(), cancellationToken);
@@ -74,7 +93,8 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             item.OperationTypeName, item.ScheduledArrivalUtc, item.ScheduledDepartureUtc, item.IsPerLanding,
             stationTimeZones[item.StationId], item.AircraftTypeModel, item.CustomerId,
             versions.TryGetValue(item.CustomerId, out var version) ? version : CustomerLogoVersions.None,
-            item.StationId, item.HasArrivalSubmission, item.HasDepartureSubmission, item.HasCancellationSubmission)).ToList();
+            item.StationId, item.HasArrivalSubmission, item.HasDepartureSubmission, item.HasCancellationSubmission,
+            item.Status.ToString())).ToList();
         return paging.ToResult(versionedItems, total);
     }
 }

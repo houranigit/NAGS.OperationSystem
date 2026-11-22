@@ -249,6 +249,76 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
     }
 
     [Fact]
+    public async Task Portal_flight_statuses_match_operational_reports_and_filter_before_paging()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var userId = (await admin.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("id").GetGuid();
+        var now = DateTimeOffset.UtcNow;
+        var employee = new StaffMemberSnapshot(Guid.NewGuid(), "Report employee", "REPORT");
+        var cancelingEmployee = new StaffMemberSnapshot(Guid.NewGuid(), "Canceling employee", "CANCEL");
+        var scenarios = new (string Number, string Status, int MinutesUntilSta)[]
+        {
+            ("7701", "Scheduled", 60),
+            ("7702", "DueSoon", 15),
+            ("7703", "ArrivalNotRecorded", -60),
+            ("7704", "OnGround", -60),
+            ("7705", "Departed", -60),
+            ("7706", "ReturnedToRamp", -60),
+            ("7707", "Canceled", -60),
+            ("7708", "Conflict", -60)
+        };
+        var flights = new List<Flight>();
+        foreach (var (number, status, minutesUntilSta) in scenarios)
+        {
+            var sta = now.AddMinutes(minutesUntilSta);
+            var flight = Flight.ScheduleNew(new(refs.CustomerId, null, "Flight status customer"),
+                new(refs.StationId, "TST", "Station"), new(refs.OperationTypeId, "Transit"),
+                FlightNumber.Create(number).Value, ScheduledTime.Create(sta, sta.AddHours(1)).Value,
+                null, [new(refs.ServiceId, "Service")], [], userId, now).Value;
+            if (status is "OnGround" or "Departed" or "ReturnedToRamp" or "Conflict")
+                flight.SubmitArrival(employee, ArrivalDetails.Create(null, now.AddHours(-1),
+                    new(Guid.NewGuid(), "Airbus", "A320"), "HZ-TEST", employee, null).Value, userId, now)
+                    .IsSuccess.ShouldBeTrue();
+            if (status is "Departed" or "ReturnedToRamp")
+                flight.SubmitDeparture(employee, DepartureDetails.Create(now.AddMinutes(-30), null, employee, null).Value,
+                    userId, now).IsSuccess.ShouldBeTrue();
+            if (status == "ReturnedToRamp")
+                flight.StartReturnToRamp(RtrArrivalDetails.Create(now.AddMinutes(-15), employee, null).Value,
+                    userId, now).IsSuccess.ShouldBeTrue();
+            if (status is "Canceled" or "Conflict")
+                flight.SubmitCancellation(cancelingEmployee, CancellationDetails.Create(now, null).Value,
+                    userId, now).IsSuccess.ShouldBeTrue();
+            flights.Add(flight);
+        }
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            db.Flights.AddRange(flights);
+            await db.SaveChangesAsync();
+        }
+
+        var path = $"{Base}/flights?stationId={refs.StationId}&sort=flightnumber:asc";
+        var unfiltered = (await admin.GetFromJsonAsync<PagedList<PortalFlightStatus>>($"{path}&pageSize=100"))!;
+        unfiltered.Items.Select(item => (item.FlightNumber, item.Status))
+            .ShouldBe(scenarios.Select(scenario => (scenario.Number, scenario.Status)));
+
+        var filter = $"{path}&status=duesoon,%20ReturnedToRamp,DueSoon&pageSize=1";
+        var first = (await admin.GetFromJsonAsync<PagedList<PortalFlightStatus>>($"{filter}&page=1"))!;
+        first.TotalCount.ShouldBe(2);
+        first.Items.ShouldHaveSingleItem().ShouldBe(new PortalFlightStatus("7702", "DueSoon"));
+        var second = (await admin.GetFromJsonAsync<PagedList<PortalFlightStatus>>($"{filter}&page=2"))!;
+        second.TotalCount.ShouldBe(2);
+        second.Items.ShouldHaveSingleItem().ShouldBe(new PortalFlightStatus("7706", "ReturnedToRamp"));
+
+        using var invalid = await admin.GetAsync($"{path}&status=DueSoon,unknown");
+        invalid.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await invalid.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.Flight.StatusInvalid");
+    }
+
+    [Fact]
     public async Task Mobile_routes_limit_categories_station_and_lookahead_without_expiring_overdue_flights_or_narrowing_portal_reads()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();
@@ -875,6 +945,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
 
     private sealed record FlightListItem(Guid Id, string FlightNumber, bool IsPerLanding,
         Guid? CustomerId = null, string? CustomerLogoVersion = null);
+    private sealed record PortalFlightStatus(string FlightNumber, string Status);
     private sealed record CustomerLogoOption(Guid Id, string? LogoVersion);
 
 }

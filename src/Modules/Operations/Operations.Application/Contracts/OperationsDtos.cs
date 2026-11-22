@@ -1,5 +1,17 @@
 namespace Operations.Application.Contracts;
 
+public enum FlightReportStatus
+{
+    Scheduled,
+    DueSoon,
+    ArrivalNotRecorded,
+    OnGround,
+    ReturnedToRamp,
+    Departed,
+    Canceled,
+    Conflict
+}
+
 public sealed record FlightListItemDto(
     Guid Id,
     string FlightNumber,
@@ -17,7 +29,8 @@ public sealed record FlightListItemDto(
     Guid? StationId = null,
     bool HasArrivalSubmission = false,
     bool HasDepartureSubmission = false,
-    bool HasCancellationSubmission = false);
+    bool HasCancellationSubmission = false,
+    string Status = nameof(FlightReportStatus.Scheduled));
 
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId);

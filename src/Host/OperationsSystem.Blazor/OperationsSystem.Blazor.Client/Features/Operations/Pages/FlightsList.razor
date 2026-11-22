@@ -31,6 +31,7 @@
             <Filters>
                 <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
                 <DataListFilter TValue="Guid?" Placeholder="All customers" Data="@customerOptions" Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync" AllowFiltering="true" />
+                <DataListFilter TValue="IEnumerable<string>" Placeholder="All statuses" Data="@StatusOptions" Value="@statusFilters" ValueChanged="@OnStatusFilterChangedAsync" Multiple="true" Chips="true" />
                 <DataListFilter TValue="Guid?" Placeholder="All operations" Data="@operationTypeOptions" Value="@operationTypeFilter" ValueChanged="@OnOperationTypeFilterChangedAsync" />
                 <div class="ofl-date-range">
                     <RadzenDatePicker Disabled="@(stationFilter is null)" TValue="DateTime?" Value="@fromFilter" Change="@OnFromFilterChangedAsync"
@@ -64,6 +65,14 @@
                 <RadzenDataGridColumn TItem="FlightListItem" Title="Duration" Sortable="false" Width="120px">
                     <Template Context="flight">@DurationDisplay(flight)</Template>
                 </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FlightListItem" Title="Status" Sortable="false" Width="180px">
+                    <Template Context="flight">
+                        @{
+                            var status = StatusOptions.FirstOrDefault(option => option.Value == flight.Status);
+                        }
+                        <StatusBadge Label="@(status?.Label ?? flight.Status ?? "—")" Tone="@(status?.Tone ?? "neutral")" />
+                    </Template>
+                </RadzenDataGridColumn>
             </Columns>
             <RowActions Context="flight">
                 <RowActionMenu>
@@ -80,6 +89,17 @@
 
     private const string GridKey = "operations-flights";
     private static readonly int[] PageSizes = [10, 25, 50, 100];
+    private static readonly StatusFilterOption[] StatusOptions =
+    [
+        new("Scheduled", "Scheduled", "info"),
+        new("Due soon", "DueSoon", "warning"),
+        new("Arrival not recorded", "ArrivalNotRecorded", "warning"),
+        new("On ground", "OnGround", "info"),
+        new("RTR", "ReturnedToRamp", "warning"),
+        new("Departed", "Departed", "success"),
+        new("Canceled", "Canceled", "danger"),
+        new("Conflict", "Conflict", "warning")
+    ];
 
     private DataListCard<FlightListItem>? list;
     private IReadOnlyList<FlightListItem> items = [];
@@ -90,6 +110,7 @@
     private string? appliedSearchQuery;
     private Guid? stationFilter;
     private Guid? customerFilter;
+    private IReadOnlyList<string> statusFilters = [];
     private Guid? operationTypeFilter;
     private DateTime? fromFilter;
     private DateTime? toFilter;
@@ -102,6 +123,7 @@
     private int ActiveFilterCount =>
         (stationFilter.HasValue ? 1 : 0)
         + (customerFilter.HasValue ? 1 : 0)
+        + (statusFilters.Count > 0 ? 1 : 0)
         + (operationTypeFilter.HasValue ? 1 : 0)
         + (fromFilter.HasValue ? 1 : 0)
         + (toFilter.HasValue ? 1 : 0);
@@ -206,6 +228,12 @@
         await ReloadAsync();
     }
 
+    private async Task OnStatusFilterChangedAsync(IEnumerable<string>? values)
+    {
+        statusFilters = values?.Distinct().ToList() ?? [];
+        await ReloadAsync();
+    }
+
     private async Task OnOperationTypeFilterChangedAsync(Guid? value)
     {
         operationTypeFilter = value;
@@ -231,6 +259,7 @@
 
         stationFilter = null;
         customerFilter = null;
+        statusFilters = [];
         operationTypeFilter = null;
         fromFilter = null;
         toFilter = null;
@@ -265,7 +294,7 @@
         {
             var result = await Operations.GetFlightsAsync(currentPage, currentPageSize,
                 string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, stationFilter, customerFilter, operationTypeFilter,
-                DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort);
+                DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort, statuses: statusFilters);
             items = result.Items;
             totalCount = (int)result.TotalCount;
         }
@@ -366,5 +395,6 @@
 
     private sealed record StationFilterOption(string Label, Guid? Value, string TimeZoneId);
     private sealed record CustomerFilterOption(string Label, Guid? Value);
+    private sealed record StatusFilterOption(string Label, string Value, string Tone);
     private sealed record OperationTypeFilterOption(string Label, Guid? Value);
 }
