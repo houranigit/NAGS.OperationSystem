@@ -1,10 +1,27 @@
-<section class="portal-work-records">
+<section class="portal-work-records @(Records.Count == 0 ? "portal-work-records--empty" : null)">
     <div class="portal-section-heading">
         <h3>@(IsTask ? "Tasks" : "Services")</h3>
+        @if (CanAdd && !ReadOnly)
+        {
+            <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                          class="portal-work-add-shortcut" title="@AddRecordLabel" aria-label="@AddRecordLabel"
+                          Disabled="@ServiceOptionsUnavailable" Click="@AddAsync" />
+        }
     </div>
     @if (Records.Count == 0)
     {
-        <p class="portal-work-empty">@(IsTask ? "No tasks recorded." : "No services recorded.")</p>
+        <div class="portal-work-empty-state">
+            <RadzenIcon Icon="@(IsTask ? "assignment" : "build")" class="portal-work-empty-state-icon" aria-hidden="true" />
+            <h4>@(IsTask ? "No tasks yet" : "No services yet")</h4>
+            @if (CanAdd && !ReadOnly)
+            {
+                @if (ServiceOptionsUnavailable)
+                {
+                    <p class="portal-work-empty">No service options are available for this flight.</p>
+                }
+                @AddRecordButton()
+            }
+        </div>
     }
     @for (var i = 0; i < Records.Count; i++)
     {
@@ -143,11 +160,10 @@
             </article>
         }
     }
-    @if (CanAdd && !ReadOnly)
+    @if (Records.Count > 0 && CanAdd && !ReadOnly)
     {
         <div class="portal-work-add">
-            <RadzenButton Text="@(IsTask ? "Add task" : "Add service")" Icon="add" ButtonStyle="ButtonStyle.Light"
-                          Disabled="@(!IsTask && Lookups.Services.Count == 0)" Click="@AddAsync" />
+            @AddRecordButton()
         </div>
     }
 </section>
@@ -170,6 +186,8 @@
     private readonly Dictionary<Guid, ElementReference> recordHeaders = [];
     private Guid? focusRecordId;
     private int? expandedForValidationAttempt;
+
+    private bool ServiceOptionsUnavailable => !IsTask && Lookups.Services.Count == 0;
 
     protected override void OnParametersSet()
     {
@@ -203,6 +221,12 @@
     }
 
     private Task NotifyChangedAsync() => Changed.InvokeAsync();
+
+    private string AddRecordLabel => IsTask ? "Add task" : "Add service";
+
+    private RenderFragment AddRecordButton() => @<RadzenButton
+        Text="@AddRecordLabel" Icon="add" ButtonStyle="ButtonStyle.Primary"
+        Disabled="@ServiceOptionsUnavailable" Click="@AddAsync" />;
 
     private Task SetTaskTypeAsync(PortalWorkDraft record, int taskType)
     {
