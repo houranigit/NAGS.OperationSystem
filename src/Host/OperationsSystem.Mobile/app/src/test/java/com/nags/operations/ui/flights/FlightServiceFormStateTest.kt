@@ -285,6 +285,25 @@ class FlightServiceFormStateTest {
             "performers.$performerId.endUtc" to R.string.departure_staff_end_required), errors[recordId])
     }
 
+    @Test fun rtrDepartureHighlightsOpenServiceAndPerformerEnds() {
+        val start = "2026-11-11T11:00"
+        val end = "2026-11-11T12:00"
+        val service = FlightServiceDraft(recordId, serviceId, "Service", period = FlightWorkPeriod(start),
+            employees = listOf(FlightEmployeeDraft(performerId, staffId, period = FlightWorkPeriod(start))))
+        val draft = FlightRtrDraft(sequence = 1, arrival = FlightWorkPeriod("2026-11-11T10:00"),
+            departure = FlightWorkPeriod(end), work = FlightWorkDrafts(services = listOf(service)))
+
+        assertEquals(mapOf("endUtc" to R.string.departure_service_end_required,
+            "performers.$performerId.endUtc" to R.string.departure_staff_end_required),
+            draft.errors(flight, catalog, zone, null)[recordId])
+        assertTrue(draft.copy(departure = FlightWorkPeriod()).errors(flight, catalog, zone, null).isEmpty())
+
+        val completed = service.copy(period = FlightWorkPeriod(start, end),
+            employees = service.employees.map { it.copy(period = FlightWorkPeriod(start, end)) })
+        assertTrue(draft.copy(work = FlightWorkDrafts(services = listOf(completed)))
+            .errors(flight, catalog, zone, null).isEmpty())
+    }
+
     @Test fun endingServiceFlagsItsEndAndOnlyStaffPeriodsStillOpen() {
         val secondPerformer = "77777777-7777-7777-7777-777777777777"
         val item = FlightServiceDraft(recordId, serviceId, "Service", period = FlightWorkPeriod("2026-11-11T11:00", "2026-11-11T14:00"),

@@ -15,6 +15,19 @@ import kotlinx.serialization.json.Json
 internal fun taskResourceQuantityReviewRequired(item: FlightResourceDraft, calculationType: Int?) =
     calculationType == 0 && (item.period.start.isNotBlank() || item.period.end.isNotBlank())
 
+internal fun FlightTaskDraft.hasOpenPeriods(catalogs: FlightOperationsCatalogs): Boolean {
+    fun hasOpenDuration(items: List<FlightResourceDraft>, choices: List<ResourceCatalogItem>) =
+        items.any { item ->
+            val type = item.calculationType ?: choices.firstOrNull { it.id.equals(item.resourceId, true) }?.taskCalculationType()
+            type != 0 && item.period.end.isBlank()
+        }
+
+    return employees.any { it.period.end.isBlank() } ||
+        hasOpenDuration(tools, catalogs.tools) ||
+        hasOpenDuration(materials, catalogs.materials) ||
+        hasOpenDuration(generalSupports, catalogs.generalSupports)
+}
+
 internal fun taskResourceQuantityEdited(item: FlightResourceDraft, quantity: String): FlightResourceDraft {
     val reviewed = validTaskQuantity(quantity)
     return if ((item.calculationType == null || item.calculationType == 0) && reviewed)

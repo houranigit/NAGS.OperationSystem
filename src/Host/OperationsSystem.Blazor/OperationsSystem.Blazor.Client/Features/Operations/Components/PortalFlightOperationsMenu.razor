@@ -119,11 +119,9 @@ else if (!ShowDivider)
             return;
 
         ContextMenu.Close();
-        var options = EditorOptions("min(1120px, calc(100vw - 2rem))", "min(760px, calc(100dvh - 2rem))");
-        options.ContentCssClass = "portal-work-dialog-content";
         var result = await Dialogs.OpenAsync<PortalFlightWorkDialog>($"Work order · {flight.FlightNumber}",
             new() { [nameof(PortalFlightWorkDialog.FlightId)] = FlightId },
-            options);
+            PortalWorkDialogLayout.CreateOptions());
         if (result is true)
             await Changed.InvokeAsync();
     }

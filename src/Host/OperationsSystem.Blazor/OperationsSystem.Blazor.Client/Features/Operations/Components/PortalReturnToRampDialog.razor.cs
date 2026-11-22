@@ -8,6 +8,11 @@ namespace OperationsSystem.Blazor.Client.Features.Operations.Components;
 
 public partial class PortalReturnToRampDialog
 {
+    private static readonly string[] StepLabels = ["Arrival", "Services", "Tasks", "Departure"];
+    private const int ArrivalStep = 0;
+    private const int ServicesStep = 1;
+    private const int TasksStep = 2;
+    private const int DepartureStep = 3;
     private const string ArrivalTimeField = "rtr-arrival-time";
     private const string ArrivalRemarksField = "rtr-arrival-remarks";
     private const string DepartureTimeField = "rtr-departure-time";
@@ -21,6 +26,10 @@ public partial class PortalReturnToRampDialog
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
     [Parameter] public Guid? OccurrenceId { get; set; }
     [Parameter] public bool ViewOnly { get; set; }
+    [Parameter] public PortalFlightOperations? DraftFlight { get; set; }
+    [Parameter] public PortalReturnToRampDraft? Draft { get; set; }
+    [Parameter] public int DraftSequence { get; set; }
+    [Parameter] public bool RequireClosedDraft { get; set; }
 
     private readonly CancellationTokenSource lifetime = new();
     private readonly Guid newOccurrenceId = Guid.NewGuid();
@@ -36,14 +45,24 @@ public partial class PortalReturnToRampDialog
     private List<PortalWorkDraft> services = [];
     private List<PortalWorkDraft> tasks = [];
     private PortalFlightValidation validation = new();
-    private ElementReference validationContainer;
     private int validationFocusAttempt;
+    private int step;
+    private bool validateAllSteps;
     private string? error;
     private bool loading = true;
     private bool saving;
+    private bool arrivalUnlocked;
+    private bool departureUnlocked;
 
-    private bool CanEdit => !ViewOnly && flight is { CanSaveReturnsToRamp: true } data &&
-        (occurrence?.CanEdit ?? (data.DepartureSubmissions.Count > 0 && data.ReturnToRamps.All(item => !item.IsOpen)));
+    private bool CanEdit => !ViewOnly && (DraftFlight is not null || flight is { CanSaveReturnsToRamp: true } data &&
+        (occurrence?.CanEdit ?? (data.DepartureSubmissions.Count > 0 && data.ReturnToRamps.All(item => !item.IsOpen))));
+
+    private bool ArrivalFieldsLocked => occurrence is not null && !arrivalUnlocked;
+    private bool DepartureFieldsLocked => occurrence?.DepartedAtUtc is not null && !departureUnlocked;
+    private bool RequiresDeparture => RequireClosedDraft || occurrence is { IsOpen: false } ||
+        !string.IsNullOrWhiteSpace(departureRemarks) || signature.Bytes is not null;
+
+    private bool IsGuidedEntry => CanEdit && occurrence is null && Draft is null;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -53,7 +72,7 @@ public partial class PortalReturnToRampDialog
         error = null;
         try
         {
-            var data = await Operations.GetPortalFlightOperationsAsync(FlightId, lifetime.Token);
+            var data = DraftFlight ?? await Operations.GetPortalFlightOperationsAsync(FlightId, lifetime.Token);
             occurrence = data.ReturnToRamps.SingleOrDefault(item => item.Id == OccurrenceId);
             if (OccurrenceId.HasValue && occurrence is null)
             {
@@ -62,9 +81,12 @@ public partial class PortalReturnToRampDialog
             }
 
             zone = StationTimeZone.FromId(data.StationTimeZoneId);
-            lookups = ViewOnly || !data.CanSaveReturnsToRamp
+            arrivalUnlocked = false;
+            departureUnlocked = false;
+            lookups = ViewOnly || DraftFlight is null && !data.CanSaveReturnsToRamp
                 ? new([], [], [], [], [], [], [], false)
-                : await PortalWorkLookups.LoadAsync(MasterData, data, occurrenceOnly: true, ct: lifetime.Token);
+                : await PortalWorkLookups.LoadAsync(MasterData, DraftFlight is null ? data : data with { CanSaveReturnsToRamp = true },
+                    occurrenceOnly: true, ct: lifetime.Token);
             arrivalTime = new(zone, occurrence?.ArrivedAtUtc);
             departureTime = new(zone, occurrence?.DepartedAtUtc);
             arrivalRemarks = occurrence?.ArrivalRemarks;
@@ -74,6 +96,8 @@ public partial class PortalReturnToRampDialog
             signature = occurrence is { HasSignature: true } report
                 ? new($"returns-to-ramp/{report.Id}/signature?expectedUpdatedAt={PortalFlightWorkDialog.MediaVersion(report.UpdatedAtUtc ?? report.CreatedAtUtc)}")
                 : new();
+            if (Draft is not null)
+                LoadDraft(Draft);
             flight = data;
         }
         catch (ApiException ex)
@@ -94,18 +118,152 @@ public partial class PortalReturnToRampDialog
         }
     }
 
+    private void LoadDraft(PortalReturnToRampDraft draft)
+    {
+        var input = draft.Request;
+        arrivalTime = new(zone, input.Arrival.ArrivedAtUtc);
+        departureTime = new(zone, input.Departure?.DepartedAtUtc);
+        arrivalRemarks = input.Arrival.Remarks;
+        departureRemarks = input.Departure?.Remarks;
+        signature = new()
+        {
+            Bytes = input.Departure?.SignatureContent,
+            FileName = draft.SignatureFileName,
+            SigningTime = input.Departure?.SignatureSignedAtUtc is { } signed ? new(zone, signed) : null
+        };
+        services = input.Services.Select(change =>
+        {
+            var value = change.Input!;
+            var work = new PortalWorkDraft(change.RecordId, false, zone, value.StartUtc, value.EndUtc)
+            {
+                ServiceId = value.ServiceId, Reference = value.CustomerReferenceNumber, Notes = value.Notes
+            };
+            ReadWork(work, value.Performers, value.Attachments);
+            return work;
+        }).ToList();
+        tasks = input.Tasks.Select(change =>
+        {
+            var value = change.Input!;
+            var work = new PortalWorkDraft(change.RecordId, true, zone, value.StartUtc, value.EndUtc)
+            {
+                TaskType = value.TaskType, AtaChapterId = value.AtaChapterId, Reference = value.CustomerReferenceNumber, Notes = value.Notes
+            };
+            ReadWork(work, value.Performers, value.Attachments);
+            work.Tools.AddRange(ReadResources(value.Tools, lookups.Tools));
+            work.Materials.AddRange(ReadResources(value.Materials, lookups.Materials));
+            work.GeneralSupports.AddRange(ReadResources(value.GeneralSupports, lookups.Supports));
+            return work;
+        }).ToList();
+
+        void ReadWork(PortalWorkDraft work, IReadOnlyList<PortalFlightPerformerRequest> performers,
+            IReadOnlyList<PortalFlightAttachmentRequest> attachments)
+        {
+            foreach (var performer in performers)
+            {
+                var staff = lookups.Staff.FirstOrDefault(choice => choice.Id == performer.StaffMemberId);
+                work.Performers.Add(new(performer.Id, zone, performer.StartUtc, performer.EndUtc)
+                {
+                    StaffMemberId = performer.StaffMemberId, DisplayName = staff?.Label, FullName = staff?.FullName, Notes = performer.Notes
+                });
+            }
+            work.Attachments.AddRange(attachments.Select(file =>
+                new PortalAttachmentDraft(file.Id, file.Kind, file.FileName, file.ContentType, file.Content?.LongLength ?? 0, null, file.Content)));
+        }
+
+        IEnumerable<PortalResourceDraft> ReadResources(IReadOnlyList<PortalFlightResourceRequest> values, IReadOnlyList<PortalCatalogChoice> options) =>
+            values.Select(value => new PortalResourceDraft(value.Id, value.ResourceId,
+                options.FirstOrDefault(choice => choice.Id == value.ResourceId)?.Label ?? "Saved resource",
+                value.Quantity is null ? ResourceCalculationType.Duration : ResourceCalculationType.Quantity, zone, value.StartUtc, value.EndUtc)
+            {
+                Quantity = value.Quantity, Notes = value.Notes
+            });
+    }
+
     private bool WorkChanged() => arrivalTime.HasChanged || departureTime.HasChanged ||
         PortalWorkDraft.Trim(arrivalRemarks) != occurrence?.ArrivalRemarks ||
         PortalWorkDraft.Trim(departureRemarks) != occurrence?.DepartureRemarks ||
         signature.Bytes is not null || signature.RemoveSaved || services.Concat(tasks).Any(row => row.HasChanges());
+
+    private bool WorkFilesLoading() => signature.IsReading || services.Concat(tasks).Any(row => row.IsReadingFile);
+
+    private void ChangeStep(int index)
+    {
+        if (saving || index == step || index < 0 || index >= StepLabels.Length)
+            return;
+
+        if (WorkFilesLoading())
+        {
+            error = "Wait for the file to finish loading before changing steps.";
+            return;
+        }
+
+        error = null;
+        if (index > step && CanEdit)
+        {
+            ValidateStep(ArrivalStep);
+            if (validation.HasErrorsInStep(ArrivalStep))
+            {
+                step = ArrivalStep;
+                validationFocusAttempt++;
+                return;
+            }
+
+            if (IsGuidedEntry && step != ArrivalStep)
+            {
+                ValidateStep(step);
+                if (validation.HasErrorsInStep(step))
+                {
+                    validationFocusAttempt++;
+                    return;
+                }
+            }
+        }
+
+        step = index;
+    }
+
+    private void NextStep()
+    {
+        if (IsGuidedEntry)
+            ChangeStep(step + 1);
+    }
 
     private void RefreshValidation()
     {
         if (validation.Count == 0)
             return;
 
-        validation.ClearStep(0);
-        ReadRequest();
+        if (validateAllSteps)
+        {
+            validation = new();
+            ReadRequest();
+        }
+        else if (validation.HasErrorsInStep(step))
+        {
+            ValidateStep(step);
+        }
+    }
+
+    private void ValidateStep(int index)
+    {
+        validation.ClearStep(index);
+        arrivalTime.TryReadUtc(out var arrived, out _);
+        departureTime.TryReadUtc(out var departed, out _);
+        switch (index)
+        {
+            case ArrivalStep:
+                ReadArrival();
+                break;
+            case ServicesStep:
+                ReadServices(arrived, departed);
+                break;
+            case TasksStep:
+                ReadTasks(arrived, departed);
+                break;
+            case DepartureStep:
+                ReadDeparture(arrived);
+                break;
+        }
     }
 
     private async Task SaveAsync()
@@ -115,7 +273,7 @@ public partial class PortalReturnToRampDialog
 
         error = null;
         validation = new();
-        if (signature.IsReading || services.Concat(tasks).Any(row => row.IsReadingFile))
+        if (WorkFilesLoading())
         {
             error = "Wait for the selected file to finish loading.";
             return;
@@ -127,10 +285,18 @@ public partial class PortalReturnToRampDialog
             return;
         }
 
+        validateAllSteps = true;
         var request = ReadRequest();
         if (validation.Count > 0)
         {
+            step = validation.FirstInvalidStep;
             validationFocusAttempt++;
+            return;
+        }
+
+        if (DraftFlight is not null)
+        {
+            DialogService.Close(new PortalReturnToRampDraft(Draft?.Id ?? newOccurrenceId, DraftSequence, request, signature.FileName));
             return;
         }
 
@@ -156,37 +322,61 @@ public partial class PortalReturnToRampDialog
 
     private PortalReturnToRampRequest ReadRequest()
     {
+        var arrived = ReadArrival();
+        var departure = ReadDeparture(arrived);
+        var serviceChanges = ReadServices(arrived, departure?.DepartedAtUtc);
+        var taskChanges = ReadTasks(arrived, departure?.DepartedAtUtc);
+        return new(new(arrived.GetValueOrDefault(), PortalWorkDraft.Trim(arrivalRemarks)), departure, serviceChanges, taskChanges);
+    }
+
+    private DateTimeOffset? ReadArrival()
+    {
+        validation.Step = ArrivalStep;
         var arrived = arrivalTime.Read("RTR arrival time", validation, ArrivalTimeField, required: true);
-        var departed = departureTime.Read("RTR departure time", validation, DepartureTimeField, required: occurrence is { IsOpen: false }
-            || !string.IsNullOrWhiteSpace(departureRemarks) || signature.Bytes is not null);
-        if (arrived > departed)
-            validation.Add(DepartureTimeField, "Return-to-ramp departure cannot be before arrival.");
         if (PortalWorkDraft.Trim(arrivalRemarks)?.Length > 2000)
             validation.Add(ArrivalRemarksField, "RTR arrival remarks must be at most 2,000 characters.");
+        return arrived;
+    }
+
+    private PortalReturnToRampDepartureRequest? ReadDeparture(DateTimeOffset? arrived)
+    {
+        validation.Step = DepartureStep;
+        var departed = departureTime.Read("RTR departure time", validation, DepartureTimeField, required: RequiresDeparture);
+        if (arrived > departed)
+            validation.Add(DepartureTimeField, "Return-to-ramp departure cannot be before arrival.");
         if (PortalWorkDraft.Trim(departureRemarks)?.Length > 2000)
             validation.Add(DepartureRemarksField, "RTR departure remarks must be at most 2,000 characters.");
 
         var signedAt = signature.SigningTime?.Read("Signed at", validation, SignatureTimeField, required: true);
-        var closing = departed.HasValue;
-        var serviceChanges = services.Select((row, index) => (row, index)).Where(pair => !pair.row.Deleted)
-            .Select(pair => pair.row.ToServiceChange(pair.index + 1, validation, closing, inReturnToRamp: true)).ToArray();
-        var taskChanges = tasks.Select((row, index) => (row, index)).Where(pair => !pair.row.Deleted)
-            .Select(pair => pair.row.ToTaskChange(pair.index + 1, validation, closing, inReturnToRamp: true)).ToArray();
-        if (closing && serviceChanges.Length == 0 && taskChanges.Length == 0)
+        if (departed.HasValue && services.All(row => row.Deleted) && tasks.All(row => row.Deleted))
             validation.Add(DepartureTimeField, "Record at least one service or task before closing the return to ramp.");
-
-        var departure = departed is { } end
-            ? new PortalReturnToRampDepartureRequest(end, PortalWorkDraft.Trim(departureRemarks), signature.Bytes,
-                signedAt, signature.RemoveSaved)
+        return departed is { } end
+            ? new(end, PortalWorkDraft.Trim(departureRemarks), signature.Bytes, signedAt, signature.RemoveSaved)
             : null;
-        return new(new(arrived.GetValueOrDefault(), PortalWorkDraft.Trim(arrivalRemarks)), departure, serviceChanges, taskChanges);
+    }
+
+    private PortalServiceChange[] ReadServices(DateTimeOffset? arrived, DateTimeOffset? departed)
+    {
+        validation.Step = ServicesStep;
+        PortalWorkDraft.ValidateServicePeriods(services, validation, includeUnchanged: true);
+        PortalWorkDraft.ValidateActualBounds(services, validation, arrived, departed, includeUnchanged: true);
+        return services.Select((row, index) => (row, index)).Where(pair => !pair.row.Deleted)
+            .Select(pair => pair.row.ToServiceChange(pair.index + 1, validation, departed.HasValue)).ToArray();
+    }
+
+    private PortalTaskChange[] ReadTasks(DateTimeOffset? arrived, DateTimeOffset? departed)
+    {
+        validation.Step = TasksStep;
+        PortalWorkDraft.ValidateActualBounds(tasks, validation, arrived, departed, includeUnchanged: true);
+        return tasks.Select((row, index) => (row, index)).Where(pair => !pair.row.Deleted)
+            .Select(pair => pair.row.ToTaskChange(pair.index + 1, validation, departed.HasValue)).ToArray();
     }
 
     private void CloseWithoutSaving() => DialogService.Close(false);
 
     private async Task CloseAsync()
     {
-        if (signature.IsReading || services.Concat(tasks).Any(row => row.IsReadingFile))
+        if (WorkFilesLoading())
         {
             error = "Wait for the file to finish loading before closing.";
             return;

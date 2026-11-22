@@ -19,11 +19,12 @@ public sealed record PortalStaffSnapshot(Guid StaffMemberId, string FullName, st
 
 public sealed record PortalFlightArrival(Guid Id, PortalStaffSnapshot SubmittedByEmployee, DateTimeOffset Ata,
     Guid AircraftTypeId, string AircraftTypeModel, string AircraftTailNumber, string? CustomerWorkReferenceNumber,
-    PortalStaffSnapshot ReceivedByEmployee, string? Remarks, bool IsAccepted, DateTimeOffset CreatedAtUtc);
+    PortalStaffSnapshot ReceivedByEmployee, string? Remarks, bool IsAccepted, DateTimeOffset CreatedAtUtc,
+    DateTimeOffset? UpdatedAtUtc = null, string? CreatedByDisplayName = null, string? UpdatedByDisplayName = null);
 
 public sealed record PortalFlightDeparture(Guid Id, PortalStaffSnapshot SubmittedByEmployee, DateTimeOffset Atd,
     PortalStaffSnapshot HandledByEmployee, string? Remarks, bool IsAccepted, DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? UpdatedAtUtc, bool HasSignature);
+    DateTimeOffset? UpdatedAtUtc, bool HasSignature, string? CreatedByDisplayName = null, string? UpdatedByDisplayName = null);
 
 public sealed record PortalFlightCancellation(Guid Id, PortalStaffSnapshot SubmittedByEmployee, DateTimeOffset CanceledAtUtc,
     string? Remarks, bool IsAccepted, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc);

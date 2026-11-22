@@ -69,6 +69,22 @@ class FlightTaskFormStateTest {
         assertFalse(taskResourceQuantityReviewRequired(reviewed, 0))
     }
 
+    @Test fun taskEndWaitsForStaffAndDurationButIgnoresQuantity() {
+        val task = draft()
+        val ended = "2026-11-11T12:00"
+        val period = FlightWorkPeriod("2026-11-11T11:00")
+        val duration = FlightResourceDraft(resourceId = resourceId, period = period, calculationType = 1)
+        val quantity = FlightResourceDraft(resourceId = resourceId, quantity = "2")
+        val closedStaff = task.copy(employees = task.employees.map { it.copy(period = period.copy(end = ended)) })
+
+        assertTrue(task.hasOpenPeriods(catalogs))
+        assertTrue(closedStaff.copy(tools = listOf(duration)).hasOpenPeriods(catalogs))
+        assertTrue(closedStaff.copy(materials = listOf(duration)).hasOpenPeriods(catalogs))
+        assertTrue(closedStaff.copy(generalSupports = listOf(duration)).hasOpenPeriods(catalogs))
+        assertFalse(closedStaff.copy(tools = listOf(duration.copy(period = period.copy(end = ended))),
+            materials = listOf(quantity)).hasOpenPeriods(catalogs))
+    }
+
     @Test fun resourceDefaultsFollowCatalogAndKeepAnExistingCapturedUsageWhenReselected() {
         val parent = FlightWorkPeriod("2026-11-11T11:00", "2026-11-11T12:00", start, end)
         val quantity = taskResourceSelection(FlightResourceDraft(), catalogs.materials.single(), parent, zone, FlightWorkTimeBounds())

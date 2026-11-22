@@ -1,41 +1,108 @@
-.portal-signature,
-.portal-signature label {
+.portal-signature {
     display: grid;
-    gap: var(--os-space-2);
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    min-width: 0;
+    gap: var(--os-space-3);
+}
+
+.portal-signature-heading {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--os-space-1) var(--os-space-2);
+}
+
+.portal-signature h4 {
+    font: inherit;
+    font-weight: 600;
 }
 
 .portal-signature h4,
-.portal-signature p {
+.portal-signature p,
+.portal-signature-preview {
     margin: 0;
 }
 
 .portal-signature small,
-.portal-signature p {
+.portal-signature p,
+.portal-signature figcaption {
     color: var(--os-color-text-muted);
     font-size: var(--os-text-sm);
     font-weight: 400;
 }
 
-.portal-signature-actions {
+.portal-signature-actions,
+.portal-signature-upload {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
     gap: var(--os-space-2);
 }
 
-.portal-signature label {
-    width: fit-content;
-    font-size: var(--os-text-sm);
-    font-weight: 600;
+.portal-signature-actions {
+    flex-wrap: wrap;
 }
 
-.portal-signature img {
-    display: block;
-    max-height: 9rem;
-    max-width: 100%;
-    object-fit: contain;
-    object-position: left center;
-    background: white;
+.portal-signature-upload {
+    position: relative;
+    min-block-size: 4.25rem;
+    padding: var(--os-space-3);
+    border: 1px dashed var(--os-color-border-strong);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface-muted);
+    cursor: pointer;
+}
+
+.portal-signature-upload:not(:has(:disabled)):hover {
+    border-color: var(--os-color-primary);
+    background: var(--os-color-primary-soft);
+}
+
+.portal-signature-upload:focus-within {
+    outline: 2px solid var(--os-color-primary);
+    outline-offset: 2px;
+}
+
+.portal-signature-upload:has([aria-invalid="true"]) {
+    border-color: var(--os-color-danger);
+}
+
+.portal-signature-upload ::deep .rzi {
+    color: var(--os-color-primary);
+}
+
+.portal-signature-upload-text {
+    display: grid;
+    min-width: 0;
+}
+
+.portal-signature-upload ::deep input {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    opacity: 0;
+    cursor: inherit;
+}
+
+.portal-signature-upload:has(:disabled) {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+.portal-signature-preview {
+    display: grid;
+    gap: var(--os-space-2);
+    padding: var(--os-space-3);
     border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-md);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface);
+    overflow-wrap: anywhere;
+}
+
+.portal-signature-preview img {
+    display: block;
+    inline-size: 100%;
+    max-block-size: 8rem;
+    object-fit: contain;
 }

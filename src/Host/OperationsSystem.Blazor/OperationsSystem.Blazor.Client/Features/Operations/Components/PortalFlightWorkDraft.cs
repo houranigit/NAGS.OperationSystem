@@ -17,6 +17,16 @@ public sealed class PortalOperationTime(StationTimeZone zone, DateTimeOffset? or
     public DateTimeOffset? Read(string label, PortalFlightValidation errors, string field, bool required = false) =>
         Read(label, message => errors.Add(field, message), required);
 
+    internal bool TryReadUtc(out DateTimeOffset? utc, out string? error)
+    {
+        if (Local != originalLocal)
+            return zone.TryToUtc(Local, out utc, out error);
+
+        utc = original;
+        error = null;
+        return true;
+    }
+
     private DateTimeOffset? Read(string label, Action<string> addError, bool required)
     {
         if (Local is null && required)
@@ -25,10 +35,7 @@ public sealed class PortalOperationTime(StationTimeZone zone, DateTimeOffset? or
             return null;
         }
 
-        if (Local == originalLocal)
-            return original;
-
-        if (zone.TryToUtc(Local, out var utc, out var error))
+        if (TryReadUtc(out var utc, out var error))
             return utc;
 
         addError($"{label}. {error}");
@@ -36,7 +43,7 @@ public sealed class PortalOperationTime(StationTimeZone zone, DateTimeOffset? or
     }
 }
 
-public sealed class PortalWorkDraft(Guid id, bool isTask, StationTimeZone zone, DateTimeOffset? start = null, DateTimeOffset? end = null)
+public sealed partial class PortalWorkDraft(Guid id, bool isTask, StationTimeZone zone, DateTimeOffset? start = null, DateTimeOffset? end = null)
 {
     internal const int MaxAttachments = 10;
     private string? baseline;
@@ -137,28 +144,30 @@ public sealed class PortalWorkDraft(Guid id, bool isTask, StationTimeZone zone, 
             .SelectMany(employee => employee.OrderBy(item => item.StartUtc))
             .Select(item => PortalPerformerDraft.From(item, zone)).ToList();
 
-    public PortalServiceChange ToServiceChange(int index, PortalFlightValidation errors, bool closing = false, bool inReturnToRamp = false)
+    public PortalServiceChange ToServiceChange(int index, PortalFlightValidation errors, bool closing = false)
     {
         if (Deleted)
             return new(Id, null);
 
         var label = $"Service {index}";
-        var (from, to, performers, attachments) = ReadWork(label, errors, closing, inReturnToRamp);
+        var (from, to, performers, attachments) = ReadWork(label, errors, closing);
         if (ServiceId is null || ServiceId == Guid.Empty)
             errors.Add(Field("service"), $"{label} needs a service.");
-        return new(Id, new(ServiceId.GetValueOrDefault(), from, to, Trim(Reference), Trim(Notes), performers, attachments));
+        return new(Id, new(ServiceId.GetValueOrDefault(), from.GetValueOrDefault(), to, Trim(Reference), Trim(Notes), performers, attachments));
     }
 
-    public PortalTaskChange ToTaskChange(int index, PortalFlightValidation errors, bool closing = false, bool inReturnToRamp = false)
+    public PortalTaskChange ToTaskChange(int index, PortalFlightValidation errors, bool closing = false)
     {
         if (Deleted)
             return new(Id, null);
 
         var label = $"Task {index}";
-        var (from, to, performers, attachments) = ReadWork(label, errors, closing, inReturnToRamp);
+        var (from, to, performers, attachments) = ReadWork(label, errors, closing);
         if (TaskType is not (0 or 1))
             errors.Add(Field("type"), $"{label} needs a valid task type.");
-        return new(Id, new(TaskType, AtaChapterId, from, to, Trim(Reference), Trim(Notes), performers,
+        if (to.HasValue && DurationResources().Any(item => item.End.Local is null))
+            errors.Add(Field("end"), $"Close every duration resource period before closing {label}.");
+        return new(Id, new(TaskType, AtaChapterId, from.GetValueOrDefault(), to, Trim(Reference), Trim(Notes), performers,
             ReadResources(Tools, "tool"), ReadResources(Materials, "material"),
             ReadResources(GeneralSupports, "general support"), attachments));
 
@@ -169,13 +178,17 @@ public sealed class PortalWorkDraft(Guid id, bool isTask, StationTimeZone zone, 
             {
                 if (!selections.Add(resource.ResourceId))
                     errors.Add(PortalFlightValidation.Field(resource.Id, "resource"), $"{label} already uses this {kind}.");
-                return resource.ToRequest($"{label} {kind} {resourceIndex + 1}", errors, closing || !inReturnToRamp && to.HasValue);
+                var resourceLabel = $"{label} {kind} {resourceIndex + 1}";
+                var input = resource.ToRequest(resourceLabel, errors, closing || to.HasValue);
+                if (resource.CalculationType is ResourceCalculationType.Duration)
+                    ValidateContainedPeriod(resource.Id, resourceLabel, input.StartUtc, input.EndUtc, label, from, to, errors);
+                return input;
             }).ToArray();
         }
     }
 
-    private (DateTimeOffset Start, DateTimeOffset? End, PortalFlightPerformerRequest[] Performers, PortalFlightAttachmentRequest[] Attachments)
-        ReadWork(string label, PortalFlightValidation errors, bool closing, bool inReturnToRamp)
+    private (DateTimeOffset? Start, DateTimeOffset? End, PortalFlightPerformerRequest[] Performers, PortalFlightAttachmentRequest[] Attachments)
+        ReadWork(string label, PortalFlightValidation errors, bool closing)
     {
         var from = Start.Read($"{label} start", errors, Field("start"), required: true);
         var to = End.Read($"{label} end", errors, Field("end"), required: closing);
@@ -189,10 +202,18 @@ public sealed class PortalWorkDraft(Guid id, bool isTask, StationTimeZone zone, 
             errors.Add(Field("notes"), $"{label} remarks must be at most 2,000 characters.");
         if (Attachments.Count > MaxAttachments)
             errors.Add(Field("attachments"), $"{label} can have at most {MaxAttachments} attachments.");
-        var requirePerformerEnds = closing || !inReturnToRamp && to.HasValue;
-        return (from.GetValueOrDefault(), to,
-            Performers.Select((item, index) => item.ToRequest($"{label} performer {index + 1}", errors, requirePerformerEnds, IsTask)).ToArray(),
-            Attachments.Select(item => item.ToRequest()).ToArray());
+        if (to.HasValue && Performers.Any(item => item.End.Local is null))
+            errors.Add(Field("end"), $"Close every performer period before closing {label}.");
+        var performerInputs = Performers.Select((item, index) =>
+        {
+            var performerLabel = $"{label} performer {index + 1}";
+            var input = item.ToRequest(performerLabel, errors, closing || to.HasValue, IsTask);
+            ValidateContainedPeriod(item.Id, performerLabel, input.StartUtc == default ? null : input.StartUtc, input.EndUtc,
+                label, from, to, errors);
+            return input;
+        }).ToArray();
+        ValidatePerformerPeriods(performerInputs, label, errors);
+        return (from, to, performerInputs, Attachments.Select(item => item.ToRequest()).ToArray());
     }
 
     private string Field(string name) => PortalFlightValidation.Field(Id, name);

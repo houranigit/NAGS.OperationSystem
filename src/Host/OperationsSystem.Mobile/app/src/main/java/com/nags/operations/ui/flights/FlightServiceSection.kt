@@ -54,6 +54,7 @@ internal fun FlightServiceSection(
                 item.employees.isNotEmpty() || defaultEmployee != null
             val editable = enabled && defaultStaffReady && canEdit(item.id)
             val endEditable = enabled && defaultStaffReady && canSetEnd(item.id)
+            val endBlocked = endEditable && item.period.end.isBlank() && item.employees.any { it.period.end.isBlank() }
             FlightWorkEntryGroup(Modifier.flightFormNavigationTarget("service:${item.id}", highlight = true)) {
                 if (draftLabels) FlightWorkDraftLabel(stringResource(R.string.work_new_service_draft),
                     badge = stringResource(R.string.work_scheduled_service).takeIf {
@@ -77,10 +78,11 @@ internal fun FlightServiceSection(
                 FlightFormDivider()
                 FlightWorkPeriodFields(item.period, referenceYear, zone, onChange = { period ->
                     update { previous -> servicePeriodWithInitialStaff(previous, period, initialStartStaffIds.toSet()) }
-                }, startEnabled = editable, endEnabled = endEditable,
+                }, startEnabled = editable, endEnabled = endEditable && !endBlocked,
                     startError = fields["startUtc"]?.let { stringResource(it) },
                     endError = fields["endUtc"]?.let { stringResource(it) }, seedEndNow = true, timeBounds = timeBounds,
                     endRequired = completionOnly(item.id) || timeBounds.upperUtc != null,
+                    endUnavailableHint = if (endBlocked) stringResource(R.string.work_end_close_staff_first) else null,
                     onStartPickerSessionChanged = { initialBlank -> initialStartStaffIds =
                         if (initialBlank) item.employees.filter { it.period.start.isBlank() }.map { it.id } else emptyList() })
                 FlightFormDivider()

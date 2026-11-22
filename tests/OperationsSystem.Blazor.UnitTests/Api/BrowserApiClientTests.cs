@@ -90,6 +90,46 @@ public sealed class BrowserApiClientTests
         runtime.CallCount.ShouldBe(2);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Portal_work_saves_send_signatures_and_attachments_as_base64_json(bool returnToRamp)
+    {
+        var runtime = new CapturingDownloadJsRuntime { Response = "{}" };
+        var operations = new OperationsApiClient(NewClient(runtime));
+        var flightId = Guid.NewGuid();
+        var occurrenceId = Guid.NewGuid();
+        var start = new DateTimeOffset(2026, 11, 22, 10, 0, 0, TimeSpan.Zero);
+        var end = start.AddHours(1);
+        byte[] signature = [0x89, 0x50, 0x4e, 0x47];
+        byte[] attachment = [0x00, 0x10, 0xff];
+        var service = new PortalServiceChange(Guid.NewGuid(),
+            new(Guid.NewGuid(), start, end, null, null, [],
+                [new(Guid.NewGuid(), 0, "photo.png", "image/png", attachment)]));
+
+        if (returnToRamp)
+        {
+            await operations.SavePortalReturnToRampAsync(flightId, occurrenceId,
+                new(new(start, null), new(end, null, signature, end, false), [service], []), "flight-version");
+        }
+        else
+        {
+            await operations.SavePortalFlightWorkAsync(flightId,
+                new(null, new(end, signature, end, null, false, null), [service], []), "flight-version");
+        }
+
+        runtime.Identifier.ShouldBe("operationsSystem.api.request");
+        runtime.Arguments.ShouldNotBeNull();
+        runtime.Arguments![0].ShouldBe("PUT");
+        var route = returnToRamp ? $"returns-to-ramp/{occurrenceId}" : "batch";
+        runtime.Arguments[1].ShouldBe($"/operations/flights/{flightId}/operations/{route}");
+        runtime.Arguments[5].ShouldBe("flight-version");
+        var body = runtime.Arguments[2].ShouldBeOfType<JsonElement>();
+        body.GetProperty("departure").GetProperty("signatureContent").GetString().ShouldBe(Convert.ToBase64String(signature));
+        body.GetProperty(returnToRamp ? "services" : "serviceChanges")[0].GetProperty("input")
+            .GetProperty("attachments")[0].GetProperty("content").GetString().ShouldBe(Convert.ToBase64String(attachment));
+    }
+
     private static BrowserApiClient NewClient(IJSRuntime jsRuntime)
     {
         var tokenStore = new AuthTokenStore();

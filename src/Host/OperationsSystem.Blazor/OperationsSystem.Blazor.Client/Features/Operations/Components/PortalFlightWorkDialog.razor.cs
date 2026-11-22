@@ -41,10 +41,12 @@ public partial class PortalFlightWorkDialog
     private PortalSignatureDraft signature = new();
     private List<PortalWorkDraft> services = [];
     private List<PortalWorkDraft> tasks = [];
+    private readonly List<PortalReturnToRampDraft> pendingReturns = [];
     private PortalFlightValidation validation = new();
-    private ElementReference validationContainer;
     private int validationFocusAttempt;
     private bool requireArrivalForValidation;
+    private bool requireDepartureForValidation;
+    private bool savedChanges;
     private string? error;
     private bool loading = true;
     private bool saving;
@@ -59,6 +61,26 @@ public partial class PortalFlightWorkDialog
 
     private bool CanEditNormalWork => !ViewOnly && flight is { } data && (data.CanSaveArrival || data.CanSaveDeparture ||
         data.CanSaveServices || data.CanSaveTasks || services.Concat(tasks).Any(row => row.CanEdit || row.CanSetEnd || row.CanDelete));
+
+    private DateTimeOffset? ActualArrival => arrivalTime.TryReadUtc(out var time, out _) ? time : null;
+    private DateTimeOffset? ActualDeparture => departureTime.TryReadUtc(out var time, out _) ? time : null;
+
+    private bool DepartureFieldsAvailable
+    {
+        get
+        {
+            var checks = new PortalFlightValidation();
+            ReadArrival(checks, requireArrival: true);
+            PortalWorkDraft.ValidateDeparturePeriods(services, tasks, checks, DepartureTimeField);
+            return checks.Count == 0;
+        }
+    }
+
+    private bool CanDraftReturnToRamp => !ViewOnly && flight is { CancellationSubmissions.Count: 0 } data &&
+        (data.CanSaveReturnsToRamp || data.CanSaveDeparture && data.DepartureSubmissions.Count == 0);
+
+    private bool CanAddReturnToRamp => CanDraftReturnToRamp && ActualDeparture.HasValue &&
+        flight!.ReturnToRamps.All(item => !item.IsOpen) && pendingReturns.All(item => !item.IsOpen);
 
     private bool IsGuidedEntry => flight is
     {
@@ -120,6 +142,7 @@ public partial class PortalFlightWorkDialog
 
     private void SetArrival(PortalFlightArrival? source)
     {
+        unlockedArrivalId = null;
         arrivalSource = source;
         arrivalTime = new(zone, source?.Ata);
         aircraftTypeId = source?.AircraftTypeId ?? flight?.AircraftTypeId;
@@ -130,6 +153,7 @@ public partial class PortalFlightWorkDialog
 
     private void SetDeparture(PortalFlightDeparture? source)
     {
+        unlockedDepartureId = null;
         departureSource = source;
         departureTime = new(zone, source?.Atd);
         departureRemarks = source?.Remarks;
@@ -175,13 +199,35 @@ public partial class PortalFlightWorkDialog
 
     private DateTime? Local(DateTimeOffset? value) => value is { } time ? zone.ToLocalDateTime(time) : null;
 
-    private bool WorkChanged() => ArrivalChanged() || DepartureChanged() || services.Concat(tasks).Any(row => row.HasChanges());
+    private DateTimeOffset? ArrivalFor(Guid? staffId)
+    {
+        var report = flight!.ArrivalSubmissions.OrderByDescending(item => item.SubmittedByEmployee.StaffMemberId == staffId)
+            .ThenByDescending(item => item.IsAccepted).ThenBy(item => item.CreatedAtUtc).ThenBy(item => item.Id).FirstOrDefault();
+        return report?.Id == arrivalSource?.Id ? ActualArrival : report?.Ata;
+    }
+
+    private DateTimeOffset? DepartureFor(Guid? staffId)
+    {
+        var report = flight!.DepartureSubmissions.OrderByDescending(item => item.SubmittedByEmployee.StaffMemberId == staffId)
+            .ThenByDescending(item => item.IsAccepted).ThenBy(item => item.CreatedAtUtc).ThenBy(item => item.Id).FirstOrDefault();
+        return report?.Id == departureSource?.Id ? ActualDeparture : report?.Atd;
+    }
+
+    private void ValidateNormalBounds(IReadOnlyList<PortalWorkDraft> work, PortalFlightValidation errors)
+    {
+        var staffId = flight!.CurrentStaffMemberId;
+        PortalWorkDraft.ValidateActualBounds(work, errors, ArrivalFor(staffId), DepartureFor(staffId));
+        if (arrivalTime.HasChanged)
+            PortalWorkDraft.ValidateActualBounds(work, errors, ActualArrival,
+                DepartureFor(arrivalSource?.SubmittedByEmployee.StaffMemberId ?? staffId), includeUnchanged: true);
+        if (departureTime.HasChanged)
+            PortalWorkDraft.ValidateActualBounds(work, errors,
+                ArrivalFor(departureSource?.SubmittedByEmployee.StaffMemberId ?? staffId), ActualDeparture, includeUnchanged: true);
+    }
+
+    private bool NormalWorkChanged() => ArrivalChanged() || DepartureChanged() || services.Concat(tasks).Any(row => row.HasChanges());
+    private bool WorkChanged() => NormalWorkChanged() || pendingReturns.Count > 0;
     private bool WorkFilesLoading() => signature.IsReading || services.Concat(tasks).Any(row => row.IsReadingFile);
-
-    private bool IsCompletedStep(int index) => IsGuidedEntry && index < step;
-
-    private string StepClass(int index) => index == step ? "portal-step portal-step-active"
-        : IsCompletedStep(index) ? "portal-step portal-step-complete" : "portal-step";
 
     private void ChangeStep(int index)
     {
@@ -192,6 +238,23 @@ public partial class PortalFlightWorkDialog
         {
             error = "Wait for the file to finish loading before changing steps.";
             return;
+        }
+
+        if (!ViewOnly && index == 4)
+        {
+            if (!ValidateReturnToRampEntry())
+                return;
+        }
+        else if (!ViewOnly && index > 0)
+        {
+            validation.ClearStep(0);
+            requireArrivalForValidation = true;
+            ReadArrival(validation, requireArrival: true);
+            if (validation.HasErrorsInStep(0))
+            {
+                FocusFirstInvalidStep();
+                return;
+            }
         }
 
         step = index;
@@ -242,17 +305,24 @@ public partial class PortalFlightWorkDialog
                 ReadTasks(validation);
                 break;
             case 3:
-                ReadDeparture(validation);
+                ReadDeparture(validation, requireDeparture: requireDepartureForValidation);
                 break;
         }
     }
 
     private PortalFlightArrivalRequest? ReadArrival(PortalFlightValidation errors, bool requireArrival = false)
     {
-        if (!CanEditArrival || !requireArrival && !ArrivalChanged())
+        if (!ArrivalChanged() && (!requireArrival || arrivalSource is not null))
             return null;
 
         errors.Step = 0;
+        if (!CanEditArrival)
+        {
+            if (requireArrival && arrivalSource is null)
+                errors.Add(ArrivalTimeField, "Arrival details are required before continuing.");
+            return null;
+        }
+
         var ata = arrivalTime.Read("Actual time of arrival", errors, ArrivalTimeField, required: true);
         if (aircraftTypeId is null || aircraftTypeId == Guid.Empty)
             errors.Add(AircraftField, "Aircraft type is required.");
@@ -265,13 +335,24 @@ public partial class PortalFlightWorkDialog
             PortalWorkDraft.Trim(arrivalReference), PortalWorkDraft.Trim(arrivalRemarks), false, arrivalSource?.Id);
     }
 
-    private PortalFlightDepartureRequest? ReadDeparture(PortalFlightValidation errors)
+    private PortalFlightDepartureRequest? ReadDeparture(PortalFlightValidation errors, bool requireDeparture = false)
     {
-        if (!CanEditDeparture || !DepartureChanged())
+        if (!DepartureChanged() && (!requireDeparture || departureSource is not null))
             return null;
 
         errors.Step = 3;
+        if (!CanEditDeparture)
+        {
+            if (requireDeparture && departureSource is null)
+                errors.Add(DepartureTimeField, "Departure details are required before adding a return to ramp.");
+            return null;
+        }
+
         var atd = departureTime.Read("Actual time of departure", errors, DepartureTimeField, required: true);
+        if (ArrivalFor(departureSource?.SubmittedByEmployee.StaffMemberId ?? flight!.CurrentStaffMemberId) is { } ata &&
+            atd is { } end && end < ata)
+            errors.Add(DepartureTimeField, "Actual departure cannot be before actual arrival.");
+        PortalWorkDraft.ValidateDeparturePeriods(services, tasks, errors, DepartureTimeField);
         var signedAt = signature.SigningTime?.Read("Signed at", errors, SignatureTimeField, required: true);
         return new(atd.GetValueOrDefault(), signature.Bytes, signedAt,
             PortalWorkDraft.Trim(departureRemarks), false, departureSource?.Id);
@@ -280,15 +361,20 @@ public partial class PortalFlightWorkDialog
     private PortalServiceChange[] ReadServices(PortalFlightValidation errors)
     {
         errors.Step = 1;
+        PortalWorkDraft.ValidateServicePeriods(services, errors);
+        ValidateNormalBounds(services, errors);
+        var closing = DepartureFor(flight!.CurrentStaffMemberId).HasValue;
         return services.Select((row, index) => (row, index)).Where(pair => pair.row.HasChanges())
-            .Select(pair => pair.row.ToServiceChange(pair.index + 1, errors)).ToArray();
+            .Select(pair => pair.row.ToServiceChange(pair.index + 1, errors, closing)).ToArray();
     }
 
     private PortalTaskChange[] ReadTasks(PortalFlightValidation errors)
     {
         errors.Step = 2;
+        ValidateNormalBounds(tasks, errors);
+        var closing = DepartureFor(flight!.CurrentStaffMemberId).HasValue;
         return tasks.Select((row, index) => (row, index)).Where(pair => pair.row.HasChanges())
-            .Select(pair => pair.row.ToTaskChange(pair.index + 1, errors)).ToArray();
+            .Select(pair => pair.row.ToTaskChange(pair.index + 1, errors, closing)).ToArray();
     }
 
     private async Task SaveAsync()
@@ -308,16 +394,18 @@ public partial class PortalFlightWorkDialog
             if (validation.Count > 0)
                 FocusFirstInvalidStep();
             else
-                DialogService.Close(false);
+                DialogService.Close(savedChanges);
             return;
         }
 
         requireArrivalForValidation = requireArrivalForValidation && validation.HasErrorsInStep(0);
         validation = new();
-        var arrival = ReadArrival(validation, requireArrivalForValidation);
+        var needsArrival = requireArrivalForValidation || DepartureChanged() || pendingReturns.Count > 0 ||
+            services.Concat(tasks).Any(row => !row.Deleted && row.HasChanges());
+        var arrival = ReadArrival(validation, needsArrival);
         var serviceChanges = ReadServices(validation);
         var taskChanges = ReadTasks(validation);
-        var departure = ReadDeparture(validation);
+        var departure = ReadDeparture(validation, requireDeparture: pendingReturns.Count > 0);
         if (validation.Count > 0)
         {
             FocusFirstInvalidStep();
@@ -325,6 +413,7 @@ public partial class PortalFlightWorkDialog
         }
 
         saving = true;
+        int? savingReturn = null;
         try
         {
             var acknowledged = false;
@@ -341,12 +430,27 @@ public partial class PortalFlightWorkDialog
                 arrival is null ? null : arrival with { AcknowledgeConflictingSubmission = acknowledged },
                 departure is null ? null : departure with { AcknowledgeConflictingSubmission = acknowledged },
                 serviceChanges, taskChanges);
-            await Operations.SavePortalFlightWorkAsync(FlightId, request, flight.RowVersion, lifetime.Token);
-            DialogService.Close(true);
+            if (arrival is not null || departure is not null || serviceChanges.Length > 0 || taskChanges.Length > 0)
+            {
+                var saved = await Operations.SavePortalFlightWorkAsync(FlightId, request, flight.RowVersion, lifetime.Token);
+                AcceptNormalSave(saved);
+            }
+
+            while (pendingReturns.Count > 0)
+            {
+                var pending = pendingReturns[0];
+                savingReturn = pending.Sequence;
+                flight = await Operations.SavePortalReturnToRampAsync(FlightId, pending.Id, pending.Request, flight.RowVersion, lifetime.Token);
+                savedChanges = true;
+                pendingReturns.RemoveAt(0);
+            }
+            DialogService.Close(savedChanges);
         }
         catch (ApiException ex)
         {
-            error = ex.ToDisplayMessage("Could not save the flight work.");
+            error = savingReturn is { } sequence
+                ? $"RTR {sequence} still needs to be saved. {ex.ToDisplayMessage("Could not save the return to ramp.")}"
+                : ex.ToDisplayMessage("Could not save the flight work.");
         }
         catch (JSException)
         {
@@ -358,33 +462,112 @@ public partial class PortalFlightWorkDialog
         }
     }
 
+    private void AcceptNormalSave(PortalFlightOperations saved)
+    {
+        savedChanges = true;
+        flight = saved;
+        var unrecordedPlan = services.Where(row => row.IsPlanned && !row.HasChanges()).ToArray();
+        services = saved.Services.Select(item => PortalWorkDraft.From(item, zone)).Concat(unrecordedPlan).ToList();
+        tasks = saved.Tasks.Select(item => PortalWorkDraft.From(item, zone)).ToList();
+        SetArrival(saved.ArrivalSubmissions.OrderByDescending(item => item.Id == arrivalSource?.Id)
+            .ThenByDescending(item => item.SubmittedByEmployee.StaffMemberId == saved.CurrentStaffMemberId)
+            .ThenByDescending(item => item.IsAccepted).FirstOrDefault());
+        SetDeparture(saved.DepartureSubmissions.OrderByDescending(item => item.Id == departureSource?.Id)
+            .ThenByDescending(item => item.SubmittedByEmployee.StaffMemberId == saved.CurrentStaffMemberId)
+            .ThenByDescending(item => item.IsAccepted).FirstOrDefault());
+    }
+
     private void FocusFirstInvalidStep()
     {
         step = validation.FirstInvalidStep;
         validationFocusAttempt++;
     }
 
+    private bool ValidateReturnToRampEntry()
+    {
+        validation = new();
+        requireArrivalForValidation = true;
+        requireDepartureForValidation = true;
+        ReadArrival(validation, requireArrival: true);
+        ReadServices(validation);
+        ReadTasks(validation);
+        ReadDeparture(validation, requireDeparture: true);
+        if (validation.Count == 0)
+            return true;
+
+        FocusFirstInvalidStep();
+        return false;
+    }
+
     private async Task OpenReturnToRampAsync(Guid? occurrenceId)
     {
-        if (saving)
+        if (flight is null || saving)
             return;
 
-        if (WorkChanged() || WorkFilesLoading())
+        if (WorkFilesLoading())
         {
-            error = "Save your flight work before opening a return to ramp.";
+            error = "Wait for the file to finish loading before opening a return to ramp.";
             return;
         }
 
-        var result = await DialogService.OpenAsync<PortalReturnToRampDialog>(occurrenceId is null ? "Add RTR" : "Return to ramp",
+        if (occurrenceId is null || pendingReturns.Any(item => item.Id == occurrenceId))
+        {
+            await OpenReturnToRampDraftAsync(occurrenceId);
+            return;
+        }
+
+        var occurrence = flight.ReturnToRamps.SingleOrDefault(item => item.Id == occurrenceId);
+        if (occurrence is null)
+            return;
+
+        var result = await DialogService.OpenAsync<PortalReturnToRampDialog>($"RTR {occurrence.Sequence} · {flight.FlightNumber}",
             new Dictionary<string, object?>
             {
                 [nameof(PortalReturnToRampDialog.FlightId)] = FlightId,
                 [nameof(PortalReturnToRampDialog.OccurrenceId)] = occurrenceId,
-                [nameof(PortalReturnToRampDialog.ViewOnly)] = ViewOnly
+                [nameof(PortalReturnToRampDialog.ViewOnly)] = ViewOnly || WorkChanged()
             },
-            new DialogOptions { Width = "900px", ShowClose = false, CloseDialogOnEsc = false, CloseDialogOnOverlayClick = false });
+            PortalWorkDialogLayout.CreateOptions());
         if (result is true)
             DialogService.Close(true);
+    }
+
+    private async Task OpenReturnToRampDraftAsync(Guid? id)
+    {
+        if (flight is null || !CanDraftReturnToRamp || id is null && !CanAddReturnToRamp)
+            return;
+
+        if (!ValidateReturnToRampEntry())
+            return;
+
+        var index = pendingReturns.FindIndex(item => item.Id == id);
+        var draft = index >= 0 ? pendingReturns[index] : null;
+        var sequence = draft?.Sequence ?? flight.LastReturnToRampSequence + pendingReturns.Count + 1;
+        var result = await DialogService.OpenAsync<PortalReturnToRampDialog>(draft is null
+            ? $"Add RTR {sequence} · {flight.FlightNumber}" : $"Edit RTR {sequence} · {flight.FlightNumber}",
+            new Dictionary<string, object?>
+            {
+                [nameof(PortalReturnToRampDialog.FlightId)] = FlightId,
+                [nameof(PortalReturnToRampDialog.DraftFlight)] = flight,
+                [nameof(PortalReturnToRampDialog.Draft)] = draft,
+                [nameof(PortalReturnToRampDialog.DraftSequence)] = sequence,
+                [nameof(PortalReturnToRampDialog.RequireClosedDraft)] = index >= 0 && index < pendingReturns.Count - 1
+            },
+            PortalWorkDialogLayout.CreateOptions());
+        if (result is not PortalReturnToRampDraft pending)
+            return;
+
+        if (index >= 0)
+            pendingReturns[index] = pending;
+        else
+            pendingReturns.Add(pending);
+    }
+
+    private void RemoveReturnToRampDraft(Guid id)
+    {
+        pendingReturns.RemoveAll(item => item.Id == id);
+        for (var index = 0; index < pendingReturns.Count; index++)
+            pendingReturns[index] = pendingReturns[index] with { Sequence = flight!.LastReturnToRampSequence + index + 1 };
     }
 
     private void CloseWithoutSaving() => DialogService.Close(false);
@@ -398,7 +581,7 @@ public partial class PortalFlightWorkDialog
         }
 
         if (!WorkChanged() || await ConfirmDiscardAsync())
-            DialogService.Close(false);
+            DialogService.Close(savedChanges);
     }
 
     private async Task<bool> ConfirmDiscardAsync() => await DialogService.Confirm(

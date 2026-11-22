@@ -1,21 +1,23 @@
 @inject OperationsApiClient Operations
 
 <section class="portal-signature">
-    <h4>Customer signature <small>optional</small></h4>
+    <div class="portal-signature-heading">
+        <h4>Customer signature</h4>
+        <small>Optional</small>
+    </div>
     @if (Draft.Bytes is { } bytes)
     {
+        <figure class="portal-signature-preview">
+            <img src="@($"data:image/png;base64,{Convert.ToBase64String(bytes)}")" alt="Selected customer signature" />
+            <figcaption>@Draft.FileName</figcaption>
+        </figure>
         <PortalOperationDateField Label="Signed at" Time="@(Draft.SigningTime!)" Required="true" Disabled="@Disabled"
                                   Validation="@Validation" ValidationField="@ValidationField" Changed="@Changed" />
-        <img src="@($"data:image/png;base64,{Convert.ToBase64String(bytes)}")" alt="Selected customer signature" />
-        <div class="portal-signature-actions">
-            <span>@Draft.FileName</span>
-            <RadzenButton Text="Discard new signature" Icon="undo" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
-                          Disabled="@Disabled" Click="@DiscardAsync" />
-        </div>
     }
     else if (Draft.SavedPath is { } savedPath && !Draft.RemoveSaved)
     {
         <div class="portal-signature-actions">
+            <RadzenIcon Icon="draw" aria-hidden="true" />
             <span>Signature on file</span>
             <RadzenButton Text="Download signature" Icon="download" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
                           Disabled="@downloading" Click="@(() => DownloadAsync(savedPath))" />
@@ -35,18 +37,30 @@
                           Disabled="@Disabled" Click="@(() => SetRemoveSavedAsync(false))" />
         </div>
     }
-    else
+    else if (Disabled)
     {
         <p>No signature recorded.</p>
     }
     @if (!Disabled)
     {
-        <label>
-            @(Draft.SavedPath is null ? "Upload PNG signature" : "Replace PNG signature")
-            <InputFile OnChange="@UploadAsync" accept="image/png,.png" disabled="@Draft.IsReading"
-                       aria-invalid="@(uploadError is null ? null : "true")" aria-describedby="@(uploadError is null ? null : PortalFlightValidation.ErrorId(UploadField))" />
-            <PortalFieldError Field="@UploadField" Message="@uploadError" />
+        <label class="portal-signature-upload">
+            <RadzenIcon Icon="upload_file" aria-hidden="true" />
+            <span class="portal-signature-upload-text">
+                <strong>@(Draft.IsReading ? "Reading signature…" : UploadLabel)</strong>
+                <small>Up to 2 MB</small>
+            </span>
+            <InputFile @key="pickerRevision" OnChange="@UploadAsync" accept="image/png,.png" disabled="@Draft.IsReading"
+                       aria-label="@UploadLabel" aria-invalid="@(uploadError is null ? null : "true")"
+                       aria-describedby="@(uploadError is null ? null : PortalFlightValidation.ErrorId(UploadField))" />
         </label>
+        <PortalFieldError Field="@UploadField" Message="@uploadError" />
+        @if (Draft.Bytes is not null)
+        {
+            <div class="portal-signature-actions">
+                <RadzenButton Text="Discard new signature" Icon="undo" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                              Disabled="@Draft.IsReading" Click="@DiscardAsync" />
+            </div>
+        }
     }
 </section>
 
@@ -61,13 +75,17 @@
     [Parameter] public EventCallback Changed { get; set; }
 
     private bool downloading;
+    private int pickerRevision;
     private string? uploadError;
     private string? downloadError;
     private string UploadField => $"{ValidationField}-upload";
+    private string UploadLabel => Draft.Bytes is null && (Draft.SavedPath is null || Draft.RemoveSaved)
+        ? "Upload PNG signature" : "Replace PNG signature";
 
     private async Task DiscardAsync()
     {
         Draft.Clear();
+        uploadError = null;
         await Changed.InvokeAsync();
     }
 
@@ -79,7 +97,7 @@
 
     private async Task UploadAsync(InputFileChangeEventArgs args)
     {
-        if (Draft.IsReading)
+        if (Disabled || Draft.IsReading)
             return;
 
         uploadError = null;
@@ -88,6 +106,7 @@
         if (file.Size <= 0 || file.Size > limit || !Path.GetExtension(file.Name).Equals(".png", StringComparison.OrdinalIgnoreCase))
         {
             uploadError = "Choose a PNG signature of at most 2 MB.";
+            pickerRevision++;
             return;
         }
 
@@ -117,6 +136,7 @@
         finally
         {
             Draft.IsReading = false;
+            pickerRevision++;
         }
         if (uploadError is null)
             await Changed.InvokeAsync();

@@ -1,186 +1,225 @@
 @implements IAsyncDisposable
 
-<div class="portal-operations-editor">
-    @if (loading)
-    {
-        <LoadingCard />
-    }
-    else if (flight is null)
-    {
-        <ErrorState Message="@(error ?? "Could not load the flight work.")" OnRetry="@LoadAsync" />
-    }
-    else
-    {
-        <div class="portal-editor-body" @ref="validationContainer">
-            <ol class="portal-stepper" aria-label="Flight operation steps">
-                @for (var i = 0; i < StepLabels.Length; i++)
-                {
-                    var index = i;
-                    <li class="@StepClass(index)">
-                        <button type="button" aria-current="@(index == step ? "step" : null)"
-                                title="@StepLabels[index]"
-                                disabled="@(saving || IsGuidedEntry && index > step)" @onclick="@(() => ChangeStep(index))">
-                            <span class="portal-step-number">
-                                @if (IsCompletedStep(index))
-                                {
-                                    <RadzenIcon Icon="check" />
-                                }
-                                else
-                                {
-                                    @(index + 1)
-                                }
-                            </span>
-                            <span class="portal-step-label">@StepLabels[index]</span>
-                        </button>
-                    </li>
-                }
-            </ol>
-            <div @key="step" class="portal-editor-content" role="region" aria-label="@StepLabels[step]" tabindex="0">
-                @if (lookups.HasUnavailableCatalogs)
-                {
-                    <DismissibleDialogMessage AlertStyle="AlertStyle.Warning" StateKey="@("flight-work-catalogs")">
-                        Some reference choices are unavailable with your current permissions.
-                    </DismissibleDialogMessage>
-                }
-                @switch (step)
-                {
-                    case 0:
-                        <section class="portal-editor-section">
-                            <h3>Arrival</h3>
-                            @if (flight.ArrivalSubmissions.Count > 1)
-                            {
-                                <label class="portal-report-picker">
-                                    <span>Arrival report</span>
-                                    <RadzenDropDown TValue="Guid?" Data="@ArrivalOptions()" TextProperty="@nameof(PortalCatalogChoice.Label)"
-                                                    ValueProperty="@nameof(PortalCatalogChoice.Id)" Value="@arrivalSource?.Id"
-                                                    ValueChanged="@SelectArrivalAsync" Disabled="@saving" />
+<PortalWorkDialogLayout StepLabels="@StepLabels" CurrentStep="@step" ShowSteps="@(!loading && flight is not null)"
+                        IsGuidedEntry="@IsGuidedEntry" Busy="@saving" StepChanged="@ChangeStep" ValidationAttempt="@validationFocusAttempt">
+    <StatusContent>
+        @if (loading)
+        {
+            <LoadingCard />
+        }
+        else
+        {
+            <ErrorState Message="@(error ?? "Could not load the flight work.")" OnRetry="@LoadAsync" />
+        }
+    </StatusContent>
+    <StepContent>
+        @if (flight is not null)
+        {
+            @if (lookups.HasUnavailableCatalogs)
+            {
+                <DismissibleDialogMessage AlertStyle="AlertStyle.Warning" StateKey="@("flight-work-catalogs")">
+                    Some reference choices are unavailable with your current permissions.
+                </DismissibleDialogMessage>
+            }
+            @switch (step)
+            {
+                case 0:
+                    <section class="portal-editor-section">
+                        <div class="portal-editor-heading">
+                            <h3>Actual Arrival Details</h3>
+                        </div>
+                        @if (flight.ArrivalSubmissions.Count > 1)
+                        {
+                            <label class="portal-report-picker">
+                                <span>Arrival report</span>
+                                <RadzenDropDown TValue="Guid?" Data="@ArrivalOptions()" TextProperty="@nameof(PortalCatalogChoice.Label)"
+                                                ValueProperty="@nameof(PortalCatalogChoice.Id)" Value="@arrivalSource?.Id"
+                                                ValueChanged="@SelectArrivalAsync" Disabled="@saving" />
+                            </label>
+                        }
+                        @if (arrivalSource is not null || flight.CanSaveArrival)
+                        {
+                            <div class="portal-editor-grid">
+                                <PortalOperationDateField Label="Actual time of arrival" Time="@arrivalTime" Required="true"
+                                                          Disabled="@(!CanEditArrivalFields)" Validation="@validation" ValidationField="@ArrivalTimeField"
+                                                          Changed="@RefreshValidation" />
+                                <label>
+                                    <span>Aircraft type *</span>
+                                    <RadzenDropDown TValue="Guid?" Data="@PortalWorkLookups.WithSaved(lookups.Aircraft, arrivalSource?.AircraftTypeId ?? flight.AircraftTypeId, arrivalSource?.AircraftTypeModel ?? flight.AircraftTypeModel)"
+                                                    TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
+                                                    @bind-Value="aircraftTypeId" @bind-Value:after="RefreshValidation"
+                                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                                    Disabled="@(!CanEditArrivalFields)" aria-invalid="@validation.InvalidAttribute(AircraftField)"
+                                                    aria-describedby="@validation.DescriptionId(AircraftField)" />
+                                    <PortalFieldError Validation="@validation" Field="@AircraftField" />
                                 </label>
-                            }
+                                <label>
+                                    <span>Tail number *</span>
+                                    <RadzenTextBox @bind-Value="tailNumber" @bind-Value:after="RefreshValidation" Immediate="true" Disabled="@(!CanEditArrivalFields)"
+                                                   aria-invalid="@validation.InvalidAttribute(TailField)" aria-describedby="@validation.DescriptionId(TailField)" />
+                                    <PortalFieldError Validation="@validation" Field="@TailField" />
+                                </label>
+                                <label>
+                                    <span>Customer work reference</span>
+                                    <RadzenTextBox @bind-Value="arrivalReference" @bind-Value:after="RefreshValidation" Immediate="true" Disabled="@(!CanEditArrivalFields)" />
+                                </label>
+                                <label class="portal-editor-full">
+                                    <span>Arrival remarks @if (RequiresArrivalRemarks) { <span aria-hidden="true">*</span> }</span>
+                                    <RadzenTextArea @bind-Value="arrivalRemarks" @bind-Value:after="RefreshValidation" Immediate="true" Rows="3" Disabled="@(!CanEditArrivalFields)"
+                                                    aria-invalid="@validation.InvalidAttribute(ArrivalRemarksField)" aria-describedby="@validation.DescriptionId(ArrivalRemarksField)" />
+                                    <PortalFieldError Validation="@validation" Field="@ArrivalRemarksField" />
+                                </label>
+                            </div>
                             @if (arrivalSource is { } submittedArrival)
                             {
-                                <p class="portal-work-note">Received by @submittedArrival.ReceivedByEmployee.FullName · Reported by @submittedArrival.SubmittedByEmployee.FullName</p>
+                                <p class="portal-actuals-note">
+                                    This section was submitted by <strong>@ActualsSubmitter(submittedArrival.SubmittedByEmployee, submittedArrival.CreatedByDisplayName)</strong>
+                                    on <strong>@ActualsTimestamp(submittedArrival.CreatedAtUtc)</strong>@if (submittedArrival.UpdatedByDisplayName is { Length: > 0 } updater && submittedArrival.UpdatedAtUtc is { } updatedAt)
+                                    {
+                                        <text> and updated by <strong>@updater</strong> on <strong>@ActualsTimestamp(updatedAt)</strong></text>
+                                    }.
+                                    @if (submittedArrival.ReceivedByEmployee.StaffMemberId != submittedArrival.SubmittedByEmployee.StaffMemberId)
+                                    {
+                                        <text> Received by <strong>@submittedArrival.ReceivedByEmployee.FullName</strong>.</text>
+                                    }
+                                    @if (ArrivalFieldsLocked && CanEditArrival)
+                                    {
+                                        <button type="button" class="portal-actuals-update" disabled="@saving"
+                                                @onclick="@(() => unlockedArrivalId = submittedArrival.Id)">Update arrival details…</button>
+                                    }
+                                </p>
                             }
-                            @if (arrivalSource is not null || flight.CanSaveArrival)
-                            {
-                                <div class="portal-editor-grid">
-                                    <PortalOperationDateField Label="Actual time of arrival" Time="@arrivalTime" Required="true"
-                                                              Disabled="@(!CanEditArrival || saving)" Validation="@validation" ValidationField="@ArrivalTimeField"
+                        }
+                        else
+                        {
+                            <p class="portal-work-note">No arrival reported.</p>
+                        }
+                    </section>
+                    break;
+                case 1:
+                    <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@services" Zone="@zone" Lookups="@lookups"
+                                             CanAdd="@(flight.CanAddServices ?? flight.CanSaveServices)" ReadOnly="@(ViewOnly || saving)"
+                                             Validation="@validation" ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
+                    break;
+                case 2:
+                    <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@tasks" Zone="@zone" Lookups="@lookups" IsTask="true"
+                                             CanAdd="@(flight.CanAddTasks ?? flight.CanSaveTasks)" ReadOnly="@(ViewOnly || saving)"
+                                             Validation="@validation" ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
+                    break;
+                case 3:
+                    var departureAvailable = CanEditDeparture && DepartureFieldsAvailable;
+                    var canEditDepartureFields = departureAvailable && !DepartureFieldsLocked && !saving;
+                    <section class="portal-editor-section">
+                        <div class="portal-editor-heading">
+                            <h3>Actual Departure Details</h3>
+                        </div>
+                        @if (flight.DepartureSubmissions.Count > 1)
+                        {
+                            <label class="portal-report-picker">
+                                <span>Departure report</span>
+                                <RadzenDropDown TValue="Guid?" Data="@DepartureOptions()" TextProperty="@nameof(PortalCatalogChoice.Label)"
+                                                ValueProperty="@nameof(PortalCatalogChoice.Id)" Value="@departureSource?.Id"
+                                                ValueChanged="@SelectDepartureAsync" Disabled="@saving" />
+                            </label>
+                        }
+                        @if (departureSource is not null || flight.CanSaveDeparture)
+                        {
+                            <div class="portal-departure-form">
+                                <div class="portal-editor-grid portal-departure-fields">
+                                    <PortalOperationDateField Label="Actual time of departure" Time="@departureTime" Required="true"
+                                                              Disabled="@(!canEditDepartureFields)" Validation="@validation" ValidationField="@DepartureTimeField"
                                                               Changed="@RefreshValidation" />
                                     <label>
-                                        <span>Aircraft type *</span>
-                                        <RadzenDropDown TValue="Guid?" Data="@PortalWorkLookups.WithSaved(lookups.Aircraft, arrivalSource?.AircraftTypeId ?? flight.AircraftTypeId, arrivalSource?.AircraftTypeModel ?? flight.AircraftTypeModel)"
-                                                        TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
-                                                        @bind-Value="aircraftTypeId" @bind-Value:after="RefreshValidation"
-                                                        AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                                                        Disabled="@(!CanEditArrival || saving)" aria-invalid="@validation.InvalidAttribute(AircraftField)"
-                                                        aria-describedby="@validation.DescriptionId(AircraftField)" />
-                                        <PortalFieldError Validation="@validation" Field="@AircraftField" />
-                                    </label>
-                                    <label>
-                                        <span>Tail number *</span>
-                                        <RadzenTextBox @bind-Value="tailNumber" @bind-Value:after="RefreshValidation" Immediate="true" Disabled="@(!CanEditArrival || saving)"
-                                                       aria-invalid="@validation.InvalidAttribute(TailField)" aria-describedby="@validation.DescriptionId(TailField)" />
-                                        <PortalFieldError Validation="@validation" Field="@TailField" />
-                                    </label>
-                                    <label>
-                                        <span>Customer work reference</span>
-                                        <RadzenTextBox @bind-Value="arrivalReference" @bind-Value:after="RefreshValidation" Immediate="true" Disabled="@(!CanEditArrival || saving)" />
-                                    </label>
-                                    <label class="portal-editor-full">
-                                        <span>Arrival remarks @if (RequiresArrivalRemarks) { <span aria-hidden="true">*</span> }</span>
-                                        <RadzenTextArea @bind-Value="arrivalRemarks" @bind-Value:after="RefreshValidation" Immediate="true" Rows="3" Disabled="@(!CanEditArrival || saving)"
-                                                        aria-invalid="@validation.InvalidAttribute(ArrivalRemarksField)" aria-describedby="@validation.DescriptionId(ArrivalRemarksField)" />
-                                        <PortalFieldError Validation="@validation" Field="@ArrivalRemarksField" />
+                                        <span>Departure remarks</span>
+                                        <RadzenTextArea @bind-Value="departureRemarks" @bind-Value:after="RefreshValidation"
+                                                        Immediate="true" Rows="5" Disabled="@(!canEditDepartureFields)" />
                                     </label>
                                 </div>
-                            }
-                            else
+                                <PortalWorkSignature @key="signature" FlightId="@flight.Id" Draft="@signature" Zone="@zone"
+                                                     Disabled="@(!canEditDepartureFields)" Validation="@validation"
+                                                     ValidationField="@SignatureTimeField" Changed="@RefreshValidation" />
+                            </div>
+                            @if (CanEditDeparture && !departureAvailable)
                             {
-                                <p class="portal-work-note">No arrival reported.</p>
-                            }
-                        </section>
-                        break;
-                    case 1:
-                        <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@services" Zone="@zone" Lookups="@lookups"
-                                                 CanAdd="@(flight.CanAddServices ?? flight.CanSaveServices)" ReadOnly="@(ViewOnly || saving)"
-                                                 Validation="@validation" ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
-                        break;
-                    case 2:
-                        <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@tasks" Zone="@zone" Lookups="@lookups" IsTask="true"
-                                                 CanAdd="@(flight.CanAddTasks ?? flight.CanSaveTasks)" ReadOnly="@(ViewOnly || saving)"
-                                                 Validation="@validation" ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
-                        break;
-                    case 3:
-                        <section class="portal-editor-section">
-                            <h3>Departure</h3>
-                            @if (flight.DepartureSubmissions.Count > 1)
-                            {
-                                <label class="portal-report-picker">
-                                    <span>Departure report</span>
-                                    <RadzenDropDown TValue="Guid?" Data="@DepartureOptions()" TextProperty="@nameof(PortalCatalogChoice.Label)"
-                                                    ValueProperty="@nameof(PortalCatalogChoice.Id)" Value="@departureSource?.Id"
-                                                    ValueChanged="@SelectDepartureAsync" Disabled="@saving" />
-                                </label>
+                                <p class="portal-work-note">Complete arrival details and close active services and tasks before editing departure.</p>
                             }
                             @if (departureSource is { } submittedDeparture)
                             {
-                                <p class="portal-work-note">Handled by @submittedDeparture.HandledByEmployee.FullName · Reported by @submittedDeparture.SubmittedByEmployee.FullName</p>
+                                <p class="portal-actuals-note">
+                                    This section was submitted by <strong>@ActualsSubmitter(submittedDeparture.SubmittedByEmployee, submittedDeparture.CreatedByDisplayName)</strong>
+                                    on <strong>@ActualsTimestamp(submittedDeparture.CreatedAtUtc)</strong>@if (submittedDeparture.UpdatedByDisplayName is { Length: > 0 } updater && submittedDeparture.UpdatedAtUtc is { } updatedAt)
+                                    {
+                                        <text> and updated by <strong>@updater</strong> on <strong>@ActualsTimestamp(updatedAt)</strong></text>
+                                    }.
+                                    @if (submittedDeparture.HandledByEmployee.StaffMemberId != submittedDeparture.SubmittedByEmployee.StaffMemberId)
+                                    {
+                                        <text> Handled by <strong>@submittedDeparture.HandledByEmployee.FullName</strong>.</text>
+                                    }
+                                    @if (DepartureFieldsLocked && CanEditDeparture)
+                                    {
+                                        <button type="button" class="portal-actuals-update" disabled="@(saving || !departureAvailable)"
+                                                @onclick="@(() => unlockedDepartureId = submittedDeparture.Id)">Update departure details…</button>
+                                    }
+                                </p>
                             }
-                            @if (departureSource is not null || flight.CanSaveDeparture)
+                        }
+                        else
+                        {
+                            <p class="portal-work-note">No departure reported.</p>
+                        }
+                    </section>
+                    break;
+                case 4:
+                    <section class="portal-editor-section">
+                        <div class="portal-editor-heading">
+                            <h3>Returns to ramp</h3>
+                            @if (CanDraftReturnToRamp && ActualDeparture.HasValue)
                             {
-                                <div class="portal-editor-grid">
-                                    <PortalOperationDateField Label="Actual time of departure" Time="@departureTime" Required="true"
-                                                              Disabled="@(!CanEditDeparture || saving)" Validation="@validation" ValidationField="@DepartureTimeField"
-                                                              Changed="@RefreshValidation" />
-                                    <label class="portal-editor-full">
-                                        <span>Departure remarks</span>
-                                        <RadzenTextArea @bind-Value="departureRemarks" @bind-Value:after="RefreshValidation" Immediate="true" Rows="3" Disabled="@(!CanEditDeparture || saving)" />
-                                    </label>
+                                <RadzenButton Text="Add RTR" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(saving || !CanAddReturnToRamp)"
+                                              Click="@(() => OpenReturnToRampAsync(null))" />
+                            }
+                        </div>
+                        @if (flight.ReturnToRamps.Count == 0 && pendingReturns.Count == 0)
+                        {
+                            <p class="portal-work-note">@(ActualDeparture is null ? "Enter departure details before adding a return to ramp." : "No returns to ramp recorded.")</p>
+                        }
+                        @if (!ViewOnly && (flight.ReturnToRamps.Any(item => item.IsOpen) || pendingReturns.Any(item => item.IsOpen)))
+                        {
+                            <p class="portal-work-note">Close the open return to ramp before adding another.</p>
+                        }
+                        @foreach (var occurrence in flight.ReturnToRamps)
+                        {
+                            var canEditOccurrence = !ViewOnly && occurrence.CanEdit && !WorkChanged();
+                            <div class="portal-occurrence" @key="occurrence.Id">
+                                <div>
+                                    <strong>RTR @occurrence.Sequence</strong>
+                                    <p class="portal-work-note">@zone.Format(occurrence.ArrivedAtUtc) – @(occurrence.DepartedAtUtc is { } departure ? zone.Format(departure) : "Open")</p>
                                 </div>
-                                <PortalWorkSignature @key="signature" FlightId="@flight.Id" Draft="@signature" Zone="@zone" Disabled="@(!CanEditDeparture || saving)"
-                                                     Validation="@validation" ValidationField="@SignatureTimeField" Changed="@RefreshValidation" />
-                            }
-                            else
-                            {
-                                <p class="portal-work-note">No departure reported.</p>
-                            }
-                        </section>
-                        break;
-                    case 4:
-                        <section class="portal-editor-section">
-                            <div class="portal-editor-heading">
-                                <h3>Returns to ramp</h3>
-                                @if (!ViewOnly && flight.CanSaveReturnsToRamp && flight.DepartureSubmissions.Count > 0 && flight.ReturnToRamps.All(item => !item.IsOpen))
-                                {
-                                    <RadzenButton Text="Add RTR" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@saving"
-                                                  Click="@(() => OpenReturnToRampAsync(null))" />
-                                }
+                                <RadzenButton Text="@(canEditOccurrence ? "Edit" : "View")" Icon="@(canEditOccurrence ? "edit" : "visibility")"
+                                              ButtonStyle="ButtonStyle.Light" Disabled="@saving" Click="@(() => OpenReturnToRampAsync(occurrence.Id))" />
                             </div>
-                            @if (flight.ReturnToRamps.Count == 0)
-                            {
-                                <p class="portal-work-note">@(flight.DepartureSubmissions.Count == 0 ? "Record a departure before adding a return to ramp." : "No returns to ramp recorded.")</p>
-                            }
-                            @foreach (var occurrence in flight.ReturnToRamps)
-                            {
-                                <div class="portal-occurrence" @key="occurrence.Id">
-                                    <div>
-                                        <strong>RTR @occurrence.Sequence</strong>
-                                        <p class="portal-work-note">@zone.Format(occurrence.ArrivedAtUtc) – @(occurrence.DepartedAtUtc is { } departure ? zone.Format(departure) : "Open")</p>
-                                    </div>
-                                    <RadzenButton Text="@(!ViewOnly && occurrence.CanEdit ? "Edit" : "View")" Icon="@(!ViewOnly && occurrence.CanEdit ? "edit" : "visibility")"
-                                                  ButtonStyle="ButtonStyle.Light" Disabled="@saving" Click="@(() => OpenReturnToRampAsync(occurrence.Id))" />
+                        }
+                        @foreach (var draft in pendingReturns)
+                        {
+                            <div class="portal-occurrence" @key="draft.Id">
+                                <div>
+                                    <strong>RTR @draft.Sequence · Draft</strong>
+                                    <p class="portal-work-note">@zone.Format(draft.Request.Arrival.ArrivedAtUtc) – @(draft.Request.Departure is { } departure ? zone.Format(departure.DepartedAtUtc) : "Open")</p>
                                 </div>
-                            }
-                        </section>
-                        break;
-                }
-
-            </div>
-        </div>
-        <PortalValidationFocus Container="@validationContainer" Attempt="@validationFocusAttempt" />
-    }
-
-    <footer class="portal-editor-footer">
+                                <div class="portal-editor-actions">
+                                    <RadzenButton Text="Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Disabled="@saving"
+                                                  Click="@(() => OpenReturnToRampAsync(draft.Id))" />
+                                    <RadzenButton Text="Remove" Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Outlined" Disabled="@saving"
+                                                  Click="@(() => RemoveReturnToRampDraft(draft.Id))" />
+                                </div>
+                            </div>
+                        }
+                    </section>
+                    break;
+            }
+        }
+    </StepContent>
+    <FooterContent>
         @if (!loading && flight is not null)
         {
             <PortalFlightValidationSummary Validation="@validation" Attempt="@validationFocusAttempt" />
@@ -201,7 +240,7 @@
                 {
                     <RadzenButton Text="Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Light" Disabled="@saving" Click="@NextStep" />
                 }
-                @if (CanEditNormalWork)
+                @if (CanEditNormalWork || pendingReturns.Count > 0)
                 {
                     <RadzenButton Text="Save" BusyText="Saving…" IsBusy="@saving" Icon="check" ButtonStyle="ButtonStyle.Primary"
                                   Click="@SaveAsync" />
@@ -214,5 +253,5 @@
                 <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="@CloseWithoutSaving" />
             </div>
         }
-    </footer>
-</div>
+    </FooterContent>
+</PortalWorkDialogLayout>

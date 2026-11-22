@@ -4,6 +4,8 @@
     <string name="notice_retry">إعادة المحاولة</string>
     <string name="notifications_delete_all_messages">حذف الكل</string>
     <string name="flight_arrival_before_work">أضف تفاصيل الوصول قبل إضافة الأعمال أو المغادرة.</string>
+    <string name="work_end_close_staff_first">أغلق فترات الموظفين أولاً</string>
+    <string name="work_end_close_periods_first">أغلق فترات الموظفين والموارد أولاً</string>
     <string name="flight_service_overlap">تتداخل فترة هذه الخدمة مع فترة أخرى. أغلقها أو اختر فترة مختلفة.</string>
     <string name="flight_departure_before_arrival">لا يمكن أن يسبق وقت المغادرة الفعلي وقت الوصول الفعلي.</string>
     <string name="flight_unknown_customer_arrival_remarks">ملاحظات الوصول مطلوبة للعميل غير المعروف.</string>

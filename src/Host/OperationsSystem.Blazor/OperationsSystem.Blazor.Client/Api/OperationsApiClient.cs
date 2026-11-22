@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 
 namespace OperationsSystem.Blazor.Client.Api;
 
@@ -25,13 +26,18 @@ public sealed class OperationsApiClient(BrowserApiClient api)
 
     public Task<PortalFlightOperations> SavePortalFlightWorkAsync(Guid id, PortalWorkBatchRequest request,
         string rowVersion, CancellationToken ct = default) =>
-        api.PutAsync<PortalWorkBatchRequest, PortalFlightOperations>(
+        PutPortalWorkAsync(
             $"{PortalOperationsPath(id)}/batch", request, rowVersion, ct);
 
     public Task<PortalFlightOperations> SavePortalReturnToRampAsync(Guid id, Guid occurrenceId,
         PortalReturnToRampRequest request, string rowVersion, CancellationToken ct = default) =>
-        api.PutAsync<PortalReturnToRampRequest, PortalFlightOperations>(
+        PutPortalWorkAsync(
             $"{PortalOperationsPath(id)}/returns-to-ramp/{occurrenceId}", request, rowVersion, ct);
+
+    // Serialize media before JS interop converts nested byte arrays to typed arrays.
+    private Task<PortalFlightOperations> PutPortalWorkAsync<TRequest>(string path, TRequest request, string rowVersion,
+        CancellationToken ct) => api.PutAsync<JsonElement, PortalFlightOperations>(
+            path, JsonSerializer.SerializeToElement(request, JsonSerializerOptions.Web), rowVersion, ct);
 
     public Task SavePortalCancellationAsync(Guid id, PortalFlightCancellationRequest request, string rowVersion,
         CancellationToken ct = default) =>

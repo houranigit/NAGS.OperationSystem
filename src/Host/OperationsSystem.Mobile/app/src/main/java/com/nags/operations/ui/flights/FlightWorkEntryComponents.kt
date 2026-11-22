@@ -205,6 +205,7 @@ internal fun FlightWorkPeriodFields(
     timeBounds: FlightWorkTimeBounds? = null,
     startRequired: Boolean = true,
     endRequired: Boolean = false,
+    endUnavailableHint: String? = null,
     onStartPickerSessionChanged: (Boolean) -> Unit = {},
     onChange: (FlightWorkPeriod) -> Unit,
 ) {
@@ -226,7 +227,8 @@ internal fun FlightWorkPeriodFields(
     FlightFormValidation(endError ?: if (endBeforeStart) stringResource(R.string.work_end_before_start) else null) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
-                if (period.end.isBlank()) FlightFormChoiceRow(endLabel, if (endRequired) stringResource(R.string.flight_form_required_field) else "", endLabel,
+                if (period.end.isBlank()) FlightFormChoiceRow(endLabel,
+                    endUnavailableHint ?: if (endRequired) stringResource(R.string.flight_form_required_field) else "", endLabel,
                     isPlaceholder = true, enabled = endEnabled, onClick = {
                         val now = LocalDateTime.now(zone).withSecond(0).withNano(0)
                         val from = runCatching { LocalDateTime.parse(period.start) }.getOrNull()

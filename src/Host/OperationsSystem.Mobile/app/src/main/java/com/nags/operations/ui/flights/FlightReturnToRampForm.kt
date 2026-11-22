@@ -106,6 +106,10 @@ internal fun FlightRtrDraft.errors(flight: FlightDetail, catalogs: FlightOperati
     }
     serviceActualBoundsValidation(work.services, zone, input.arrival.arrivedAtUtc, input.departure?.departedAtUtc)
         .forEach { (id, fields) -> result[id] = result[id].orEmpty() + fields }
+    if (input.departure != null) {
+        departureServiceCompletionValidation(work.services, emptyList(), emptyList(), emptyList(), zone)
+            .forEach { (id, fields) -> result[id] = result[id].orEmpty() + fields }
+    }
     work.tasks.forEach { item -> result[item.id] = taskEditorValidation(item, item.taskInput(zone), synthetic,
         catalogs, flight.rowVersion, input.arrival.arrivedAtUtc, input.departure?.departedAtUtc) }
     val overlaps = serviceOverlapValidation(work.services, zone, work.services.map { it.id }.toSet())

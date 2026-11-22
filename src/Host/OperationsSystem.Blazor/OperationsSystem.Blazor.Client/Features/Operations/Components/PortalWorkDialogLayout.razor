@@ -1,0 +1,68 @@
+<div class="portal-operations-editor">
+    @if (ShowSteps)
+    {
+        <div class="portal-editor-body" @ref="validationContainer">
+            <ol class="portal-stepper" aria-label="Flight operation steps">
+                @for (var i = 0; i < StepLabels.Count; i++)
+                {
+                    var index = i;
+                    var complete = IsGuidedEntry && index < CurrentStep;
+                    <li class="@(index == CurrentStep ? "portal-step portal-step-active" : complete ? "portal-step portal-step-complete" : "portal-step")">
+                        <button type="button" aria-current="@(index == CurrentStep ? "step" : null)"
+                                title="@StepLabels[index]" disabled="@(Busy || IsGuidedEntry && index > CurrentStep)"
+                                @onclick="@(() => StepChanged.InvokeAsync(index))">
+                            <span class="portal-step-number">
+                                @if (complete)
+                                {
+                                    <RadzenIcon Icon="check" />
+                                }
+                                else
+                                {
+                                    @(index + 1)
+                                }
+                            </span>
+                            <span class="portal-step-label">@StepLabels[index]</span>
+                        </button>
+                    </li>
+                }
+            </ol>
+            <div @key="CurrentStep" class="portal-editor-content" role="region" aria-label="@StepLabels[CurrentStep]" tabindex="0">
+                @StepContent
+            </div>
+        </div>
+        <PortalValidationFocus Container="@validationContainer" Attempt="@ValidationAttempt" />
+    }
+    else
+    {
+        @StatusContent
+    }
+
+    <footer class="portal-editor-footer">
+        @FooterContent
+    </footer>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<string> StepLabels { get; set; } = [];
+    [Parameter] public int CurrentStep { get; set; }
+    [Parameter] public bool ShowSteps { get; set; }
+    [Parameter] public bool IsGuidedEntry { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public int ValidationAttempt { get; set; }
+    [Parameter] public EventCallback<int> StepChanged { get; set; }
+    [Parameter] public RenderFragment? StatusContent { get; set; }
+    [Parameter] public RenderFragment? StepContent { get; set; }
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+
+    private ElementReference validationContainer;
+
+    internal static DialogOptions CreateOptions() => new()
+    {
+        Width = "min(1120px, calc(100vw - 2rem))",
+        Height = "min(760px, calc(100dvh - 2rem))",
+        ContentCssClass = "portal-work-dialog-content",
+        CloseDialogOnOverlayClick = false,
+        CloseDialogOnEsc = false,
+        ShowClose = false
+    };
+}
