@@ -264,27 +264,8 @@
                     {
                         periodNumber++;
                         var deleteLabel = $"Delete period {periodNumber} for {performerName}";
-                        var started = period.Start.Local.HasValue;
-                        var (status, tone) = WorkStatus(period.Start.Local, IsCompletePeriod(period));
                         <div class="portal-work-entry-row portal-performer-period" @key="period.Id">
-                            <PortalOperationDateField Label="Start" Time="@period.Start" Required="true" Disabled="@(!edit)"
-                                                      Validation="@Validation" ValidationField="@Field(period.Id, "start")" Changed="@Changed">
-                                <LabelContent>
-                                    @if (!started)
-                                    {
-                                        <StatusBadge Label="@status" Tone="@tone" />
-                                    }
-                                </LabelContent>
-                            </PortalOperationDateField>
-                            <PortalOperationDateField Label="End" Time="@period.End" Disabled="@(!end || !edit && period.End.HasOriginal)"
-                                                      Validation="@Validation" ValidationField="@Field(period.Id, "end")" Changed="@Changed">
-                                <LabelContent>
-                                    @if (started)
-                                    {
-                                        <StatusBadge Label="@status" Tone="@tone" />
-                                    }
-                                </LabelContent>
-                            </PortalOperationDateField>
+                            @PeriodFields(period.Id, period.Start, period.End, edit, end)
                             @if (edit)
                             {
                                 <div class="portal-work-entry-actions">
@@ -313,6 +294,31 @@
                 </div>
             </div>
         }
+    </text>;
+
+    private RenderFragment PeriodFields(Guid id, PortalOperationTime start, PortalOperationTime end, bool canEdit, bool canSetEnd) => @<text>
+        @{
+            var started = start.Local.HasValue;
+            var (status, tone) = WorkStatus(start.Local, IsCompletePeriod(start, end));
+        }
+        <PortalOperationDateField Label="Start" Time="@start" Required="true" Disabled="@(!canEdit)"
+                                  Validation="@Validation" ValidationField="@Field(id, "start")" Changed="@Changed">
+            <LabelContent>
+                @if (!started)
+                {
+                    <StatusBadge Label="@status" Tone="@tone" />
+                }
+            </LabelContent>
+        </PortalOperationDateField>
+        <PortalOperationDateField Label="End" Time="@end" Disabled="@(!canSetEnd || !canEdit && end.HasOriginal)"
+                                  Validation="@Validation" ValidationField="@Field(id, "end")" Changed="@Changed">
+            <LabelContent>
+                @if (started)
+                {
+                    <StatusBadge Label="@status" Tone="@tone" />
+                }
+            </LabelContent>
+        </PortalOperationDateField>
     </text>;
 
     private static Guid[] SelectedPerformerIds(PortalWorkDraft record) =>
@@ -353,16 +359,16 @@
         await NotifyChangedAsync();
     }
 
-    private static bool IsCompletePeriod(PortalPerformerDraft performer) =>
-        performer.Start.Local is { } from && performer.End.Local is { } to && from <= to;
+    private static bool IsCompletePeriod(PortalOperationTime start, PortalOperationTime end) =>
+        start.Local is { } from && end.Local is { } to && from <= to;
 
     private static bool CanAddPeriod(PortalWorkDraft record, PortalPerformerDraft performer)
     {
-        if (!IsCompletePeriod(performer))
+        if (!IsCompletePeriod(performer.Start, performer.End))
             return false;
 
         var periods = record.Performers.Where(period => period.StaffMemberId == performer.StaffMemberId);
-        return periods.LastOrDefault() == performer && periods.All(IsCompletePeriod);
+        return periods.LastOrDefault() == performer && periods.All(period => IsCompletePeriod(period.Start, period.End));
     }
 
     private async Task AddPeriodAsync(PortalWorkDraft record, PortalPerformerDraft performer)
@@ -466,10 +472,7 @@
                             }
                             @if (resource.CalculationType is ResourceCalculationType.Duration)
                             {
-                                <PortalOperationDateField Label="Start" Time="@resource.Start" Required="true" Disabled="@(!edit)"
-                                                          Validation="@Validation" ValidationField="@Field(resource.Id, "start")" Changed="@Changed" />
-                                <PortalOperationDateField Label="End" Time="@resource.End" Disabled="@(!end || !edit && resource.End.HasOriginal)"
-                                                          Validation="@Validation" ValidationField="@Field(resource.Id, "end")" Changed="@Changed" />
+                                @PeriodFields(resource.Id, resource.Start, resource.End, edit, end)
                             }
                             @if (edit)
                             {
