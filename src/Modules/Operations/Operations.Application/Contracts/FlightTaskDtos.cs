@@ -30,7 +30,8 @@ public sealed record FlightTaskDto(Guid Id, int TaskType, Guid? AtaChapterId, st
     Guid? UpdatedByUserId, DateTimeOffset? UpdatedAtUtc, bool CanEdit, bool CanSetEnd, bool CanDelete, bool CanChangeType, string? CreatedByDisplayName = null, string? EndedByDisplayName = null, string? UpdatedByDisplayName = null, bool CanCloseOnly = false)
 {
     public static FlightTaskDto Map(FlightTask task, Guid? userId = null, bool canOperate = false,
-        bool assignedCorrection = false, string? createdByDisplayName = null, string? endedByDisplayName = null, string? updatedByDisplayName = null, bool closeOnly = false) => new(
+        bool assignedCorrection = false, string? createdByDisplayName = null, string? endedByDisplayName = null, string? updatedByDisplayName = null,
+        bool closeOnly = false, bool creatorOnlyDelete = false) => new(
         task.Id, (int)task.TaskType, task.AtaChapter?.AtaChapterId, task.AtaChapter?.Code, task.AtaChapter?.Title,
         task.Window.FromUtc, task.Window.ToUtc, task.CustomerReferenceNumber, task.Notes,
         task.Performers.OrderBy(item => item.Id).Select(item => new FlightTaskPerformerDto(item.Id, item.Employee.StaffMemberId,
@@ -46,7 +47,8 @@ public sealed record FlightTaskDto(Guid Id, int TaskType, Guid? AtaChapterId, st
         task.CreatedByUserId, task.EndedByUserId, task.CreatedAtUtc, task.UpdatedByUserId, task.UpdatedAtUtc,
         canOperate && !closeOnly && (userId == task.CreatedByUserId || assignedCorrection),
         canOperate && (closeOnly ? task.Window.ToUtc is null : assignedCorrection || task.Window.ToUtc is null || userId == task.EndedByUserId),
-        canOperate && !closeOnly && (assignedCorrection || userId == task.CreatedByUserId && (task.Window.ToUtc is null || userId == task.EndedByUserId)),
+        canOperate && !closeOnly && (!creatorOnlyDelete || userId == task.CreatedByUserId) &&
+            (assignedCorrection || userId == task.CreatedByUserId && (task.Window.ToUtc is null || userId == task.EndedByUserId)),
         canOperate && !closeOnly && (assignedCorrection || userId == task.CreatedByUserId),
         createdByDisplayName, endedByDisplayName, updatedByDisplayName, canOperate && closeOnly && task.Window.ToUtc is null);
 }

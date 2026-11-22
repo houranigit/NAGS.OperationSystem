@@ -354,5 +354,7 @@ internal static class FlightServiceWrites
     internal static void Notify(IMobileSyncBroadcaster sync, TimeProvider clock) => sync.Enqueue(new MobileSyncChange(
         MobileSyncTables.Flights, MobileSyncOps.Refresh, null, MobileSyncAudience.AllStations, clock.GetUtcNow()));
     internal static Error NotFound() => Error.NotFound("Flight service not found.", "Operations.FlightService.NotFound");
+    internal static Error PortalDeleteReadOnly() =>
+        Error.Forbidden("Only the employee who submitted this service can delete it in the portal.", "Operations.FlightService.DeleteReadOnly");
     internal static Error Cancellation() => Error.Conflict("A flight with cancellation submissions cannot have performed services.", "Operations.Flight.CancellationSubmitted");
 }

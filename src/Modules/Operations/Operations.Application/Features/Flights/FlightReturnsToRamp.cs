@@ -93,10 +93,16 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
         if (inlineBytes > FlightOperationsBatchPolicy.MaxInlineBytes) return Invalid("The combined RTR edit must contain at most 100 MB of new files.");
         if (matches) return Response();
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
+        if (request.PortalOnly && priorTasks.Any(task => task.CreatedByUserId != actor.UserId && input.Tasks.All(change => change.RecordId != task.Id)))
+            return FlightTaskWrites.PortalDeleteReadOnly();
         if (await db.Flights.AsNoTracking().AnyAsync(f => f.Id != flight.Id && f.ReturnToRamps.Any(r => r.Id == request.OccurrenceId), ct)) return IdConflict();
         var identities = await ValidateIdentities(flight, request, ct); if (identities.IsFailure) return identities.Error;
         foreach (var deleted in priorServices.Where(old => input.Services.All(s => s.RecordId != old.Id)))
+        {
+            if (request.PortalOnly && deleted.CreatedByUserId != actor.UserId)
+                return FlightServiceWrites.PortalDeleteReadOnly();
             if (!allowance.Value.Contains(deleted.Service.ServiceId)) return Error.Validation("This service is not allowed for your manpower type.", "Operations.WorkOrder.ServiceNotAllowed");
+        }
         var employee = await resolver.StaffMembersForStationAsync([actor.StaffMemberId], flight.Station.StationId, ct);
         if (employee.IsFailure) return employee.Error;
         var arrival = RtrArrivalDetails.Create(input.Arrival.ArrivedAtUtc, existing?.ArrivalDetails.ReceivedByEmployee ?? employee.Value.Single(), input.Arrival.Remarks);

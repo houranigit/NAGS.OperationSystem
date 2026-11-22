@@ -225,6 +225,184 @@ public sealed partial class FlightVisibilityScopeTests
             $"{prefix}/tasks/{taskId}/attachments/{taskAttachment.Id}?expectedUploadedAt={VersionTimestamp(storedTaskAttachment.UploadedAtUtc)}", bytes);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Portal_only_task_submitter_can_delete_while_assigned_colleague_can_update(bool returnToRamp)
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var owner = await CreateStaffLoginAsync(admin, refs, PortalOperatorPermissions);
+        var editor = await CreateStaffLoginAsync(admin, refs, PortalOperatorPermissions);
+        using var ownerClient = owner.Client;
+        using var editorClient = editor.Client;
+        var ata = DateTimeOffset.UtcNow.AddHours(-3);
+        var id = await SchedulePortalFlightAtAsync(admin, refs, returnToRamp ? "8716" : "8715", ata, [owner.StaffId, editor.StaffId]);
+        var aircraftId = await OperationsBatchAircraftAsync(admin);
+        var initial = await PortalOperationsDetailAsync(ownerClient, id);
+        var departure = returnToRamp ? new SaveFlightDepartureRequest(ata.AddHours(1), null, null, null) : null;
+        using var actualsResponse = await WritePortalOperationsAsync(ownerClient, id, HttpMethod.Put, "batch",
+            OperationsBatchInput(new(ata, aircraftId, "HZ-PORTAL", null, null), departure), initial.RowVersion);
+        actualsResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var actuals = (await actualsResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+
+        var rtrArrival = ata.AddHours(2);
+        var route = returnToRamp ? $"returns-to-ramp/{Guid.NewGuid()}" : "batch";
+        var taskStart = returnToRamp ? rtrArrival.AddMinutes(10) : ata.AddMinutes(10);
+        var closedTask = OperationsBatchClosedTask(owner.StaffId, taskStart, taskStart.AddMinutes(20));
+        var first = new FlightTaskBatchChange(Guid.NewGuid(), closedTask with { EndUtc = null });
+        var second = new FlightTaskBatchChange(Guid.NewGuid(),
+            OperationsBatchClosedTask(owner.StaffId, taskStart.AddMinutes(20), taskStart.AddMinutes(40)));
+        using var created = await WriteTasksAsync(ownerClient, actuals.RowVersion, first, second);
+        created.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var colleagueView = await PortalOperationsDetailAsync(editorClient, id);
+        var original = ReadTasks(colleagueView).Single(task => task.Id == first.RecordId);
+        original.CanEdit.ShouldBeTrue();
+        original.CanSetEnd.ShouldBeTrue();
+        original.CanDelete.ShouldBeFalse();
+        var removeFirst = new FlightTaskBatchChange(first.RecordId, null);
+        using var denied = await WriteTasksAsync(editorClient, colleagueView.RowVersion, removeFirst, second);
+        denied.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await denied.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.FlightTask.DeleteReadOnly");
+
+        var correction = closedTask with { Notes = "Corrected and closed by assigned colleague" };
+        using var corrected = await WriteTasksAsync(editorClient, colleagueView.RowVersion, first with { Input = correction }, second);
+        corrected.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var correctedTask = ReadTasks((await corrected.Content.ReadFromJsonAsync<FlightDetailDto>())!).Single(task => task.Id == first.RecordId);
+        correctedTask.Notes.ShouldBe(correction.Notes);
+        correctedTask.EndUtc.ShouldBe(correction.EndUtc);
+        correctedTask.CreatedByUserId.ShouldBe(original.CreatedByUserId);
+        correctedTask.CanDelete.ShouldBeFalse();
+
+        var ownerView = await PortalOperationsDetailAsync(ownerClient, id);
+        ReadTasks(ownerView).Single(task => task.Id == first.RecordId).CanDelete.ShouldBeTrue();
+        using var removed = await WriteTasksAsync(ownerClient, ownerView.RowVersion, removeFirst, second);
+        removed.StatusCode.ShouldBe(HttpStatusCode.OK);
+        ReadTasks((await removed.Content.ReadFromJsonAsync<FlightDetailDto>())!).ShouldHaveSingleItem().Id.ShouldBe(second.RecordId);
+
+        var mobileView = await OperationsBatchDetailAsync(editorClient, id);
+        ReadTasks(mobileView).ShouldHaveSingleItem().CanDelete.ShouldBeTrue();
+        using var mobileDelete = await RemoveSecondOnMobileAsync(mobileView.RowVersion);
+        mobileDelete.StatusCode.ShouldBe(HttpStatusCode.OK);
+        ReadTasks(await OperationsBatchDetailAsync(editorClient, id)).ShouldBeEmpty();
+
+        IReadOnlyList<FlightTaskDto> ReadTasks(FlightDetailDto detail) =>
+            returnToRamp ? detail.ReturnToRamps!.Single().Tasks : detail.Tasks!;
+
+        SaveFlightReturnToRampRequest RtrInput(IEnumerable<FlightTaskBatchChange> changes) =>
+            new(new(rtrArrival), Services: [], Tasks: changes.Where(change => change.Input is not null)
+                .Select(change => new ReturnToRampTaskChange(change.RecordId, change.Input!)).ToArray());
+
+        Task<HttpResponseMessage> WriteTasksAsync(HttpClient client, string version, params FlightTaskBatchChange[] changes) =>
+            WritePortalOperationsAsync(client, id, HttpMethod.Put, route,
+                returnToRamp ? RtrInput(changes) : OperationsBatchInput(tasks: changes), version);
+
+        async Task<HttpResponseMessage> RemoveSecondOnMobileAsync(string version)
+        {
+            if (!returnToRamp)
+                return await SendOperationsBatchAsync(editorClient, id, OperationsBatchInput(tasks: [new(second.RecordId, null)]), version);
+
+            using var request = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{id}/{route}")
+            {
+                Content = JsonContent.Create(RtrInput([]))
+            };
+            request.Headers.TryAddWithoutValidation("If-Match", version);
+            return await editorClient.SendAsync(request);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Portal_only_service_submitter_can_delete_while_assigned_colleague_can_update(bool returnToRamp)
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var owner = await CreateStaffLoginAsync(admin, refs, PortalOperatorPermissions);
+        var editor = await CreateStaffLoginAsync(admin, refs, PortalOperatorPermissions);
+        using var ownerClient = owner.Client;
+        using var editorClient = editor.Client;
+        var ata = DateTimeOffset.UtcNow.AddHours(-3);
+        var id = await SchedulePortalFlightAtAsync(admin, refs, returnToRamp ? "8718" : "8717", ata, [owner.StaffId, editor.StaffId]);
+        var aircraftId = await OperationsBatchAircraftAsync(admin);
+        var initial = await PortalOperationsDetailAsync(ownerClient, id);
+        var departure = returnToRamp ? new SaveFlightDepartureRequest(ata.AddHours(1), null, null, null) : null;
+        using var actualsResponse = await WritePortalOperationsAsync(ownerClient, id, HttpMethod.Put, "batch",
+            OperationsBatchInput(new(ata, aircraftId, "HZ-PORTAL", null, null), departure), initial.RowVersion);
+        actualsResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var actuals = (await actualsResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+
+        var rtrArrival = ata.AddHours(2);
+        var route = returnToRamp ? $"returns-to-ramp/{Guid.NewGuid()}" : "batch";
+        var start = (returnToRamp ? rtrArrival : ata).AddMinutes(10);
+        var closedService = OperationsBatchClosedService(refs.ServiceId, owner.StaffId, start, start.AddMinutes(20));
+        var serviceId = Guid.NewGuid();
+        using var created = await WriteServicesAsync(ownerClient, actuals.RowVersion, new FlightServiceBatchChange(serviceId, closedService with { EndUtc = null }));
+        created.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var colleagueView = await PortalOperationsDetailAsync(editorClient, id);
+        var original = ReadServices(colleagueView).ShouldHaveSingleItem();
+        original.CanEdit.ShouldBeTrue();
+        original.CanSetEnd.ShouldBeTrue();
+        original.CanDelete.ShouldBeFalse();
+        var correction = closedService with { Notes = "Corrected and closed by assigned colleague" };
+        using var corrected = await WriteServicesAsync(editorClient, colleagueView.RowVersion, new FlightServiceBatchChange(serviceId, correction));
+        corrected.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var correctedDetail = (await corrected.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        var correctedService = ReadServices(correctedDetail).ShouldHaveSingleItem();
+        correctedService.Notes.ShouldBe(correction.Notes);
+        correctedService.EndUtc.ShouldBe(correction.EndUtc);
+        correctedService.CreatedByUserId.ShouldBe(original.CreatedByUserId);
+        correctedService.CanDelete.ShouldBeFalse();
+
+        var remove = new FlightServiceBatchChange(serviceId, null);
+        using var denied = await WriteServicesAsync(editorClient, correctedDetail.RowVersion, remove);
+        denied.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await denied.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.FlightService.DeleteReadOnly");
+
+        var ownerView = await PortalOperationsDetailAsync(ownerClient, id);
+        ownerView.RowVersion.ShouldBe(correctedDetail.RowVersion);
+        ReadServices(ownerView).ShouldHaveSingleItem().CanDelete.ShouldBeTrue();
+        var second = new FlightServiceBatchChange(Guid.NewGuid(),
+            OperationsBatchClosedService(refs.ServiceId, owner.StaffId, start.AddMinutes(20), start.AddMinutes(40)));
+        using var removed = await WriteServicesAsync(ownerClient, ownerView.RowVersion, remove, second);
+        removed.StatusCode.ShouldBe(HttpStatusCode.OK);
+        ReadServices((await removed.Content.ReadFromJsonAsync<FlightDetailDto>())!).ShouldHaveSingleItem().Id.ShouldBe(second.RecordId);
+
+        var mobileView = await OperationsBatchDetailAsync(editorClient, id);
+        ReadServices(mobileView).ShouldHaveSingleItem().CanDelete.ShouldBeTrue();
+        using var mobileDelete = await RemoveSecondOnMobileAsync(mobileView.RowVersion);
+        mobileDelete.StatusCode.ShouldBe(HttpStatusCode.OK);
+        ReadServices(await OperationsBatchDetailAsync(editorClient, id)).ShouldBeEmpty();
+
+        IReadOnlyList<FlightServiceDto> ReadServices(FlightDetailDto detail) =>
+            returnToRamp ? detail.ReturnToRamps!.Single().Services : detail.Services!;
+
+        SaveFlightReturnToRampRequest RtrInput(IEnumerable<FlightServiceBatchChange> changes) =>
+            new(new(rtrArrival), Services: changes.Where(change => change.Input is not null)
+                .Select(change => new ReturnToRampServiceChange(change.RecordId, change.Input!)).ToArray(), Tasks: []);
+
+        Task<HttpResponseMessage> WriteServicesAsync(HttpClient client, string version, params FlightServiceBatchChange[] changes) =>
+            WritePortalOperationsAsync(client, id, HttpMethod.Put, route,
+                returnToRamp ? RtrInput(changes) : OperationsBatchInput(services: changes), version);
+
+        async Task<HttpResponseMessage> RemoveSecondOnMobileAsync(string version)
+        {
+            if (!returnToRamp)
+                return await SendOperationsBatchAsync(editorClient, id, OperationsBatchInput(services: [new(second.RecordId, null)]), version);
+
+            using var request = new HttpRequestMessage(HttpMethod.Put, $"{Base}/flights/{id}/{route}")
+            {
+                Content = JsonContent.Create(RtrInput([]))
+            };
+            request.Headers.TryAddWithoutValidation("If-Match", version);
+            return await editorClient.SendAsync(request);
+        }
+    }
+
     private async Task<HttpClient> CreatePortalViewerAsync(HttpClient admin)
     {
         var roleId = await PostForIdAsync(admin, $"{IdentityBase}/roles", new

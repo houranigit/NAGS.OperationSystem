@@ -153,11 +153,11 @@ internal static class FlightDetails
             (!portalOnly || flight.ReturnToRamps.Count == 0);
         var detail = Map(flight, stationTimeZoneId, staffId, canOperate && !ownCancellation, canOperate && !ownCancellation,
             canSaveCancellation, canSaveWork && allowedServiceIds.Count > 0, actor.UserId, allowedServiceIds,
-            canSaveWork, flight.CanCorrectOperationalWork(staffId), names, canEditFlightDetails: canOperate);
+            canSaveWork, flight.CanCorrectOperationalWork(staffId), names, canEditFlightDetails: canOperate, creatorOnlyWorkDelete: portalOnly);
         return portalOnly ? detail with { CanSaveReturnsToRamp = canSaveWork && flight.DepartureSubmissions.Count > 0 } : detail;
     }
 
-    public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null, bool canSaveTasks = false, bool assignedWorkCorrection = false, IReadOnlyDictionary<Guid, string>? userDisplayNames = null, bool canEditFlightDetails = false)
+    public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null, bool canSaveTasks = false, bool assignedWorkCorrection = false, IReadOnlyDictionary<Guid, string>? userDisplayNames = null, bool canEditFlightDetails = false, bool creatorOnlyWorkDelete = false)
     {
         var search = currentStaffMemberId is { } staffId && FlightSearchPolicy.IsUnassignedRegular(flight, staffId);
         var canAdd = !search || !flight.HasOperationalRecords();
@@ -190,16 +190,17 @@ internal static class FlightDetails
             flight.Services.OrderBy(s => s.CreatedAtUtc).ThenBy(s => s.Id).Select(s => FlightServiceDto.Map(s, currentUserId, serviceWrites && (allowedServiceIds?.Contains(s.Service.ServiceId) == true || search && s.Window.ToUtc is null), assignedWorkCorrection,
                 userDisplayNames?.GetValueOrDefault(s.CreatedByUserId), s.EndedByUserId is { } closer ? userDisplayNames?.GetValueOrDefault(closer) : null,
                 s.UpdatedByUserId is { } updater ? userDisplayNames?.GetValueOrDefault(updater) : null,
-                closeOnly: search && (s.CreatedByUserId != currentUserId || allowedServiceIds?.Contains(s.Service.ServiceId) != true))).ToList(),
+                closeOnly: search && (s.CreatedByUserId != currentUserId || allowedServiceIds?.Contains(s.Service.ServiceId) != true),
+                creatorOnlyDelete: creatorOnlyWorkDelete)).ToList(),
             serviceWrites, allowedServiceIds, flight.Tasks.OrderBy(t => t.CreatedAtUtc).ThenBy(t => t.Id).Select(t => FlightTaskDto.Map(t, currentUserId, taskWrites, assignedWorkCorrection,
                 userDisplayNames?.GetValueOrDefault(t.CreatedByUserId), t.EndedByUserId is { } closer ? userDisplayNames?.GetValueOrDefault(closer) : null,
                 t.UpdatedByUserId is { } updater ? userDisplayNames?.GetValueOrDefault(updater) : null,
-                closeOnly: search && t.CreatedByUserId != currentUserId)).ToList(), taskWrites,
+                closeOnly: search && t.CreatedByUserId != currentUserId, creatorOnlyDelete: creatorOnlyWorkDelete)).ToList(), taskWrites,
             flight.CreatedByUserId, userDisplayNames?.GetValueOrDefault(flight.CreatedByUserId),
             canEditFlightDetails && currentUserId is { } userId && flight.CanEditAdHocDetails(userId),
             flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType, search, canSaveServices && canAdd, canSaveTasks && canAdd,
             flight.ReturnToRamps.OrderBy(r => r.Sequence).Select(r => FlightReturnToRampDto.Map(flight, r, currentUserId,
-                canSaveTasks, allowedServiceIds, userDisplayNames)).ToList(),
+                canSaveTasks, allowedServiceIds, userDisplayNames, creatorOnlyWorkDelete)).ToList(),
             canSaveTasks, flight.LastReturnToRampSequence,
             canSaveTasks && flight.CancellationSubmissions.Count == 0 && currentStaffMemberId is { } sharingStaffId &&
             flight.OperationType.OperationTypeId != MasterData.Contracts.Seeding.WellKnownMasterDataIds.AdHocOperationType && !flight.IsPerLanding &&

@@ -29,7 +29,8 @@ public sealed record FlightServiceDto(Guid Id, Guid ServiceId, string ServiceNam
     bool CanChangeService = false, bool CanDelete = false, string? CreatedByDisplayName = null, string? EndedByDisplayName = null, string? UpdatedByDisplayName = null, bool CanCloseOnly = false)
 {
     public static FlightServiceDto Map(FlightService service, Guid? userId = null, bool canOperate = false,
-        bool assignedCorrection = false, string? createdByDisplayName = null, string? endedByDisplayName = null, string? updatedByDisplayName = null, bool closeOnly = false) => new(
+        bool assignedCorrection = false, string? createdByDisplayName = null, string? endedByDisplayName = null, string? updatedByDisplayName = null,
+        bool closeOnly = false, bool creatorOnlyDelete = false) => new(
         service.Id, service.Service.ServiceId, service.Service.Name, service.Window.FromUtc, service.Window.ToUtc,
         service.CustomerReferenceNumber, service.Notes,
         service.Performers.OrderBy(p => p.Id).Select(p => new FlightServicePerformerDto(p.Id, p.Employee.StaffMemberId,
@@ -39,7 +40,8 @@ public sealed record FlightServiceDto(Guid Id, Guid ServiceId, string ServiceNam
         canOperate && (closeOnly ? service.Window.ToUtc is null : assignedCorrection || service.Window.ToUtc is null || userId == service.EndedByUserId),
         service.Attachments.OrderBy(a => a.UploadedAtUtc).ThenBy(a => a.Id).Select(FlightServiceAttachmentDto.Map).ToList(),
         canOperate && !closeOnly && (assignedCorrection || userId == service.CreatedByUserId && !service.HasOtherUserEnd),
-        canOperate && !closeOnly && (assignedCorrection || userId == service.CreatedByUserId && (service.Window.ToUtc is null || userId == service.EndedByUserId)),
+        canOperate && !closeOnly && (!creatorOnlyDelete || userId == service.CreatedByUserId) &&
+            (assignedCorrection || userId == service.CreatedByUserId && (service.Window.ToUtc is null || userId == service.EndedByUserId)),
         createdByDisplayName, endedByDisplayName, updatedByDisplayName, canOperate && closeOnly && service.Window.ToUtc is null);
 }
 

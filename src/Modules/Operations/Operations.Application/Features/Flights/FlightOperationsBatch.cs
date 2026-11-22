@@ -90,6 +90,8 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             if (existing?.ReturnToRampId is not null) return FlightServiceWrites.NotFound();
             if (change.Input is not { } service)
             {
+                if (request.PortalOnly && existing is not null && existing.CreatedByUserId != actor.UserId)
+                    return FlightServiceWrites.PortalDeleteReadOnly();
                 if (existing is not null && !assigned &&
                     (existing.CreatedByUserId != actor.UserId || existing.Window.ToUtc is not null && existing.EndedByUserId != actor.UserId))
                     return Error.Forbidden("Only its creator or an assigned employee can delete this service.", "Operations.FlightService.DeleteReadOnly");
@@ -144,6 +146,8 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             if (existing?.ReturnToRampId is not null) return FlightTaskWrites.NotFound();
             if (change.Input is not { } task)
             {
+                if (request.PortalOnly && existing is not null && existing.CreatedByUserId != actor.UserId)
+                    return FlightTaskWrites.PortalDeleteReadOnly();
                 if (existing is not null && !assigned &&
                     (existing.CreatedByUserId != actor.UserId || existing.Window.ToUtc is not null && existing.EndedByUserId != actor.UserId))
                     return Error.Forbidden("Only its creator or an assigned employee can delete this task.", "Operations.FlightTask.DeleteReadOnly");

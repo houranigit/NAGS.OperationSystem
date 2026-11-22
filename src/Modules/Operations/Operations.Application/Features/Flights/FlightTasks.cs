@@ -250,4 +250,6 @@ internal static class FlightTaskWrites
     }
     internal static Error NotFound() => Error.NotFound("Flight task not found.", "Operations.FlightTask.NotFound");
     internal static Error Cancellation() => Error.Conflict("A flight with cancellation submissions cannot have tasks.", "Operations.Flight.CancellationSubmitted");
+    internal static Error PortalDeleteReadOnly() =>
+        Error.Forbidden("Only the employee who submitted this task can delete it in the portal.", "Operations.FlightTask.DeleteReadOnly");
 }

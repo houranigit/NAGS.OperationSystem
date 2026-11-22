@@ -151,6 +151,8 @@ Eligible active station staff with both flight View and Operate permissions can 
 
 The portal Work order menu represents saved operational records, including an arrival-only save. Its stepper edits Arrival, Services, Tasks, Departure, and RTR. Reported actuals open read-only with attribution and an explicit update action for authorized corrections. Valid unsaved departure details allow users to draft RTR occurrences in the same dialog. The preceding RTR must be closed before adding the next. One Save submits normal work in an atomic batch, then saves the RTR drafts in sequence through the occurrence endpoint. A failed occurrence save leaves the remaining drafts in the editor and retains changes already acknowledged by the API. Cancellation order shows the employee's own submission. Undo removes only that exact submission. Authorized removal stays at individual Service and Task records.
 
+In the portal, only the original submitter can delete a Service or Task, including work recorded during RTR. Other assigned employees retain their existing editing permissions.
+
 The portal routes under `/{id}/operations` expose the editor and current capabilities. `PUT /batch` saves normal work, `PUT /returns-to-ramp/{occurrenceId}` saves one RTR, and `PUT /cancellation` and `DELETE /cancellation/{submissionId}` save and undo cancellation. These routes use the same version checks, validation, and file limits as mobile. Signature and attachment reads are scoped to the flight and require the saved media version.
 
 ### Combined operational saves

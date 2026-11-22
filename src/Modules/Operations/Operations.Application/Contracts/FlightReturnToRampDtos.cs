@@ -20,7 +20,7 @@ public sealed record FlightReturnToRampDto(Guid Id, int Sequence, DateTimeOffset
     IReadOnlyList<FlightServiceDto> Services, IReadOnlyList<FlightTaskDto> Tasks)
 {
     internal static FlightReturnToRampDto Map(Flight flight, FlightReturnToRamp occurrence, Guid? userId,
-        bool canOperate, IReadOnlyList<Guid>? allowedServices, IReadOnlyDictionary<Guid, string>? names) => new(
+        bool canOperate, IReadOnlyList<Guid>? allowedServices, IReadOnlyDictionary<Guid, string>? names, bool creatorOnlyWorkDelete) => new(
         occurrence.Id, occurrence.Sequence, occurrence.ArrivalDetails.ArrivedAtUtc, occurrence.ArrivalDetails.Remarks,
         occurrence.ArrivalDetails.ReceivedByEmployee.StaffMemberId, occurrence.ArrivalDetails.ReceivedByEmployee.FullName,
         occurrence.DepartureDetails?.DepartedAtUtc, occurrence.DepartureDetails?.Remarks,
@@ -32,9 +32,9 @@ public sealed record FlightReturnToRampDto(Guid Id, int Sequence, DateTimeOffset
         flight.ServiceRecords.Where(s => s.ReturnToRampId == occurrence.Id).OrderBy(s => s.CreatedAtUtc).ThenBy(s => s.Id)
             .Select(s => FlightServiceDto.Map(s, userId, canOperate && allowedServices?.Contains(s.Service.ServiceId) == true, canOperate,
                 names?.GetValueOrDefault(s.CreatedByUserId), s.EndedByUserId is { } closer ? names?.GetValueOrDefault(closer) : null,
-                s.UpdatedByUserId is { } updated ? names?.GetValueOrDefault(updated) : null)).ToList(),
+                s.UpdatedByUserId is { } updated ? names?.GetValueOrDefault(updated) : null, creatorOnlyDelete: creatorOnlyWorkDelete)).ToList(),
         flight.TaskRecords.Where(t => t.ReturnToRampId == occurrence.Id).OrderBy(t => t.CreatedAtUtc).ThenBy(t => t.Id)
             .Select(t => FlightTaskDto.Map(t, userId, canOperate, canOperate, names?.GetValueOrDefault(t.CreatedByUserId),
                 t.EndedByUserId is { } closer ? names?.GetValueOrDefault(closer) : null,
-                t.UpdatedByUserId is { } updated ? names?.GetValueOrDefault(updated) : null)).ToList());
+                t.UpdatedByUserId is { } updated ? names?.GetValueOrDefault(updated) : null, creatorOnlyDelete: creatorOnlyWorkDelete)).ToList());
 }
