@@ -107,9 +107,7 @@ public sealed class PortalWorkDraft(Guid id, bool isTask, StationTimeZone zone, 
         CanChangeKind = source.CanChangeService,
         CreatedByDisplayName = source.CreatedByDisplayName,
         UpdatedByDisplayName = source.UpdatedByDisplayName,
-        Performers = source.Performers.GroupBy(item => item.StaffMemberId)
-            .SelectMany(employee => employee.OrderBy(item => item.StartUtc))
-            .Select(item => PortalPerformerDraft.From(item, zone)).ToList(),
+        Performers = ReadPerformerPeriods(source.Performers, zone),
         Attachments = source.Attachments.Select(PortalAttachmentDraft.From).ToList()
     }.Capture();
 
@@ -127,12 +125,17 @@ public sealed class PortalWorkDraft(Guid id, bool isTask, StationTimeZone zone, 
         CanChangeKind = source.CanChangeType,
         CreatedByDisplayName = source.CreatedByDisplayName,
         UpdatedByDisplayName = source.UpdatedByDisplayName,
-        Performers = source.Performers.Select(item => PortalPerformerDraft.From(item, zone)).ToList(),
+        Performers = ReadPerformerPeriods(source.Performers, zone),
         Attachments = source.Attachments.Select(PortalAttachmentDraft.From).ToList(),
         Tools = source.Tools.Select(item => PortalResourceDraft.From(item, zone)).ToList(),
         Materials = source.Materials.Select(item => PortalResourceDraft.From(item, zone)).ToList(),
         GeneralSupports = source.GeneralSupports.Select(item => PortalResourceDraft.From(item, zone)).ToList()
     }.Capture();
+
+    private static List<PortalPerformerDraft> ReadPerformerPeriods(IEnumerable<PortalFlightPerformer> performers, StationTimeZone zone) =>
+        performers.GroupBy(item => item.StaffMemberId)
+            .SelectMany(employee => employee.OrderBy(item => item.StartUtc))
+            .Select(item => PortalPerformerDraft.From(item, zone)).ToList();
 
     public PortalServiceChange ToServiceChange(int index, PortalFlightValidation errors, bool closing = false, bool inReturnToRamp = false)
     {
@@ -164,7 +167,7 @@ public sealed class PortalWorkDraft(Guid id, bool isTask, StationTimeZone zone, 
             var selections = new HashSet<Guid>();
             return resources.Select((resource, resourceIndex) =>
             {
-                if (resource.ResourceId is { } resourceId && !selections.Add(resourceId))
+                if (!selections.Add(resource.ResourceId))
                     errors.Add(PortalFlightValidation.Field(resource.Id, "resource"), $"{label} already uses this {kind}.");
                 return resource.ToRequest($"{label} {kind} {resourceIndex + 1}", errors, closing || !inReturnToRamp && to.HasValue);
             }).ToArray();
@@ -232,21 +235,21 @@ public sealed class PortalPerformerDraft(Guid id, StationTimeZone zone, DateTime
     }
 }
 
-public sealed class PortalResourceDraft(Guid id, StationTimeZone zone, DateTimeOffset? start = null, DateTimeOffset? end = null)
+public sealed class PortalResourceDraft(Guid id, Guid resourceId, string name, ResourceCalculationType calculationType,
+    StationTimeZone zone, DateTimeOffset? start = null, DateTimeOffset? end = null)
 {
     public Guid Id { get; } = id;
-    public Guid? ResourceId { get; set; }
-    public string? Name { get; private init; }
-    public ResourceCalculationType? CalculationType { get; set; }
+    public Guid ResourceId { get; } = resourceId;
+    public string Name { get; } = name;
+    public ResourceCalculationType CalculationType { get; } = calculationType;
     public decimal? Quantity { get; set; }
     public PortalOperationTime Start { get; } = new(zone, start);
     public PortalOperationTime End { get; } = new(zone, end);
     public string? Notes { get; set; }
 
     public static PortalResourceDraft From(PortalFlightResource source, StationTimeZone zone) =>
-        new(source.Id, zone, source.StartUtc, source.EndUtc)
+        new(source.Id, source.ResourceId, source.Name, source.CalculationType, zone, source.StartUtc, source.EndUtc)
         {
-            ResourceId = source.ResourceId, Name = source.Name, CalculationType = source.CalculationType,
             Quantity = source.Quantity, Notes = source.Notes
         };
 
@@ -254,7 +257,7 @@ public sealed class PortalResourceDraft(Guid id, StationTimeZone zone, DateTimeO
     {
         if (PortalWorkDraft.Trim(Notes)?.Length > 2000)
             errors.Add(PortalFlightValidation.Field(Id, "notes"), $"{label} remarks must be at most 2,000 characters.");
-        if (ResourceId is null || ResourceId == Guid.Empty || CalculationType is not (ResourceCalculationType.Quantity or ResourceCalculationType.Duration))
+        if (ResourceId == Guid.Empty || CalculationType is not (ResourceCalculationType.Quantity or ResourceCalculationType.Duration))
         {
             errors.Add(PortalFlightValidation.Field(Id, "resource"), $"{label} needs a valid resource.");
             return new(Id, Guid.Empty, null, null, null, PortalWorkDraft.Trim(Notes));
@@ -263,7 +266,7 @@ public sealed class PortalResourceDraft(Guid id, StationTimeZone zone, DateTimeO
         {
             if (Quantity is null or <= 0)
                 errors.Add(PortalFlightValidation.Field(Id, "quantity"), $"{label} quantity must be greater than zero.");
-            return new(Id, ResourceId.GetValueOrDefault(), Quantity, null, null, PortalWorkDraft.Trim(Notes));
+            return new(Id, ResourceId, Quantity, null, null, PortalWorkDraft.Trim(Notes));
         }
 
         var from = Start.Read($"{label} start", errors, PortalFlightValidation.Field(Id, "start"), required: true);
@@ -271,7 +274,7 @@ public sealed class PortalResourceDraft(Guid id, StationTimeZone zone, DateTimeO
         var to = End.Read($"{label} end", errors, endField, required: closing);
         if (from > to)
             errors.Add(endField, $"{label} end cannot be before its start.");
-        return new(Id, ResourceId.GetValueOrDefault(), null, from, to, PortalWorkDraft.Trim(Notes));
+        return new(Id, ResourceId, null, from, to, PortalWorkDraft.Trim(Notes));
     }
 }
 

@@ -1,5 +1,6 @@
 .portal-work-records,
 .portal-work-fields,
+.portal-task-resources,
 .portal-work-entries {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -30,7 +31,6 @@
 }
 
 .portal-section-heading h3,
-.portal-section-heading h4,
 .portal-work-empty,
 .portal-work-attribution {
     margin: 0;
@@ -38,10 +38,6 @@
 
 .portal-section-heading h3 {
     font-size: var(--os-text-lg);
-}
-
-.portal-section-heading h4 {
-    font-size: var(--os-text-base);
 }
 
 .portal-work-empty,
@@ -124,7 +120,10 @@
     gap: var(--os-space-3);
 }
 
-.portal-work-grid label {
+.portal-work-grid label,
+.portal-work-entry-notes,
+.portal-work-quantity,
+.portal-resource-picker {
     display: grid;
     align-content: start;
     gap: var(--os-space-1);
@@ -132,7 +131,10 @@
     font-weight: 600;
 }
 
-.portal-work-grid ::deep :is(.rz-dropdown, .rz-textbox, .rz-textarea, .rz-numeric) {
+.portal-work-grid ::deep :is(.rz-dropdown, .rz-textbox, .rz-textarea, .rz-numeric),
+.portal-work-entry-notes ::deep .rz-textarea,
+.portal-work-quantity ::deep .rz-numeric,
+.portal-resource-picker ::deep .rz-dropdown {
     width: 100%;
     min-width: 0;
 }
@@ -151,36 +153,21 @@
     border-block-start: 1px solid var(--os-color-border);
 }
 
-.portal-work-entry-selector {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: var(--os-space-2);
-}
-
-.portal-work-entry-action {
-    margin-block-start: calc(1lh + var(--os-space-1));
-}
-
-.portal-work-entry-action ::deep .portal-work-delete {
-    min-height: 2.25rem;
-}
-
-.portal-service-performer {
+.portal-work-entry-layout {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     align-items: start;
     gap: var(--os-space-3);
 }
 
-.portal-service-periods {
+.portal-work-entry-details {
     display: grid;
     grid-column: span 2;
     min-inline-size: 0;
     gap: var(--os-space-2);
 }
 
-.portal-service-period {
+.portal-work-entry-row {
     --portal-operation-date-heading-size: 1.625rem;
     --portal-period-action-size: 2.25rem;
 
@@ -190,37 +177,51 @@
     gap: var(--os-space-2) var(--os-space-3);
 }
 
-.portal-service-period:has(> .portal-service-period-actions) {
+.portal-work-entry-row:has(> .portal-work-entry-actions) {
     grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
 }
 
-.portal-service-period + .portal-service-period {
+.portal-work-entry-row ::deep .portal-operation-date-heading,
+.portal-work-quantity > span {
+    min-block-size: var(--portal-operation-date-heading-size);
+    align-content: center;
+}
+
+.portal-work-quantity {
+    grid-column: span 2;
+}
+
+.portal-performer-period + .portal-performer-period {
     padding-block-start: var(--os-space-2);
     border-block-start: 1px solid var(--os-color-border);
 }
 
-.portal-service-period-actions {
+.portal-work-entry-actions {
+    grid-column: -2;
     display: flex;
     justify-content: flex-end;
     gap: var(--os-space-1);
-    min-inline-size: calc(2 * var(--portal-period-action-size) + var(--os-space-1));
     margin-block-start: calc(var(--portal-operation-date-heading-size) + var(--os-space-1));
 }
 
-.portal-service-period-actions ::deep .rz-button {
+.portal-performer-period > .portal-work-entry-actions {
+    min-inline-size: calc(2 * var(--portal-period-action-size) + var(--os-space-1));
+}
+
+.portal-work-entry-actions ::deep .rz-button {
     inline-size: var(--portal-period-action-size);
     block-size: var(--portal-period-action-size);
     padding: 0;
 }
 
-.portal-service-performer-label {
+.portal-work-entry-label {
     display: grid;
     min-inline-size: 0;
     gap: var(--os-space-1);
     overflow-wrap: anywhere;
 }
 
-.portal-service-performer-type {
+.portal-work-performer-type {
     color: var(--os-color-text-muted);
     font-size: var(--os-text-sm);
 }
@@ -230,30 +231,34 @@
 }
 
 @container portal-work (max-width: 42rem) {
-    .portal-service-performer {
+    .portal-work-entry-layout {
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .portal-service-periods {
+    .portal-work-entry-details {
         grid-column: auto;
     }
 }
 
 @container portal-work (max-width: 24rem) {
     .portal-work-grid,
-    .portal-service-period {
+    .portal-work-entry-row {
         grid-template-columns: 1fr;
     }
 
-    .portal-service-period:has(> .portal-service-period-actions) {
+    .portal-work-entry-row:has(> .portal-work-entry-actions) {
         grid-template-columns: minmax(0, 1fr) auto;
     }
 
-    .portal-service-period:has(> .portal-service-period-actions) ::deep > .portal-operation-date:first-child {
+    .portal-work-entry-row:has(> .portal-work-entry-actions) ::deep > .portal-operation-date:first-child {
         grid-column: 1 / -1;
     }
 
-    .portal-service-period-actions {
+    .portal-work-quantity {
+        grid-column: auto;
+    }
+
+    .portal-performer-period > .portal-work-entry-actions {
         min-inline-size: 0;
     }
 
