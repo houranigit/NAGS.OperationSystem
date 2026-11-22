@@ -42,14 +42,15 @@ public sealed record PortalFlightService(Guid Id, Guid ServiceId, string Service
     DateTimeOffset? EndUtc, string? CustomerReferenceNumber, string? Notes, IReadOnlyList<PortalFlightPerformer> Performers,
     IReadOnlyList<PortalFlightAttachment> Attachments, bool CanEdit, bool CanSetEnd, bool CanDelete,
     bool CanChangeService, string? CreatedByDisplayName, string? UpdatedByDisplayName, Guid CreatedByUserId,
-    bool CanCloseOnly);
+    bool CanCloseOnly, DateTimeOffset? CreatedAtUtc = null, DateTimeOffset? UpdatedAtUtc = null);
 
 public sealed record PortalFlightTask(Guid Id, int TaskType, Guid? AtaChapterId, string? AtaChapterCode,
     string? AtaChapterTitle, DateTimeOffset StartUtc, DateTimeOffset? EndUtc, string? CustomerReferenceNumber, string? Notes,
     IReadOnlyList<PortalFlightPerformer> Performers, IReadOnlyList<PortalFlightResource> Tools,
     IReadOnlyList<PortalFlightResource> Materials, IReadOnlyList<PortalFlightResource> GeneralSupports,
     IReadOnlyList<PortalFlightAttachment> Attachments, bool CanEdit, bool CanSetEnd, bool CanDelete, bool CanChangeType,
-    string? CreatedByDisplayName, string? UpdatedByDisplayName, Guid CreatedByUserId, bool CanCloseOnly);
+    string? CreatedByDisplayName, string? UpdatedByDisplayName, Guid CreatedByUserId, bool CanCloseOnly,
+    DateTimeOffset? CreatedAtUtc = null, DateTimeOffset? UpdatedAtUtc = null);
 
 public sealed record PortalFlightReturnToRamp(Guid Id, int Sequence, DateTimeOffset ArrivedAtUtc, string? ArrivalRemarks,
     string ReceivedByFullName, DateTimeOffset? DepartedAtUtc, string? DepartureRemarks, string? HandledByFullName,

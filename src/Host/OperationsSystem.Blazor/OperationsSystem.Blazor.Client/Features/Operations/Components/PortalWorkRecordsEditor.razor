@@ -1,3 +1,5 @@
+@inject AuthSession Auth
+
 <section class="portal-work-records @(Records.Count == 0 ? "portal-work-records--empty" : null)">
     <div class="portal-section-heading">
         <h3>@(IsTask ? "Tasks" : "Services")</h3>
@@ -27,7 +29,9 @@
     {
         var record = Records[i];
         var index = i + 1;
-        var edit = !ReadOnly && record.CanEdit;
+        var submittedByColleague = record.CreatedByUserId is { } creatorId && creatorId != Auth.User?.Id;
+        var locked = submittedByColleague && !record.CorrectionsUnlocked;
+        var edit = !ReadOnly && record.CanEdit && !locked;
         var end = !ReadOnly && record.CanSetEnd;
         if (record.Deleted)
         {
@@ -112,7 +116,7 @@
                         }
                         <PortalOperationDateField Label="Start" Time="@record.Start" Required="true" Disabled="@(!edit)"
                                                   Validation="@Validation" ValidationField="@Field(record.Id, "start")" Changed="@Changed" />
-                        <PortalOperationDateField Label="End" Time="@record.End" Disabled="@(!end)"
+                        <PortalOperationDateField Label="End" Time="@record.End" Disabled="@(!end || locked && record.End.HasOriginal)"
                                                   Validation="@Validation" ValidationField="@Field(record.Id, "end")" Changed="@Changed" />
                         <label class="portal-performer-picker portal-work-full">
                             <span>Performed by *</span>
@@ -146,7 +150,25 @@
                     <PortalWorkNotes FlightId="@FlightId" RecordPath="@RecordPath(record)" Draft="@record" CanEdit="@edit"
                                      Visible="@expanded" Validation="@Validation" Changed="@Changed" />
 
-                    @if (record.CreatedByDisplayName is { } creator)
+                    @if (submittedByColleague)
+                    {
+                        <p class="portal-actuals-note">
+                            This @(IsTask ? "task" : "service") was submitted by <strong>@(record.CreatedByDisplayName ?? "another employee")</strong>@if (record.CreatedAtUtc is { } submittedAt)
+                            {
+                                <text> on <strong>@SubmissionTimestamp(submittedAt)</strong></text>
+                            }@if (record.UpdatedByDisplayName is { Length: > 0 } updater && record.UpdatedAtUtc is { } updatedAt)
+                            {
+                                <text> and updated by <strong>@updater</strong> on <strong>@SubmissionTimestamp(updatedAt)</strong></text>
+                            }.
+                            @if (locked && record.CanEdit && !ReadOnly)
+                            {
+                                <button type="button" class="portal-actuals-update" @onclick="@(() => record.CorrectionsUnlocked = true)">
+                                    Update @(IsTask ? "task" : "service") details…
+                                </button>
+                            }
+                        </p>
+                    }
+                    else if (record.CreatedByDisplayName is { } creator)
                     {
                         <p class="portal-work-attribution">
                             Recorded by @creator
@@ -188,6 +210,8 @@
     private int? expandedForValidationAttempt;
 
     private bool ServiceOptionsUnavailable => !IsTask && Lookups.Services.Count == 0;
+
+    private string SubmissionTimestamp(DateTimeOffset stamp) => Zone.Format(stamp, "MMM d, yyyy 'at' HH:mm");
 
     protected override void OnParametersSet()
     {

@@ -56,8 +56,12 @@ public sealed partial class PortalWorkDraft(Guid id, bool isTask, StationTimeZon
     public bool CanSetEnd { get; private init; } = true;
     public bool CanDelete { get; private init; } = true;
     public bool CanChangeKind { get; private init; } = true;
+    public Guid? CreatedByUserId { get; private init; }
     public string? CreatedByDisplayName { get; private init; }
+    public DateTimeOffset? CreatedAtUtc { get; private init; }
     public string? UpdatedByDisplayName { get; private init; }
+    public DateTimeOffset? UpdatedAtUtc { get; private init; }
+    internal bool CorrectionsUnlocked { get; set; }
     public bool Deleted { get; set; }
     public bool IsReadingFile { get; set; }
     public Guid? ServiceId { get; set; }
@@ -112,8 +116,11 @@ public sealed partial class PortalWorkDraft(Guid id, bool isTask, StationTimeZon
         CanSetEnd = source.CanSetEnd,
         CanDelete = source.CanDelete,
         CanChangeKind = source.CanChangeService,
+        CreatedByUserId = source.CreatedByUserId,
         CreatedByDisplayName = source.CreatedByDisplayName,
+        CreatedAtUtc = source.CreatedAtUtc,
         UpdatedByDisplayName = source.UpdatedByDisplayName,
+        UpdatedAtUtc = source.UpdatedAtUtc,
         Performers = ReadPerformerPeriods(source.Performers, zone),
         Attachments = source.Attachments.Select(PortalAttachmentDraft.From).ToList()
     }.Capture();
@@ -130,8 +137,11 @@ public sealed partial class PortalWorkDraft(Guid id, bool isTask, StationTimeZon
         CanSetEnd = source.CanSetEnd,
         CanDelete = source.CanDelete,
         CanChangeKind = source.CanChangeType,
+        CreatedByUserId = source.CreatedByUserId,
         CreatedByDisplayName = source.CreatedByDisplayName,
+        CreatedAtUtc = source.CreatedAtUtc,
         UpdatedByDisplayName = source.UpdatedByDisplayName,
+        UpdatedAtUtc = source.UpdatedAtUtc,
         Performers = ReadPerformerPeriods(source.Performers, zone),
         Attachments = source.Attachments.Select(PortalAttachmentDraft.From).ToList(),
         Tools = source.Tools.Select(item => PortalResourceDraft.From(item, zone)).ToList(),
