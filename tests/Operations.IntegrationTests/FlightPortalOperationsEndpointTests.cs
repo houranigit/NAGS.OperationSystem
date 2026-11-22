@@ -187,7 +187,17 @@ public sealed partial class FlightVisibilityScopeTests
         var rtrArrival = ata.AddHours(2);
         var rtrDeparture = rtrArrival.AddHours(1);
         var taskId = Guid.NewGuid();
-        var task = OperationsBatchClosedTask(actor.StaffId, rtrArrival.AddMinutes(10), rtrArrival.AddMinutes(30));
+        var taskAttachment = attachment with { Id = Guid.NewGuid(), FileName = "rtr-task.png" };
+        var task = OperationsBatchClosedTask(actor.StaffId, rtrArrival.AddMinutes(10), rtrArrival.AddMinutes(30)) with
+        {
+            Notes = "RTR inspection notes",
+            Performers =
+            [
+                new(Guid.NewGuid(), actor.StaffId, rtrArrival.AddMinutes(10), rtrArrival.AddMinutes(15)),
+                new(Guid.NewGuid(), actor.StaffId, rtrArrival.AddMinutes(20), rtrArrival.AddMinutes(30))
+            ],
+            Attachments = [taskAttachment]
+        };
         var returning = new SaveFlightReturnToRampRequest(new(rtrArrival, "Return recorded via portal"),
             new(rtrDeparture, "RTR departure", bytes, "rtr.png", "image/png", rtrDeparture), [], [new(taskId, task)]);
         using var rtrResponse = await WritePortalOperationsAsync(client, id, HttpMethod.Put, $"returns-to-ramp/{occurrenceId}",
@@ -197,11 +207,22 @@ public sealed partial class FlightVisibilityScopeTests
         var occurrence = returned.ReturnToRamps!.ShouldHaveSingleItem();
         occurrence.Id.ShouldBe(occurrenceId);
         occurrence.DepartedAtUtc.ShouldBe(rtrDeparture);
-        occurrence.Tasks.ShouldHaveSingleItem().Id.ShouldBe(taskId);
         returned.Tasks!.ShouldBeEmpty();
         returned.DepartureSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(normalDeparture.Id);
         await AssertPortalMediaAsync(client,
             $"{prefix}/returns-to-ramp/{occurrenceId}/signature?expectedUpdatedAt={VersionTimestamp(occurrence.UpdatedAtUtc ?? occurrence.CreatedAtUtc)}", bytes);
+
+        var reloaded = await PortalOperationsDetailAsync(client, id);
+        var storedTask = reloaded.ReturnToRamps!.ShouldHaveSingleItem().Tasks.ShouldHaveSingleItem();
+        storedTask.Id.ShouldBe(taskId);
+        storedTask.Notes.ShouldBe(task.Notes);
+        storedTask.Performers.OrderBy(period => period.StartUtc)
+            .Select(period => (period.Id, period.StaffMemberId, period.StartUtc, period.EndUtc))
+            .ShouldBe(task.Performers.Select(period => (period.Id, period.StaffMemberId, period.StartUtc, period.EndUtc)));
+        var storedTaskAttachment = storedTask.Attachments.ShouldHaveSingleItem();
+        storedTaskAttachment.Id.ShouldBe(taskAttachment.Id);
+        await AssertPortalMediaAsync(client,
+            $"{prefix}/tasks/{taskId}/attachments/{taskAttachment.Id}?expectedUploadedAt={VersionTimestamp(storedTaskAttachment.UploadedAtUtc)}", bytes);
     }
 
     private async Task<HttpClient> CreatePortalViewerAsync(HttpClient admin)
