@@ -764,6 +764,7 @@
   <data name="PortalAccess.PendingLoginEmailDetail" xml:space="preserve"><value>بانتظار تأكيد {0} قبل تغيير بريد تسجيل الدخول المرتبط.</value></data>
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>فشل تغيير بريد تسجيل الدخول</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>تعذر على الهوية بدء التحقق: {0}</value></data>
+  <data name="Flights.AwaitingAta" xml:space="preserve"><value>بانتظار ATA</value></data>
   <data name="Notifications.Title" xml:space="preserve"><value>الإشعارات</value></data>
   <data name="Notifications.Description" xml:space="preserve"><value>الدعوات والتذكيرات وتحديثات الرحلات المرسلة إلى حسابك.</value></data>
   <data name="Notifications.BellLabel" xml:space="preserve"><value>فتح الإشعارات</value></data>

@@ -318,6 +318,20 @@ a {
 .os-pill--danger { background: var(--os-color-danger-bg); color: var(--os-color-danger); }
 .os-pill--info { background: var(--os-color-info-bg); color: var(--os-color-info); }
 .os-pill--neutral { background: var(--os-color-neutral-bg); color: var(--os-color-text-muted); }
+.os-pill--gray { background: var(--os-color-gray-bg); color: var(--os-color-gray); }
+.os-pill--slate { background: var(--os-color-neutral-bg); color: var(--os-color-slate); }
+.os-pill--orange { background: var(--os-color-orange-bg); color: var(--os-color-orange); }
+.os-pill--purple { background: var(--os-color-purple-bg); color: var(--os-color-purple); }
+.os-pill--critical { background: var(--os-color-danger-strong); color: var(--os-color-danger-contrast); }
+
+.os-pill--with-icon::before {
+    content: none;
+}
+
+.os-pill .os-pill-icon {
+    flex-shrink: 0;
+    font-size: 1em;
+}
 
 .os-pill--compact {
     padding: 0.125rem 0.4rem;

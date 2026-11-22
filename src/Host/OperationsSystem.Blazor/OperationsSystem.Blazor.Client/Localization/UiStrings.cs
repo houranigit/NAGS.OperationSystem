@@ -49,6 +49,11 @@ public static class UiStrings
         public static string Clear => UiText.Get("Common.Clear", "Clear");
     }
 
+    public static class Flights
+    {
+        public static string AwaitingAta => UiText.Get("Flights.AwaitingAta", "Awaiting ATA");
+    }
+
     public static class Notifications
     {
         public static string Title => UiText.Get("Notifications.Title", "Notifications");

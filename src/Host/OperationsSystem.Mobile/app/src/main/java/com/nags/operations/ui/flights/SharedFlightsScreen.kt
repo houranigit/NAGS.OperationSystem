@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -195,11 +196,14 @@ private fun FlightShareEntry(post: FlightSharePost, now: Instant, onClick: () ->
                 color = if (post.isStationWide) Color(0xFF2979D5) else Color.Unspecified), start, start + token.length)
         }
     }
+    val statusStripe = flightStatusColors(post.flight.cardReportStatus(now = now)).stripe
+    // Black and white have the same contrast at approximately 0.179 luminance.
+    val initialsColor = if (statusStripe.luminance() > 0.179f) Color.Black else Color.White
     Column {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-        Box(Modifier.size(32.dp).background(flightStatusColors(post.flight.cardReportStatus(now = now)).stripe, CircleShape),
+        Box(Modifier.size(32.dp).background(statusStripe, CircleShape),
             contentAlignment = Alignment.Center) {
-            Text(initials, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+            Text(initials, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, color = initialsColor)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(0.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {

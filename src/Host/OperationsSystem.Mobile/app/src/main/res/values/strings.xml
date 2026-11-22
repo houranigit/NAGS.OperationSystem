@@ -412,7 +412,7 @@
     <string name="cancellation_review_short">Review</string>
     <string name="flight_card_canceled">Canceled</string>
     <string name="flight_card_due_soon">Due soon</string>
-    <string name="flight_card_arrival_not_recorded">Arrival not recorded</string>
+    <string name="flight_card_arrival_not_recorded">Awaiting ATA</string>
     <string name="flight_card_on_ground">On ground</string>
     <string name="flight_card_returned_to_ramp">RTR</string>
     <string name="flight_card_departed">Departed</string>

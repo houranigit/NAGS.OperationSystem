@@ -388,7 +388,7 @@
     <string name="cancellation_review_short">مراجعة</string>
     <string name="flight_card_canceled">ملغاة</string>
     <string name="flight_card_due_soon">وصول قريب</string>
-    <string name="flight_card_arrival_not_recorded">الوصول غير مسجل</string>
+    <string name="flight_card_arrival_not_recorded">بانتظار ATA</string>
     <string name="flight_card_on_ground">على الأرض</string>
     <string name="flight_card_returned_to_ramp">RTR</string>
     <string name="flight_card_departed">غادرت</string>

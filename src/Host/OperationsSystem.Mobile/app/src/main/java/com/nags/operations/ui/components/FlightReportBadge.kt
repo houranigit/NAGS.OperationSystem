@@ -65,18 +65,29 @@ internal data class FlightStatusColors(val background: Color, val foreground: Co
 internal fun flightStatusColors(status: FlightCardReportStatus): FlightStatusColors {
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     return when (status) {
-        FlightCardReportStatus.Scheduled, FlightCardReportStatus.OnGround -> if (dark)
+        FlightCardReportStatus.Scheduled -> if (dark)
+            FlightStatusColors(Color(0xFF343434), Color(0xFFD6D6D6), Color(0xFFA3A3A3), Color(0xFF505050))
+        else FlightStatusColors(Color(0xFFF2F2F2), Color(0xFF545454), Color(0xFF757575), Color(0xFFD9D9D9))
+        FlightCardReportStatus.DueSoon -> if (dark)
+            FlightStatusColors(Color(0xFF49361D), Color(0xFFFFD18E), Color(0xFFE7B767), Color(0xFF715937))
+        else FlightStatusColors(Color(0xFFFFF3D6), Color(0xFF8B4B00), Color(0xFFD48A0B), Color(0xFFEDD4A7))
+        FlightCardReportStatus.ArrivalNotRecorded -> if (dark)
+            FlightStatusColors(Color(0xFF4D2B1D), Color(0xFFFFC39F), Color(0xFFFFA271), Color(0xFF79462F))
+        else FlightStatusColors(Color(0xFFFFEDD9), Color(0xFF963D0A), Color(0xFFC65C1C), Color(0xFFEFBA91))
+        FlightCardReportStatus.OnGround -> if (dark)
             FlightStatusColors(Color(0xFF21334B), Color(0xFFA4CBFF), Color(0xFF76B1FF), Color(0xFF365677))
         else FlightStatusColors(Color(0xFFE8F2FF), Color(0xFF155EAB), Color(0xFF007AFF), Color(0xFFC7DDFA))
+        FlightCardReportStatus.ReturnedToRamp -> if (dark)
+            FlightStatusColors(Color(0xFF39274F), Color(0xFFDFC7FF), Color(0xFFB78CE9), Color(0xFF5C457A))
+        else FlightStatusColors(Color(0xFFF1E9FC), Color(0xFF633398), Color(0xFF8954C1), Color(0xFFDAC6F1))
         FlightCardReportStatus.Departed -> if (dark)
-            FlightStatusColors(Color(0xFF233C2D), Color(0xFFA3DFB7), Color(0xFF7CC796), Color(0xFF3C5F49))
-        else FlightStatusColors(Color(0xFFE8F5EC), Color(0xFF176A3A), Color(0xFF249454), Color(0xFFC2DFCC))
+            FlightStatusColors(Color(0xFF30394A), Color(0xFFC8D4E6), Color(0xFF8193AB), Color(0xFF47576D))
+        else FlightStatusColors(Color(0xFFE8EDF3), Color(0xFF46566D), Color(0xFF64748B), Color(0xFFCBD5E1))
         FlightCardReportStatus.Canceled -> if (dark)
             FlightStatusColors(Color(0xFF482A2B), Color(0xFFFFB4AE), Color(0xFFEF928C), Color(0xFF744744))
         else FlightStatusColors(Color(0xFFFDECEB), Color(0xFFA12622), Color(0xFFD9443D), Color(0xFFECC2BF))
-        FlightCardReportStatus.DueSoon, FlightCardReportStatus.ArrivalNotRecorded,
-        FlightCardReportStatus.ReturnedToRamp, FlightCardReportStatus.Conflict -> if (dark)
-            FlightStatusColors(Color(0xFF49361D), Color(0xFFFFD18E), Color(0xFFE7B767), Color(0xFF715937))
-        else FlightStatusColors(Color(0xFFFFF3D6), Color(0xFF8B4B00), Color(0xFFD48A0B), Color(0xFFEDD4A7))
+        FlightCardReportStatus.Conflict -> if (dark)
+            FlightStatusColors(Color(0xFF58172A), Color(0xFFFFD2DB), Color(0xFFF7758E), Color(0xFFA44759))
+        else FlightStatusColors(Color(0xFFFCE0E4), Color(0xFF86152D), Color(0xFFA91D39), Color(0xFFD68191))
     }
 }

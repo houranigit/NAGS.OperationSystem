@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nags.operations.R
-import com.nags.operations.ui.flights.FlightCardReportStatus
 
 internal fun flightTypeBadgeLabel(isPerLanding: Boolean, isAdHoc: Boolean): String = when {
     isAdHoc -> "AH"
@@ -85,13 +84,13 @@ internal fun FlightTypeBadge(isPerLanding: Boolean, isAdHoc: Boolean, modifier: 
         else -> R.string.flights_scheduled
     })
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val scheduledColors = flightStatusColors(FlightCardReportStatus.Scheduled)
     val (background, foreground) = when {
         isAdHoc -> if (dark) Color(0xFF482A2B) to Color(0xFFFFB4AE)
             else Color(0xFFFDECEB) to Color(0xFFA12622)
         isPerLanding -> if (dark) Color(0xFF49361D) to Color(0xFFFFD18E)
             else Color(0xFFFFF1DE) to Color(0xFF9A4500)
-        else -> scheduledColors.background to scheduledColors.foreground
+        else -> if (dark) Color(0xFF21334B) to Color(0xFFA4CBFF)
+            else Color(0xFFE8F2FF) to Color(0xFF155EAB)
     }
     Surface(modifier.size(flightTypeBadgeDiameter()).clearAndSetSemantics { contentDescription = description }, shape = CircleShape,
         color = background, contentColor = foreground) {

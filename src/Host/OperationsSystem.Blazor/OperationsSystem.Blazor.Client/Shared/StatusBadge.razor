@@ -1,12 +1,17 @@
-<span class="@CssClass">@Label</span>
+<span class="@CssClass">
+    @if (Icon is not null)
+    {
+        <RadzenIcon Icon="@Icon" class="os-pill-icon" aria-hidden="true" />
+    }
+    @Label
+</span>
 
 @code {
     [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
 
-    /// <summary>One of: success, warning, danger, neutral.</summary>
     [Parameter] public string Tone { get; set; } = "neutral";
-
+    [Parameter] public string? Icon { get; set; }
     [Parameter] public bool Compact { get; set; }
 
-    private string CssClass => $"os-pill os-pill--{Tone}{(Compact ? " os-pill--compact" : "")}";
+    private string CssClass => $"os-pill os-pill--{Tone}{(Compact ? " os-pill--compact" : "")}{(Icon is not null ? " os-pill--with-icon" : "")}";
 }

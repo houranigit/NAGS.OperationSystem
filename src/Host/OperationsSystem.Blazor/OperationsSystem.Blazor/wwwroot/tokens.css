@@ -40,6 +40,15 @@
     --os-color-info: #1d4ed8;
     --os-color-info-bg: #e0ecff;
     --os-color-neutral-bg: #e8edf4;
+    --os-color-gray: #545454;
+    --os-color-gray-bg: #f2f2f2;
+    --os-color-slate: #46566d;
+    --os-color-orange: #963d0a;
+    --os-color-orange-bg: #ffedd9;
+    --os-color-purple: #633398;
+    --os-color-purple-bg: #f1e9fc;
+    --os-color-danger-strong: #86152d;
+    --os-color-danger-contrast: #ffffff;
 
     /* Spacing scale */
     --os-space-1: 0.25rem;

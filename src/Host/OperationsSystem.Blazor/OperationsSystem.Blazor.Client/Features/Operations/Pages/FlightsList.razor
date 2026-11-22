@@ -31,7 +31,7 @@
             <Filters>
                 <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
                 <DataListFilter TValue="Guid?" Placeholder="All customers" Data="@customerOptions" Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync" AllowFiltering="true" />
-                <DataListFilter TValue="IEnumerable<string>" Placeholder="All statuses" Data="@StatusOptions" Value="@statusFilters" ValueChanged="@OnStatusFilterChangedAsync" Multiple="true" Chips="true" />
+                <DataListFilter TValue="IEnumerable<string>" Placeholder="All statuses" Data="@statusOptions" Value="@statusFilters" ValueChanged="@OnStatusFilterChangedAsync" Multiple="true" Chips="true" />
                 <DataListFilter TValue="Guid?" Placeholder="All operations" Data="@operationTypeOptions" Value="@operationTypeFilter" ValueChanged="@OnOperationTypeFilterChangedAsync" />
                 <div class="ofl-date-range">
                     <RadzenDatePicker Disabled="@(stationFilter is null)" TValue="DateTime?" Value="@fromFilter" Change="@OnFromFilterChangedAsync"
@@ -68,9 +68,9 @@
                 <RadzenDataGridColumn TItem="FlightListItem" Title="Status" Sortable="false" Width="180px">
                     <Template Context="flight">
                         @{
-                            var status = StatusOptions.FirstOrDefault(option => option.Value == flight.Status);
+                            var status = statusOptions.FirstOrDefault(option => option.Value == flight.Status);
                         }
-                        <StatusBadge Label="@(status?.Label ?? flight.Status ?? "—")" Tone="@(status?.Tone ?? "neutral")" />
+                        <StatusBadge Label="@(status?.Label ?? flight.Status ?? "—")" Tone="@(status?.Tone ?? "neutral")" Icon="@(status?.Icon)" />
                     </Template>
                 </RadzenDataGridColumn>
             </Columns>
@@ -89,16 +89,16 @@
 
     private const string GridKey = "operations-flights";
     private static readonly int[] PageSizes = [10, 25, 50, 100];
-    private static readonly StatusFilterOption[] StatusOptions =
+    private readonly StatusFilterOption[] statusOptions =
     [
-        new("Scheduled", "Scheduled", "info"),
+        new("Scheduled", "Scheduled", "gray"),
         new("Due soon", "DueSoon", "warning"),
-        new("Arrival not recorded", "ArrivalNotRecorded", "warning"),
+        new(UiStrings.Flights.AwaitingAta, "ArrivalNotRecorded", "orange"),
         new("On ground", "OnGround", "info"),
-        new("RTR", "ReturnedToRamp", "warning"),
-        new("Departed", "Departed", "success"),
+        new("RTR", "ReturnedToRamp", "purple"),
+        new("Departed", "Departed", "slate"),
         new("Canceled", "Canceled", "danger"),
-        new("Conflict", "Conflict", "warning")
+        new("Conflict", "Conflict", "critical", "warning_amber")
     ];
 
     private DataListCard<FlightListItem>? list;
@@ -395,6 +395,6 @@
 
     private sealed record StationFilterOption(string Label, Guid? Value, string TimeZoneId);
     private sealed record CustomerFilterOption(string Label, Guid? Value);
-    private sealed record StatusFilterOption(string Label, string Value, string Tone);
+    private sealed record StatusFilterOption(string Label, string Value, string Tone, string? Icon = null);
     private sealed record OperationTypeFilterOption(string Label, Guid? Value);
 }
