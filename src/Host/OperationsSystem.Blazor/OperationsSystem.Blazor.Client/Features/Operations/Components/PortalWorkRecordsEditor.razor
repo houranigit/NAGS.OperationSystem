@@ -150,17 +150,22 @@
                     <PortalWorkNotes FlightId="@FlightId" RecordPath="@RecordPath(record)" Draft="@record" CanEdit="@edit"
                                      Visible="@expanded" Validation="@Validation" Changed="@Changed" />
 
-                    @if (submittedByColleague)
+                    @{ var serviceOutsideManpowerPermissions = ServiceOutsideManpowerPermissions(record); }
+                    @if (submittedByColleague || serviceOutsideManpowerPermissions)
                     {
                         <p class="portal-actuals-note">
-                            This @(IsTask ? "task" : "service") was submitted by <strong>@(record.CreatedByDisplayName ?? "another employee")</strong>@if (record.CreatedAtUtc is { } submittedAt)
+                            This @(IsTask ? "task" : "service") was submitted by <strong>@(record.CreatedByDisplayName ?? (submittedByColleague ? "another employee" : "you"))</strong>@if (record.CreatedAtUtc is { } submittedAt)
                             {
                                 <text> on <strong>@SubmissionTimestamp(submittedAt)</strong></text>
                             }@if (record.UpdatedByDisplayName is { Length: > 0 } updater && record.UpdatedAtUtc is { } updatedAt)
                             {
                                 <text> and updated by <strong>@updater</strong> on <strong>@SubmissionTimestamp(updatedAt)</strong></text>
                             }.
-                            @if (locked && record.CanEdit && !ReadOnly)
+                            @if (serviceOutsideManpowerPermissions)
+                            {
+                                <text> You can’t update <strong>@record.ServiceName</strong> because it’s outside your manpower type’s permissions.</text>
+                            }
+                            else if (locked && record.CanEdit && !ReadOnly)
                             {
                                 <button type="button" class="portal-actuals-update" @onclick="@(() => record.CorrectionsUnlocked = true)">
                                     Update @(IsTask ? "task" : "service") details…
@@ -176,12 +181,6 @@
                             {
                                 <span> · Updated by @updater</span>
                             }
-                        </p>
-                    }
-                    @if (ServiceOutsideManpowerPermissions(record))
-                    {
-                        <p class="portal-work-attribution">
-                            <strong>@record.ServiceName</strong> is outside your manpower type’s permissions.
                         </p>
                     }
                 </div>
