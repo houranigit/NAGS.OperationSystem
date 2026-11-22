@@ -51,22 +51,33 @@
                     <div class="portal-work-grid">
                         @if (IsTask)
                         {
-                            <label>
-                                <span>Task type</span>
-                                <RadzenDropDown TValue="int" Data="@TaskTypes" TextProperty="@nameof(TaskTypeChoice.Label)" ValueProperty="@nameof(TaskTypeChoice.Id)"
-                                                @bind-Value="record.TaskType" @bind-Value:after="NotifyChangedAsync" Disabled="@(!edit || !record.CanChangeKind)"
-                                                aria-invalid="@Invalid(record.Id, "type")" aria-describedby="@Description(record.Id, "type")" />
-                                <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "type")" />
-                            </label>
-                            <label>
-                                <span>ATA chapter</span>
-                                <RadzenDropDown TValue="Guid?" Data="@PortalWorkLookups.WithSaved(Lookups.Chapters, record.AtaChapterId, record.AtaChapterLabel)"
-                                                TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
-                                                @bind-Value="record.AtaChapterId" @bind-Value:after="NotifyChangedAsync" AllowClear="true" AllowFiltering="true"
-                                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@(!edit)"
-                                                aria-invalid="@Invalid(record.Id, "ataChapter")" aria-describedby="@Description(record.Id, "ataChapter")" />
-                                <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "ataChapter")" />
-                            </label>
+                            <div class="portal-task-fields portal-work-full">
+                                <fieldset class="portal-task-type" disabled="@(!edit || !record.CanChangeKind)"
+                                          aria-invalid="@Invalid(record.Id, "type")" aria-describedby="@Description(record.Id, "type")">
+                                    <legend>Task type</legend>
+                                    <div class="portal-task-type-options">
+                                        @foreach (var option in TaskTypes)
+                                        {
+                                            <label>
+                                                <input type="radio" name="@($"portal-task-type-{record.Id:N}")" value="@option.Id"
+                                                       checked="@(record.TaskType == option.Id)" @onchange="@(() => SetTaskTypeAsync(record, option.Id))" />
+                                                <span>@option.Label</span>
+                                            </label>
+                                        }
+                                    </div>
+                                    <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "type")" />
+                                </fieldset>
+                                <label>
+                                    <span>ATA chapter</span>
+                                    <RadzenDropDown TValue="Guid?" Data="@PortalWorkLookups.WithSaved(Lookups.Chapters, record.AtaChapterId, record.AtaChapterLabel)"
+                                                    TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
+                                                    @bind-Value="record.AtaChapterId" @bind-Value:after="NotifyChangedAsync" AllowClear="true" AllowFiltering="true"
+                                                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@(!edit)"
+                                                    aria-invalid="@Invalid(record.Id, "ataChapter")" aria-describedby="@Description(record.Id, "ataChapter")" />
+                                    <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "ataChapter")" />
+                                </label>
+                                @CustomerReferenceField(record, edit)
+                            </div>
                         }
                         else
                         {
@@ -86,10 +97,6 @@
                                                   Validation="@Validation" ValidationField="@Field(record.Id, "start")" Changed="@Changed" />
                         <PortalOperationDateField Label="End" Time="@record.End" Disabled="@(!end)"
                                                   Validation="@Validation" ValidationField="@Field(record.Id, "end")" Changed="@Changed" />
-                        @if (IsTask)
-                        {
-                            @CustomerReferenceField(record, edit)
-                        }
                         <label class="portal-performer-picker portal-work-full">
                             <span>Performed by *</span>
                             <RadzenDropDown TValue="IEnumerable<Guid>" Data="@PerformerOptions(record)"
@@ -196,6 +203,12 @@
     }
 
     private Task NotifyChangedAsync() => Changed.InvokeAsync();
+
+    private Task SetTaskTypeAsync(PortalWorkDraft record, int taskType)
+    {
+        record.TaskType = taskType;
+        return NotifyChangedAsync();
+    }
 
     private async Task AddAsync()
     {
