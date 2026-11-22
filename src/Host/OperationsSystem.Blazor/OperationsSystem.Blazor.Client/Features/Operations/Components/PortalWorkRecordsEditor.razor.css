@@ -121,8 +121,11 @@
 }
 
 .portal-task-fields {
+    --portal-task-type-width: 8rem;
+    --portal-task-detail-columns: minmax(0, 2.5fr) minmax(7.5rem, 1fr);
+
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: var(--portal-task-type-width) var(--portal-task-detail-columns);
     align-items: start;
     gap: var(--os-space-3);
 }
@@ -158,7 +161,7 @@
     isolation: isolate;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-inline-size: 8rem;
+    max-inline-size: var(--portal-task-type-width);
     min-block-size: 2.25rem;
     padding: var(--segment-inset);
     border-radius: var(--os-radius-sm);
@@ -355,7 +358,7 @@
 
 @container portal-work (max-width: 36rem) {
     .portal-task-fields {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: var(--portal-task-detail-columns);
     }
 
     .portal-task-type {
