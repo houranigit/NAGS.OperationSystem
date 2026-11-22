@@ -1,0 +1,545 @@
+<section class="portal-work-records">
+    <div class="portal-section-heading">
+        <h3>@(IsTask ? "Tasks" : "Services")</h3>
+    </div>
+    @if (Records.Count == 0)
+    {
+        <p class="portal-work-empty">@(IsTask ? "No tasks recorded." : "No services recorded.")</p>
+    }
+    @for (var i = 0; i < Records.Count; i++)
+    {
+        var record = Records[i];
+        var index = i + 1;
+        var edit = !ReadOnly && record.CanEdit;
+        var end = !ReadOnly && record.CanSetEnd;
+        if (record.Deleted)
+        {
+            <div class="portal-work-deleted" @key="record.Id">
+                <span>@WorkLabel(record, index) marked for removal</span>
+                <RadzenButton Text="Keep" Icon="undo" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                              Disabled="@ReadOnly" Click="@(() => KeepAsync(record))" />
+            </div>
+        }
+        else
+        {
+            var panelId = $"portal-{(IsTask ? "task" : "service")}-{record.Id:N}";
+            var expanded = IsExpanded(record);
+            var label = WorkLabel(record, index);
+            var (status, tone) = WorkStatus(record.Start.Local, record.End.Local.HasValue);
+            <article class="portal-work-record" @key="record.Id">
+                <div class="portal-work-record-header">
+                    <button type="button" class="portal-work-toggle" aria-expanded="@(expanded ? "true" : "false")"
+                            aria-controls="@panelId" @ref="recordHeaders[record.Id]" @onclick="@(() => Toggle(record))">
+                        <RadzenIcon Icon="@(expanded ? "expand_less" : "expand_more")" aria-hidden="true" />
+                        <strong class="portal-work-record-title">@label</strong>
+                        <span class="portal-work-status">
+                            @if (record.IsPlanned)
+                            {
+                                <StatusBadge Label="Scheduled Service" Tone="warning" />
+                            }
+                            <StatusBadge Label="@status" Tone="@tone" />
+                        </span>
+                    </button>
+                    @if (!ReadOnly && record.CanDelete)
+                    {
+                        <RadzenButton Text="Delete" Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                                      class="portal-work-delete" title="@($"Delete {label}")" aria-label="@($"Delete {label}")"
+                                      Disabled="@record.IsReadingFile" Click="@(() => RemoveAsync(record))" />
+                    }
+                </div>
+                <div class="portal-work-fields" id="@panelId" hidden="@(!expanded)">
+                    <div class="portal-work-grid">
+                        @if (IsTask)
+                        {
+                            <label>
+                                <span>Task type</span>
+                                <RadzenDropDown TValue="int" Data="@TaskTypes" TextProperty="@nameof(TaskTypeChoice.Label)" ValueProperty="@nameof(TaskTypeChoice.Id)"
+                                                @bind-Value="record.TaskType" @bind-Value:after="NotifyChangedAsync" Disabled="@(!edit || !record.CanChangeKind)"
+                                                aria-invalid="@Invalid(record.Id, "type")" aria-describedby="@Description(record.Id, "type")" />
+                                <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "type")" />
+                            </label>
+                            <label>
+                                <span>ATA chapter</span>
+                                <RadzenDropDown TValue="Guid?" Data="@PortalWorkLookups.WithSaved(Lookups.Chapters, record.AtaChapterId, record.AtaChapterLabel)"
+                                                TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
+                                                @bind-Value="record.AtaChapterId" @bind-Value:after="NotifyChangedAsync" AllowClear="true" AllowFiltering="true"
+                                                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@(!edit)"
+                                                aria-invalid="@Invalid(record.Id, "ataChapter")" aria-describedby="@Description(record.Id, "ataChapter")" />
+                                <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "ataChapter")" />
+                            </label>
+                        }
+                        else
+                        {
+                            <label>
+                                <span>Service *</span>
+                                <RadzenDropDown TValue="Guid?" Data="@PortalWorkLookups.WithSaved(Lookups.Services, record.ServiceId, record.ServiceName)"
+                                                TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
+                                                @bind-Value="record.ServiceId" @bind-Value:after="NotifyChangedAsync"
+                                                AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                                Disabled="@(!edit || !record.CanChangeKind)"
+                                                aria-invalid="@Invalid(record.Id, "service")" aria-describedby="@Description(record.Id, "service")" />
+                                <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "service")" />
+                            </label>
+                            @CustomerReferenceField(record, edit, "Customer Ref #")
+                        }
+                        <PortalOperationDateField Label="Start" Time="@record.Start" Required="true" Disabled="@(!edit)"
+                                                  Validation="@Validation" ValidationField="@Field(record.Id, "start")" Changed="@Changed" />
+                        <PortalOperationDateField Label="End" Time="@record.End" Disabled="@(!end)"
+                                                  Validation="@Validation" ValidationField="@Field(record.Id, "end")" Changed="@Changed" />
+                        @if (IsTask)
+                        {
+                            @CustomerReferenceField(record, edit, "Customer reference")
+                            @RecordNotes(record, edit, expanded)
+                        }
+                        else
+                        {
+                            <label class="portal-performer-picker portal-work-full">
+                                <span>Performed by *</span>
+                                <RadzenDropDown TValue="IEnumerable<Guid>" Data="@PerformerOptions(record)"
+                                                TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
+                                                Value="@SelectedPerformerIds(record)" ValueChanged="@(ids => SelectPerformersAsync(record, ids))"
+                                                Multiple="true" Chips="true" MaxSelectedLabels="2" SelectedItemsText="employees"
+                                                AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                                Placeholder="Select staff" Disabled="@(!edit || Lookups.Staff.Count == 0 && record.Performers.Count == 0)"
+                                                aria-label="Performed by" aria-invalid="@Invalid(record.Id, "performers")"
+                                                aria-describedby="@Description(record.Id, "performers")" />
+                                <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "performers")" />
+                            </label>
+                        }
+                    </div>
+
+                    <section class="portal-work-entries">
+                        @if (IsTask)
+                        {
+                            <div class="portal-section-heading">
+                                <h4>Performers</h4>
+                            </div>
+                            <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "performers")" />
+                        }
+                        @if (record.Performers.Count == 0)
+                        {
+                            <p class="portal-work-empty">No performers recorded.</p>
+                        }
+                        @if (IsTask)
+                        {
+                            @for (var employeeIndex = 0; employeeIndex < record.Performers.Count; employeeIndex++)
+                            {
+                                var performer = record.Performers[employeeIndex];
+                                var deleteLabel = $"Delete performer {employeeIndex + 1}";
+                                <div class="portal-work-grid portal-work-entry" @key="performer.Id">
+                                    <div class="portal-work-full portal-work-entry-selector">
+                                        <label>
+                                            <span>Employee *</span>
+                                            <RadzenDropDown TValue="Guid?" Data="@PortalWorkLookups.WithSaved(Lookups.Staff, performer.StaffMemberId, performer.DisplayName)"
+                                                            TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
+                                                            @bind-Value="performer.StaffMemberId" @bind-Value:after="NotifyChangedAsync" AllowFiltering="true"
+                                                            FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@(!edit)"
+                                                            aria-invalid="@Invalid(performer.Id, "employee")" aria-describedby="@Description(performer.Id, "employee")" />
+                                            <PortalFieldError Validation="@Validation" Field="@Field(performer.Id, "employee")" />
+                                        </label>
+                                        @if (edit)
+                                        {
+                                            <div class="portal-work-entry-action">
+                                                <RadzenButton Text="Delete" Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                                                              class="portal-work-delete" title="@deleteLabel" aria-label="@deleteLabel"
+                                                              Click="@(() => RemoveEntryAsync(record.Performers, performer))" />
+                                            </div>
+                                        }
+                                    </div>
+                                    <PortalOperationDateField Label="Start" Time="@performer.Start" Required="true" Disabled="@(!edit)"
+                                                              Validation="@Validation" ValidationField="@Field(performer.Id, "start")" Changed="@Changed" />
+                                    <PortalOperationDateField Label="End" Time="@performer.End" Disabled="@(!end || !edit && performer.End.HasOriginal)"
+                                                              Validation="@Validation" ValidationField="@Field(performer.Id, "end")" Changed="@Changed" />
+                                    <label class="portal-work-full">
+                                        <span>Performer notes</span>
+                                        <RadzenTextArea @bind-Value="performer.Notes" @bind-Value:after="NotifyChangedAsync" Immediate="true" Rows="2" Disabled="@(!edit)"
+                                                        aria-invalid="@Invalid(performer.Id, "notes")" aria-describedby="@Description(performer.Id, "notes")" />
+                                        <PortalFieldError Validation="@Validation" Field="@Field(performer.Id, "notes")" />
+                                    </label>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            @ServicePerformerRows(record, edit, end)
+                        }
+                        @if (IsTask && edit)
+                        {
+                            <div class="portal-work-add">
+                                <RadzenButton Text="Add performer" Icon="person_add" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Small"
+                                              Disabled="@(Lookups.Staff.Count == 0)" Click="@(() => AddPerformerAsync(record))"
+                                              aria-invalid="@Invalid(record.Id, "performers")" aria-describedby="@Description(record.Id, "performers")" />
+                            </div>
+                        }
+                    </section>
+
+                    @if (!IsTask)
+                    {
+                        @RecordNotes(record, edit, expanded)
+                    }
+
+                    @if (IsTask)
+                    {
+                        @Resources("Tools", "tool", record, record.Tools, Lookups.Tools, edit, end)
+                        @Resources("Materials", "material", record, record.Materials, Lookups.Materials, edit, end)
+                        @Resources("General support", "general support", record, record.GeneralSupports, Lookups.Supports, edit, end)
+                    }
+
+                    @if (record.CreatedByDisplayName is { } creator)
+                    {
+                        <p class="portal-work-attribution">
+                            Recorded by @creator
+                            @if (record.UpdatedByDisplayName is { } updater)
+                            {
+                                <span> · Updated by @updater</span>
+                            }
+                        </p>
+                    }
+                </div>
+            </article>
+        }
+    }
+    @if (CanAdd && !ReadOnly)
+    {
+        <div class="portal-work-add">
+            <RadzenButton Text="@(IsTask ? "Add task" : "Add service")" Icon="add" ButtonStyle="ButtonStyle.Light"
+                          Disabled="@(!IsTask && Lookups.Services.Count == 0)" Click="@AddAsync" />
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid FlightId { get; set; }
+    [Parameter, EditorRequired] public List<PortalWorkDraft> Records { get; set; } = [];
+    [Parameter, EditorRequired] public StationTimeZone Zone { get; set; } = default!;
+    [Parameter, EditorRequired] public PortalWorkLookups Lookups { get; set; } = default!;
+    [Parameter] public bool IsTask { get; set; }
+    [Parameter] public bool CanAdd { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public PortalFlightValidation? Validation { get; set; }
+    [Parameter] public int ValidationAttempt { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private sealed record TaskTypeChoice(int Id, string Label);
+    private static readonly TaskTypeChoice[] TaskTypes = [new(0, "Major"), new(1, "Minor")];
+    private readonly Dictionary<Guid, bool> expandedRecords = [];
+    private readonly Dictionary<Guid, ElementReference> recordHeaders = [];
+    private Guid? focusRecordId;
+    private int? expandedForValidationAttempt;
+
+    protected override void OnParametersSet()
+    {
+        if (Validation is not { } validation || expandedForValidationAttempt == ValidationAttempt)
+            return;
+
+        expandedForValidationAttempt = ValidationAttempt;
+        foreach (var record in Records)
+        {
+            if (validation.HasErrorFor(record.Id) || record.Performers.Any(child => validation.HasErrorFor(child.Id)) ||
+                record.Tools.Concat(record.Materials).Concat(record.GeneralSupports).Any(child => validation.HasErrorFor(child.Id)))
+                expandedRecords[record.Id] = true;
+        }
+    }
+
+    private bool IsExpanded(PortalWorkDraft record) => expandedRecords.GetValueOrDefault(record.Id, record.IsNew && !record.IsPlanned);
+
+    private void Toggle(PortalWorkDraft record) => expandedRecords[record.Id] = !IsExpanded(record);
+
+    private static string Field(Guid id, string name) => PortalFlightValidation.Field(id, name);
+    private string? Invalid(Guid id, string name) => Validation?.InvalidAttribute(Field(id, name));
+    private string? Description(Guid id, string name) => Validation?.DescriptionId(Field(id, name));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (focusRecordId is { } id && recordHeaders.TryGetValue(id, out var header))
+        {
+            focusRecordId = null;
+            await header.FocusAsync(preventScroll: false);
+        }
+    }
+
+    private Task NotifyChangedAsync() => Changed.InvokeAsync();
+
+    private async Task AddAsync()
+    {
+        var record = new PortalWorkDraft(Guid.NewGuid(), IsTask, Zone);
+        Records.Add(record);
+        focusRecordId = record.Id;
+        await NotifyChangedAsync();
+    }
+
+    private async Task RemoveAsync(PortalWorkDraft record)
+    {
+        if (record.IsReadingFile)
+            return;
+
+        if (record.IsNew)
+        {
+            Records.Remove(record);
+            expandedRecords.Remove(record.Id);
+        }
+        else
+            record.Deleted = true;
+
+        recordHeaders.Remove(record.Id);
+        await NotifyChangedAsync();
+    }
+
+    private async Task KeepAsync(PortalWorkDraft record)
+    {
+        record.Deleted = false;
+        await NotifyChangedAsync();
+    }
+
+    private async Task RemoveEntryAsync<T>(List<T> entries, T entry)
+    {
+        if (entries.Remove(entry))
+            await NotifyChangedAsync();
+    }
+
+    private async Task AddPerformerAsync(PortalWorkDraft record)
+    {
+        var performer = new PortalPerformerDraft(Guid.NewGuid(), Zone);
+        performer.Start.Local = record.Start.Local;
+        performer.End.Local = record.End.Local;
+        record.Performers.Add(performer);
+        await NotifyChangedAsync();
+    }
+
+    private RenderFragment CustomerReferenceField(PortalWorkDraft record, bool edit, string label) => @<label>
+        <span>@label</span>
+        <RadzenTextBox @bind-Value="record.Reference" @bind-Value:after="NotifyChangedAsync" Immediate="true" Disabled="@(!edit)"
+                       aria-invalid="@Invalid(record.Id, "reference")" aria-describedby="@Description(record.Id, "reference")" />
+        <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "reference")" />
+    </label>;
+
+    private RenderFragment RecordNotes(PortalWorkDraft record, bool edit, bool expanded) => @<div class="portal-work-full">
+        <PortalWorkNotes FlightId="@FlightId" RecordPath="@RecordPath(record)" Draft="@record" CanEdit="@edit"
+                         Visible="@expanded" Validation="@Validation" Changed="@Changed" />
+    </div>;
+
+    private RenderFragment ServicePerformerRows(PortalWorkDraft record, bool edit, bool end) => @<text>
+        @{
+            var employeeNumber = 0;
+        }
+        @foreach (var employee in record.Performers.GroupBy(performer => performer.StaffMemberId))
+        {
+            employeeNumber++;
+            var staff = Lookups.Staff.FirstOrDefault(item => item.Id == employee.Key);
+            var performerName = staff?.FullName ?? employee.First().FullName ?? "Saved employee";
+            var periodNumber = 0;
+            <div class="portal-work-entry portal-service-performer" @key="employee.Key">
+                <div class="portal-service-performer-label">
+                    <strong>@($"{employeeNumber}. {performerName}")</strong>
+                    @if (!string.IsNullOrWhiteSpace(staff?.ManpowerTypeName))
+                    {
+                        <span class="portal-service-performer-type">@staff.ManpowerTypeName</span>
+                    }
+                </div>
+                <div class="portal-service-periods">
+                    @foreach (var period in employee)
+                    {
+                        periodNumber++;
+                        var deleteLabel = $"Delete period {periodNumber} for {performerName}";
+                        var started = period.Start.Local.HasValue;
+                        var (status, tone) = WorkStatus(period.Start.Local, IsCompletePeriod(period));
+                        <div class="portal-service-period" @key="period.Id">
+                            <PortalOperationDateField Label="Start" Time="@period.Start" Required="true" Disabled="@(!edit)"
+                                                      Validation="@Validation" ValidationField="@Field(period.Id, "start")" Changed="@Changed">
+                                <LabelContent>
+                                    @if (!started)
+                                    {
+                                        <StatusBadge Label="@status" Tone="@tone" />
+                                    }
+                                </LabelContent>
+                            </PortalOperationDateField>
+                            <PortalOperationDateField Label="End" Time="@period.End" Disabled="@(!end || !edit && period.End.HasOriginal)"
+                                                      Validation="@Validation" ValidationField="@Field(period.Id, "end")" Changed="@Changed">
+                                <LabelContent>
+                                    @if (started)
+                                    {
+                                        <StatusBadge Label="@status" Tone="@tone" />
+                                    }
+                                </LabelContent>
+                            </PortalOperationDateField>
+                            @if (edit)
+                            {
+                                <div class="portal-service-period-actions">
+                                    @if (staff is not null && CanAddPeriod(record, period))
+                                    {
+                                        <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small"
+                                                      title="Add period" aria-label="@($"Add period for {performerName}")"
+                                                      Click="@(() => AddServicePeriodAsync(record, period))" />
+                                    }
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                                                  title="@deleteLabel" aria-label="@deleteLabel"
+                                                  Click="@(() => RemoveEntryAsync(record.Performers, period))" />
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </text>;
+
+    private static Guid[] SelectedPerformerIds(PortalWorkDraft record) =>
+        record.Performers.Select(performer => performer.StaffMemberId).OfType<Guid>().Distinct().ToArray();
+
+    private IEnumerable<PortalCatalogChoice> PerformerOptions(PortalWorkDraft record)
+    {
+        var saved = record.Performers
+            .Where(performer => performer.StaffMemberId is { } id && Lookups.Staff.All(staff => staff.Id != id))
+            .DistinctBy(performer => performer.StaffMemberId)
+            .Select(performer => new PortalCatalogChoice(performer.StaffMemberId!.Value, PerformerLabel(performer)))
+            .ToArray();
+        return saved.Length == 0 ? Lookups.Staff : Lookups.Staff.Concat(saved).ToArray();
+    }
+
+    private string PerformerLabel(PortalPerformerDraft performer) =>
+        Lookups.Staff.FirstOrDefault(staff => staff.Id == performer.StaffMemberId)?.Label
+        ?? performer.DisplayName ?? "Saved employee";
+
+    private async Task SelectPerformersAsync(PortalWorkDraft record, IEnumerable<Guid>? ids)
+    {
+        var selected = (ids ?? []).ToHashSet();
+        record.Performers.RemoveAll(performer => performer.StaffMemberId is not { } id || !selected.Contains(id));
+        var retained = SelectedPerformerIds(record).ToHashSet();
+
+        foreach (var staff in Lookups.Staff.Where(staff => selected.Contains(staff.Id) && !retained.Contains(staff.Id)))
+        {
+            var performer = new PortalPerformerDraft(Guid.NewGuid(), Zone)
+            {
+                StaffMemberId = staff.Id,
+                DisplayName = staff.Label,
+                FullName = staff.FullName
+            };
+            performer.Start.Local = record.Start.Local;
+            record.Performers.Add(performer);
+        }
+
+        await NotifyChangedAsync();
+    }
+
+    private static bool IsCompletePeriod(PortalPerformerDraft performer) =>
+        performer.Start.Local is { } from && performer.End.Local is { } to && from <= to;
+
+    private static bool CanAddPeriod(PortalWorkDraft record, PortalPerformerDraft performer)
+    {
+        if (!IsCompletePeriod(performer))
+            return false;
+
+        var periods = record.Performers.Where(period => period.StaffMemberId == performer.StaffMemberId);
+        return periods.LastOrDefault() == performer && periods.All(IsCompletePeriod);
+    }
+
+    private async Task AddServicePeriodAsync(PortalWorkDraft record, PortalPerformerDraft performer)
+    {
+        if (ReadOnly || !record.CanEdit || !CanAddPeriod(record, performer))
+            return;
+
+        var lastIndex = record.Performers.FindLastIndex(period => period.StaffMemberId == performer.StaffMemberId);
+        record.Performers.Insert(lastIndex + 1, new PortalPerformerDraft(Guid.NewGuid(), Zone)
+        {
+            StaffMemberId = performer.StaffMemberId,
+            DisplayName = performer.DisplayName,
+            FullName = performer.FullName
+        });
+        await NotifyChangedAsync();
+    }
+
+    private string WorkLabel(PortalWorkDraft record, int index)
+    {
+        if (record.IsTask)
+            return $"Task {index} · {(record.TaskType == 0 ? "Major" : "Minor")}";
+        var service = Lookups.Services.FirstOrDefault(item => item.Id == record.ServiceId)?.Label ?? record.ServiceName;
+        return service is null ? $"Service {index}" : $"Service {index} · {service}";
+    }
+
+    private static (string Label, string Tone) WorkStatus(DateTime? start, bool done) =>
+        start is null ? ("Not started", "neutral") : done ? ("Done", "success") : ("Active", "info");
+
+    private string RecordPath(PortalWorkDraft record) => $"{(IsTask ? "tasks" : "services")}/{record.Id}";
+
+    private async Task AddResourceAsync(PortalWorkDraft record, List<PortalResourceDraft> rows)
+    {
+        var resource = new PortalResourceDraft(Guid.NewGuid(), Zone);
+        resource.Start.Local = record.Start.Local;
+        resource.End.Local = record.End.Local;
+        rows.Add(resource);
+        await NotifyChangedAsync();
+    }
+
+    private async Task ChangeResourceAsync(PortalResourceDraft resource, Guid? id, IReadOnlyList<PortalCatalogChoice> options)
+    {
+        resource.ResourceId = id;
+        resource.CalculationType = options.FirstOrDefault(option => option.Id == id)?.CalculationType;
+        await NotifyChangedAsync();
+    }
+
+    private RenderFragment Resources(string title, string name, PortalWorkDraft record, List<PortalResourceDraft> rows,
+        IReadOnlyList<PortalCatalogChoice> options, bool edit, bool end) => @<section class="portal-work-entries">
+        <div class="portal-section-heading">
+            <h4>@title</h4>
+        </div>
+        @if (rows.Count == 0)
+        {
+            <p class="portal-work-empty">None recorded.</p>
+        }
+        @for (var i = 0; i < rows.Count; i++)
+        {
+            var resource = rows[i];
+            var deleteLabel = $"Delete {name} {i + 1}";
+            <div class="portal-work-grid portal-work-entry" @key="resource.Id">
+                <div class="portal-work-full portal-work-entry-selector">
+                    <label>
+                        <span>@(char.ToUpperInvariant(name[0]) + name[1..]) *</span>
+                        <RadzenDropDown TValue="Guid?" Data="@PortalWorkLookups.WithSaved(options, resource.ResourceId, resource.Name, resource.CalculationType)"
+                                        TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
+                                        Value="@resource.ResourceId" ValueChanged="@((Guid? selected) => ChangeResourceAsync(resource, selected, options))"
+                                        AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@(!edit)"
+                                        aria-invalid="@Invalid(resource.Id, "resource")" aria-describedby="@Description(resource.Id, "resource")" />
+                        <PortalFieldError Validation="@Validation" Field="@Field(resource.Id, "resource")" />
+                    </label>
+                    @if (edit)
+                    {
+                        <div class="portal-work-entry-action">
+                            <RadzenButton Text="Delete" Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                                          class="portal-work-delete" title="@deleteLabel" aria-label="@deleteLabel"
+                                          Click="@(() => RemoveEntryAsync(rows, resource))" />
+                        </div>
+                    }
+                </div>
+                @if (resource.CalculationType is ResourceCalculationType.Quantity)
+                {
+                    <label>
+                        <span>Quantity *</span>
+                        <RadzenNumeric TValue="decimal?" @bind-Value="resource.Quantity" @bind-Value:after="NotifyChangedAsync"
+                                       Immediate="true" Disabled="@(!edit)" InputAttributes="@(Validation?.InputAttributes(Field(resource.Id, "quantity")))" />
+                        <PortalFieldError Validation="@Validation" Field="@Field(resource.Id, "quantity")" />
+                    </label>
+                }
+                @if (resource.CalculationType is ResourceCalculationType.Duration)
+                {
+                    <PortalOperationDateField Label="Start" Time="@resource.Start" Required="true" Disabled="@(!edit)"
+                                              Validation="@Validation" ValidationField="@Field(resource.Id, "start")" Changed="@Changed" />
+                    <PortalOperationDateField Label="End" Time="@resource.End" Disabled="@(!end || !edit && resource.End.HasOriginal)"
+                                              Validation="@Validation" ValidationField="@Field(resource.Id, "end")" Changed="@Changed" />
+                }
+                <label class="portal-work-full">
+                    <span>Resource notes</span>
+                    <RadzenTextArea @bind-Value="resource.Notes" @bind-Value:after="NotifyChangedAsync" Immediate="true" Rows="2" Disabled="@(!edit)"
+                                    aria-invalid="@Invalid(resource.Id, "notes")" aria-describedby="@Description(resource.Id, "notes")" />
+                    <PortalFieldError Validation="@Validation" Field="@Field(resource.Id, "notes")" />
+                </label>
+            </div>
+        }
+        @if (edit)
+        {
+            <div class="portal-work-add">
+                <RadzenButton Text="@($"Add {name}")" Icon="add" ButtonStyle="ButtonStyle.Success" Size="ButtonSize.Small"
+                              Disabled="@(options.Count == 0)" Click="@(() => AddResourceAsync(record, rows))" />
+            </div>
+        }
+    </section>;
+}

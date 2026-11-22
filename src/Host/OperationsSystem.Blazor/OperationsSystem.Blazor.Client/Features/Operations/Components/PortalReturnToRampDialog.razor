@@ -1,0 +1,96 @@
+@implements IAsyncDisposable
+
+<div class="portal-rtr-dialog" @ref="validationContainer">
+    @if (loading)
+    {
+        <LoadingCard />
+        <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="@CloseWithoutSaving" />
+    }
+    else if (flight is null)
+    {
+        <ErrorState Message="@(error ?? "Could not load the return to ramp.")" OnRetry="@LoadAsync" />
+        <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Click="@CloseWithoutSaving" />
+    }
+    else
+    {
+        <PortalFlightSummary Flight="@flight" />
+        <div class="portal-rtr-heading">
+            <h3>@(occurrence is { } report ? $"RTR {report.Sequence}" : "Return to ramp")</h3>
+            <span>Station time (@zone.Id)</span>
+        </div>
+
+        @if (lookups.HasUnavailableCatalogs)
+        {
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Warning" StateKey="@("rtr-catalogs")">
+                Some reference choices are unavailable with your current permissions.
+            </DismissibleDialogMessage>
+        }
+
+        <section class="portal-rtr-section">
+            <h4>Arrival</h4>
+            @if (occurrence is { } existing)
+            {
+                <p class="portal-rtr-attribution">Received by @existing.ReceivedByFullName</p>
+            }
+            <div class="portal-rtr-grid">
+                <PortalOperationDateField Label="Arrival time" Time="@arrivalTime" Required="true" Disabled="@(!CanEdit || saving)"
+                                          Validation="@validation" ValidationField="@ArrivalTimeField" Changed="@RefreshValidation" />
+                <label>
+                    <span>Arrival remarks</span>
+                    <RadzenTextArea @bind-Value="arrivalRemarks" @bind-Value:after="RefreshValidation" Immediate="true" Rows="2" Disabled="@(!CanEdit || saving)"
+                                    aria-invalid="@validation.InvalidAttribute(ArrivalRemarksField)" aria-describedby="@validation.DescriptionId(ArrivalRemarksField)" />
+                    <PortalFieldError Validation="@validation" Field="@ArrivalRemarksField" />
+                </label>
+            </div>
+        </section>
+
+        <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@services" Zone="@zone" Lookups="@lookups"
+                                 CanAdd="@CanEdit" ReadOnly="@(!CanEdit || saving)" Validation="@validation"
+                                 ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
+        <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@tasks" Zone="@zone" Lookups="@lookups" IsTask="true"
+                                 CanAdd="@CanEdit" ReadOnly="@(!CanEdit || saving)" Validation="@validation"
+                                 ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
+
+        <section class="portal-rtr-section">
+            <h4>Departure</h4>
+            @if (occurrence?.HandledByFullName is { } employee)
+            {
+                <p class="portal-rtr-attribution">Handled by @employee</p>
+            }
+            <div class="portal-rtr-grid">
+                <PortalOperationDateField Label="Departure time" Time="@departureTime" Required="@(occurrence is { IsOpen: false })"
+                                          Disabled="@(!CanEdit || saving)" Validation="@validation" ValidationField="@DepartureTimeField"
+                                          Changed="@RefreshValidation" />
+                <label>
+                    <span>Departure remarks</span>
+                    <RadzenTextArea @bind-Value="departureRemarks" @bind-Value:after="RefreshValidation" Immediate="true" Rows="2" Disabled="@(!CanEdit || saving)"
+                                    aria-invalid="@validation.InvalidAttribute(DepartureRemarksField)" aria-describedby="@validation.DescriptionId(DepartureRemarksField)" />
+                    <PortalFieldError Validation="@validation" Field="@DepartureRemarksField" />
+                </label>
+            </div>
+            @if (departureTime.Local is not null || signature.SavedPath is not null || signature.Bytes is not null)
+            {
+                <PortalWorkSignature FlightId="@flight.Id" Draft="@signature" Zone="@zone" Disabled="@(!CanEdit || saving)" CanRemove="true"
+                                     Validation="@validation" ValidationField="@SignatureTimeField" Changed="@RefreshValidation" />
+            }
+        </section>
+
+        <PortalFlightValidationSummary Validation="@validation" Attempt="@validationFocusAttempt" />
+        @if (error is not null)
+        {
+            <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@error" OnDismiss="@(() => error = null)">
+                @error
+            </DismissibleDialogMessage>
+        }
+
+        <footer class="portal-rtr-actions">
+            <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Disabled="@saving" Click="@CloseAsync" />
+            @if (CanEdit)
+            {
+                <RadzenButton Text="Save RTR" BusyText="Saving…" IsBusy="@saving" Icon="check" ButtonStyle="ButtonStyle.Primary"
+                              Click="@SaveAsync" />
+            }
+        </footer>
+        <PortalValidationFocus Container="@validationContainer" Attempt="@validationFocusAttempt" />
+    }
+</div>

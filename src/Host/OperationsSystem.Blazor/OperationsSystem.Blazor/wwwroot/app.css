@@ -522,6 +522,14 @@ a {
     background-color: white;
 }
 
+.rz-dialog-content.portal-work-dialog-content {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
 /* --- List page layout ---------------------------------------------------- */
 /* A standard list screen: a page header followed by a DataListCard. The card
    hugs its content (toolbar + grid + pager) and grows with the number of rows

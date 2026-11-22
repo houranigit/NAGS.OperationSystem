@@ -85,46 +85,39 @@ public sealed class GetMobileFlightsQueryHandler(
 }
 
 public sealed record GetMobileFlightByIdQuery(Guid Id) : IQuery<FlightDetailDto>;
+public sealed record GetPortalFlightOperationsQuery(Guid Id) : IQuery<FlightDetailDto>;
 
-public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMobileFlightScope scope, IMasterDataReader masterData, IUserContext? user = null, IUserDisplayNameReader? userNames = null)
-    : IQueryHandler<GetMobileFlightByIdQuery, FlightDetailDto>
+public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMobileFlightScope scope, IMasterDataReader masterData,
+    IUserContext? user = null, IUserDisplayNameReader? userNames = null, PortalFlightScope? portalScope = null)
+    : IQueryHandler<GetMobileFlightByIdQuery, FlightDetailDto>, IQueryHandler<GetPortalFlightOperationsQuery, FlightDetailDto>
 {
-    public async Task<Result<FlightDetailDto>> Handle(GetMobileFlightByIdQuery request, CancellationToken cancellationToken)
+    public Task<Result<FlightDetailDto>> Handle(GetMobileFlightByIdQuery request, CancellationToken cancellationToken) =>
+        LoadAsync(request.Id, portalOnly: false, cancellationToken);
+
+    Task<Result<FlightDetailDto>> MediatR.IRequestHandler<GetPortalFlightOperationsQuery, Result<FlightDetailDto>>.Handle(
+        GetPortalFlightOperationsQuery request, CancellationToken cancellationToken) =>
+        LoadAsync(request.Id, portalOnly: true, cancellationToken);
+
+    private async Task<Result<FlightDetailDto>> LoadAsync(Guid id, bool portalOnly, CancellationToken cancellationToken)
     {
-        var resolved = await scope.ResolveAsync(cancellationToken);
+        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, portalOnly, cancellationToken);
         if (resolved.IsFailure)
             return resolved.Error;
 
-        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), resolved.Value)
-            .AsSplitQuery().Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
-            .Include(f => f.ArrivalSubmissions).Include(f => f.DepartureSubmissions).Include(f => f.CancellationSubmissions).Include(f => f.ReturnToRamps)
-            .Include(f => f.ServiceRecords).ThenInclude(s => s.Performers)
-            .Include(f => f.ServiceRecords).ThenInclude(s => s.Attachments)
-            .Include(f => f.TaskRecords).ThenInclude(t => t.Performers)
-            .Include(f => f.TaskRecords).ThenInclude(t => t.Tools)
-            .Include(f => f.TaskRecords).ThenInclude(t => t.Materials)
-            .Include(f => f.TaskRecords).ThenInclude(t => t.GeneralSupports)
-            .Include(f => f.TaskRecords).ThenInclude(t => t.Attachments)
-            .FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
+        var flight = await FlightServiceWrites.Load(resolved.Value.Apply(db.Flights.AsNoTracking()))
+            .FirstOrDefaultAsync(f => f.Id == id, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
         var station = await masterData.GetStationAsync(flight.Station.StationId, cancellationToken);
         if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
             return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
-        var staffId = resolved.Value.StaffMemberId;
-        var assigned = flight.CanCorrectOperationalWork(staffId);
-        var canOperate = user?.HasPermission(OperationsPermissions.Flights.Operate) == true;
-        var ownCancellation = flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee.StaffMemberId == staffId);
-        var ownWork = flight.ArrivalSubmissions.Any(a => a.SubmittedByEmployee.StaffMemberId == staffId) ||
-            flight.DepartureSubmissions.Any(d => d.SubmittedByEmployee.StaffMemberId == staffId);
-        var allowed = await new MasterDataResolver(masterData).AllowedServiceIdsForStaffAsync(staffId, flight.Station.StationId, cancellationToken);
+        var actor = resolved.Value.Actor;
+        var canOperate = portalOnly || user?.HasPermission(OperationsPermissions.Flights.Operate) == true;
+        var allowed = await new MasterDataResolver(masterData).AllowedServiceIdsForStaffAsync(actor.StaffMemberId, flight.Station.StationId, cancellationToken);
         var allowedIds = allowed.IsSuccess ? allowed.Value : [];
         var names = await FlightWorkAttribution.NamesAsync(userNames,
             FlightWorkAttribution.UserIds(flight), cancellationToken);
-        return FlightDetails.Map(flight, station.TimeZoneId, staffId,
-            canOperate && !ownCancellation, canOperate && !ownCancellation, canOperate && !ownWork && flight.ServiceRecords.Count == 0 && flight.TaskRecords.Count == 0,
-            canOperate && flight.CancellationSubmissions.Count == 0 && allowedIds.Count > 0, resolved.Value.UserId, allowedIds, canOperate && flight.CancellationSubmissions.Count == 0,
-            assigned, names, canEditFlightDetails: canOperate);
+        return FlightDetails.MapOperational(flight, station.TimeZoneId, actor, canOperate, allowedIds, names, portalOnly);
     }
 }
 

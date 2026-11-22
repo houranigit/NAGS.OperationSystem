@@ -12,7 +12,7 @@ using Operations.Domain.ValueObjects;
 
 namespace Operations.Application.Features.Flights;
 
-public sealed record SaveFlightCancellationCommand(Guid FlightId, SaveFlightCancellationRequest Cancellation, byte[] RowVersion)
+public sealed record SaveFlightCancellationCommand(Guid FlightId, SaveFlightCancellationRequest Cancellation, byte[] RowVersion, bool PortalOnly = false)
     : ICommand<FlightCancellationSavedDto>;
 
 public sealed class SaveFlightCancellationCommandValidator : AbstractValidator<SaveFlightCancellationCommand>
@@ -31,24 +31,15 @@ public sealed class SaveFlightCancellationCommandHandler(
     IMobileFlightScope scope,
     MasterDataResolver resolver,
     TimeProvider clock,
-    IMobileSyncBroadcaster mobileSync) : ICommandHandler<SaveFlightCancellationCommand, FlightCancellationSavedDto>
+    IMobileSyncBroadcaster mobileSync,
+    PortalFlightScope? portalScope = null) : ICommandHandler<SaveFlightCancellationCommand, FlightCancellationSavedDto>
 {
     public async Task<Result<FlightCancellationSavedDto>> Handle(SaveFlightCancellationCommand request, CancellationToken cancellationToken)
     {
-        var resolved = await scope.ResolveAsync(cancellationToken);
+        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, cancellationToken);
         if (resolved.IsFailure) return resolved.Error;
-        var actor = resolved.Value;
-        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights, actor).AsSplitQuery()
-            .Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
-            .Include(f => f.ArrivalSubmissions).Include(f => f.DepartureSubmissions)
-            .Include(f => f.CancellationSubmissions).Include(f => f.ReturnToRamps)
-            .Include(f => f.ServiceRecords).ThenInclude(service => service.Performers)
-            .Include(f => f.ServiceRecords).ThenInclude(service => service.Attachments)
-            .Include(f => f.TaskRecords).ThenInclude(task => task.Tools)
-            .Include(f => f.TaskRecords).ThenInclude(task => task.Materials)
-            .Include(f => f.TaskRecords).ThenInclude(task => task.GeneralSupports)
-            .Include(f => f.TaskRecords).ThenInclude(task => task.Performers)
-            .Include(f => f.TaskRecords).ThenInclude(task => task.Attachments)
+        var actor = resolved.Value.Actor;
+        var flight = await FlightServiceWrites.Load(resolved.Value.Apply(db.Flights))
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         if (flight is null) return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
         if (flight.ArrivalSubmissions.Any(a => a.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId) ||
@@ -75,7 +66,7 @@ public sealed class SaveFlightCancellationCommandHandler(
         db.SetOriginalRowVersion(flight, request.RowVersion);
         var submitted = flight.SubmitCancellation(staff.Value.Single(), details.Value, actor.UserId, clock.GetUtcNow());
         if (submitted.IsFailure) return submitted.Error;
-        await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), cancellationToken);
+        await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), cancellationToken, recordSearch: !request.PortalOnly);
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
         catch (DbUpdateException) when (own is null)
@@ -90,7 +81,7 @@ public sealed class SaveFlightCancellationCommandHandler(
     }
 }
 
-public sealed record RevertFlightCancellationCommand(Guid FlightId, Guid SubmissionId, byte[] RowVersion)
+public sealed record RevertFlightCancellationCommand(Guid FlightId, Guid SubmissionId, byte[] RowVersion, bool PortalOnly = false)
     : ICommand<FlightCancellationRevertedDto>;
 
 public sealed class RevertFlightCancellationCommandValidator : AbstractValidator<RevertFlightCancellationCommand>
@@ -107,26 +98,28 @@ public sealed class RevertFlightCancellationCommandHandler(
     IOperationsDbContext db,
     IMobileFlightScope scope,
     TimeProvider clock,
-    IMobileSyncBroadcaster mobileSync) : ICommandHandler<RevertFlightCancellationCommand, FlightCancellationRevertedDto>
+    IMobileSyncBroadcaster mobileSync,
+    PortalFlightScope? portalScope = null) : ICommandHandler<RevertFlightCancellationCommand, FlightCancellationRevertedDto>
 {
     public async Task<Result<FlightCancellationRevertedDto>> Handle(RevertFlightCancellationCommand request, CancellationToken cancellationToken)
     {
-        var resolved = await scope.ResolveAsync(cancellationToken);
+        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, cancellationToken);
         if (resolved.IsFailure) return resolved.Error;
-        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights, resolved.Value)
+        var actor = resolved.Value.Actor;
+        var flight = await resolved.Value.Apply(db.Flights)
             .Include(f => f.CancellationSubmissions).Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         if (flight is null) return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
-        var own = flight.CancellationSubmissions.SingleOrDefault(c => c.SubmittedByEmployee.StaffMemberId == resolved.Value.StaffMemberId);
+        var own = flight.CancellationSubmissions.SingleOrDefault(c => c.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
         if (own?.Id == request.SubmissionId && !flight.RowVersion.SequenceEqual(request.RowVersion))
             return ConcurrencyErrors.Stale;
         // The submission identity prevents a delayed revert from removing a newer replacement.
-        var reverted = flight.RevertCancellation(resolved.Value.StaffMemberId, request.SubmissionId, clock.GetUtcNow());
+        var reverted = flight.RevertCancellation(actor.StaffMemberId, request.SubmissionId, clock.GetUtcNow());
         if (reverted.IsFailure) return reverted.Error;
         if (own is not null)
         {
             db.SetOriginalRowVersion(flight, request.RowVersion);
-            await FlightActivityRecorder.TouchAsync(db, flight, resolved.Value, clock.GetUtcNow(), cancellationToken);
+            await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), cancellationToken, recordSearch: !request.PortalOnly);
             try { await db.SaveChangesAsync(cancellationToken); }
             catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
             mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null,

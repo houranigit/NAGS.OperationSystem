@@ -1,0 +1,33 @@
+.portal-field-error {
+    position: relative;
+    display: block;
+    inline-size: fit-content;
+    max-inline-size: 100%;
+    margin-block-start: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--os-color-danger);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-danger-bg);
+    color: var(--os-color-danger);
+    font-size: var(--os-text-xs);
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.portal-field-error::before {
+    position: absolute;
+    inset-block-start: -0.25rem;
+    inset-inline-start: 0.65rem;
+    inline-size: 0.4rem;
+    block-size: 0.4rem;
+    border-block-start: 1px solid var(--os-color-danger);
+    border-inline-start: 1px solid var(--os-color-danger);
+    background: inherit;
+    content: "";
+    transform: rotate(45deg);
+}
+
+.portal-field-error > span {
+    display: block;
+}

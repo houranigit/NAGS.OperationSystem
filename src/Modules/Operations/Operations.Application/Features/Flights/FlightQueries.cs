@@ -141,6 +141,22 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
 
 internal static class FlightDetails
 {
+    internal static FlightDetailDto MapOperational(Flight flight, string stationTimeZoneId, MobileFlightScopeContext actor,
+        bool canOperate, IReadOnlyList<Guid> allowedServiceIds, IReadOnlyDictionary<Guid, string> names, bool portalOnly)
+    {
+        var staffId = actor.StaffMemberId;
+        var ownCancellation = flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == staffId);
+        var ownWork = flight.ArrivalSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == staffId) ||
+            flight.DepartureSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == staffId);
+        var canSaveWork = canOperate && flight.CancellationSubmissions.Count == 0;
+        var canSaveCancellation = canOperate && !ownWork && flight.ServiceRecords.Count == 0 && flight.TaskRecords.Count == 0 &&
+            (!portalOnly || flight.ReturnToRamps.Count == 0);
+        var detail = Map(flight, stationTimeZoneId, staffId, canOperate && !ownCancellation, canOperate && !ownCancellation,
+            canSaveCancellation, canSaveWork && allowedServiceIds.Count > 0, actor.UserId, allowedServiceIds,
+            canSaveWork, flight.CanCorrectOperationalWork(staffId), names, canEditFlightDetails: canOperate);
+        return portalOnly ? detail with { CanSaveReturnsToRamp = canSaveWork && flight.DepartureSubmissions.Count > 0 } : detail;
+    }
+
     public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null, bool canSaveTasks = false, bool assignedWorkCorrection = false, IReadOnlyDictionary<Guid, string>? userDisplayNames = null, bool canEditFlightDetails = false)
     {
         var search = currentStaffMemberId is { } staffId && FlightSearchPolicy.IsUnassignedRegular(flight, staffId);
@@ -209,22 +225,10 @@ internal static class FlightListQuery
         // Station staff see their station's Per-Landing flights (station-wide) plus the flights they
         // are assigned to; holders of view-station (station dispatchers) see every flight at their
         // station; global readers see everything (optionally filtered).
-        if (!scope.HasGlobalReadAccess && scope.StationId is { } stationId)
-        {
-            query = query.Where(f => f.Station.StationId == stationId);
-
-            if (!scope.CanViewStationWide)
-            {
-                var staffId = scope.StaffMemberId;
-                query = query.Where(f =>
-                    f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) ||
-                    f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId));
-            }
-        }
+        if (!scope.HasGlobalReadAccess && scope.StationId.HasValue)
+            query = ApplyPortalVisibility(query, scope);
         else if (filter.StationId is { } filterStation)
-        {
             query = query.Where(f => f.Station.StationId == filterStation);
-        }
 
         if (filter.CustomerId is { } customer)
             query = query.Where(f => f.Customer.CustomerId == customer);
@@ -235,6 +239,22 @@ internal static class FlightListQuery
         if (filter.ToUtc is { } to)
             query = query.Where(f => f.Schedule.Sta <= to);
         return ApplySearch(query, filter.Search);
+    }
+
+    internal static IQueryable<Flight> ApplyPortalVisibility(IQueryable<Flight> query, OperationsScopeContext scope)
+    {
+        if (scope.HasGlobalReadAccess)
+            return query;
+
+        var stationId = scope.StationId;
+        query = query.Where(f => f.Station.StationId == stationId);
+        if (scope.CanViewStationWide)
+            return query;
+
+        var staffId = scope.StaffMemberId;
+        return query.Where(f =>
+            f.PlannedServices.Any(p => p.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService) ||
+            f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId));
     }
 
     public static IQueryable<Flight> ApplySearch(IQueryable<Flight> query, string? search)

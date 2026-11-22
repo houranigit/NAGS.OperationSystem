@@ -1,0 +1,120 @@
+.portal-work-notes {
+    display: grid;
+    gap: var(--os-space-1);
+}
+
+.portal-work-notes > label {
+    font-weight: 600;
+}
+
+.portal-notes-editor {
+    border: 1px solid var(--os-color-border-strong);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface);
+}
+
+.portal-notes-editor ::deep textarea.rz-textarea {
+    display: block;
+    width: 100%;
+    min-block-size: 7.5rem;
+    padding: var(--os-space-2) var(--os-space-3);
+    border: 0;
+    border-radius: var(--os-radius-sm) var(--os-radius-sm) 0 0;
+    background: transparent;
+    box-shadow: none;
+    resize: vertical;
+}
+
+.portal-notes-editor:has(textarea:focus-visible) {
+    outline: 2px solid var(--os-color-primary);
+    outline-offset: 1px;
+}
+
+.portal-notes-editor:has(textarea[aria-invalid="true"]) {
+    border-color: var(--os-color-danger);
+}
+
+.portal-notes-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--os-space-2);
+    padding: var(--os-space-1) var(--os-space-2);
+    border-block-start: 1px solid var(--os-color-border);
+    border-radius: 0 0 var(--os-radius-sm) var(--os-radius-sm);
+    background: var(--os-color-surface-muted);
+}
+
+.portal-notes-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-inline-start: auto;
+}
+
+.portal-attachment-upload {
+    position: relative;
+    display: grid;
+    place-items: center;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    border: 1px solid transparent;
+    border-radius: var(--os-radius-sm);
+    color: var(--os-color-primary);
+}
+
+.portal-attachment-upload:hover {
+    background: var(--os-color-primary-soft);
+}
+
+.portal-attachment-upload:focus-within {
+    outline: 2px solid var(--os-color-primary);
+    outline-offset: 2px;
+}
+
+.portal-attachment-upload:has([aria-invalid="true"]) {
+    border-color: var(--os-color-danger);
+}
+
+.portal-attachment-upload:has(:disabled) {
+    opacity: .65;
+}
+
+.portal-attachment-upload ::deep input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.portal-attachment-upload ::deep input:disabled {
+    cursor: default;
+}
+
+.portal-notes-attachments {
+    display: grid;
+    flex: 1 1 13rem;
+    min-inline-size: 0;
+    gap: var(--os-space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.portal-notes-attachments li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-2);
+    padding: var(--os-space-1) var(--os-space-2);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface);
+}
+
+.portal-attachment-meta {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+}

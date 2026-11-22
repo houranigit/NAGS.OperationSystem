@@ -1,0 +1,59 @@
+.portal-attachment-preview {
+    display: flex;
+    flex: 1 1 9rem;
+    align-items: center;
+    gap: var(--os-space-2);
+    min-inline-size: 0;
+    padding: var(--os-space-1);
+    border: 0;
+    border-radius: var(--os-radius-sm);
+    background: transparent;
+    color: var(--os-color-text);
+    font: inherit;
+    text-align: start;
+}
+
+.portal-attachment-preview:not(:disabled) {
+    cursor: pointer;
+}
+
+.portal-attachment-preview:not(:disabled):hover {
+    background: var(--os-color-surface-hover);
+}
+
+.portal-attachment-preview:focus-visible {
+    outline: 2px solid var(--os-color-primary);
+}
+
+.portal-attachment-thumbnail {
+    display: grid;
+    flex: 0 0 3.5rem;
+    place-items: center;
+    block-size: 3.5rem;
+    overflow: hidden;
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface-muted);
+    color: var(--os-color-text-muted);
+}
+
+.portal-attachment-thumbnail img {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+}
+
+.portal-attachment-file {
+    display: grid;
+    min-inline-size: 0;
+}
+
+.portal-attachment-name {
+    overflow-wrap: anywhere;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+}
+
+.portal-attachment-size {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+}

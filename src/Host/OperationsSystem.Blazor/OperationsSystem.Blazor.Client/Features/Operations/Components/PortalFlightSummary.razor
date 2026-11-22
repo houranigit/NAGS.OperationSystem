@@ -1,0 +1,23 @@
+<div class="portal-flight-summary">
+    <div class="portal-flight-summary-icon" aria-hidden="true"><RadzenIcon Icon="flight" /></div>
+    <div class="portal-flight-summary-body">
+        <div class="portal-flight-summary-heading">
+            <h2>@Flight.FlightNumber</h2>
+            @if (StatusLabel is not null)
+            {
+                <StatusBadge Label="@StatusLabel" Tone="@StatusTone" />
+            }
+            <span class="portal-flight-operation"><RadzenIcon Icon="settings" />@Flight.OperationTypeName</span>
+        </div>
+        <div class="portal-flight-summary-meta">
+            <span><RadzenIcon Icon="business" />@Flight.CustomerName</span>
+            <span><RadzenIcon Icon="flight_takeoff" />@Flight.StationIata</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PortalFlightOperations Flight { get; set; } = default!;
+    [Parameter] public string? StatusLabel { get; set; }
+    [Parameter] public string StatusTone { get; set; } = "neutral";
+}

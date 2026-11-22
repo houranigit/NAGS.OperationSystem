@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Operations.Application.Abstractions;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
+using Operations.Application.Features.Flights;
 using Operations.Contracts.Readers;
 using Operations.Infrastructure.BackgroundJobs;
 using Operations.Infrastructure.Persistence;
@@ -35,6 +36,7 @@ public static class OperationsInfrastructureExtensions
         services.AddScoped<IOperationsDbContext>(sp => sp.GetRequiredService<OperationsDbContext>());
         services.AddScoped<IOperationsScope, OperationsScope>();
         services.AddScoped<IMobileFlightScope, MobileFlightScope>();
+        services.AddScoped<PortalFlightScope>();
         services.AddScoped<MasterDataResolver>();
         services.AddScoped<IFlightReminderEligibilityReader, FlightReminderEligibilityReader>();
 

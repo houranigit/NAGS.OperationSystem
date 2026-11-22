@@ -328,7 +328,10 @@ public sealed class DeleteFlightServiceCommandHandler(IOperationsDbContext db, I
 internal static class FlightServiceWrites
 {
     internal static IQueryable<Flight> Load(IOperationsDbContext db, MobileFlightScopeContext actor) =>
-        MobileFlightQuery.ApplyReadScope(db.Flights, actor).AsSplitQuery()
+        Load(MobileFlightQuery.ApplyReadScope(db.Flights, actor));
+
+    internal static IQueryable<Flight> Load(IQueryable<Flight> flights) =>
+        flights.AsSplitQuery()
             .Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
             .Include(f => f.ArrivalSubmissions).Include(f => f.DepartureSubmissions).Include(f => f.CancellationSubmissions)
             .Include(f => f.ReturnToRamps)

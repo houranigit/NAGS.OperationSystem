@@ -1,0 +1,27 @@
+.portal-operation-date {
+    display: grid;
+    min-width: 0;
+    gap: var(--os-space-1);
+    color: var(--os-color-text);
+    font-weight: 600;
+}
+
+.portal-operation-date-heading {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--os-space-1) var(--os-space-2);
+}
+
+.portal-operation-date-heading-with-content {
+    min-block-size: var(--portal-operation-date-heading-size, 1.625rem);
+}
+
+.portal-operation-date ::deep .rz-datepicker {
+    width: 100%;
+    min-width: 0;
+}
+
+.portal-operation-date ::deep input[aria-invalid="true"] {
+    border-color: var(--os-color-danger);
+}

@@ -1,0 +1,41 @@
+.portal-signature,
+.portal-signature label {
+    display: grid;
+    gap: var(--os-space-2);
+}
+
+.portal-signature h4,
+.portal-signature p {
+    margin: 0;
+}
+
+.portal-signature small,
+.portal-signature p {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 400;
+}
+
+.portal-signature-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--os-space-2);
+}
+
+.portal-signature label {
+    width: fit-content;
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+}
+
+.portal-signature img {
+    display: block;
+    max-height: 9rem;
+    max-width: 100%;
+    object-fit: contain;
+    object-position: left center;
+    background: white;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+}

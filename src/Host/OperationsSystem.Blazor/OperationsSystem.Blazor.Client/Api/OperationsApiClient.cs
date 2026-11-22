@@ -20,6 +20,33 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<FlightDetail> GetFlightAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<FlightDetail>($"/operations/flights/{id}", ct);
 
+    public Task<PortalFlightOperations> GetPortalFlightOperationsAsync(Guid id, CancellationToken ct = default) =>
+        api.GetAsync<PortalFlightOperations>(PortalOperationsPath(id), ct);
+
+    public Task<PortalFlightOperations> SavePortalFlightWorkAsync(Guid id, PortalWorkBatchRequest request,
+        string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync<PortalWorkBatchRequest, PortalFlightOperations>(
+            $"{PortalOperationsPath(id)}/batch", request, rowVersion, ct);
+
+    public Task<PortalFlightOperations> SavePortalReturnToRampAsync(Guid id, Guid occurrenceId,
+        PortalReturnToRampRequest request, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync<PortalReturnToRampRequest, PortalFlightOperations>(
+            $"{PortalOperationsPath(id)}/returns-to-ramp/{occurrenceId}", request, rowVersion, ct);
+
+    public Task SavePortalCancellationAsync(Guid id, PortalFlightCancellationRequest request, string rowVersion,
+        CancellationToken ct = default) =>
+        api.PutAsync($"{PortalOperationsPath(id)}/cancellation", request, rowVersion, ct);
+
+    public Task UndoPortalCancellationAsync(Guid id, Guid submissionId, string rowVersion, CancellationToken ct = default) =>
+        api.DeleteAsync($"{PortalOperationsPath(id)}/cancellation/{submissionId}", rowVersion, ct);
+
+    public Task DownloadPortalFlightMediaAsync(Guid id, string relativePath, string? fallbackFileName = null,
+        CancellationToken ct = default) =>
+        api.DownloadFileAsync($"{PortalOperationsPath(id)}/{relativePath}", fallbackFileName, ct);
+
+    public Task<string> GetPortalFlightMediaPreviewUrlAsync(Guid id, string relativePath, CancellationToken ct = default) =>
+        api.GetFilePreviewUrlAsync($"{PortalOperationsPath(id)}/{relativePath}", ct);
+
     public Task<IReadOnlyList<Guid>> GetNotificationTargetsAsync(IReadOnlyList<Guid> flightIds, CancellationToken ct = default) =>
         api.PostAsync<object, IReadOnlyList<Guid>>("/operations/flights/notification-targets", new { flightIds }, ct);
 
@@ -34,6 +61,8 @@ public sealed class OperationsApiClient(BrowserApiClient api)
 
     public Task ChangeFlightNumberAsync(Guid id, ChangeFlightNumberRequestModel request, string rowVersion, CancellationToken ct = default) =>
         api.PostAsync($"/operations/flights/{id}/change-number", request, rowVersion, ct);
+
+    private static string PortalOperationsPath(Guid id) => $"/operations/flights/{id}/operations";
 
     private sealed class QueryBuilder
     {

@@ -10,9 +10,9 @@ namespace Operations.Application.Common;
 public static class FlightActivityRecorder
 {
     public static async Task TouchAsync(IOperationsDbContext db, Flight flight, MobileFlightScopeContext actor,
-        DateTimeOffset occurredAtUtc, CancellationToken cancellationToken)
+        DateTimeOffset occurredAtUtc, CancellationToken cancellationToken, bool recordSearch = true)
     {
-        var usedSearch = flight.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
+        var usedSearch = recordSearch && flight.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
             !flight.IsPerLanding && !flight.AssignedEmployees.Any(item => item.Employee.StaffMemberId == actor.StaffMemberId);
         var activity = db.FlightUserActivities.Local.SingleOrDefault(item => item.UserId == actor.UserId && item.FlightId == flight.Id)
             ?? await db.FlightUserActivities.SingleOrDefaultAsync(item => item.UserId == actor.UserId && item.FlightId == flight.Id, cancellationToken);

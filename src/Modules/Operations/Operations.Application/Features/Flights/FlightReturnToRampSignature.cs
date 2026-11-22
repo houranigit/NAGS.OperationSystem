@@ -7,14 +7,17 @@ using Operations.Application.Authorization;
 
 namespace Operations.Application.Features.Flights;
 
-public sealed record GetMobileFlightReturnToRampSignatureQuery(Guid FlightId, Guid OccurrenceId, DateTimeOffset ExpectedUpdatedAt) : IQuery<FlightDepartureSignatureContent>;
-public sealed class GetMobileFlightReturnToRampSignatureQueryHandler(IOperationsDbContext db, IMobileFlightScope scope, IFileStorage storage)
+public sealed record GetMobileFlightReturnToRampSignatureQuery(Guid FlightId, Guid OccurrenceId, DateTimeOffset ExpectedUpdatedAt, bool PortalOnly = false)
+    : IQuery<FlightDepartureSignatureContent>;
+public sealed class GetMobileFlightReturnToRampSignatureQueryHandler(IOperationsDbContext db, IMobileFlightScope scope, IFileStorage storage,
+    PortalFlightScope? portalScope = null)
     : IQueryHandler<GetMobileFlightReturnToRampSignatureQuery, FlightDepartureSignatureContent>
 {
     public async Task<Result<FlightDepartureSignatureContent>> Handle(GetMobileFlightReturnToRampSignatureQuery request, CancellationToken ct)
     {
-        var actor = await scope.ResolveAsync(ct); if (actor.IsFailure) return actor.Error;
-        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), actor.Value).Include(f => f.ReturnToRamps)
+        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, ct);
+        if (resolved.IsFailure) return resolved.Error;
+        var flight = await resolved.Value.Apply(db.Flights.AsNoTracking()).Include(f => f.ReturnToRamps)
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, ct);
         var occurrence = flight?.ReturnToRamps.SingleOrDefault(r => r.Id == request.OccurrenceId);
         if (occurrence?.DepartureDetails?.CustomerSignature is not { } signature) return Missing();

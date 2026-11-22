@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.WebSockets;
 using System.Buffers;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Options;
 
 namespace OperationsSystem.Blazor.Api;
@@ -33,6 +34,8 @@ internal static class ApiProxyHttpClient
 
 public static class ApiProxyExtensions
 {
+    private const long FlightOperationsJsonLimit = 150L * 1024 * 1024;
+
     private static readonly HashSet<string> HopByHopHeaders = new(StringComparer.OrdinalIgnoreCase)
     {
         "Connection",
@@ -77,6 +80,20 @@ public static class ApiProxyExtensions
         IHttpClientFactory httpClientFactory,
         IOptions<ApiProxyOptions> options)
     {
+        var path = context.Request.RouteValues["path"]?.ToString();
+        if (HttpMethods.IsPut(context.Request.Method) && IsPortalFlightUploadPath(path))
+        {
+            if (context.Request.ContentLength > FlightOperationsJsonLimit)
+            {
+                context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+                return;
+            }
+
+            var bodyLimit = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (bodyLimit is { IsReadOnly: false })
+                bodyLimit.MaxRequestBodySize = FlightOperationsJsonLimit;
+        }
+
         var targetUri = BuildTargetUri(context, options.Value);
         using var request = CreateProxyRequest(context, targetUri);
         using var response = await httpClientFactory.CreateClient(ApiProxyHttpClient.Name)
@@ -87,6 +104,18 @@ public static class ApiProxyExtensions
         CopyHeaders(response.Content.Headers, context.Response.Headers);
 
         await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+    }
+
+    internal static bool IsPortalFlightUploadPath(string? path)
+    {
+        var segments = path?.TrimEnd('/').ToLowerInvariant().Split('/');
+        return segments switch
+        {
+            ["v1", "operations", "flights", var flightId, "operations", "batch"] => Guid.TryParse(flightId, out _),
+            ["v1", "operations", "flights", var flightId, "operations", "returns-to-ramp", var occurrenceId] =>
+                Guid.TryParse(flightId, out _) && Guid.TryParse(occurrenceId, out _),
+            _ => false
+        };
     }
 
     private static async Task ProxyNotificationsHubAsync(

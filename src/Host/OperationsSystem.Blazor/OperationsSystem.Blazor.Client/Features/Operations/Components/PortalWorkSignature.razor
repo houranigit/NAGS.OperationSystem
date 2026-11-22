@@ -1,0 +1,146 @@
+@inject OperationsApiClient Operations
+
+<section class="portal-signature">
+    <h4>Customer signature <small>optional</small></h4>
+    @if (Draft.Bytes is { } bytes)
+    {
+        <PortalOperationDateField Label="Signed at" Time="@(Draft.SigningTime!)" Required="true" Disabled="@Disabled"
+                                  Validation="@Validation" ValidationField="@ValidationField" Changed="@Changed" />
+        <img src="@($"data:image/png;base64,{Convert.ToBase64String(bytes)}")" alt="Selected customer signature" />
+        <div class="portal-signature-actions">
+            <span>@Draft.FileName</span>
+            <RadzenButton Text="Discard new signature" Icon="undo" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                          Disabled="@Disabled" Click="@DiscardAsync" />
+        </div>
+    }
+    else if (Draft.SavedPath is { } savedPath && !Draft.RemoveSaved)
+    {
+        <div class="portal-signature-actions">
+            <span>Signature on file</span>
+            <RadzenButton Text="Download signature" Icon="download" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                          Disabled="@downloading" Click="@(() => DownloadAsync(savedPath))" />
+            @if (CanRemove && !Disabled)
+            {
+                <RadzenButton Text="Remove signature" Icon="delete" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                              Click="@(() => SetRemoveSavedAsync(true))" />
+            }
+        </div>
+        <PortalFieldError Message="@downloadError" />
+    }
+    else if (Draft.RemoveSaved)
+    {
+        <div class="portal-signature-actions">
+            <span>Signature marked for removal</span>
+            <RadzenButton Text="Keep signature" Icon="undo" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                          Disabled="@Disabled" Click="@(() => SetRemoveSavedAsync(false))" />
+        </div>
+    }
+    else
+    {
+        <p>No signature recorded.</p>
+    }
+    @if (!Disabled)
+    {
+        <label>
+            @(Draft.SavedPath is null ? "Upload PNG signature" : "Replace PNG signature")
+            <InputFile OnChange="@UploadAsync" accept="image/png,.png" disabled="@Draft.IsReading"
+                       aria-invalid="@(uploadError is null ? null : "true")" aria-describedby="@(uploadError is null ? null : PortalFlightValidation.ErrorId(UploadField))" />
+            <PortalFieldError Field="@UploadField" Message="@uploadError" />
+        </label>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public Guid FlightId { get; set; }
+    [Parameter, EditorRequired] public PortalSignatureDraft Draft { get; set; } = default!;
+    [Parameter, EditorRequired] public StationTimeZone Zone { get; set; } = default!;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool CanRemove { get; set; }
+    [Parameter] public PortalFlightValidation? Validation { get; set; }
+    [Parameter] public string? ValidationField { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private bool downloading;
+    private string? uploadError;
+    private string? downloadError;
+    private string UploadField => $"{ValidationField}-upload";
+
+    private async Task DiscardAsync()
+    {
+        Draft.Clear();
+        await Changed.InvokeAsync();
+    }
+
+    private async Task SetRemoveSavedAsync(bool remove)
+    {
+        Draft.RemoveSaved = remove;
+        await Changed.InvokeAsync();
+    }
+
+    private async Task UploadAsync(InputFileChangeEventArgs args)
+    {
+        if (Draft.IsReading)
+            return;
+
+        uploadError = null;
+        const int limit = 2 * 1024 * 1024;
+        var file = args.File;
+        if (file.Size <= 0 || file.Size > limit || !Path.GetExtension(file.Name).Equals(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            uploadError = "Choose a PNG signature of at most 2 MB.";
+            return;
+        }
+
+        Draft.IsReading = true;
+        try
+        {
+            await using var stream = file.OpenReadStream(limit);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var bytes = buffer.ToArray();
+            byte[] header = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+            if (!bytes.AsSpan().StartsWith(header))
+            {
+                uploadError = "The selected file is not a PNG image.";
+                return;
+            }
+
+            Draft.Bytes = bytes;
+            Draft.FileName = file.Name;
+            Draft.SigningTime = new(Zone, DateTimeOffset.UtcNow);
+            Draft.RemoveSaved = false;
+        }
+        catch (Exception ex) when (ex is IOException or JSException)
+        {
+            uploadError = "The signature could not be read. Choose the file again.";
+        }
+        finally
+        {
+            Draft.IsReading = false;
+        }
+        if (uploadError is null)
+            await Changed.InvokeAsync();
+    }
+
+    private async Task DownloadAsync(string path)
+    {
+        downloading = true;
+        downloadError = null;
+        try
+        {
+            await Operations.DownloadPortalFlightMediaAsync(FlightId, path, "customer-signature.png");
+        }
+        catch (ApiException ex)
+        {
+            downloadError = ex.ToDisplayMessage("Could not download the signature.");
+        }
+        catch (JSException)
+        {
+            downloadError = "Could not download the signature. Try again.";
+        }
+        finally
+        {
+            downloading = false;
+        }
+    }
+}

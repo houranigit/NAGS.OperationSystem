@@ -7,7 +7,7 @@ using Operations.Application.Authorization;
 
 namespace Operations.Application.Features.Flights;
 
-public sealed record GetMobileFlightDepartureSignatureQuery(Guid FlightId, Guid SubmissionId, DateTimeOffset ExpectedUpdatedAt)
+public sealed record GetMobileFlightDepartureSignatureQuery(Guid FlightId, Guid SubmissionId, DateTimeOffset ExpectedUpdatedAt, bool PortalOnly = false)
     : IQuery<FlightDepartureSignatureContent>;
 
 public sealed record FlightDepartureSignatureContent(Stream Content);
@@ -15,24 +15,26 @@ public sealed record FlightDepartureSignatureContent(Stream Content);
 public sealed class GetMobileFlightDepartureSignatureQueryHandler(
     IOperationsDbContext db,
     IMobileFlightScope scope,
-    IFileStorage storage) : IQueryHandler<GetMobileFlightDepartureSignatureQuery, FlightDepartureSignatureContent>
+    IFileStorage storage,
+    PortalFlightScope? portalScope = null) : IQueryHandler<GetMobileFlightDepartureSignatureQuery, FlightDepartureSignatureContent>
 {
     public async Task<Result<FlightDepartureSignatureContent>> Handle(
         GetMobileFlightDepartureSignatureQuery request, CancellationToken cancellationToken)
     {
-        var resolved = await scope.ResolveAsync(cancellationToken);
+        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, cancellationToken);
         if (resolved.IsFailure) return resolved.Error;
-        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), resolved.Value)
+        var staffId = resolved.Value.Actor.StaffMemberId;
+        var flight = await resolved.Value.Apply(db.Flights.AsNoTracking())
             .Include(f => f.DepartureSubmissions).Include(f => f.AssignedEmployees).Include(f => f.PlannedServices)
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         if (flight is null) return NotFound();
         var submissions = flight.DepartureSubmissions.OrderBy(d => d.CreatedAtUtc).ThenBy(d => d.Id).ToArray();
-        var visible = submissions.FirstOrDefault(d => d.SubmittedByEmployee.StaffMemberId == resolved.Value.StaffMemberId)
+        var visible = submissions.FirstOrDefault(d => d.SubmittedByEmployee.StaffMemberId == staffId)
             ?? submissions.FirstOrDefault(d => d.IsAccepted) ?? submissions.FirstOrDefault();
         var requested = submissions.SingleOrDefault(d => d.Id == request.SubmissionId);
         if (requested is null || requested.Id != visible?.Id &&
-            requested.SubmittedByEmployee.StaffMemberId != resolved.Value.StaffMemberId &&
-            !flight.CanCorrectOperationalWork(resolved.Value.StaffMemberId))
+            requested.SubmittedByEmployee.StaffMemberId != staffId &&
+            !flight.CanCorrectOperationalWork(staffId))
             return NotFound();
         if (requested.Details.CustomerSignature is not { } signature) return NotFound();
         if ((requested.UpdatedAtUtc ?? requested.CreatedAtUtc) != request.ExpectedUpdatedAt)

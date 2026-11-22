@@ -15,13 +15,13 @@ using Operations.Domain.ValueObjects;
 
 namespace Operations.Application.Features.Flights;
 
-public sealed record SaveFlightOperationsBatchCommand(Guid FlightId, SaveFlightOperationsBatchRequest Input, byte[] RowVersion)
+public sealed record SaveFlightOperationsBatchCommand(Guid FlightId, SaveFlightOperationsBatchRequest Input, byte[] RowVersion, bool PortalOnly = false)
     : ICommand<FlightDetailDto>;
 
 /// <summary>Prepares one flight edit in memory and publishes its entire graph and outbox in one SaveChanges.</summary>
 public sealed class SaveFlightOperationsBatchCommandHandler(
     IOperationsDbContext db, IMobileFlightScope scope, MasterDataResolver resolver, IMasterDataReader masterData,
-    TimeProvider clock, IMobileSyncBroadcaster mobileSync, IFileStorage storage, IUserDisplayNameReader? userNames = null)
+    TimeProvider clock, IMobileSyncBroadcaster mobileSync, IFileStorage storage, IUserDisplayNameReader? userNames = null, PortalFlightScope? portalScope = null)
     : ICommandHandler<SaveFlightOperationsBatchCommand, FlightDetailDto>
 {
     private sealed record ServiceEdit(FlightServiceBatchChange Change, FlightService? Existing, bool Matches,
@@ -49,10 +49,10 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             return Error.Validation("The combined flight edit must contain at most 100 MB of new file content.",
                 "Operations.FlightBatch.InlineFilesTooLarge");
 
-        var resolvedScope = await scope.ResolveAsync(ct);
+        var resolvedScope = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, ct);
         if (resolvedScope.IsFailure) return resolvedScope.Error;
-        var actor = resolvedScope.Value;
-        var flight = await FlightServiceWrites.Load(db, actor).SingleOrDefaultAsync(f => f.Id == request.FlightId, ct);
+        var actor = resolvedScope.Value.Actor;
+        var flight = await FlightServiceWrites.Load(resolvedScope.Value.Apply(db.Flights)).SingleOrDefaultAsync(f => f.Id == request.FlightId, ct);
         if (flight is null) return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
         var station = await masterData.GetStationAsync(flight.Station.StationId, ct);
         if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
@@ -181,7 +181,7 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
         var allowedIds = allowed.IsSuccess ? allowed.Value : [];
         var names = await FlightWorkAttribution.NamesAsync(userNames,
             FlightWorkAttribution.UserIds(flight).Append(actor.UserId), ct);
-        FlightDetailDto Response() => Map(flight, station.TimeZoneId, actor, assigned, allowedIds, names);
+        FlightDetailDto Response() => FlightDetails.MapOperational(flight, station.TimeZoneId, actor, true, allowedIds, names, request.PortalOnly);
         // Recover only a complete prior success. Never acknowledge individual members of a stale batch.
         if (arrivalMatches && departureMatches && preparedServices.All(item => item.Matches) && preparedTasks.All(item => item.Matches))
             return Response();
@@ -437,7 +437,7 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             foreach (var edit in preparedTasks.Where(item => !item.Matches && item.Existing is not null))
                 Notify(edit.Change.RecordId, edit.Existing!.CreatedByUserId, global::Operations.Contracts.FlightSubmissionKind.Task, deleted: edit.Change.Input is null);
             db.SetOriginalRowVersion(flight, request.RowVersion);
-            await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), ct);
+            await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), ct, recordSearch: !request.PortalOnly);
             try { await db.SaveChangesAsync(ct); }
             catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
             catch (DbUpdateException)
@@ -520,18 +520,6 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
         using var buffer = new MemoryStream();
         await stream.CopyToAsync(buffer, ct);
         return buffer.ToArray().AsSpan().SequenceEqual(input.SignatureContent);
-    }
-
-    private static FlightDetailDto Map(Flight flight, string zone, MobileFlightScopeContext actor, bool assigned,
-        IReadOnlyList<Guid> allowedIds, IReadOnlyDictionary<Guid, string> names)
-    {
-        var ownCancellation = flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
-        var ownWork = flight.ArrivalSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId) ||
-            flight.DepartureSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
-        return FlightDetails.Map(flight, zone, actor.StaffMemberId, !ownCancellation, !ownCancellation,
-            !ownWork && flight.ServiceRecords.Count == 0 && flight.TaskRecords.Count == 0,
-            flight.CancellationSubmissions.Count == 0 && allowedIds.Count > 0, actor.UserId, allowedIds,
-            flight.CancellationSubmissions.Count == 0, assigned, names, canEditFlightDetails: true);
     }
 
     private static bool IdentifiersMatch(string? stored, string? input) => Normalize(stored)?.ToUpperInvariant() == Normalize(input)?.ToUpperInvariant();

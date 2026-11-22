@@ -19,6 +19,9 @@ public sealed record FlightListItem(
 public sealed record PlannedServiceModel(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId);
 
+public sealed record PortalFlightCancellationRequest(DateTimeOffset CanceledAtUtc, string? Remarks,
+    bool AcknowledgeConflictingSubmission = false);
+
 public sealed record FlightDetail(
     Guid Id,
     string FlightNumber,

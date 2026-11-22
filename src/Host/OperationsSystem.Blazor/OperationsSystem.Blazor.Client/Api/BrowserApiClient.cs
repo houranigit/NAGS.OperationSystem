@@ -49,6 +49,9 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
     public Task PutAsync<TRequest>(string path, TRequest body, string? ifMatch, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Put, path, body, ifMatch, cancellationToken);
 
+    public Task<TResponse> PutAsync<TRequest, TResponse>(string path, TRequest body, string? ifMatch, CancellationToken cancellationToken = default) =>
+        SendAsync<TResponse>(HttpMethod.Put, path, body, ifMatch, cancellationToken);
+
     /// <summary>POST with optimistic concurrency (e.g. activate/deactivate of an editable record).</summary>
     public Task PostAsync(string path, string? ifMatch, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Post, path, body: null, ifMatch, cancellationToken);
@@ -90,6 +93,28 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
         catch (JSException ex) when (TryReadApiError(ex.Message, out var statusCode, out var responseBody))
         {
             throw new ApiException(statusCode, responseBody);
+        }
+    }
+
+    /// <summary>Fetches a previewable file into a browser object URL that the caller must revoke.</summary>
+    public async Task<string> GetFilePreviewUrlAsync(string path, CancellationToken cancellationToken = default)
+    {
+        const string method = "operationsSystem.api.requestFilePreviewUrl";
+        var canRefresh = !path.Contains("/auth/refresh", StringComparison.Ordinal);
+        while (true)
+        {
+            try
+            {
+                return await jsRuntime.InvokeAsync<string>(method, cancellationToken,
+                    path, tokenStore.AccessToken, locale.Language);
+            }
+            catch (JSException ex) when (TryReadApiError(ex.Message, out var statusCode, out var responseBody))
+            {
+                if (statusCode != 401 || !canRefresh || !await refresher.TryRefreshAsync(cancellationToken))
+                    throw new ApiException(statusCode, responseBody);
+
+                canRefresh = false;
+            }
         }
     }
 

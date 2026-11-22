@@ -1,0 +1,193 @@
+@inject OperationsApiClient Operations
+
+<div class="portal-work-notes">
+    <label for="@NotesId">Notes</label>
+    <div class="portal-notes-editor">
+        <RadzenTextArea id="@NotesId" @bind-Value="Draft.Notes" @bind-Value:after="Changed.InvokeAsync"
+                        Immediate="true" Rows="5" Disabled="@(!CanEdit)"
+                        aria-invalid="@Validation?.InvalidAttribute(NotesField)" aria-describedby="@Validation?.DescriptionId(NotesField)" />
+        @if (CanEdit || Files.Count > 0)
+        {
+            <div class="portal-notes-footer">
+                @if (Files.Count > 0)
+                {
+                    <ul class="portal-notes-attachments" aria-label="Attachments">
+                        @foreach (var file in Files)
+                        {
+                            <li @key="file.Id">
+                                <PortalWorkAttachmentPreview FlightId="@FlightId" File="@file" MediaPath="@MediaPath(file)"
+                                                             Visible="@Visible" Disabled="@busy" OnError="@ShowMediaError" />
+                                @if (file.UploadedAtUtc is not null)
+                                {
+                                    <RadzenButton Icon="download" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light" Variant="Variant.Text"
+                                                  title="@($"Download {file.FileName}")" aria-label="@($"Download {file.FileName}")"
+                                                  Disabled="@busy" Click="@(() => DownloadAsync(file))" />
+                                }
+                                @if (CanEdit)
+                                {
+                                    <RadzenButton Text="Delete" Icon="delete" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger"
+                                                  title="@($"Delete {file.FileName}")" aria-label="@($"Delete {file.FileName}")"
+                                                  Disabled="@busy" Click="@(() => RemoveAsync(file))" />
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+                @if (CanEdit)
+                {
+                    <div class="portal-notes-actions">
+                        @if (Draft.IsReadingFile)
+                        {
+                            <span role="status" class="portal-attachment-meta">Reading file…</span>
+                        }
+                        <label class="portal-attachment-upload" title="Attach photos, voice recordings, or PDFs">
+                            <RadzenIcon Icon="attach_file" aria-hidden="true" />
+                            <InputFile @key="pickerRevision" OnChange="@AddAsync" multiple accept=".png,.jpg,.jpeg,.webp,.m4a,.mp3,.ogg,.webm,.pdf"
+                                       disabled="@busy" aria-label="Add attachment" aria-invalid="@AttachmentInvalid"
+                                       aria-describedby="@AttachmentErrorId" />
+                        </label>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+    <PortalFieldError Validation="@Validation" Field="@NotesField" />
+    <PortalFieldError Validation="@Validation" Field="@AttachmentField" Message="@uploadError" />
+    @if (mediaError is not null)
+    {
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@mediaError" OnDismiss="@(() => mediaError = null)">
+            @mediaError
+        </DismissibleDialogMessage>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid FlightId { get; set; }
+    [Parameter, EditorRequired] public string RecordPath { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public PortalWorkDraft Draft { get; set; } = default!;
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public PortalFlightValidation? Validation { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private List<PortalAttachmentDraft> Files => Draft.Attachments;
+    private bool busy;
+    private int pickerRevision;
+    private string? uploadError;
+    private string? mediaError;
+    private string NotesId => $"portal-work-notes-{Draft.Id:N}";
+    private string NotesField => PortalFlightValidation.Field(Draft.Id, "notes");
+    private string AttachmentField => PortalFlightValidation.Field(Draft.Id, "attachments");
+    private string? AttachmentInvalid => uploadError is not null ? "true" : Validation?.InvalidAttribute(AttachmentField);
+    private string? AttachmentErrorId => uploadError is not null
+        ? PortalFlightValidation.ErrorId(AttachmentField)
+        : Validation?.DescriptionId(AttachmentField);
+
+    private async Task RemoveAsync(PortalAttachmentDraft file)
+    {
+        if (Files.Remove(file))
+            await Changed.InvokeAsync();
+    }
+
+    private async Task AddAsync(InputFileChangeEventArgs args)
+    {
+        if (busy)
+            return;
+
+        uploadError = null;
+        if (args.FileCount > PortalWorkDraft.MaxAttachments - Files.Count)
+        {
+            uploadError = $"You can add up to {PortalWorkDraft.MaxAttachments} attachments per record. Select fewer files or delete an attachment.";
+            pickerRevision++;
+            return;
+        }
+
+        busy = true;
+        Draft.IsReadingFile = true;
+        var previousCount = Files.Count;
+        List<string> problems = [];
+        try
+        {
+            foreach (var file in args.GetMultipleFiles(PortalWorkDraft.MaxAttachments))
+            {
+                if (await ReadAttachmentAsync(file) is { } problem)
+                    problems.Add($"{file.Name}: {problem}");
+            }
+        }
+        finally
+        {
+            Draft.IsReadingFile = false;
+            busy = false;
+            pickerRevision++;
+        }
+
+        uploadError = problems.Count > 0 ? string.Join(" ", problems) : null;
+        if (Files.Count != previousCount)
+            await Changed.InvokeAsync();
+    }
+
+    private async Task<string?> ReadAttachmentAsync(IBrowserFile file)
+    {
+        var (kind, contentType, maxMb) = Path.GetExtension(file.Name).ToLowerInvariant() switch
+        {
+            ".png" => (0, "image/png", 10),
+            ".jpg" or ".jpeg" => (0, "image/jpeg", 10),
+            ".webp" => (0, "image/webp", 10),
+            ".m4a" => (1, "audio/mp4", 25),
+            ".mp3" => (1, "audio/mpeg", 25),
+            ".ogg" => (1, "audio/ogg", 25),
+            ".webm" => (1, "audio/webm", 25),
+            ".pdf" => (2, "application/pdf", 2),
+            _ => (-1, string.Empty, 0)
+        };
+        if (kind < 0)
+            return "Choose a supported photo, voice recording, or PDF.";
+
+        if (file.Size <= 0 || file.Size > maxMb * 1024L * 1024)
+            return $"The file must be nonempty and at most {maxMb} MB.";
+
+        try
+        {
+            await using var stream = file.OpenReadStream(maxMb * 1024L * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            Files.Add(new(Guid.NewGuid(), kind, file.Name, contentType, file.Size, null, buffer.ToArray()));
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or JSException)
+        {
+            return "Could not read the attachment. Choose the file again.";
+        }
+    }
+
+    private void ShowMediaError(string message) => mediaError = message;
+
+    private string? MediaPath(PortalAttachmentDraft file) => file.UploadedAtUtc is { } version
+        ? $"{RecordPath}/attachments/{file.Id}?expectedUploadedAt={PortalFlightWorkDialog.MediaVersion(version)}"
+        : null;
+
+    private async Task DownloadAsync(PortalAttachmentDraft file)
+    {
+        if (MediaPath(file) is not { } path)
+            return;
+
+        busy = true;
+        mediaError = null;
+        try
+        {
+            await Operations.DownloadPortalFlightMediaAsync(FlightId, path, file.FileName);
+        }
+        catch (ApiException ex)
+        {
+            mediaError = ex.ToDisplayMessage("Could not download the attachment.");
+        }
+        catch (JSException)
+        {
+            mediaError = "Could not download the attachment. Try again.";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

@@ -1,0 +1,176 @@
+@inject OperationsApiClient Operations
+@inject DialogService Dialogs
+@inject NotificationService Notifications
+
+<div class="pcf-dialog">
+    @if (isLoading)
+    {
+        <div role="status">Loading flight…</div>
+    }
+    else if (flight is { } currentFlight && canceledAt is { } time)
+    {
+        <PortalFlightSummary Flight="@currentFlight" StatusLabel="@(submission is null ? null : "Cancellation submitted")" StatusTone="danger" />
+        <section aria-labelledby="portal-cancellation-heading" class="pcf-fields">
+            <h3 id="portal-cancellation-heading" class="pcf-heading">
+                <RadzenIcon Icon="event_busy" /> Cancellation
+            </h3>
+            <div class="pcf-date">
+                <PortalOperationDateField Label="@($"Cancellation date and time ({currentFlight.StationTimeZoneId})")"
+                                          Time="@time" Required="true" Disabled="@isSaving" />
+            </div>
+            <div>
+                <RadzenLabel Component="portalCancellationRemarks" Text="Remarks (optional)" />
+                <RadzenTextArea Name="portalCancellationRemarks" @bind-Value="remarks" Immediate="true" Rows="4"
+                                Disabled="@isSaving" class="pcf-control" />
+            </div>
+        </section>
+    }
+
+    @if (errorMessage is not null)
+    {
+        <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" StateKey="@errorMessage" OnDismiss="@(() => errorMessage = null)">
+            @errorMessage
+        </DismissibleDialogMessage>
+    }
+
+    <div class="pcf-actions">
+        <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Disabled="@isSaving"
+                      Click="@(() => Dialogs.Close(false))" />
+        <div class="pcf-actions-end">
+            @if (submission is not null)
+            {
+                <RadzenButton Text="Undo" Icon="undo" ButtonStyle="ButtonStyle.Danger" Disabled="@isSaving" Click="@UndoAsync" />
+            }
+            @if (flight?.CanSaveCancellation == true)
+            {
+                <RadzenButton Text="@(submission is null ? "Submit cancellation" : "Save")"
+                              ButtonStyle="ButtonStyle.Primary" IsBusy="@isSaving" Click="@SaveAsync" />
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid FlightId { get; set; }
+    [Parameter] public Guid? SubmissionId { get; set; }
+
+    private PortalFlightOperations? flight;
+    private PortalFlightCancellation? submission;
+    private PortalOperationTime? canceledAt;
+    private string? remarks;
+    private string? errorMessage;
+    private bool isLoading = true;
+    private bool isSaving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var details = await Operations.GetPortalFlightOperationsAsync(FlightId);
+            var own = details.CancellationSubmissions.FirstOrDefault(item =>
+                item.SubmittedByEmployee.StaffMemberId == details.CurrentStaffMemberId);
+            if (own?.Id != SubmissionId || own is null && !details.CanSaveCancellation)
+            {
+                errorMessage = "Flight actions have changed. Close this dialog and open the actions menu again.";
+                return;
+            }
+
+            canceledAt = new PortalOperationTime(StationTimeZone.FromId(details.StationTimeZoneId),
+                own?.CanceledAtUtc ?? DateTimeOffset.UtcNow);
+            remarks = own?.Remarks;
+            submission = own;
+            flight = details;
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not load the cancellation.");
+        }
+        catch (JSException)
+        {
+            errorMessage = "Could not reach the server. Close this dialog and try again.";
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            errorMessage = "The station time zone is unavailable.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (isSaving || flight is not { CanSaveCancellation: true } details || canceledAt is null)
+            return;
+
+        errorMessage = null;
+        var errors = new List<string>();
+        if (canceledAt.Read("Cancellation date and time", errors, required: true) is not { } utc)
+        {
+            errorMessage = errors.FirstOrDefault() ?? "Enter the cancellation date and time.";
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var hasOpposingReports = details.ArrivalSubmissions.Count > 0 || details.DepartureSubmissions.Count > 0;
+            if (hasOpposingReports && await Dialogs.Confirm(
+                "Another employee reported arrival or departure. Submit your cancellation as a separate report?",
+                "Confirm cancellation report", new ConfirmOptions { OkButtonText = "Continue", CancelButtonText = "Back" }) != true)
+                return;
+
+            await Operations.SavePortalCancellationAsync(FlightId,
+                new(utc, remarks, hasOpposingReports), details.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, "Cancellation saved");
+            Dialogs.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not save the cancellation.");
+        }
+        catch (JSException)
+        {
+            errorMessage = "Could not confirm that the cancellation was saved. Try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task UndoAsync()
+    {
+        if (isSaving || flight is null || submission is null)
+            return;
+
+        isSaving = true;
+        errorMessage = null;
+        try
+        {
+            if (!await ConfirmUndoAsync(Dialogs))
+                return;
+
+            await Operations.UndoPortalCancellationAsync(FlightId, submission.Id, flight.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success, "Cancellation undone");
+            Dialogs.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not undo the cancellation.");
+        }
+        catch (JSException)
+        {
+            errorMessage = "Could not confirm that the cancellation was undone. Try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    internal static async Task<bool> ConfirmUndoAsync(DialogService dialogs) =>
+        await dialogs.Confirm("Remove your cancellation submission for this flight?", "Undo cancellation",
+            new ConfirmOptions { OkButtonText = "Undo", CancelButtonText = "Keep cancellation" }) == true;
+}

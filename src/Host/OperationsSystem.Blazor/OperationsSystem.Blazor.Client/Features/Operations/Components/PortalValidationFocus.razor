@@ -1,0 +1,49 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@code {
+    [Parameter] public ElementReference Container { get; set; }
+    [Parameter] public int Attempt { get; set; }
+
+    private int handledAttempt;
+    private ValidationFocusInterop? focus;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Attempt == handledAttempt)
+            return;
+
+        handledAttempt = Attempt;
+        focus ??= new(JS);
+        await focus.FocusAsync(Container);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (focus is not null)
+            await focus.DisposeAsync();
+    }
+
+    private sealed class ValidationFocusInterop(IJSRuntime js) : IAsyncDisposable
+    {
+        private const string ModulePath = "./Features/Operations/Components/PortalValidationFocus.razor.js";
+        private const string FocusMethod = "focusFirstInvalid";
+        private Task<IJSObjectReference>? module;
+
+        public async ValueTask FocusAsync(ElementReference container)
+        {
+            module ??= js.InvokeAsync<IJSObjectReference>("import", ModulePath).AsTask();
+            await (await module).InvokeVoidAsync(FocusMethod, container);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                if (module is not null)
+                    await (await module).DisposeAsync();
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+}

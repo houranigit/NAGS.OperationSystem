@@ -1,0 +1,21 @@
+@{
+    var messages = Validation?.For(Field).ToList() ?? [];
+    if (!string.IsNullOrWhiteSpace(Message) && !messages.Contains(Message))
+        messages.Add(Message);
+}
+@if (messages.Count > 0)
+{
+    <span id="@(Field is { } key ? PortalFlightValidation.ErrorId(key) : null)" class="portal-field-error"
+          role="@(Message is not null ? "alert" : null)">
+        @foreach (var message in messages)
+        {
+            <span>@message</span>
+        }
+    </span>
+}
+
+@code {
+    [Parameter] public PortalFlightValidation? Validation { get; set; }
+    [Parameter] public string? Field { get; set; }
+    [Parameter] public string? Message { get; set; }
+}

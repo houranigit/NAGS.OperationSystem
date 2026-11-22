@@ -143,7 +143,15 @@ Android Room 15 stores desired RTR input, durable private media references, revi
 
 Domain guards use loaded collections. Write callers must load all three submission collections, all `ServiceRecords` with performers/attachments, all `TaskRecords` with tools/materials/general supports/performers/attachments, and `ReturnToRamps` with their work graph. The public `Services` and `Tasks` views are not mapped navigations and exclude occurrence work. For an existing tracked flight, changes anywhere in these attached graphs, including nested edits or removals, force the flight's rowversion check in synchronous and asynchronous saves, even when `UpdatedAtUtc` is unchanged. Return-to-ramp sequence uniqueness and the single-open-occurrence rule are also indexed in SQL. Composite occurrence/flight foreign keys prevent work from being grouped under another flight's occurrence. Flight remains the cascade-delete path; occurrence relations use `NoAction` to avoid multiple cascade paths. There is no database constraint enforcing cancellation exclusivity across tables, so direct SQL bypasses it. Arrival, departure, services, and cancellation retain rejected/conflicting device intent for the explicit reload/review workflows above. RTR input uses its independent frozen-attempt queue and explicit Review workflow described above; normal-work batches and RTR saves retain separate HTTP boundaries.
 
-Arrival and departure add their API/mobile queues described above. Services and Tasks add the scoped save/delete, attachment transfer, and local draft/queue workflows above. RTR adds the scoped atomic occurrence save and independent Android queue described above. Approval selection, portal operational writes and billing remain deferred. Flight detail reads include arrival/departure submissions and complete RTR occurrences with their nested work alongside planning details. Persisted lifecycle statuses, approval, further prerequisites, and chronology policies remain for the later workflow discussion; the mobile card summaries below add no stored workflow state.
+Arrival and departure add their API/mobile queues described above. Services and Tasks add the scoped save/delete, attachment transfer, and local draft/queue workflows above. RTR adds the scoped atomic occurrence save and independent Android queue described above. Flight detail reads include arrival/departure submissions and complete RTR occurrences with their nested work alongside planning details. Approval selection, persisted lifecycle status and billing remain deferred.
+
+### Portal work and cancellation
+
+Eligible active station staff with both flight View and Operate permissions can open the work or cancellation editor from an in-scope row in the flight register. The portal uses the existing register visibility rules and the current per-employee record permissions. The 12-hour lifecycle window applies to mobile only. The server resolves the linked employee for attribution, and portal edits update saved-work history without recording a mobile Search interaction.
+
+The portal Work order menu represents saved operational records, including an arrival-only save. Its stepper edits Arrival, Services, Tasks, Departure, and RTR. Normal changes share one atomic batch, and each RTR saves independently after a saved normal departure. Cancellation order shows the employee's own submission. Undo removes only that exact submission. Arrival and departure support corrections, while authorized removal stays at individual Service and Task records.
+
+The portal routes under `/{id}/operations` expose the editor and current capabilities. `PUT /batch` saves normal work, `PUT /returns-to-ramp/{occurrenceId}` saves one RTR, and `PUT /cancellation` and `DELETE /cancellation/{submissionId}` save and undo cancellation. These routes use the same version checks, validation, and file limits as mobile. Signature and attachment reads are scoped to the flight and require the saved media version.
 
 ### Combined operational saves
 
@@ -205,6 +213,7 @@ All flight routes are under `/api/v1/operations/flights`:
 |---|---|---|
 | GET | `/` | Filtered, sorted, paged flight register |
 | GET | `/{id}` | Flight planning details, arrival/departure/cancellation submissions, and rowversion |
+| GET | `/{id}/operations` | Portal work and cancellation editor details within the register scope |
 | PUT | `/{id}/arrival` | Save the authenticated employee's arrival within mobile scope |
 | PUT | `/{id}/departure` | Save the authenticated employee's departure and signature within mobile scope |
 | PUT | `/{id}/cancellation` | Save the authenticated employee's cancellation within mobile scope |

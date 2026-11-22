@@ -1,0 +1,74 @@
+.portal-flight-summary {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--os-space-4);
+    padding: var(--os-space-4);
+    border: 1px solid var(--os-color-border);
+    border-radius: 8px;
+    background: var(--os-color-surface);
+}
+
+.portal-flight-summary-icon {
+    display: grid;
+    place-items: center;
+    width: 4.5rem;
+    height: 4.5rem;
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary-strong);
+}
+
+.portal-flight-summary-icon ::deep .rzi {
+    font-size: 1.8rem;
+}
+
+.portal-flight-summary-heading,
+.portal-flight-summary-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-2);
+}
+
+.portal-flight-summary-heading h2 {
+    margin: 0;
+    font-size: var(--os-text-2xl);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.portal-flight-summary-meta {
+    margin-block-start: var(--os-space-2);
+    gap: var(--os-space-3);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.portal-flight-summary-meta span,
+.portal-flight-operation {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+}
+
+.portal-flight-summary-meta ::deep .rzi,
+.portal-flight-operation ::deep .rzi {
+    font-size: 1.05rem;
+}
+
+.portal-flight-operation {
+    padding: 0.2rem 0.65rem;
+    border-radius: var(--os-radius-pill);
+    background: var(--os-color-info-bg);
+    color: var(--os-color-info);
+    font-size: var(--os-text-xs);
+    font-weight: 700;
+}
+
+@media (max-width: 480px) {
+    .portal-flight-summary-icon {
+        width: 3rem;
+        height: 3rem;
+    }
+}

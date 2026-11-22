@@ -15,11 +15,13 @@ using Operations.Domain.ValueObjects;
 
 namespace Operations.Application.Features.Flights;
 
-public sealed record SaveFlightReturnToRampCommand(Guid FlightId, Guid OccurrenceId, SaveFlightReturnToRampRequest Input, byte[] RowVersion) : ICommand<FlightDetailDto>;
+public sealed record SaveFlightReturnToRampCommand(Guid FlightId, Guid OccurrenceId, SaveFlightReturnToRampRequest Input, byte[] RowVersion,
+    bool PortalOnly = false) : ICommand<FlightDetailDto>;
 
 public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db, IMobileFlightScope scope,
     MasterDataResolver resolver, IMasterDataReader masterData, IFileStorage storage, TimeProvider clock,
-    IMobileSyncBroadcaster mobileSync, IUserDisplayNameReader? userNames = null) : ICommandHandler<SaveFlightReturnToRampCommand, FlightDetailDto>
+    IMobileSyncBroadcaster mobileSync, IUserDisplayNameReader? userNames = null, PortalFlightScope? portalScope = null)
+    : ICommandHandler<SaveFlightReturnToRampCommand, FlightDetailDto>
 {
     public async Task<Result<FlightDetailDto>> Handle(SaveFlightReturnToRampCommand request, CancellationToken ct)
     {
@@ -30,10 +32,10 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
             input.Tasks.Any(t => t is null || t.RecordId == Guid.Empty || t.Input is null) ||
             input.Services.Select(s => s.RecordId).Distinct().Count() != input.Services.Count || input.Tasks.Select(t => t.RecordId).Distinct().Count() != input.Tasks.Count)
             return Invalid("An identified RTR, arrival, current version and complete work lists are required.");
-        var resolved = await scope.ResolveAsync(ct);
+        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, ct);
         if (resolved.IsFailure) return resolved.Error;
-        var actor = resolved.Value;
-        var flight = await FlightServiceWrites.Load(db, actor).SingleOrDefaultAsync(f => f.Id == request.FlightId, ct);
+        var actor = resolved.Value.Actor;
+        var flight = await FlightServiceWrites.Load(resolved.Value.Apply(db.Flights)).SingleOrDefaultAsync(f => f.Id == request.FlightId, ct);
         if (flight is null) return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
         if (flight.CancellationSubmissions.Count > 0) return FlightServiceWrites.Cancellation();
         if (flight.DepartureSubmissions.Count == 0)
@@ -46,6 +48,10 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
         var allowance = await resolver.AllowedServiceIdsForStaffAsync(actor.StaffMemberId, flight.Station.StationId, ct);
         if (allowance.IsFailure) return allowance.Error;
         var names = await FlightWorkAttribution.NamesAsync(userNames, FlightWorkAttribution.UserIds(flight).Append(actor.UserId), ct);
+        FlightDetailDto Response() => request.PortalOnly
+            ? FlightDetails.MapOperational(flight, station.TimeZoneId, actor, true, allowance.Value, names, portalOnly: true)
+            : FlightDetails.Map(flight, station.TimeZoneId, actor.StaffMemberId, true, true, false, allowance.Value.Count > 0,
+                actor.UserId, allowance.Value, true, flight.CanCorrectOperationalWork(actor.StaffMemberId), names, true);
         var signatureCheck = ValidateSignature(input.Departure);
         if (signatureCheck.IsFailure) return signatureCheck.Error;
         long inlineBytes = input.Departure?.SignatureContent?.LongLength ?? 0;
@@ -85,7 +91,7 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
             }
         }
         if (inlineBytes > FlightOperationsBatchPolicy.MaxInlineBytes) return Invalid("The combined RTR edit must contain at most 100 MB of new files.");
-        if (matches) return Detail(flight, station.TimeZoneId, actor, allowance.Value, names);
+        if (matches) return Response();
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
         if (await db.Flights.AsNoTracking().AnyAsync(f => f.Id != flight.Id && f.ReturnToRamps.Any(r => r.Id == request.OccurrenceId), ct)) return IdConflict();
         var identities = await ValidateIdentities(flight, request, ct); if (identities.IsFailure) return identities.Error;
@@ -174,10 +180,10 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
                     UpdatedByStaffMemberId = actor.StaffMemberId, UpdatedByUserId = actor.UserId, UpdatedByDisplayName = names.GetValueOrDefault(actor.UserId) ?? "", OccurredOnUtc = clock.GetUtcNow()
                 });
             db.SetOriginalRowVersion(flight, request.RowVersion);
-            await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), ct);
+            await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), ct, recordSearch: !request.PortalOnly);
             await db.SaveChangesAsync(ct);
             FlightServiceWrites.Notify(mobileSync, clock);
-            return Detail(flight, station.TimeZoneId, actor, allowance.Value, names);
+            return Response();
         }
         catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
         catch (DbUpdateException) when (existing is null)
@@ -188,9 +194,6 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
         finally { await FlightServiceFiles.DeleteUnreferencedAsync(db, storage, createdKeys.Concat(oldKeys)); }
     }
 
-    private static FlightDetailDto Detail(Flight flight, string zone, MobileFlightScopeContext actor, IReadOnlyList<Guid> allowed, IReadOnlyDictionary<Guid, string> names) =>
-        FlightDetails.Map(flight, zone, actor.StaffMemberId, true, true, false, allowed.Count > 0, actor.UserId, allowed, true,
-            flight.CanCorrectOperationalWork(actor.StaffMemberId), names, true);
     private async Task<Result<AttachmentDetails>> StoreAttachment(SaveFlightServiceAttachmentRequest input, List<string> keys, CancellationToken ct)
     {
         using var stream = new MemoryStream(input.Content!, false);

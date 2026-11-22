@@ -60,6 +60,18 @@ public sealed class ApiProxyExtensionsTests
         socketsHandler.AllowAutoRedirect.ShouldBeFalse();
     }
 
+    [Theory]
+    [InlineData("v1/operations/flights/5cab7ecd-a547-47ea-9603-c603d1e5abe6/operations/batch", true)]
+    [InlineData("v1/operations/flights/5cab7ecd-a547-47ea-9603-c603d1e5abe6/operations/returns-to-ramp/556ddd96-a407-4bd0-bb4c-02ebe795e518", true)]
+    [InlineData("v1/operations/flights/5cab7ecd-a547-47ea-9603-c603d1e5abe6/operations/cancellation", false)]
+    [InlineData("v1/operations/flights/5cab7ecd-a547-47ea-9603-c603d1e5abe6/operations-batch", false)]
+    [InlineData("v1/operations/flights/invalid/operations/batch", false)]
+    [InlineData("v1/operations/flights/5cab7ecd-a547-47ea-9603-c603d1e5abe6/operations/returns-to-ramp/invalid", false)]
+    public void Portal_flight_upload_exemption_only_matches_batch_and_rtr_routes(string path, bool matches)
+    {
+        ApiProxyExtensions.IsPortalFlightUploadPath(path).ShouldBe(matches);
+    }
+
     [Fact]
     public void Notifications_hub_target_preserves_path_query_and_converts_to_websocket_scheme()
     {

@@ -22,6 +22,7 @@ internal static class FlightEndpoints
     public static void Map(IEndpointRouteBuilder group)
     {
         var flights = group.MapGroup("/flights").WithTags("Operations.Flights");
+        PortalFlightOperationEndpoints.Map(flights);
 
         var mobile = flights.MapGroup("/mobile");
         mobile.MapPut("/{flightId:guid}/shares/{shareId:guid}", async (Guid flightId, Guid shareId,
@@ -156,43 +157,14 @@ internal static class FlightEndpoints
             return Results.File(result.Value.Content, "image/png", enableRangeProcessing: false);
         }).RequirePermission(OperationsPermissions.Flights.View);
 
-        flights.MapPut("/{id:guid}/returns-to-ramp/{occurrenceId:guid}", async (Guid id, Guid occurrenceId, HttpRequest http, ISender sender, CancellationToken ct) =>
-        {
-            if (http.GetIfMatch() is not { } rowVersion) return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
-            var bodyLimit = http.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
-            if (bodyLimit is { IsReadOnly: false }) bodyLimit.MaxRequestBodySize = FlightOperationsBatchPolicy.MaxJsonRequestBytes;
-            if (http.ContentLength > FlightOperationsBatchPolicy.MaxJsonRequestBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-            if (!http.HasJsonContentType()) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
-            SaveFlightReturnToRampRequest? request;
-            try { request = await http.ReadFromJsonAsync<SaveFlightReturnToRampRequest>(ct); }
-            catch (JsonException) { return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("The RTR input is invalid.", "Operations.ReturnToRamp.RequestInvalid")); }
-            catch (BadHttpRequestException error) { return Results.StatusCode(error.StatusCode); }
-            if (request is null) return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("RTR input is required.", "Operations.ReturnToRamp.RequestInvalid"));
-            return (await sender.Send(new SaveFlightReturnToRampCommand(id, occurrenceId, request, rowVersion), ct)).ToOk();
-        }).RequirePermission(OperationsPermissions.Flights.Operate)
+        flights.MapPut("/{id:guid}/returns-to-ramp/{occurrenceId:guid}", (Guid id, Guid occurrenceId, HttpRequest http, ISender sender, CancellationToken ct) =>
+            PortalFlightOperationEndpoints.SaveReturnToRampAsync(id, occurrenceId, http, sender, ct, portalOnly: false))
+            .RequirePermission(OperationsPermissions.Flights.Operate)
             .WithMetadata(new RequestSizeLimitAttribute(FlightOperationsBatchPolicy.MaxJsonRequestBytes));
 
-        flights.MapPut("/{id:guid}/operations-batch", async (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
-        {
-            if (http.GetIfMatch() is not { } rowVersion)
-                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
-            var bodyLimit = http.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
-            if (bodyLimit is { IsReadOnly: false }) bodyLimit.MaxRequestBodySize = FlightOperationsBatchPolicy.MaxJsonRequestBytes;
-            if (http.ContentLength > FlightOperationsBatchPolicy.MaxJsonRequestBytes)
-                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-            if (!http.HasJsonContentType()) return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
-            SaveFlightOperationsBatchRequest? request;
-            try { request = await http.ReadFromJsonAsync<SaveFlightOperationsBatchRequest>(ct); }
-            catch (JsonException)
-            {
-                return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("The flight edit is invalid.", "Operations.FlightBatch.RequestInvalid"));
-            }
-            catch (BadHttpRequestException error) { return Results.StatusCode(error.StatusCode); }
-            if (request is null)
-                return ApiResults.Problem(BuildingBlocks.Domain.Results.Error.Validation("A flight edit is required.", "Operations.FlightBatch.RequestInvalid"));
-            var result = await sender.Send(new SaveFlightOperationsBatchCommand(id, request, rowVersion), ct);
-            return result.ToOk();
-        }).RequirePermission(OperationsPermissions.Flights.Operate)
+        flights.MapPut("/{id:guid}/operations-batch", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
+            PortalFlightOperationEndpoints.SaveBatchAsync(id, http, sender, ct, portalOnly: false))
+            .RequirePermission(OperationsPermissions.Flights.Operate)
             .WithMetadata(new RequestSizeLimitAttribute(FlightOperationsBatchPolicy.MaxJsonRequestBytes));
 
         flights.MapPut("/{id:guid}/services/{recordId:guid}", async (Guid id, Guid recordId, HttpRequest http, ISender sender, CancellationToken ct) =>

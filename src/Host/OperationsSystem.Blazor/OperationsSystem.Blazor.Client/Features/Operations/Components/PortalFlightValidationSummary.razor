@@ -1,0 +1,17 @@
+@if (Validation.Count > 0)
+{
+    <DismissibleDialogMessage AlertStyle="AlertStyle.Danger" Title="Review the highlighted fields"
+                              CloseLabel="Dismiss validation summary" StateKey="@Attempt">
+        <ul class="portal-validation-messages">
+            @foreach (var message in Validation.Messages)
+            {
+                <li>@message</li>
+            }
+        </ul>
+    </DismissibleDialogMessage>
+}
+
+@code {
+    [Parameter, EditorRequired] public PortalFlightValidation Validation { get; set; } = default!;
+    [Parameter] public int Attempt { get; set; }
+}

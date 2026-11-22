@@ -1,0 +1,6 @@
+.portal-validation-messages {
+    max-height: min(22dvh, 10rem);
+    margin: 0;
+    padding-inline-start: 1.25rem;
+    overflow-y: auto;
+}

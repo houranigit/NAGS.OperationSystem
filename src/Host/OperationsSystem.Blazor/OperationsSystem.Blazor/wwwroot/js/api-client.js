@@ -139,6 +139,29 @@ window.operationsSystem.api = {
     return { base64, contentType: blob.type || "application/octet-stream" };
   },
 
+  async requestFilePreviewUrl(path, accessToken, language) {
+    const headers = { Accept: "image/png, image/jpeg, image/webp, application/pdf, audio/*", "Accept-Language": language || "en" };
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
+    const response = await fetch(`/api/v1${path}`, { headers, credentials: "include", redirect: "error" });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(JSON.stringify({ status: response.status, body: text }));
+    }
+
+    const blob = await response.blob();
+    const contentType = blob.type.split(";", 1)[0].trim().toLowerCase();
+    const previewableTypes = [
+      "image/png", "image/jpeg", "image/webp", "application/pdf",
+      "audio/mp4", "audio/m4a", "audio/mpeg", "audio/mp3", "audio/ogg", "audio/webm",
+    ];
+    if (blob.size === 0 || !previewableTypes.includes(contentType)) {
+      throw new Error("The attachment could not be previewed.");
+    }
+
+    return URL.createObjectURL(blob.slice(0, blob.size, contentType));
+  },
+
   async downloadFile(path, fallbackFileName, accessToken, language) {
     const headers = { Accept: "*/*", "Accept-Language": language || "en" };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;

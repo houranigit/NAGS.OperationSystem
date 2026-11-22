@@ -1,0 +1,191 @@
+@inject OperationsApiClient Operations
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<button type="button" class="portal-attachment-preview" disabled="@(!ready || opening || Disabled)"
+        aria-label="@($"Open {File.FileName} in a new tab")" title="Open in a new tab" @onclick="@OpenAsync">
+    <span class="portal-attachment-thumbnail" aria-hidden="true">
+        @if (thumbnailUrl is not null)
+        {
+            <img src="@thumbnailUrl" alt="" decoding="async" />
+        }
+        else
+        {
+            <RadzenIcon Icon="@FileIcon" />
+        }
+    </span>
+    <span class="portal-attachment-file">
+        <span class="portal-attachment-name">@File.FileName</span>
+        <span class="portal-attachment-size">@FileSize</span>
+    </span>
+</button>
+
+@code {
+    [Parameter, EditorRequired] public Guid FlightId { get; set; }
+    [Parameter, EditorRequired] public PortalAttachmentDraft File { get; set; } = default!;
+    [Parameter] public string? MediaPath { get; set; }
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<string> OnError { get; set; }
+
+    private AttachmentInterop? interop;
+    private Task? initialization;
+    private Task? openRequest;
+    private string? thumbnailUrl;
+    private bool ready;
+    private bool opening;
+    private bool disposed;
+
+    private string FileIcon => File.Kind switch
+    {
+        0 => "image",
+        1 => "mic",
+        _ => "picture_as_pdf"
+    };
+
+    private string FileSize => File.SizeBytes switch
+    {
+        >= 1024L * 1024 => $"{File.SizeBytes / (1024d * 1024):0.#} MB",
+        >= 1024 => $"{File.SizeBytes / 1024d:0.#} KB",
+        _ => $"{File.SizeBytes} B"
+    };
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Visible || interop is not null)
+            return Task.CompletedTask;
+
+        interop = new(JS);
+        initialization = InitializeAsync(interop);
+        return initialization;
+    }
+
+    private async Task InitializeAsync(AttachmentInterop browser)
+    {
+        try
+        {
+            await browser.InitializeAsync();
+            if (disposed)
+                return;
+
+            ready = true;
+            StateHasChanged();
+            if (File.Kind == 0)
+                thumbnailUrl = await CreateUrlAsync(browser);
+        }
+        catch (Exception ex) when (ex is ApiException or JSException)
+        {
+            // Keep the file icon if a thumbnail is unavailable. Opening the file can retry.
+        }
+        finally
+        {
+            if (!disposed)
+                StateHasChanged();
+        }
+    }
+
+    private Task OpenAsync()
+    {
+        if (!ready || opening || Disabled || interop is null)
+            return Task.CompletedTask;
+
+        opening = true;
+        openRequest = OpenAttachmentAsync(interop);
+        return openRequest;
+    }
+
+    private async Task OpenAttachmentAsync(AttachmentInterop browser)
+    {
+        try
+        {
+            if (!await browser.OpenAsync(() => CreateUrlAsync(browser)) && !disposed)
+                await OnError.InvokeAsync("Allow pop-ups for this portal to open the attachment in a new tab.");
+        }
+        catch (ApiException ex)
+        {
+            if (!disposed)
+                await OnError.InvokeAsync(ex.ToDisplayMessage("Could not open the attachment."));
+        }
+        catch (JSException)
+        {
+            if (!disposed)
+                await OnError.InvokeAsync("Could not open the attachment. Try again.");
+        }
+        finally
+        {
+            opening = false;
+        }
+    }
+
+    private Task<string> CreateUrlAsync(AttachmentInterop browser) => File.Bytes is { } bytes
+        ? browser.CreateUrlAsync(bytes, File.ContentType).AsTask()
+        : Operations.GetPortalFlightMediaPreviewUrlAsync(FlightId, MediaPath!);
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        if (interop is not { } browser)
+            return;
+
+        try
+        {
+            if (initialization is not null)
+                await initialization;
+            if (openRequest is not null)
+                await openRequest;
+            if (thumbnailUrl is not null)
+                await browser.RevokeAsync(thumbnailUrl);
+        }
+        catch (JSDisconnectedException) { }
+        finally
+        {
+            await browser.DisposeAsync();
+        }
+    }
+
+    private sealed class AttachmentInterop(IJSRuntime js) : IAsyncDisposable
+    {
+        private const string ModulePath = "./Features/Operations/Components/PortalWorkAttachmentPreview.razor.js";
+        private IJSObjectReference? module;
+
+        public async ValueTask InitializeAsync() =>
+            module = await js.InvokeAsync<IJSObjectReference>("import", ModulePath);
+
+        public ValueTask<string> CreateUrlAsync(byte[] bytes, string contentType) =>
+            module!.InvokeAsync<string>("createAttachmentUrl", bytes, contentType);
+
+        public ValueTask RevokeAsync(string url) => module!.InvokeVoidAsync("revokeAttachmentUrl", url);
+
+        public async Task<bool> OpenAsync(Func<Task<string>> createUrl)
+        {
+            await using var tab = await module!.InvokeAsync<IJSObjectReference?>("reserveAttachmentTab");
+            if (tab is null)
+                return false;
+
+            string? url = null;
+            try
+            {
+                url = await createUrl();
+                await tab.InvokeVoidAsync("show", url);
+                return true;
+            }
+            catch
+            {
+                if (url is not null)
+                    await RevokeAsync(url);
+                await tab.InvokeVoidAsync("close");
+                throw;
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                if (module is not null)
+                    await module.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+}

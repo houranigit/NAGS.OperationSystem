@@ -1,0 +1,61 @@
+.pcf-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-4);
+    max-width: 688px;
+    margin-inline: auto;
+}
+
+.pcf-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--os-space-4);
+}
+
+.pcf-heading {
+    display: grid;
+    grid-template-columns: auto auto minmax(1.5rem, 1fr);
+    align-items: center;
+    gap: var(--os-space-2);
+    margin: 0;
+    font-size: var(--os-text-base);
+    font-weight: 800;
+}
+
+.pcf-heading::after {
+    content: "";
+    background: var(--os-color-border);
+    height: 1px;
+}
+
+.pcf-heading ::deep .rzi {
+    color: var(--os-color-text-muted);
+}
+
+.pcf-fields ::deep label {
+    display: block;
+    margin-block-end: var(--os-space-1);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+}
+
+.pcf-fields ::deep .pcf-control {
+    width: 100%;
+}
+
+.pcf-date {
+    width: min(100%, 21rem);
+}
+
+.pcf-actions,
+.pcf-actions-end {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--os-space-2);
+}
+
+.pcf-actions {
+    justify-content: space-between;
+    padding-block-start: var(--os-space-2);
+}

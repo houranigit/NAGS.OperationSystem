@@ -75,10 +75,22 @@
                 </RadzenDataGridColumn>
             </Columns>
             <RowActions Context="flight">
-                <RowActionMenu>
-                    <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
-                               OnClick="@(() => OpenEditAsync(flight.Id))" />
-                </RowActionMenu>
+                @if (CanOperateFlights || Auth.HasPermission(OperationsPermissions.FlightsUpdate))
+                {
+                    <RowActionMenu>
+                        <ChildContent>
+                            <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
+                                       OnClick="@(() => OpenEditAsync(flight.Id))" />
+                        </ChildContent>
+                        <MenuContent>
+                            @if (CanOperateFlights)
+                            {
+                                <PortalFlightOperationsMenu @key="flight.Id" FlightId="@flight.Id"
+                                    ShowDivider="@Auth.HasPermission(OperationsPermissions.FlightsUpdate)" Changed="@ReloadAsync" />
+                            }
+                        </MenuContent>
+                    </RowActionMenu>
+                }
             </RowActions>
         </DataListCard>
     </div>
@@ -120,6 +132,9 @@
     private IReadOnlyList<StationFilterOption> stationOptions = [];
     private IReadOnlyList<CustomerFilterOption> customerOptions = [];
     private IReadOnlyList<OperationTypeFilterOption> operationTypeOptions = [];
+    private bool CanOperateFlights => Auth.User is { UserType: UserTypes.StationStaff, ExternalReferenceId: not null }
+        && Auth.HasPermission(OperationsPermissions.FlightsOperate);
+
     private int ActiveFilterCount =>
         (stationFilter.HasValue ? 1 : 0)
         + (customerFilter.HasValue ? 1 : 0)

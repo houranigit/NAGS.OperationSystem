@@ -10,18 +10,19 @@ using Operations.Domain.ValueObjects;
 
 namespace Operations.Application.Features.Flights;
 
-public sealed record GetMobileFlightTaskAttachmentQuery(Guid FlightId, Guid RecordId, Guid AttachmentId, DateTimeOffset ExpectedUploadedAt)
+public sealed record GetMobileFlightTaskAttachmentQuery(Guid FlightId, Guid RecordId, Guid AttachmentId, DateTimeOffset ExpectedUploadedAt, bool PortalOnly = false)
     : IQuery<FlightTaskAttachmentContent>;
 public sealed record FlightTaskAttachmentContent(Stream Content, string ContentType, string FileName);
 
-public sealed class GetMobileFlightTaskAttachmentQueryHandler(IOperationsDbContext db, IMobileFlightScope scope, IFileStorage storage)
+public sealed class GetMobileFlightTaskAttachmentQueryHandler(IOperationsDbContext db, IMobileFlightScope scope, IFileStorage storage,
+    PortalFlightScope? portalScope = null)
     : IQueryHandler<GetMobileFlightTaskAttachmentQuery, FlightTaskAttachmentContent>
 {
     public async Task<Result<FlightTaskAttachmentContent>> Handle(GetMobileFlightTaskAttachmentQuery request, CancellationToken cancellationToken)
     {
-        var actor = await scope.ResolveAsync(cancellationToken);
-        if (actor.IsFailure) return actor.Error;
-        var flight = await MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), actor.Value)
+        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, cancellationToken);
+        if (resolved.IsFailure) return resolved.Error;
+        var flight = await resolved.Value.Apply(db.Flights.AsNoTracking())
             .Include(f => f.TaskRecords).ThenInclude(s => s.Attachments)
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         var attachment = flight?.TaskRecords.SingleOrDefault(s => s.Id == request.RecordId)?.Attachments.SingleOrDefault(a => a.Id == request.AttachmentId);
