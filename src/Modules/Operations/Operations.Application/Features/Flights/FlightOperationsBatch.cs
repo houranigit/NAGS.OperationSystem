@@ -49,37 +49,46 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             return Error.Validation("The combined flight edit must contain at most 100 MB of new file content.",
                 "Operations.FlightBatch.InlineFilesTooLarge");
 
-        var resolvedScope = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, ct);
+        var resolvedScope = await FlightOperationAccess.ResolveCorrectionAsync(scope, portalScope, request.PortalOnly, ct);
         if (resolvedScope.IsFailure) return resolvedScope.Error;
-        var actor = resolvedScope.Value.Actor;
+        var access = resolvedScope.Value;
+        var actor = access.StaffActor;
+        var actorUserId = access.UserId;
+        var staffId = actor?.StaffMemberId;
         var flight = await FlightServiceWrites.Load(resolvedScope.Value.Apply(db.Flights)).SingleOrDefaultAsync(f => f.Id == request.FlightId, ct);
         if (flight is null) return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
         var station = await masterData.GetStationAsync(flight.Station.StationId, ct);
         if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
             return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
-        var assigned = flight.CanCorrectOperationalWork(actor.StaffMemberId);
-        var canAddWork = FlightSearchPolicy.CanAddWork(flight, actor.StaffMemberId);
+        var assigned = access.IsAdministratorView || flight.CanCorrectOperationalWork(staffId);
+        var canAddWork = actor is not null && FlightSearchPolicy.CanAddWork(flight, actor.StaffMemberId);
+        var isUnassigned = actor is not null && FlightSearchPolicy.IsUnassignedRegular(flight, actor.StaffMemberId);
+        if (access.IsAdministratorView &&
+            (input.Arrival is { TargetSubmissionId: null } || input.Departure is { TargetSubmissionId: null } ||
+             services.Any(change => change.Input is null || !flight.Services.Any(item => item.Id == change.RecordId)) ||
+             tasks.Any(change => change.Input is null || !flight.Tasks.Any(item => item.Id == change.RecordId))))
+            return FlightOperationAccess.ExistingRecordsOnly();
         if ((services.Count > 0 || tasks.Count > 0) && flight.CancellationSubmissions.Count > 0)
             return FlightServiceWrites.Cancellation();
-        if ((input.Arrival is not null || input.Departure is not null) &&
+        if (actor is not null && (input.Arrival is not null || input.Departure is not null) &&
             flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId))
             return Error.Conflict("Revert your cancellation before saving work details.", "Operations.Flight.OwnCancellationSubmitted");
 
-        var arrivalTargetResult = ArrivalTarget(flight, input.Arrival, actor, assigned);
+        var arrivalTargetResult = ArrivalTarget(flight, input.Arrival, staffId, assigned);
         if (arrivalTargetResult.IsFailure) return arrivalTargetResult.Error;
         var arrivalTarget = arrivalTargetResult.Value;
-        var departureTargetResult = DepartureTarget(flight, input.Departure, actor, assigned);
+        var departureTargetResult = DepartureTarget(flight, input.Departure, staffId, assigned);
         if (departureTargetResult.IsFailure) return departureTargetResult.Error;
         var departureTarget = departureTargetResult.Value;
-        if (input.Arrival is not null)
+        if (input.Arrival is not null && actor is not null)
         {
             var arrivalAccess = FlightSearchPolicy.Arrival(flight, actor.StaffMemberId, arrivalTarget);
             if (arrivalAccess.IsFailure) return arrivalAccess.Error;
         }
-        var arrivalMatches = input.Arrival is null || ArrivalMatches(arrivalTarget, input.Arrival, actor.StaffMemberId);
+        var arrivalMatches = input.Arrival is null || ArrivalMatches(arrivalTarget, input.Arrival, staffId);
         var departureShape = ValidateDeparture(input.Departure, departureTarget);
         if (departureShape.IsFailure) return departureShape.Error;
-        var departureMatches = input.Departure is null || await DepartureMatchesAsync(departureTarget, input.Departure, actor.StaffMemberId, ct);
+        var departureMatches = input.Departure is null || await DepartureMatchesAsync(departureTarget, input.Departure, staffId, ct);
         if (input.Arrival is { } arrival && (arrival.Ata == default || arrival.AircraftTypeId == Guid.Empty || string.IsNullOrWhiteSpace(arrival.AircraftTailNumber)))
             return Invalid("Arrival time, aircraft type and tail number are required.");
 
@@ -90,14 +99,14 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             if (existing?.ReturnToRampId is not null) return FlightServiceWrites.NotFound();
             if (change.Input is not { } service)
             {
-                if (request.PortalOnly && existing is not null && existing.CreatedByUserId != actor.UserId)
+                if (request.PortalOnly && existing is not null && existing.CreatedByUserId != actorUserId)
                     return FlightServiceWrites.PortalDeleteReadOnly();
                 if (existing is not null && !assigned &&
-                    (existing.CreatedByUserId != actor.UserId || existing.Window.ToUtc is not null && existing.EndedByUserId != actor.UserId))
+                    (existing.CreatedByUserId != actorUserId || existing.Window.ToUtc is not null && existing.EndedByUserId != actorUserId))
                     return Error.Forbidden("Only its creator or an assigned employee can delete this service.", "Operations.FlightService.DeleteReadOnly");
                 if (existing is not null)
                 {
-                    var eligibility = await resolver.EnsurePerformedServiceAllowedAsync(existing.Service.ServiceId, actor.StaffMemberId, flight.Station.StationId, ct);
+                    var eligibility = await resolver.EnsurePerformedServiceAllowedAsync(existing.Service.ServiceId, actor!.StaffMemberId, flight.Station.StationId, ct);
                     if (eligibility.IsFailure) return eligibility.Error;
                 }
                 preparedServices.Add(new(change, existing, existing is null));
@@ -117,20 +126,20 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             var coreMatches = existing is not null && SaveFlightServiceCommandHandler.CoreMatches(existing, service);
             var mediaMatches = existing is not null && await FlightServiceFiles.MatchesAsync(storage, existing, service.Attachments, ct);
             var matches = coreMatches && existing!.Window.ToUtc == service.EndUtc && mediaMatches;
-            var closureOnly = existing is not null && FlightSearchPolicy.IsUnassignedRegular(flight, actor.StaffMemberId) &&
+            var closureOnly = existing is not null && isUnassigned &&
                 FlightSearchPolicy.ServiceClosure(existing, service, mediaMatches);
-            if (!matches && existing is not null && FlightSearchPolicy.IsUnassignedRegular(flight, actor.StaffMemberId) &&
-                existing.CreatedByUserId != actor.UserId && !closureOnly) return FlightSearchPolicy.ClosureReadOnly();
-            if (!FlightSearchPolicy.BypassServiceAllowance(flight, actor, existing, service, matches, mediaMatches))
+            if (!matches && existing is not null && isUnassigned &&
+                existing.CreatedByUserId != actorUserId && !closureOnly) return FlightSearchPolicy.ClosureReadOnly();
+            if (actor is not null && !FlightSearchPolicy.BypassServiceAllowance(flight, actor, existing, service, matches, mediaMatches))
             {
                 var eligibility = await resolver.EnsurePerformedServiceAllowedAsync(service.ServiceId, actor.StaffMemberId, flight.Station.StationId, ct);
                 if (eligibility.IsFailure) return eligibility.Error;
             }
             if (existing is not null && !matches)
             {
-                if ((!coreMatches || !mediaMatches) && existing.CreatedByUserId != actor.UserId && !assigned && !closureOnly)
+                if ((!coreMatches || !mediaMatches) && existing.CreatedByUserId != actorUserId && !assigned && !closureOnly)
                     return Error.Forbidden("Only its creator or an assigned employee can change this service.", "Operations.FlightService.ReadOnly");
-                if (existing.Window.ToUtc != service.EndUtc && existing.Window.ToUtc is not null && existing.EndedByUserId != actor.UserId && !assigned)
+                if (existing.Window.ToUtc != service.EndUtc && existing.Window.ToUtc is not null && existing.EndedByUserId != actorUserId && !assigned)
                     return Error.Forbidden("Only its recorded closer or an assigned employee can change End.", "Operations.FlightService.EndReadOnly");
                 if (existing.Service.ServiceId != service.ServiceId && existing.HasOtherUserEnd && !assigned)
                     return Error.Forbidden("The selected service cannot change after another employee records End.", "Operations.FlightService.SelectionReadOnly");
@@ -146,10 +155,10 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             if (existing?.ReturnToRampId is not null) return FlightTaskWrites.NotFound();
             if (change.Input is not { } task)
             {
-                if (request.PortalOnly && existing is not null && existing.CreatedByUserId != actor.UserId)
+                if (request.PortalOnly && existing is not null && existing.CreatedByUserId != actorUserId)
                     return FlightTaskWrites.PortalDeleteReadOnly();
                 if (existing is not null && !assigned &&
-                    (existing.CreatedByUserId != actor.UserId || existing.Window.ToUtc is not null && existing.EndedByUserId != actor.UserId))
+                    (existing.CreatedByUserId != actorUserId || existing.Window.ToUtc is not null && existing.EndedByUserId != actorUserId))
                     return Error.Forbidden("Only its creator or an assigned employee can delete this task.", "Operations.FlightTask.DeleteReadOnly");
                 preparedTasks.Add(new(change, existing, existing is null));
                 continue;
@@ -168,31 +177,43 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             var coreMatches = existing is not null && FlightTaskInputs.CoreMatches(existing, task);
             var mediaMatches = existing is not null && await FlightTaskFiles.MatchesAsync(storage, existing, task.Attachments, ct);
             var matches = coreMatches && existing!.Window.ToUtc == task.EndUtc && mediaMatches;
-            var closureOnly = existing is not null && FlightSearchPolicy.IsUnassignedRegular(flight, actor.StaffMemberId) &&
+            var closureOnly = existing is not null && isUnassigned &&
                 FlightSearchPolicy.TaskClosure(existing, task, mediaMatches);
-            if (!matches && existing is not null && FlightSearchPolicy.IsUnassignedRegular(flight, actor.StaffMemberId) &&
-                existing.CreatedByUserId != actor.UserId && !closureOnly) return FlightSearchPolicy.ClosureReadOnly();
+            if (!matches && existing is not null && isUnassigned &&
+                existing.CreatedByUserId != actorUserId && !closureOnly) return FlightSearchPolicy.ClosureReadOnly();
             if (existing is not null && !matches)
             {
-                if ((!coreMatches || !mediaMatches) && existing.CreatedByUserId != actor.UserId && !assigned && !closureOnly)
+                if ((!coreMatches || !mediaMatches) && existing.CreatedByUserId != actorUserId && !assigned && !closureOnly)
                     return Error.Forbidden("Only its creator or an assigned employee can change this task.", "Operations.FlightTask.ReadOnly");
-                if (existing.Window.ToUtc != task.EndUtc && existing.Window.ToUtc is not null && existing.EndedByUserId != actor.UserId && !assigned)
+                if (existing.Window.ToUtc != task.EndUtc && existing.Window.ToUtc is not null && existing.EndedByUserId != actorUserId && !assigned)
                     return Error.Forbidden("Only its recorded closer or an assigned employee can change End.", "Operations.FlightTask.EndReadOnly");
             }
             preparedTasks.Add(new(change, existing, matches));
         }
-        var allowed = await resolver.AllowedServiceIdsForStaffAsync(actor.StaffMemberId, flight.Station.StationId, ct);
-        var allowedIds = allowed.IsSuccess ? allowed.Value : [];
+        IReadOnlyList<Guid> allowedIds = [];
+        if (actor is not null)
+        {
+            var allowed = await resolver.AllowedServiceIdsForStaffAsync(actor.StaffMemberId, flight.Station.StationId, ct);
+            if (allowed.IsSuccess) allowedIds = allowed.Value;
+        }
         var names = await FlightWorkAttribution.NamesAsync(userNames,
-            FlightWorkAttribution.UserIds(flight).Append(actor.UserId), ct);
-        FlightDetailDto Response() => FlightDetails.MapOperational(flight, station.TimeZoneId, actor, true, allowedIds, names, request.PortalOnly);
+            FlightWorkAttribution.UserIds(flight).Append(actorUserId), ct);
+        FlightDetailDto Response() => actor is null
+            ? FlightDetails.MapAdministrator(flight, station.TimeZoneId, names, canCorrect: true)
+            : FlightDetails.MapOperational(flight, station.TimeZoneId, actor, true, allowedIds, names, request.PortalOnly);
         // Recover only a complete prior success. Never acknowledge individual members of a stale batch.
         if (arrivalMatches && departureMatches && preparedServices.All(item => item.Matches) && preparedTasks.All(item => item.Matches))
             return Response();
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
+        if (access.IsAdministratorView &&
+            (preparedServices.Any(edit => edit.Existing is { } saved && edit.Change.Input is { } desired &&
+                !PortalFlightRecordCorrections.RetainsSavedDetails(saved, desired)) ||
+             preparedTasks.Any(edit => edit.Existing is { } saved && edit.Change.Input is { } desired &&
+                !PortalFlightRecordCorrections.RetainsSavedDetails(saved, desired))))
+            return PortalFlightRecordCorrections.SavedDetailsRemovalForbidden();
         if ((!arrivalMatches && input.Arrival?.AcknowledgeConflictingSubmission != true ||
             !departureMatches && input.Departure?.AcknowledgeConflictingSubmission != true) &&
-            flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId != actor.StaffMemberId))
+            flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId != staffId))
             return Error.Conflict("Another employee reported this flight as canceled. Confirm before saving work details.",
                 "Operations.Flight.CancellationConfirmationRequired");
         var identityCheck = await ValidateIdentitiesAsync(flight.Id, preparedServices, preparedTasks, ct);
@@ -209,7 +230,9 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
         {
             var edit = preparedServices[index];
             if (edit.Matches || edit.Change.Input is not { } service) continue;
-            var snapshots = edit.ClosureOnly ? Result.Success<IReadOnlyList<ServiceSnapshot>>([edit.Existing!.Service])
+            var keepService = edit.Existing is not null && edit.Existing.Service.ServiceId == service.ServiceId;
+            var snapshots = edit.ClosureOnly || access.IsAdministratorView && keepService
+                ? Result.Success<IReadOnlyList<ServiceSnapshot>>([edit.Existing!.Service])
                 : await resolver.ServicesAsync([service.ServiceId], ct);
             if (snapshots.IsFailure) return snapshots.Error;
             var window = TimeWindow.Create(service.StartUtc, service.EndUtc);
@@ -226,7 +249,7 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
                 var retained = edit.Existing?.Performers.SingleOrDefault(old => old.Id == person.Id && old.Employee.StaffMemberId == person.StaffMemberId);
                 performers.Add(new(retained?.Employee ?? staff.Value.Single(item => item.StaffMemberId == person.StaffMemberId), period.Value, person.Id));
             }
-            var snapshot = edit.Existing is not null && edit.Existing.CreatedByUserId != actor.UserId && edit.Existing.Service.ServiceId == service.ServiceId
+            var snapshot = keepService && edit.Existing!.CreatedByUserId != actorUserId
                 ? edit.Existing.Service : snapshots.Value.Single();
             preparedServices[index] = edit with { Snapshot = snapshot, Window = window.Value, Performers = performers };
         }
@@ -241,7 +264,7 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
         StaffMemberSnapshot? employee = null;
         ArrivalDetails? arrivalDetails = null;
         DepartureDetails? departureDetails = null;
-        if (!arrivalMatches || !departureMatches)
+        if (actor is not null && (!arrivalMatches || !departureMatches))
         {
             var staff = await resolver.StaffMembersForStationAsync([actor.StaffMemberId], flight.Station.StationId, ct);
             if (staff.IsFailure) return staff.Error;
@@ -249,11 +272,16 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
         }
         if (!arrivalMatches && input.Arrival is { } arrivalInput)
         {
-            var aircraft = await resolver.AircraftTypeAsync(arrivalInput.AircraftTypeId, ct);
-            if (aircraft.IsFailure) return aircraft.Error;
-            var details = ArrivalDetails.Create(arrivalInput.CustomerWorkReferenceNumber, arrivalInput.Ata, aircraft.Value,
+            var aircraft = arrivalTarget?.Details.AircraftType;
+            if (!access.IsAdministratorView || aircraft?.AircraftTypeId != arrivalInput.AircraftTypeId)
+            {
+                var resolvedAircraft = await resolver.AircraftTypeAsync(arrivalInput.AircraftTypeId, ct);
+                if (resolvedAircraft.IsFailure) return resolvedAircraft.Error;
+                aircraft = resolvedAircraft.Value;
+            }
+            var details = ArrivalDetails.Create(arrivalInput.CustomerWorkReferenceNumber, arrivalInput.Ata, aircraft,
                 arrivalInput.AircraftTailNumber,
-                arrivalTarget is not null && arrivalTarget.SubmittedByEmployee.StaffMemberId != actor.StaffMemberId
+                arrivalTarget is not null && arrivalTarget.SubmittedByEmployee.StaffMemberId != staffId
                     ? arrivalTarget.Details.ReceivedByEmployee : employee, arrivalInput.Remarks);
             if (details.IsFailure) return details.Error;
             arrivalDetails = details.Value;
@@ -270,7 +298,7 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
                 signature = value.Value;
             }
             var details = DepartureDetails.Create(departureInput.Atd, signature,
-                departureTarget is not null && departureTarget.SubmittedByEmployee.StaffMemberId != actor.StaffMemberId
+                departureTarget is not null && departureTarget.SubmittedByEmployee.StaffMemberId != staffId
                     ? departureTarget.Details.HandledByEmployee : employee, departureInput.Remarks);
             if (details.IsFailure) return details.Error;
             departureDetails = details.Value;
@@ -284,13 +312,13 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
         FlightDepartureSubmission? savedDeparture = null;
         if (arrivalDetails is not null)
         {
-            var saved = flight.SubmitArrival(employee, arrivalDetails, actor.UserId, now, arrivalTarget?.Id);
+            var saved = flight.SubmitArrival(employee ?? arrivalTarget?.SubmittedByEmployee, arrivalDetails, actorUserId, now, arrivalTarget?.Id);
             if (saved.IsFailure) return saved.Error;
             savedArrival = saved.Value;
         }
         if (departureDetails is not null)
         {
-            var saved = flight.SubmitDeparture(employee, departureDetails, actor.UserId, now, departureTarget?.Id);
+            var saved = flight.SubmitDeparture(employee ?? departureTarget?.SubmittedByEmployee, departureDetails, actorUserId, now, departureTarget?.Id);
             if (saved.IsFailure) return saved.Error;
             savedDeparture = saved.Value;
         }
@@ -300,13 +328,14 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             if (edit.Change.Input is not { } service)
             {
                 removedKeys.AddRange(edit.Existing!.Attachments.Select(item => item.Details.StorageKey));
-                var removed = flight.RemoveService(edit.Change.RecordId, actor.UserId, now, assignedEditorStaffMemberId: assigned ? actor.StaffMemberId : null);
+                var removed = flight.RemoveService(edit.Change.RecordId, actorUserId, now, assignedEditorStaffMemberId: assigned ? staffId : null);
                 if (removed.IsFailure) return removed.Error;
             }
             else
             {
                 var saved = flight.SaveService(edit.Change.RecordId, edit.Snapshot, service.CustomerReferenceNumber, edit.Window,
-                    service.Notes, edit.Performers!, actor.UserId, now, assigned ? actor.StaffMemberId : null);
+                    service.Notes, edit.Performers!, actorUserId, now, assigned ? staffId : null,
+                    existingCorrectionOnly: access.IsAdministratorView);
                 if (saved.IsFailure) return saved.Error;
             }
         }
@@ -315,14 +344,14 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             if (edit.Change.Input is not { } task)
             {
                 removedKeys.AddRange(edit.Existing!.Attachments.Select(item => item.Details.StorageKey));
-                var removed = flight.RemoveTask(edit.Change.RecordId, actor.UserId, now, assignedEditorStaffMemberId: assigned ? actor.StaffMemberId : null);
+                var removed = flight.RemoveTask(edit.Change.RecordId, actorUserId, now, assignedEditorStaffMemberId: assigned ? staffId : null);
                 if (removed.IsFailure) return removed.Error;
             }
             else
             {
                 var value = edit.Resolved!;
                 var saved = flight.SaveTask(edit.Change.RecordId, (FlightTaskType)task.TaskType, value.AtaChapter, task.CustomerReferenceNumber,
-                    value.Window, task.Notes, value.Performers, value.Tools, value.Materials, value.GeneralSupports, actor.UserId, now);
+                    value.Window, task.Notes, value.Performers, value.Tools, value.Materials, value.GeneralSupports, actorUserId, now);
                 if (saved.IsFailure) return saved.Error;
             }
         }
@@ -330,9 +359,9 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
         if (preparedServices.Any(item => !item.Matches && item.Change.Input is not null) ||
             preparedTasks.Any(item => !item.Matches && item.Change.Input is not null))
         {
-            var arrivalRequired = FlightActualRules.RequireArrival(flight, actor.StaffMemberId);
+            var arrivalRequired = FlightActualRules.RequireArrival(flight, staffId);
             if (arrivalRequired.IsFailure) return arrivalRequired.Error;
-            var chronology = FlightActualRules.Chronology(flight, actor.StaffMemberId);
+            var chronology = FlightActualRules.Chronology(flight, staffId);
             if (chronology.IsFailure) return chronology.Error;
         }
         if (departureDetails is not null)
@@ -353,36 +382,36 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
         if (overlaps.IsFailure) return overlaps.Error;
         foreach (var edit in preparedServices.Where(item => !item.Matches && item.Change.Input is not null))
         {
-            var bounds = FlightServiceBounds.Validate(flight, edit.Change.Input!, actor.StaffMemberId);
+            var bounds = FlightServiceBounds.Validate(flight, edit.Change.Input!, staffId);
             if (bounds.IsFailure) return bounds.Error;
-            var completion = FlightServiceBounds.RequireCompletedIfDeparted(flight, edit.Change.Input!, actor.StaffMemberId);
+            var completion = FlightServiceBounds.RequireCompletedIfDeparted(flight, edit.Change.Input!, staffId);
             if (completion.IsFailure) return completion.Error;
             var closed = FlightServiceBounds.RequireClosedPerformers(edit.Change.Input!);
             if (closed.IsFailure) return closed.Error;
         }
         foreach (var edit in preparedTasks.Where(item => !item.Matches && item.Change.Input is not null))
         {
-            var bounds = FlightTaskBounds.Validate(flight, edit.Change.Input!, actor.StaffMemberId);
+            var bounds = FlightTaskBounds.Validate(flight, edit.Change.Input!, staffId);
             if (bounds.IsFailure) return bounds.Error;
-            var completion = FlightTaskBounds.RequireCompletedIfDeparted(flight, edit.Change.Input!, actor.StaffMemberId);
+            var completion = FlightTaskBounds.RequireCompletedIfDeparted(flight, edit.Change.Input!, staffId);
             if (completion.IsFailure) return completion.Error;
             var closed = FlightTaskBounds.RequireClosedPeriods(edit.Change.Input!);
             if (closed.IsFailure) return closed.Error;
         }
         if (arrivalTimeChanged)
         {
-            var staffId = savedArrival!.SubmittedByEmployee.StaffMemberId;
-            var bounds = FlightServiceBounds.ValidateExistingServices(flight, staffId, arrivalOverride: arrivalDetails!.Ata);
+            var submittedBy = savedArrival!.SubmittedByEmployee.StaffMemberId;
+            var bounds = FlightServiceBounds.ValidateExistingServices(flight, submittedBy, arrivalOverride: arrivalDetails!.Ata);
             if (bounds.IsFailure) return bounds.Error;
-            var taskBounds = FlightTaskBounds.ValidateExistingTasks(flight, staffId, arrivalOverride: arrivalDetails.Ata);
+            var taskBounds = FlightTaskBounds.ValidateExistingTasks(flight, submittedBy, arrivalOverride: arrivalDetails.Ata);
             if (taskBounds.IsFailure) return taskBounds.Error;
         }
         if (departureTimeChanged)
         {
-            var staffId = savedDeparture!.SubmittedByEmployee.StaffMemberId;
-            var bounds = FlightServiceBounds.ValidateExistingServices(flight, staffId, departureOverride: departureDetails!.Atd);
+            var submittedBy = savedDeparture!.SubmittedByEmployee.StaffMemberId;
+            var bounds = FlightServiceBounds.ValidateExistingServices(flight, submittedBy, departureOverride: departureDetails!.Atd);
             if (bounds.IsFailure) return bounds.Error;
-            var taskBounds = FlightTaskBounds.ValidateExistingTasks(flight, staffId, departureOverride: departureDetails.Atd);
+            var taskBounds = FlightTaskBounds.ValidateExistingTasks(flight, submittedBy, departureOverride: departureDetails.Atd);
             if (taskBounds.IsFailure) return taskBounds.Error;
         }
         if (departureDetails is not null)
@@ -398,12 +427,12 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
         {
             foreach (var edit in preparedServices.Where(item => !item.Matches && item.Change.Input?.Attachments is not null))
             {
-                var files = await ApplyServiceFilesAsync(flight, edit.Change.RecordId, edit.Change.Input!.Attachments!, actor.UserId, now, createdKeys, removedKeys, ct);
+                var files = await ApplyServiceFilesAsync(flight, edit.Change.RecordId, edit.Change.Input!.Attachments!, actorUserId, now, createdKeys, removedKeys, ct);
                 if (files.IsFailure) return files.Error;
             }
             foreach (var edit in preparedTasks.Where(item => !item.Matches && item.Change.Input?.Attachments is not null))
             {
-                var files = await ApplyTaskFilesAsync(flight, edit.Change.RecordId, edit.Change.Input!.Attachments!, actor.UserId, now, createdKeys, removedKeys, ct);
+                var files = await ApplyTaskFilesAsync(flight, edit.Change.RecordId, edit.Change.Input!.Attachments!, actorUserId, now, createdKeys, removedKeys, ct);
                 if (files.IsFailure) return files.Error;
             }
             if (savedDeparture is not null && input.Departure?.SignatureContent is { } signatureBytes)
@@ -415,21 +444,21 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
                 if (signature.IsFailure) return signature.Error;
                 var details = DepartureDetails.Create(departureDetails!.Atd, signature.Value, departureDetails.HandledByEmployee, departureDetails.Remarks);
                 if (details.IsFailure) return details.Error;
-                var updated = flight.SubmitDeparture(employee, details.Value, actor.UserId, now, savedDeparture.Id);
+                var updated = flight.SubmitDeparture(employee ?? savedDeparture.SubmittedByEmployee, details.Value, actorUserId, now, savedDeparture.Id);
                 if (updated.IsFailure) return updated.Error;
                 if (previousSignatureKey is not null) removedKeys.Add(previousSignatureKey);
             }
             void Notify(Guid id, Guid creator, global::Operations.Contracts.FlightSubmissionKind kind,
                 Guid? submittedStaffId = null, bool deleted = false)
             {
-                if (creator == actor.UserId) return;
+                if (creator == actorUserId) return;
                 db.Enqueue(new global::Operations.Contracts.FlightSubmissionUpdated
                 {
                     FlightId = flight.Id, FlightNumber = flight.FlightNumber.Value, SubmissionId = id,
                     SubmissionKind = kind, Action = deleted ? global::Operations.Contracts.FlightSubmissionAction.Deleted : global::Operations.Contracts.FlightSubmissionAction.Updated,
                     SubmittedByStaffMemberId = submittedStaffId, SubmittedByUserId = creator,
-                    UpdatedByStaffMemberId = actor.StaffMemberId, UpdatedByUserId = actor.UserId,
-                    UpdatedByDisplayName = names.GetValueOrDefault(actor.UserId) ?? "", OccurredOnUtc = now
+                    UpdatedByStaffMemberId = staffId, UpdatedByUserId = actorUserId,
+                    UpdatedByDisplayName = names.GetValueOrDefault(actorUserId) ?? "", OccurredOnUtc = now
                 });
             }
             if (savedArrival is not null && arrivalTarget is not null)
@@ -441,7 +470,8 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             foreach (var edit in preparedTasks.Where(item => !item.Matches && item.Existing is not null))
                 Notify(edit.Change.RecordId, edit.Existing!.CreatedByUserId, global::Operations.Contracts.FlightSubmissionKind.Task, deleted: edit.Change.Input is null);
             db.SetOriginalRowVersion(flight, request.RowVersion);
-            await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), ct, recordSearch: !request.PortalOnly);
+            if (actor is not null)
+                await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), ct, recordSearch: !request.PortalOnly);
             try { await db.SaveChangesAsync(ct); }
             catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
             catch (DbUpdateException)
@@ -461,37 +491,37 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
         }
     }
 
-    private static Result<FlightArrivalSubmission?> ArrivalTarget(Flight flight, SaveFlightArrivalRequest? input, MobileFlightScopeContext actor, bool assigned)
+    private static Result<FlightArrivalSubmission?> ArrivalTarget(Flight flight, SaveFlightArrivalRequest? input, Guid? staffId, bool assigned)
     {
         if (input is null) return Result.Success<FlightArrivalSubmission?>(null);
         if (input.TargetSubmissionId == Guid.Empty) return Invalid("Target arrival submission is required.");
         var target = input.TargetSubmissionId is { } id ? flight.ArrivalSubmissions.SingleOrDefault(item => item.Id == id)
-            : flight.ArrivalSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
+            : flight.ArrivalSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == staffId);
         if (input.TargetSubmissionId.HasValue && target is null) return Error.NotFound("Arrival submission not found.", "Operations.ArrivalSubmission.NotFound");
         if (target is null && flight.ArrivalSubmissions.Count == 1) target = flight.ArrivalSubmissions.Single();
         if (target is null && flight.ArrivalSubmissions.Count > 1)
             return Error.Conflict("Select the arrival submission to update.", "Operations.ArrivalSubmission.TargetRequired");
-        if (target is not null && target.SubmittedByEmployee.StaffMemberId != actor.StaffMemberId && !assigned)
+        if (target is not null && target.SubmittedByEmployee.StaffMemberId != staffId && !assigned)
             return Error.Forbidden("Only assigned employees can update another employee's arrival.", "Operations.ArrivalSubmission.AssignmentRequired");
         return Result.Success(target);
     }
 
-    private static Result<FlightDepartureSubmission?> DepartureTarget(Flight flight, SaveFlightDepartureRequest? input, MobileFlightScopeContext actor, bool assigned)
+    private static Result<FlightDepartureSubmission?> DepartureTarget(Flight flight, SaveFlightDepartureRequest? input, Guid? staffId, bool assigned)
     {
         if (input is null) return Result.Success<FlightDepartureSubmission?>(null);
         if (input.TargetSubmissionId == Guid.Empty) return Invalid("Target departure submission is required.");
         var target = input.TargetSubmissionId is { } id ? flight.DepartureSubmissions.SingleOrDefault(item => item.Id == id)
-            : flight.DepartureSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
+            : flight.DepartureSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == staffId);
         if (input.TargetSubmissionId.HasValue && target is null) return Error.NotFound("Departure submission not found.", "Operations.DepartureSubmission.NotFound");
         if (target is null && flight.DepartureSubmissions.Count == 1) target = flight.DepartureSubmissions.Single();
         if (target is null && flight.DepartureSubmissions.Count > 1)
             return Error.Conflict("Select the departure submission to update.", "Operations.DepartureSubmission.TargetRequired");
-        if (target is not null && target.SubmittedByEmployee.StaffMemberId != actor.StaffMemberId && !assigned)
+        if (target is not null && target.SubmittedByEmployee.StaffMemberId != staffId && !assigned)
             return Error.Forbidden("Only assigned employees can update another employee's departure.", "Operations.DepartureSubmission.AssignmentRequired");
         return Result.Success(target);
     }
 
-    private static bool ArrivalMatches(FlightArrivalSubmission? existing, SaveFlightArrivalRequest input, Guid staffId) => existing is not null &&
+    private static bool ArrivalMatches(FlightArrivalSubmission? existing, SaveFlightArrivalRequest input, Guid? staffId) => existing is not null &&
         existing.Details.Ata == input.Ata && existing.Details.AircraftType.AircraftTypeId == input.AircraftTypeId &&
         IdentifiersMatch(existing.Details.AircraftTailNumber, input.AircraftTailNumber) &&
         IdentifiersMatch(existing.Details.CustomerWorkReferenceNumber, input.CustomerWorkReferenceNumber) && existing.Details.Remarks == Normalize(input.Remarks) &&
@@ -513,7 +543,7 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
         return Result.Success();
     }
 
-    private async Task<bool> DepartureMatchesAsync(FlightDepartureSubmission? existing, SaveFlightDepartureRequest input, Guid staffId, CancellationToken ct)
+    private async Task<bool> DepartureMatchesAsync(FlightDepartureSubmission? existing, SaveFlightDepartureRequest input, Guid? staffId, CancellationToken ct)
     {
         if (existing is null || existing.Details.Atd != input.Atd || existing.Details.Remarks != Normalize(input.Remarks) ||
             existing.SubmittedByEmployee.StaffMemberId == staffId && existing.Details.HandledByEmployee.StaffMemberId != staffId) return false;

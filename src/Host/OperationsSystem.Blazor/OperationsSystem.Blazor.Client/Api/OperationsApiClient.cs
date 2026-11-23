@@ -43,6 +43,10 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         CancellationToken ct = default) =>
         api.PutAsync($"{PortalOperationsPath(id)}/cancellation", request, rowVersion, ct);
 
+    public Task UpdatePortalCancellationAsync(Guid id, Guid submissionId, PortalFlightCancellationRequest request,
+        string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync($"{PortalOperationsPath(id)}/cancellation/{submissionId}", request, rowVersion, ct);
+
     public Task UndoPortalCancellationAsync(Guid id, Guid submissionId, string rowVersion, CancellationToken ct = default) =>
         api.DeleteAsync($"{PortalOperationsPath(id)}/cancellation/{submissionId}", rowVersion, ct);
 

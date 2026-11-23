@@ -91,6 +91,9 @@
 
     private async Task SetRemoveSavedAsync(bool remove)
     {
+        if (remove && (Disabled || !CanRemove))
+            return;
+
         Draft.RemoveSaved = remove;
         await Changed.InvokeAsync();
     }

@@ -141,6 +141,27 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
 
 internal static class FlightDetails
 {
+    internal static FlightDetailDto MapAdministrator(Flight flight, string stationTimeZoneId,
+        IReadOnlyDictionary<Guid, string> names, bool canCorrect)
+    {
+        var canCorrectWork = canCorrect && flight.CancellationSubmissions.Count == 0;
+        return Map(flight, stationTimeZoneId,
+            canSaveArrival: canCorrect && flight.ArrivalSubmissions.Count > 0,
+            canSaveDeparture: canCorrect && flight.DepartureSubmissions.Count > 0,
+            canSaveCancellation: canCorrect && flight.CancellationSubmissions.Count > 0,
+            canSaveServices: canCorrectWork && flight.Services.Count > 0,
+            allowedServiceIds: canCorrectWork ? flight.ServiceRecords.Select(item => item.Service.ServiceId).Distinct().ToArray() : null,
+            canSaveTasks: canCorrectWork,
+            assignedWorkCorrection: canCorrectWork,
+            userDisplayNames: names, creatorOnlyWorkDelete: true) with
+        {
+            CanAddServices = false,
+            CanAddTasks = false,
+            CanSaveTasks = canCorrectWork && flight.Tasks.Count > 0,
+            CanSaveReturnsToRamp = false
+        };
+    }
+
     internal static FlightDetailDto MapOperational(Flight flight, string stationTimeZoneId, MobileFlightScopeContext actor,
         bool canOperate, IReadOnlyList<Guid> allowedServiceIds, IReadOnlyDictionary<Guid, string> names, bool portalOnly)
     {

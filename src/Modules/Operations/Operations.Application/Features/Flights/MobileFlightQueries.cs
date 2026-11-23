@@ -114,7 +114,8 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
         var names = await FlightWorkAttribution.NamesAsync(userNames,
             FlightWorkAttribution.UserIds(flight), cancellationToken);
         if (resolved.Value.IsAdministratorView)
-            return FlightDetails.Map(flight, station.TimeZoneId, userDisplayNames: names);
+            return FlightDetails.MapAdministrator(flight, station.TimeZoneId, names,
+                canCorrect: user?.HasPermission(OperationsPermissions.Flights.Operate) == true);
 
         var actor = resolved.Value.Actor;
         var canOperate = portalOnly || user?.HasPermission(OperationsPermissions.Flights.Operate) == true;

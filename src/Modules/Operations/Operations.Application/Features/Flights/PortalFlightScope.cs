@@ -14,15 +14,20 @@ public sealed class PortalFlightScope(IOperationsScope scope, IUserContext user,
         if (user.UserType != UserType.SystemAdministrator)
             return await ResolveAsync(cancellationToken);
 
-        if (!user.HasPermission(OperationsPermissions.Flights.View) || user.UserId is null)
+        if (!user.HasPermission(OperationsPermissions.Flights.View) || user.UserId is not { } userId)
             return Denied();
 
         var resolved = await scope.ResolveAsync(cancellationToken);
         if (resolved.IsFailure)
             return resolved.Error;
 
-        return resolved.Value.IsAdministrator ? new FlightOperationAccess(null, resolved.Value) : Denied();
+        return resolved.Value.IsAdministrator ? new FlightOperationAccess(null, resolved.Value, userId) : Denied();
     }
+
+    internal Task<Result<FlightOperationAccess>> ResolveCorrectionAsync(CancellationToken cancellationToken) =>
+        user.UserType == UserType.SystemAdministrator && user.HasPermission(OperationsPermissions.Flights.Operate)
+            ? ResolveReadAsync(cancellationToken)
+            : ResolveAsync(cancellationToken);
 
     internal async Task<Result<FlightOperationAccess>> ResolveAsync(CancellationToken cancellationToken)
     {
@@ -43,10 +48,12 @@ public sealed class PortalFlightScope(IOperationsScope scope, IUserContext user,
         "Operations.Portal.FlightOperationsForbidden");
 }
 
-internal sealed record FlightOperationAccess(MobileFlightScopeContext? StaffActor, OperationsScopeContext? PortalScope = null)
+internal sealed record FlightOperationAccess(MobileFlightScopeContext? StaffActor, OperationsScopeContext? PortalScope = null,
+    Guid? AdministratorUserId = null)
 {
     internal bool IsAdministratorView => PortalScope?.IsAdministrator == true;
     internal MobileFlightScopeContext Actor => StaffActor ?? throw new InvalidOperationException("An employee is required for flight operations.");
+    internal Guid UserId => AdministratorUserId ?? Actor.UserId;
 
     internal IQueryable<Flight> Apply(IQueryable<Flight> flights) => PortalScope is { } portal
         ? FlightListQuery.ApplyPortalVisibility(flights, portal)
@@ -57,6 +64,16 @@ internal sealed record FlightOperationAccess(MobileFlightScopeContext? StaffActo
         portalOnly && portalScope is not null
             ? portalScope.ResolveReadAsync(cancellationToken)
             : ResolveAsync(mobileScope, portalScope, portalOnly, cancellationToken);
+
+    internal static Task<Result<FlightOperationAccess>> ResolveCorrectionAsync(IMobileFlightScope mobileScope,
+        PortalFlightScope? portalScope, bool portalOnly, CancellationToken cancellationToken) =>
+        portalOnly && portalScope is not null
+            ? portalScope.ResolveCorrectionAsync(cancellationToken)
+            : ResolveAsync(mobileScope, portalScope, portalOnly, cancellationToken);
+
+    internal static Error ExistingRecordsOnly() => Error.Forbidden(
+        "System administrators can only update existing flight operation records.",
+        "Operations.Portal.ExistingRecordsOnly");
 
     internal static async Task<Result<FlightOperationAccess>> ResolveAsync(IMobileFlightScope mobileScope,
         PortalFlightScope? portalScope, bool portalOnly, CancellationToken cancellationToken)

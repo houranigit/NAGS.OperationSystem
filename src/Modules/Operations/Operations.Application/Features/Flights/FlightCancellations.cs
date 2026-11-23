@@ -12,7 +12,8 @@ using Operations.Domain.ValueObjects;
 
 namespace Operations.Application.Features.Flights;
 
-public sealed record SaveFlightCancellationCommand(Guid FlightId, SaveFlightCancellationRequest Cancellation, byte[] RowVersion, bool PortalOnly = false)
+public sealed record SaveFlightCancellationCommand(Guid FlightId, SaveFlightCancellationRequest Cancellation, byte[] RowVersion,
+    bool PortalOnly = false, Guid? TargetSubmissionId = null)
     : ICommand<FlightCancellationSavedDto>;
 
 public sealed class SaveFlightCancellationCommandValidator : AbstractValidator<SaveFlightCancellationCommand>
@@ -36,19 +37,26 @@ public sealed class SaveFlightCancellationCommandHandler(
 {
     public async Task<Result<FlightCancellationSavedDto>> Handle(SaveFlightCancellationCommand request, CancellationToken cancellationToken)
     {
-        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, cancellationToken);
+        var targetedCorrection = request.PortalOnly && request.TargetSubmissionId.HasValue;
+        var resolved = targetedCorrection
+            ? await FlightOperationAccess.ResolveCorrectionAsync(scope, portalScope, request.PortalOnly, cancellationToken)
+            : await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, cancellationToken);
         if (resolved.IsFailure) return resolved.Error;
-        var actor = resolved.Value.Actor;
+        if (targetedCorrection && !resolved.Value.IsAdministratorView) return PortalFlightScope.Denied();
+        var actor = resolved.Value.StaffActor;
         var flight = await FlightServiceWrites.Load(resolved.Value.Apply(db.Flights))
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         if (flight is null) return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
-        if (flight.ArrivalSubmissions.Any(a => a.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId) ||
-            flight.DepartureSubmissions.Any(d => d.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId))
+        var own = targetedCorrection
+            ? flight.CancellationSubmissions.SingleOrDefault(c => c.Id == request.TargetSubmissionId)
+            : flight.CancellationSubmissions.SingleOrDefault(c => c.SubmittedByEmployee.StaffMemberId == actor!.StaffMemberId);
+        if (targetedCorrection && own is null)
+            return Error.NotFound("Cancellation submission not found.", "Operations.CancellationSubmission.NotFound");
+        if (actor is not null && (flight.ArrivalSubmissions.Any(a => a.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId) ||
+            flight.DepartureSubmissions.Any(d => d.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId)))
             return Error.Conflict("You already submitted work details for this flight and cannot submit cancellation.",
                 "Operations.Flight.OwnWorkSubmitted");
-        var own = flight.CancellationSubmissions.SingleOrDefault(c => c.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
-        if (FlightSearchPolicy.IsUnassignedRegular(flight, actor.StaffMemberId) &&
-            !flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId))
+        if (actor is not null && own is null && FlightSearchPolicy.IsUnassignedRegular(flight, actor.StaffMemberId))
             return Error.Forbidden("Cancellation is read-only on this unassigned flight.", "Operations.Search.CancellationReadOnly");
         var input = request.Cancellation;
         var details = CancellationDetails.Create(input.CanceledAtUtc, input.Remarks);
@@ -61,12 +69,18 @@ public sealed class SaveFlightCancellationCommandHandler(
             !input.AcknowledgeConflictingSubmission)
             return Error.Conflict("Another employee reported arrival or departure for this flight. Confirm before saving cancellation.",
                 "Operations.Flight.WorkConfirmationRequired");
-        var staff = await resolver.StaffMembersForStationAsync([actor.StaffMemberId], flight.Station.StationId, cancellationToken);
-        if (staff.IsFailure) return staff.Error;
+        var submitter = own?.SubmittedByEmployee;
+        if (actor is not null)
+        {
+            var staff = await resolver.StaffMembersForStationAsync([actor.StaffMemberId], flight.Station.StationId, cancellationToken);
+            if (staff.IsFailure) return staff.Error;
+            submitter = staff.Value.Single();
+        }
         db.SetOriginalRowVersion(flight, request.RowVersion);
-        var submitted = flight.SubmitCancellation(staff.Value.Single(), details.Value, actor.UserId, clock.GetUtcNow());
+        var submitted = flight.SubmitCancellation(submitter, details.Value, resolved.Value.UserId, clock.GetUtcNow());
         if (submitted.IsFailure) return submitted.Error;
-        await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), cancellationToken, recordSearch: !request.PortalOnly);
+        if (actor is not null)
+            await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), cancellationToken, recordSearch: !request.PortalOnly);
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
         catch (DbUpdateException) when (own is null)

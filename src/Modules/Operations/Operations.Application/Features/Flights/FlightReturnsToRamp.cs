@@ -32,26 +32,44 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
             input.Tasks.Any(t => t is null || t.RecordId == Guid.Empty || t.Input is null) ||
             input.Services.Select(s => s.RecordId).Distinct().Count() != input.Services.Count || input.Tasks.Select(t => t.RecordId).Distinct().Count() != input.Tasks.Count)
             return Invalid("An identified RTR, arrival, current version and complete work lists are required.");
-        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, ct);
+        var resolved = await FlightOperationAccess.ResolveCorrectionAsync(scope, portalScope, request.PortalOnly, ct);
         if (resolved.IsFailure) return resolved.Error;
-        var actor = resolved.Value.Actor;
-        var flight = await FlightServiceWrites.Load(resolved.Value.Apply(db.Flights)).SingleOrDefaultAsync(f => f.Id == request.FlightId, ct);
+        var access = resolved.Value;
+        var isAdministrator = access.IsAdministratorView;
+        var userId = access.UserId;
+        var flight = await FlightServiceWrites.Load(access.Apply(db.Flights)).SingleOrDefaultAsync(f => f.Id == request.FlightId, ct);
         if (flight is null) return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
-        if (flight.CancellationSubmissions.Count > 0) return FlightServiceWrites.Cancellation();
-        if (flight.DepartureSubmissions.Count == 0)
-            return Error.Conflict("Record flight departure before adding RTR.", "Operations.ReturnToRamp.DepartureRequired");
         var existing = flight.ReturnToRamps.SingleOrDefault(r => r.Id == request.OccurrenceId);
         var priorServices = flight.ServiceRecords.Where(s => s.ReturnToRampId == request.OccurrenceId).ToArray();
         var priorTasks = flight.TaskRecords.Where(t => t.ReturnToRampId == request.OccurrenceId).ToArray();
+        if (isAdministrator && (existing is null || (existing.DepartureDetails is null) != (input.Departure is null) ||
+            !priorServices.Select(service => service.Id).ToHashSet().SetEquals(input.Services.Select(change => change.RecordId)) ||
+            !priorTasks.Select(task => task.Id).ToHashSet().SetEquals(input.Tasks.Select(change => change.RecordId))))
+            return FlightOperationAccess.ExistingRecordsOnly();
+        if (flight.CancellationSubmissions.Count > 0) return FlightServiceWrites.Cancellation();
+        if (flight.DepartureSubmissions.Count == 0)
+            return Error.Conflict("Record flight departure before adding RTR.", "Operations.ReturnToRamp.DepartureRequired");
+
         var station = await masterData.GetStationAsync(flight.Station.StationId, ct);
         if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId)) return Invalid("Station time zone is unavailable.");
-        var allowance = await resolver.AllowedServiceIdsForStaffAsync(actor.StaffMemberId, flight.Station.StationId, ct);
-        if (allowance.IsFailure) return allowance.Error;
-        var names = await FlightWorkAttribution.NamesAsync(userNames, FlightWorkAttribution.UserIds(flight).Append(actor.UserId), ct);
-        FlightDetailDto Response() => request.PortalOnly
-            ? FlightDetails.MapOperational(flight, station.TimeZoneId, actor, true, allowance.Value, names, portalOnly: true)
-            : FlightDetails.Map(flight, station.TimeZoneId, actor.StaffMemberId, true, true, false, allowance.Value.Count > 0,
-                actor.UserId, allowance.Value, true, flight.CanCorrectOperationalWork(actor.StaffMemberId), names, true);
+        IReadOnlyList<Guid> allowedServiceIds = [];
+        if (!isAdministrator)
+        {
+            var allowance = await resolver.AllowedServiceIdsForStaffAsync(access.Actor.StaffMemberId, flight.Station.StationId, ct);
+            if (allowance.IsFailure) return allowance.Error;
+            allowedServiceIds = allowance.Value;
+        }
+        var names = await FlightWorkAttribution.NamesAsync(userNames, FlightWorkAttribution.UserIds(flight).Append(userId), ct);
+        FlightDetailDto Response()
+        {
+            if (isAdministrator)
+                return FlightDetails.MapAdministrator(flight, station.TimeZoneId, names, canCorrect: true);
+            var actor = access.Actor;
+            return request.PortalOnly
+                ? FlightDetails.MapOperational(flight, station.TimeZoneId, actor, true, allowedServiceIds, names, portalOnly: true)
+                : FlightDetails.Map(flight, station.TimeZoneId, actor.StaffMemberId, true, true, false, allowedServiceIds.Count > 0,
+                    userId, allowedServiceIds, true, flight.CanCorrectOperationalWork(actor.StaffMemberId), names, true);
+        }
         var signatureCheck = ValidateSignature(input.Departure);
         if (signatureCheck.IsFailure) return signatureCheck.Error;
         long inlineBytes = input.Departure?.SignatureContent?.LongLength ?? 0;
@@ -70,7 +88,7 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
             var valid = SaveFlightServiceCommandHandler.ValidateInput(change.Input, old); if (valid.IsFailure) return valid.Error;
             var same = old is not null && SaveFlightServiceCommandHandler.CoreMatches(old, change.Input) && old.Window.ToUtc == change.Input.EndUtc && await FlightServiceFiles.MatchesAsync(storage, old, change.Input.Attachments, ct);
             matches &= same;
-            if (!same && !allowance.Value.Contains(change.Input.ServiceId)) return Error.Validation("This service is not allowed for your manpower type.", "Operations.WorkOrder.ServiceNotAllowed");
+            if (!isAdministrator && !same && !allowedServiceIds.Contains(change.Input.ServiceId)) return Error.Validation("This service is not allowed for your manpower type.", "Operations.WorkOrder.ServiceNotAllowed");
             foreach (var attachment in change.Input.Attachments ?? [])
             {
                 inlineBytes += attachment.Content?.LongLength ?? 0;
@@ -93,19 +111,31 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
         if (inlineBytes > FlightOperationsBatchPolicy.MaxInlineBytes) return Invalid("The combined RTR edit must contain at most 100 MB of new files.");
         if (matches) return Response();
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
-        if (request.PortalOnly && priorTasks.Any(task => task.CreatedByUserId != actor.UserId && input.Tasks.All(change => change.RecordId != task.Id)))
+        if (isAdministrator &&
+            (input.Departure?.RemoveSignature == true && existing?.DepartureDetails?.CustomerSignature is not null ||
+             input.Services.Any(change => !PortalFlightRecordCorrections.RetainsSavedDetails(
+                 priorServices.Single(item => item.Id == change.RecordId), change.Input)) ||
+             input.Tasks.Any(change => !PortalFlightRecordCorrections.RetainsSavedDetails(
+                 priorTasks.Single(item => item.Id == change.RecordId), change.Input))))
+            return PortalFlightRecordCorrections.SavedDetailsRemovalForbidden();
+        if (request.PortalOnly && priorTasks.Any(task => task.CreatedByUserId != userId && input.Tasks.All(change => change.RecordId != task.Id)))
             return FlightTaskWrites.PortalDeleteReadOnly();
         if (await db.Flights.AsNoTracking().AnyAsync(f => f.Id != flight.Id && f.ReturnToRamps.Any(r => r.Id == request.OccurrenceId), ct)) return IdConflict();
         var identities = await ValidateIdentities(flight, request, ct); if (identities.IsFailure) return identities.Error;
         foreach (var deleted in priorServices.Where(old => input.Services.All(s => s.RecordId != old.Id)))
         {
-            if (request.PortalOnly && deleted.CreatedByUserId != actor.UserId)
+            if (request.PortalOnly && deleted.CreatedByUserId != userId)
                 return FlightServiceWrites.PortalDeleteReadOnly();
-            if (!allowance.Value.Contains(deleted.Service.ServiceId)) return Error.Validation("This service is not allowed for your manpower type.", "Operations.WorkOrder.ServiceNotAllowed");
+            if (!allowedServiceIds.Contains(deleted.Service.ServiceId)) return Error.Validation("This service is not allowed for your manpower type.", "Operations.WorkOrder.ServiceNotAllowed");
         }
-        var employee = await resolver.StaffMembersForStationAsync([actor.StaffMemberId], flight.Station.StationId, ct);
-        if (employee.IsFailure) return employee.Error;
-        var arrival = RtrArrivalDetails.Create(input.Arrival.ArrivedAtUtc, existing?.ArrivalDetails.ReceivedByEmployee ?? employee.Value.Single(), input.Arrival.Remarks);
+        StaffMemberSnapshot? employee = null;
+        if (!isAdministrator)
+        {
+            var staff = await resolver.StaffMembersForStationAsync([access.Actor.StaffMemberId], flight.Station.StationId, ct);
+            if (staff.IsFailure) return staff.Error;
+            employee = staff.Value.Single();
+        }
+        var arrival = RtrArrivalDetails.Create(input.Arrival.ArrivedAtUtc, existing?.ArrivalDetails.ReceivedByEmployee ?? employee, input.Arrival.Remarks);
         if (arrival.IsFailure) return arrival.Error;
         var serviceInputs = new List<ReturnToRampServiceInput>();
         foreach (var change in input.Services)
@@ -148,21 +178,21 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
             RtrDepartureDetails? departure = null;
             if (input.Departure is { } end)
             {
-                var result = RtrDepartureDetails.Create(end.DepartedAtUtc, signature, existing?.DepartureDetails?.HandledByEmployee ?? employee.Value.Single(), end.Remarks);
+                var result = RtrDepartureDetails.Create(end.DepartedAtUtc, signature, existing?.DepartureDetails?.HandledByEmployee ?? employee, end.Remarks);
                 if (result.IsFailure) return result.Error; departure = result.Value;
             }
-            var saved = flight.SaveReturnToRamp(request.OccurrenceId, arrival.Value, departure, serviceInputs, taskInputs, actor.UserId, clock.GetUtcNow());
+            var saved = flight.SaveReturnToRamp(request.OccurrenceId, arrival.Value, departure, serviceInputs, taskInputs, userId, clock.GetUtcNow());
             if (saved.IsFailure) return saved.Error;
             foreach (var change in input.Services)
             {
                 var record = flight.ServiceRecords.Single(s => s.Id == change.RecordId);
                 if (change.Input.Attachments is not { } desired) continue;
                 foreach (var removed in record.Attachments.Where(a => desired.All(d => d.Id != a.Id)).ToArray())
-                { var result = flight.RemoveServiceAttachment(record.Id, removed.Id, actor.UserId, clock.GetUtcNow(), request.OccurrenceId); if (result.IsFailure) return result.Error; }
+                { var result = flight.RemoveServiceAttachment(record.Id, removed.Id, userId, clock.GetUtcNow(), request.OccurrenceId); if (result.IsFailure) return result.Error; }
                 foreach (var added in desired.Where(a => record.Attachments.All(old => old.Id != a.Id)))
                 {
                     var details = await StoreAttachment(added, createdKeys, ct); if (details.IsFailure) return details.Error;
-                    var result = flight.AddServiceAttachment(record.Id, details.Value, actor.UserId, clock.GetUtcNow(), request.OccurrenceId, added.Id); if (result.IsFailure) return result.Error;
+                    var result = flight.AddServiceAttachment(record.Id, details.Value, userId, clock.GetUtcNow(), request.OccurrenceId, added.Id); if (result.IsFailure) return result.Error;
                 }
             }
             foreach (var change in input.Tasks)
@@ -170,23 +200,24 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
                 var record = flight.TaskRecords.Single(t => t.Id == change.RecordId);
                 if (change.Input.Attachments is not { } desired) continue;
                 foreach (var removed in record.Attachments.Where(a => desired.All(d => d.Id != a.Id)).ToArray())
-                { var result = flight.RemoveTaskAttachment(record.Id, removed.Id, actor.UserId, clock.GetUtcNow(), request.OccurrenceId); if (result.IsFailure) return result.Error; }
+                { var result = flight.RemoveTaskAttachment(record.Id, removed.Id, userId, clock.GetUtcNow(), request.OccurrenceId); if (result.IsFailure) return result.Error; }
                 foreach (var added in desired.Where(a => record.Attachments.All(old => old.Id != a.Id)))
                 {
                     var details = await StoreAttachment(added, createdKeys, ct); if (details.IsFailure) return details.Error;
-                    var result = flight.AddTaskAttachment(record.Id, details.Value, actor.UserId, clock.GetUtcNow(), request.OccurrenceId, added.Id); if (result.IsFailure) return result.Error;
+                    var result = flight.AddTaskAttachment(record.Id, details.Value, userId, clock.GetUtcNow(), request.OccurrenceId, added.Id); if (result.IsFailure) return result.Error;
                 }
             }
-            if (existing is not null && existing.CreatedByUserId != actor.UserId)
+            if (existing is not null && existing.CreatedByUserId != userId)
                 db.Enqueue(new global::Operations.Contracts.FlightSubmissionUpdated
                 {
                     FlightId = flight.Id, FlightNumber = flight.FlightNumber.Value, SubmissionId = existing.Id,
                     SubmissionKind = global::Operations.Contracts.FlightSubmissionKind.ReturnToRamp,
                     SubmittedByStaffMemberId = existing.ArrivalDetails.ReceivedByEmployee.StaffMemberId, SubmittedByUserId = existing.CreatedByUserId,
-                    UpdatedByStaffMemberId = actor.StaffMemberId, UpdatedByUserId = actor.UserId, UpdatedByDisplayName = names.GetValueOrDefault(actor.UserId) ?? "", OccurredOnUtc = clock.GetUtcNow()
+                    UpdatedByStaffMemberId = access.StaffActor?.StaffMemberId, UpdatedByUserId = userId, UpdatedByDisplayName = names.GetValueOrDefault(userId) ?? "", OccurredOnUtc = clock.GetUtcNow()
                 });
             db.SetOriginalRowVersion(flight, request.RowVersion);
-            await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), ct, recordSearch: !request.PortalOnly);
+            if (!isAdministrator)
+                await FlightActivityRecorder.TouchAsync(db, flight, access.Actor, clock.GetUtcNow(), ct, recordSearch: !request.PortalOnly);
             await db.SaveChangesAsync(ct);
             FlightServiceWrites.Notify(mobileSync, clock);
             return Response();

@@ -7,7 +7,7 @@ namespace Operations.Application.Features.Flights;
 /// <summary>Actual-time bounds use the same own/accepted/earliest selection as mobile details.</summary>
 internal static class FlightServiceBounds
 {
-    internal static Result Validate(Flight flight, SaveFlightServiceRequest input, Guid staffMemberId)
+    internal static Result Validate(Flight flight, SaveFlightServiceRequest input, Guid? staffMemberId)
     {
         var actuals = VisibleActuals(flight, staffMemberId);
         var failures = new Dictionary<string, string[]>();
@@ -31,7 +31,7 @@ internal static class FlightServiceBounds
         return ResultFor(failures);
     }
 
-    internal static Result RequireCompletedIfDeparted(Flight flight, SaveFlightServiceRequest input, Guid staffMemberId)
+    internal static Result RequireCompletedIfDeparted(Flight flight, SaveFlightServiceRequest input, Guid? staffMemberId)
     {
         if (VisibleActuals(flight, staffMemberId).Departure is null) return Result.Success();
         var failures = new Dictionary<string, string[]>();
@@ -76,7 +76,7 @@ internal static class FlightServiceBounds
             "Operations.Departure.ServiceWorkIncomplete");
     }
 
-    private static (DateTimeOffset? Arrival, DateTimeOffset? Departure) VisibleActuals(Flight flight, Guid staffMemberId)
+    private static (DateTimeOffset? Arrival, DateTimeOffset? Departure) VisibleActuals(Flight flight, Guid? staffMemberId)
     {
         var arrivals = flight.ArrivalSubmissions.OrderBy(a => a.CreatedAtUtc).ThenBy(a => a.Id).ToArray();
         var arrival = arrivals.FirstOrDefault(a => a.SubmittedByEmployee.StaffMemberId == staffMemberId)

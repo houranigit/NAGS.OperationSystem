@@ -400,15 +400,15 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
     /// <summary>Atomically saves one normal service and its complete performer list under stable client IDs.</summary>
     public Result<FlightService> SaveService(Guid recordId, ServiceSnapshot? service, string? customerReferenceNumber,
         TimeWindow? window, string? notes, IReadOnlyList<FlightServicePerformerInput> performers, Guid userId, DateTimeOffset now,
-        Guid? assignedEditorStaffMemberId = null)
+        Guid? assignedEditorStaffMemberId = null, bool existingCorrectionOnly = false)
     {
         var check = ValidateServiceWrite(userId, null);
         if (check.IsFailure) return check.Error;
         var existing = _services.SingleOrDefault(item => item.Id == recordId);
-        if (existing?.ReturnToRampId is not null)
+        if (existing?.ReturnToRampId is not null || existingCorrectionOnly && existing is null)
             return Error.NotFound("Performed service was not found on this flight.", "Operations.FlightService.NotFound");
         if (existing is not null && service is not null && existing.Service.ServiceId != service.ServiceId && existing.HasOtherUserEnd &&
-            !CanCorrectOperationalWork(assignedEditorStaffMemberId))
+            !existingCorrectionOnly && !CanCorrectOperationalWork(assignedEditorStaffMemberId))
             return FlightService.SelectionReadOnly();
         var created = FlightService.Create(Id, service, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), id: recordId);
         if (created.IsFailure) return created.Error;

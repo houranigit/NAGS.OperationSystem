@@ -14,18 +14,18 @@
             <h3 id="portal-cancellation-heading" class="pcf-heading">
                 <RadzenIcon Icon="event_busy" /> Cancellation
             </h3>
-            @if (ViewOnly && submission is { } report)
+            @if (ShowsExactSubmission && submission is { } report)
             {
                 <div>Submitted by <strong>@report.SubmittedByEmployee.FullName</strong></div>
             }
             <div class="pcf-date">
                 <PortalOperationDateField Label="@($"Cancellation date and time ({currentFlight.StationTimeZoneId})")"
-                                          Time="@time" Required="@(!ViewOnly)" Disabled="@(ViewOnly || isSaving)" />
+                                          Time="@time" Required="@CanSave" Disabled="@(!CanSave || isSaving)" />
             </div>
             <div>
-                <RadzenLabel Component="portalCancellationRemarks" Text="@(ViewOnly ? "Remarks" : "Remarks (optional)")" />
+                <RadzenLabel Component="portalCancellationRemarks" Text="@(CanSave ? "Remarks (optional)" : "Remarks")" />
                 <RadzenTextArea Name="portalCancellationRemarks" @bind-Value="remarks" Immediate="true" Rows="4"
-                                Disabled="@(ViewOnly || isSaving)" class="pcf-control" />
+                                Disabled="@(!CanSave || isSaving)" class="pcf-control" />
             </div>
         </section>
     }
@@ -41,11 +41,11 @@
         <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Disabled="@isSaving"
                       Click="@(() => Dialogs.Close(false))" />
         <div class="pcf-actions-end">
-            @if (!ViewOnly && submission is not null)
+            @if (CanUndo)
             {
                 <RadzenButton Text="Undo" Icon="undo" ButtonStyle="ButtonStyle.Danger" Disabled="@isSaving" Click="@UndoAsync" />
             }
-            @if (!ViewOnly && flight?.CanSaveCancellation == true)
+            @if (CanSave)
             {
                 <RadzenButton Text="@(submission is null ? "Submit cancellation" : "Save")"
                               ButtonStyle="ButtonStyle.Primary" IsBusy="@isSaving" Click="@SaveAsync" />
@@ -58,6 +58,7 @@
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
     [Parameter] public Guid? SubmissionId { get; set; }
     [Parameter] public bool ViewOnly { get; set; }
+    [Parameter] public bool AdministratorCorrections { get; set; }
 
     private PortalFlightOperations? flight;
     private PortalFlightCancellation? submission;
@@ -67,16 +68,21 @@
     private bool isLoading = true;
     private bool isSaving;
 
+    private bool ShowsExactSubmission => ViewOnly || AdministratorCorrections;
+    private bool CanSave => !ViewOnly && flight?.CanSaveCancellation == true &&
+        (!AdministratorCorrections || submission is not null);
+    private bool CanUndo => !ShowsExactSubmission && submission is not null;
+
     protected override async Task OnInitializedAsync()
     {
         try
         {
             var details = await Operations.GetPortalFlightOperationsAsync(FlightId);
-            var report = ViewOnly
+            var report = ShowsExactSubmission
                 ? details.CancellationSubmissions.FirstOrDefault(item => item.Id == SubmissionId)
                 : details.CancellationSubmissions.FirstOrDefault(item =>
                     item.SubmittedByEmployee.StaffMemberId == details.CurrentStaffMemberId);
-            if (report?.Id != SubmissionId || report is null && (ViewOnly || !details.CanSaveCancellation))
+            if (report?.Id != SubmissionId || report is null && (ShowsExactSubmission || !details.CanSaveCancellation))
             {
                 errorMessage = "Flight actions have changed. Close this dialog and open the actions menu again.";
                 return;
@@ -108,7 +114,7 @@
 
     private async Task SaveAsync()
     {
-        if (ViewOnly || isSaving || flight is not { CanSaveCancellation: true } details || canceledAt is null)
+        if (!CanSave || isSaving || flight is not { } details || canceledAt is null)
             return;
 
         errorMessage = null;
@@ -124,12 +130,17 @@
         {
             var hasOpposingReports = details.ArrivalSubmissions.Count > 0 || details.DepartureSubmissions.Count > 0;
             if (hasOpposingReports && await Dialogs.Confirm(
-                "Another employee reported arrival or departure. Submit your cancellation as a separate report?",
+                AdministratorCorrections
+                    ? "Arrival or departure has been reported for this flight. Save the correction to this cancellation?"
+                    : "Another employee reported arrival or departure. Submit your cancellation as a separate report?",
                 "Confirm cancellation report", new ConfirmOptions { OkButtonText = "Continue", CancelButtonText = "Back" }) != true)
                 return;
 
-            await Operations.SavePortalCancellationAsync(FlightId,
-                new(utc, remarks, hasOpposingReports), details.RowVersion);
+            var request = new PortalFlightCancellationRequest(utc, remarks, hasOpposingReports);
+            if (AdministratorCorrections && submission is { } report)
+                await Operations.UpdatePortalCancellationAsync(FlightId, report.Id, request, details.RowVersion);
+            else
+                await Operations.SavePortalCancellationAsync(FlightId, request, details.RowVersion);
             Notifications.Notify(NotificationSeverity.Success, "Cancellation saved");
             Dialogs.Close(true);
         }
@@ -149,7 +160,7 @@
 
     private async Task UndoAsync()
     {
-        if (ViewOnly || isSaving || flight is null || submission is null)
+        if (!CanUndo || isSaving || flight is null || submission is null)
             return;
 
         isSaving = true;

@@ -1,8 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using MasterData.Contracts.Seeding;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Operations.Application.Contracts;
 using Operations.Domain.ValueObjects;
+using Operations.Infrastructure.Persistence;
 using Shouldly;
 
 namespace Operations.IntegrationTests;
@@ -13,7 +17,7 @@ public sealed partial class FlightVisibilityScopeTests
         ["operations.flights.view", "operations.flights.operate"];
 
     [Fact]
-    public async Task Portal_operations_allow_administrator_reads_and_require_a_linked_operator_to_write()
+    public async Task Portal_operations_allow_administrator_reads_and_deny_new_reports()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
@@ -64,6 +68,11 @@ public sealed partial class FlightVisibilityScopeTests
         using var adminCreateCancellation = await WritePortalOperationsAsync(admin, otherFlight, HttpMethod.Put, "cancellation",
             input, adminCrossStationView.RowVersion);
         adminCreateCancellation.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var aircraftId = await OperationsBatchAircraftAsync(admin);
+        var arrival = OperationsBatchInput(new(DateTimeOffset.UtcNow, aircraftId, "HZ-PORTAL", null, null));
+        using var adminCreateArrival = await WritePortalOperationsAsync(admin, otherFlight, HttpMethod.Put, "batch",
+            arrival, adminCrossStationView.RowVersion);
+        adminCreateArrival.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         using var adminMobileRead = await admin.GetAsync($"{Base}/flights/mobile/{id}");
         adminMobileRead.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await PortalOperationsDetailAsync(workerClient, id)).RowVersion.ShouldBe(detail.RowVersion);
@@ -76,10 +85,13 @@ public sealed partial class FlightVisibilityScopeTests
         var refs = await SetupMasterDataAsync(admin);
         var reporter = await CreateStaffLoginAsync(admin, refs, PortalOperatorPermissions);
         var worker = await CreateStaffLoginAsync(admin, refs, PortalOperatorPermissions);
+        var otherReporter = await CreateStaffLoginAsync(admin, refs, PortalOperatorPermissions);
         using var reporterClient = reporter.Client;
         using var workerClient = worker.Client;
+        using var otherReporterClient = otherReporter.Client;
         var now = DateTimeOffset.UtcNow;
-        var id = await SchedulePortalFlightAtAsync(admin, refs, "8713", now.AddHours(24), [reporter.StaffId, worker.StaffId]);
+        var id = await SchedulePortalFlightAtAsync(admin, refs, "8713", now.AddHours(24),
+            [reporter.StaffId, worker.StaffId, otherReporter.StaffId]);
         var aircraftId = await OperationsBatchAircraftAsync(admin);
         var initial = await PortalOperationsDetailAsync(reporterClient, id);
         var input = new SaveFlightCancellationRequest(now.AddHours(-24), "First cancellation");
@@ -98,7 +110,8 @@ public sealed partial class FlightVisibilityScopeTests
         using var otherUndo = await WritePortalOperationsAsync(workerClient, id, HttpMethod.Delete, revertPath, null, saved.RowVersion);
         otherUndo.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         var adminView = await PortalOperationsDetailAsync(admin, id);
-        AssertReadOnlyPortalOperations(adminView);
+        adminView.CurrentStaffMemberId.ShouldBeNull();
+        adminView.CanSaveCancellation.ShouldBeTrue();
         adminView.CancellationSubmissions!.ShouldHaveSingleItem().ShouldBe(saved.Submission);
         using var adminCorrection = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "cancellation",
             input with { Remarks = "Administrator correction" }, saved.RowVersion);
@@ -149,10 +162,51 @@ public sealed partial class FlightVisibilityScopeTests
         await AssertPortalOperationsConflictAsync(
             await WritePortalOperationsAsync(reporterClient, id, HttpMethod.Delete, revertPath, null, replaced.RowVersion),
             "Operations.Cancellation.SubmissionChanged");
+
+        using var parallelCancellation = await WritePortalOperationsAsync(otherReporterClient, id, HttpMethod.Put, "cancellation",
+            correction with { Remarks = "Second employee cancellation" }, replaced.RowVersion);
+        parallelCancellation.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var otherCancellation = (await parallelCancellation.Content.ReadFromJsonAsync<FlightCancellationSavedDto>())!;
+        otherCancellation.Submission.SubmittedByEmployee.StaffMemberId.ShouldBe(otherReporter.StaffId);
+
+        var exactPath = $"cancellation/{replaced.Submission.Id}";
+        var exactCorrection = correction with { Remarks = "Corrected by system administrator" };
+        using var wrongTarget = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, revertPath, exactCorrection, otherCancellation.RowVersion);
+        wrongTarget.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        using var staffExact = await WritePortalOperationsAsync(otherReporterClient, id, HttpMethod.Put, exactPath, exactCorrection, otherCancellation.RowVersion);
+        staffExact.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        await AssertPortalOperationsConflictAsync(
+            await WritePortalOperationsAsync(admin, id, HttpMethod.Put, exactPath, exactCorrection, replaced.RowVersion),
+            "General.ConcurrencyConflict");
+        using var adminSaved = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, exactPath, exactCorrection, otherCancellation.RowVersion);
+        adminSaved.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var adminResult = (await adminSaved.Content.ReadFromJsonAsync<FlightCancellationSavedDto>())!;
+        adminResult.Submission.Id.ShouldBe(replaced.Submission.Id);
+        adminResult.Submission.SubmittedByEmployee.ShouldBe(replaced.Submission.SubmittedByEmployee);
+        adminResult.Submission.CreatedAtUtc.ShouldBe(replaced.Submission.CreatedAtUtc);
+        adminResult.Submission.Remarks.ShouldBe(exactCorrection.Remarks);
+        using var exactRetry = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, exactPath, exactCorrection, otherCancellation.RowVersion);
+        exactRetry.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await exactRetry.Content.ReadFromJsonAsync<FlightCancellationSavedDto>()).ShouldBe(adminResult);
+        var afterCorrection = await PortalOperationsDetailAsync(reporterClient, id);
+        afterCorrection.CancellationSubmissions!.Count.ShouldBe(2);
+        afterCorrection.CancellationSubmissions!.ShouldContain(adminResult.Submission);
+        afterCorrection.CancellationSubmissions!.ShouldContain(otherCancellation.Submission);
+        afterCorrection.ArrivalSubmissions!.ShouldHaveSingleItem().ShouldBe(worked.ArrivalSubmissions!.Single());
+
+        var adminUserId = (await admin.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("id").GetGuid();
+        var reporterUserId = (await reporterClient.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("id").GetGuid();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+        var persisted = await db.Flights.AsNoTracking().Include(flight => flight.CancellationSubmissions)
+            .SingleAsync(flight => flight.Id == id);
+        var persistedCancellation = persisted.CancellationSubmissions.Single(submission => submission.Id == replaced.Submission.Id);
+        persistedCancellation.CreatedByUserId.ShouldBe(reporterUserId);
+        persistedCancellation.UpdatedByUserId.ShouldBe(adminUserId);
     }
 
     [Fact]
-    public async Task Portal_operations_save_normal_and_rtr_records_and_read_versioned_media_outside_mobile_window()
+    public async Task Portal_administrators_correct_existing_work_and_read_versioned_media_outside_mobile_window()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
@@ -168,12 +222,22 @@ public sealed partial class FlightVisibilityScopeTests
         var attachment = new SaveFlightServiceAttachmentRequest(Guid.NewGuid(), (int)AttachmentKind.Image, "portal.png", "image/png", bytes);
         var service = OperationsBatchClosedService(refs.ServiceId, actor.StaffId, ata.AddMinutes(10), ata.AddMinutes(30))
             with { Attachments = [attachment] };
+        var normalTaskId = Guid.NewGuid();
+        var normalTask = OperationsBatchClosedTask(actor.StaffId, ata.AddMinutes(35), ata.AddMinutes(50)) with
+        {
+            Tools = [new(Guid.NewGuid(), WellKnownMasterDataIds.UnknownTool, StartUtc: ata.AddMinutes(40),
+                EndUtc: ata.AddMinutes(45), Notes: "Torque wrench")],
+            Materials = [new(Guid.NewGuid(), WellKnownMasterDataIds.UnknownMaterial, 1, Notes: "Test material")],
+            GeneralSupports = [new(Guid.NewGuid(), WellKnownMasterDataIds.UnknownGeneralSupport, 1, Notes: "Test support")]
+        };
+        var arrival = new SaveFlightArrivalRequest(ata, aircraftId, "HZ-PORTAL", null, null);
         var departure = new SaveFlightDepartureRequest(ata.AddHours(1), bytes, ata.AddMinutes(55), "Normal departure");
         using var workResponse = await WritePortalOperationsAsync(client, id, HttpMethod.Put, "batch",
-            OperationsBatchInput(new(ata, aircraftId, "HZ-PORTAL", null, null), departure, [new(recordId, service)]),
+            OperationsBatchInput(arrival, departure, [new(recordId, service)], [new(normalTaskId, normalTask)]),
             initial.RowVersion);
         workResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         var work = (await workResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        var normalArrival = work.ArrivalSubmissions!.ShouldHaveSingleItem();
         var normalDeparture = work.DepartureSubmissions!.ShouldHaveSingleItem();
         normalDeparture.SubmittedByEmployee.StaffMemberId.ShouldBe(actor.StaffId);
         var storedAttachment = work.Services!.ShouldHaveSingleItem().Attachments.ShouldHaveSingleItem();
@@ -195,20 +259,114 @@ public sealed partial class FlightVisibilityScopeTests
         staleMedia.StatusCode.ShouldBe(HttpStatusCode.PreconditionFailed);
 
         var adminWork = await PortalOperationsDetailAsync(admin, id);
-        AssertReadOnlyPortalOperations(adminWork);
-        adminWork.ArrivalSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(work.ArrivalSubmissions!.Single().Id);
+        adminWork.CurrentStaffMemberId.ShouldBeNull();
+        adminWork.CanSaveArrival.ShouldBeTrue();
+        adminWork.CanSaveDeparture.ShouldBeTrue();
+        adminWork.CanAddServices.ShouldBe(false);
+        adminWork.CanAddTasks.ShouldBe(false);
+        adminWork.CanSaveReturnsToRamp.ShouldBeFalse();
+        adminWork.ArrivalSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(normalArrival.Id);
         adminWork.DepartureSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(normalDeparture.Id);
         var adminService = adminWork.Services!.ShouldHaveSingleItem();
         adminService.Id.ShouldBe(recordId);
-        adminService.CanEdit.ShouldBeFalse();
-        adminService.CanSetEnd.ShouldBeFalse();
+        adminService.CanEdit.ShouldBeTrue();
+        adminService.CanSetEnd.ShouldBeTrue();
         adminService.CanDelete.ShouldBeFalse();
-        using var adminBatch = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "batch",
-            OperationsBatchInput(services: [new(recordId, service with { Notes = "Administrator correction" })]), adminWork.RowVersion);
-        adminBatch.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var adminTask = adminWork.Tasks!.ShouldHaveSingleItem();
+        adminTask.CanEdit.ShouldBeTrue();
+        adminTask.CanSetEnd.ShouldBeTrue();
+        adminTask.CanDelete.ShouldBeFalse();
+
+        var serviceCorrection = service with { Notes = "Corrected service", Attachments = null };
+        var taskCorrection = normalTask with
+        {
+            Notes = "Corrected task",
+            Materials = [normalTask.Materials.Single() with { Quantity = 2 }]
+        };
+        var arrivalCorrection = arrival with { Remarks = "Corrected arrival", TargetSubmissionId = normalArrival.Id };
+        var departureCorrection = departure with
+        {
+            Remarks = "Corrected departure", SignatureContent = null, SignatureSignedAtUtc = null,
+            TargetSubmissionId = normalDeparture.Id
+        };
+        var adminBatch = OperationsBatchInput(arrivalCorrection, departureCorrection,
+            [new(recordId, serviceCorrection)], [new(normalTaskId, taskCorrection)]);
+        using var noTarget = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "batch",
+            adminBatch with { Arrival = arrivalCorrection with { TargetSubmissionId = null } }, adminWork.RowVersion);
+        noTarget.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var wrongTarget = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "batch",
+            adminBatch with { Arrival = arrivalCorrection with { TargetSubmissionId = normalDeparture.Id } }, adminWork.RowVersion);
+        wrongTarget.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        using var mixed = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "batch",
+            adminBatch with { TaskChanges = [new(normalTaskId, taskCorrection), new(Guid.NewGuid(), normalTask)] }, adminWork.RowVersion);
+        mixed.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var adminRemove = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "batch",
+            OperationsBatchInput(services: [new(recordId, null)], tasks: [new(normalTaskId, null)]), adminWork.RowVersion);
+        adminRemove.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var replacementPerformer = service.Performers.Single() with { Id = Guid.NewGuid() };
+        var replacementMaterial = taskCorrection.Materials.Single() with { Id = Guid.NewGuid() };
+        await AssertSavedDetailsRemovalForbiddenAsync("batch", adminWork.RowVersion,
+            adminBatch with { ServiceChanges = [new(recordId, serviceCorrection with { Performers = [replacementPerformer] })] },
+            adminBatch with { ServiceChanges = [new(recordId, serviceCorrection with { Attachments = [] })] },
+            adminBatch with { TaskChanges = [new(normalTaskId, taskCorrection with { Tools = [] })] },
+            adminBatch with { TaskChanges = [new(normalTaskId, taskCorrection with { Materials = [replacementMaterial] })] },
+            adminBatch with { TaskChanges = [new(normalTaskId, taskCorrection with { GeneralSupports = [] })] });
+        using var adminMobileWrite = await SendOperationsBatchAsync(admin, id, adminBatch, adminWork.RowVersion);
+        adminMobileWrite.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await PortalOperationsDetailAsync(client, id)).RowVersion.ShouldBe(work.RowVersion);
+
+        var aircraftRoute = $"{MasterDataBase}/aircraft-types/{aircraftId}";
+        var aircraft = await admin.GetFromJsonAsync<JsonElement>(aircraftRoute);
+        using var deactivate = new HttpRequestMessage(HttpMethod.Post, $"{aircraftRoute}/deactivate");
+        deactivate.Headers.TryAddWithoutValidation("If-Match", aircraft.GetProperty("rowVersion").GetString());
+        using var retired = await admin.SendAsync(deactivate);
+        retired.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        using var adminSave = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "batch", adminBatch, adminWork.RowVersion);
+        adminSave.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var adminSaved = (await adminSave.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        var adminUserId = (await admin.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("id").GetGuid();
+        var savedArrival = adminSaved.ArrivalSubmissions!.ShouldHaveSingleItem();
+        savedArrival.Id.ShouldBe(normalArrival.Id);
+        savedArrival.SubmittedByEmployee.ShouldBe(normalArrival.SubmittedByEmployee);
+        savedArrival.ReceivedByEmployee.ShouldBe(normalArrival.ReceivedByEmployee);
+        savedArrival.CreatedByUserId.ShouldBe(normalArrival.CreatedByUserId);
+        savedArrival.UpdatedByUserId.ShouldBe(adminUserId);
+        savedArrival.Remarks.ShouldBe(arrivalCorrection.Remarks);
+        savedArrival.AircraftTypeId.ShouldBe(normalArrival.AircraftTypeId);
+        savedArrival.AircraftTypeModel.ShouldBe(normalArrival.AircraftTypeModel);
+        var savedDeparture = adminSaved.DepartureSubmissions!.ShouldHaveSingleItem();
+        savedDeparture.Id.ShouldBe(normalDeparture.Id);
+        savedDeparture.SubmittedByEmployee.ShouldBe(normalDeparture.SubmittedByEmployee);
+        savedDeparture.HandledByEmployee.ShouldBe(normalDeparture.HandledByEmployee);
+        savedDeparture.CreatedByUserId.ShouldBe(normalDeparture.CreatedByUserId);
+        savedDeparture.UpdatedByUserId.ShouldBe(adminUserId);
+        savedDeparture.Remarks.ShouldBe(departureCorrection.Remarks);
+        savedDeparture.SignatureVersion.ShouldBe(normalDeparture.SignatureVersion);
+        var savedService = adminSaved.Services!.ShouldHaveSingleItem();
+        savedService.Id.ShouldBe(recordId);
+        savedService.CreatedByUserId.ShouldBe(adminService.CreatedByUserId);
+        savedService.UpdatedByUserId.ShouldBe(adminUserId);
+        savedService.Notes.ShouldBe(serviceCorrection.Notes);
+        savedService.Attachments.ShouldHaveSingleItem().ShouldBe(storedAttachment);
+        var savedTask = adminSaved.Tasks!.ShouldHaveSingleItem();
+        savedTask.Id.ShouldBe(normalTaskId);
+        savedTask.CreatedByUserId.ShouldBe(adminTask.CreatedByUserId);
+        savedTask.UpdatedByUserId.ShouldBe(adminUserId);
+        savedTask.Notes.ShouldBe(taskCorrection.Notes);
+        var savedMaterial = savedTask.Materials.ShouldHaveSingleItem();
+        savedMaterial.Id.ShouldBe(normalTask.Materials.Single().Id);
+        savedMaterial.Quantity.ShouldBe(2m);
+        await AssertPortalOperationsConflictAsync(
+            await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "batch",
+                OperationsBatchInput(arrivalCorrection with { Remarks = "Stale conflicting correction" }), adminWork.RowVersion),
+            "General.ConcurrencyConflict");
+        using var batchRetry = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "batch", adminBatch, adminWork.RowVersion);
+        batchRetry.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await batchRetry.Content.ReadFromJsonAsync<FlightDetailDto>())!.RowVersion.ShouldBe(adminSaved.RowVersion);
 
         using var removeResponse = await WritePortalOperationsAsync(client, id, HttpMethod.Put, "batch",
-            OperationsBatchInput(services: [new(recordId, null)]), work.RowVersion);
+            OperationsBatchInput(services: [new(recordId, null)]), adminSaved.RowVersion);
         removeResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         var withoutService = (await removeResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!;
         withoutService.Services!.ShouldBeEmpty();
@@ -218,6 +376,8 @@ public sealed partial class FlightVisibilityScopeTests
         var occurrenceId = Guid.NewGuid();
         var rtrArrival = ata.AddHours(2);
         var rtrDeparture = rtrArrival.AddHours(1);
+        var rtrServiceId = Guid.NewGuid();
+        var rtrService = OperationsBatchClosedService(refs.ServiceId, actor.StaffId, rtrArrival.AddMinutes(15), rtrArrival.AddMinutes(30));
         var taskId = Guid.NewGuid();
         var taskAttachment = attachment with { Id = Guid.NewGuid(), FileName = "rtr-task.png" };
         var task = OperationsBatchClosedTask(actor.StaffId, rtrArrival.AddMinutes(10), rtrArrival.AddMinutes(30)) with
@@ -231,7 +391,8 @@ public sealed partial class FlightVisibilityScopeTests
             Attachments = [taskAttachment]
         };
         var returning = new SaveFlightReturnToRampRequest(new(rtrArrival, "Return recorded via portal"),
-            new(rtrDeparture, "RTR departure", bytes, "rtr.png", "image/png", rtrDeparture), [], [new(taskId, task)]);
+            new(rtrDeparture, "RTR departure", bytes, "rtr.png", "image/png", rtrDeparture),
+            [new(rtrServiceId, rtrService)], [new(taskId, task)]);
         using var rtrResponse = await WritePortalOperationsAsync(client, id, HttpMethod.Put, $"returns-to-ramp/{occurrenceId}",
             returning, withoutService.RowVersion);
         rtrResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -239,7 +400,7 @@ public sealed partial class FlightVisibilityScopeTests
         var occurrence = returned.ReturnToRamps!.ShouldHaveSingleItem();
         occurrence.Id.ShouldBe(occurrenceId);
         occurrence.DepartedAtUtc.ShouldBe(rtrDeparture);
-        returned.Tasks!.ShouldBeEmpty();
+        returned.Tasks!.ShouldHaveSingleItem().Id.ShouldBe(normalTaskId);
         returned.DepartureSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(normalDeparture.Id);
         await AssertPortalMediaAsync(client,
             $"{prefix}/returns-to-ramp/{occurrenceId}/signature?expectedUpdatedAt={VersionTimestamp(occurrence.UpdatedAtUtc ?? occurrence.CreatedAtUtc)}", bytes);
@@ -248,20 +409,70 @@ public sealed partial class FlightVisibilityScopeTests
 
         var adminRtr = (await PortalOperationsDetailAsync(admin, id)).ReturnToRamps!.ShouldHaveSingleItem();
         adminRtr.Id.ShouldBe(occurrenceId);
-        adminRtr.CanEdit.ShouldBeFalse();
-        var adminTask = adminRtr.Tasks.ShouldHaveSingleItem();
-        adminTask.Id.ShouldBe(taskId);
-        adminTask.CanEdit.ShouldBeFalse();
-        adminTask.CanSetEnd.ShouldBeFalse();
-        adminTask.CanDelete.ShouldBeFalse();
-        using var adminRtrSave = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{occurrenceId}",
-            returning with { Arrival = returning.Arrival with { Remarks = "Administrator correction" } }, returned.RowVersion);
-        adminRtrSave.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        adminRtr.CanEdit.ShouldBeTrue();
+        var adminRtrService = adminRtr.Services.ShouldHaveSingleItem();
+        adminRtrService.CanEdit.ShouldBeTrue();
+        adminRtrService.CanSetEnd.ShouldBeTrue();
+        adminRtrService.CanDelete.ShouldBeFalse();
+        var adminRtrTask = adminRtr.Tasks.ShouldHaveSingleItem();
+        adminRtrTask.Id.ShouldBe(taskId);
+        adminRtrTask.CanEdit.ShouldBeTrue();
+        adminRtrTask.CanSetEnd.ShouldBeTrue();
+        adminRtrTask.CanDelete.ShouldBeFalse();
+        var rtrRoute = $"returns-to-ramp/{occurrenceId}";
+        var rtrCorrection = returning with
+        {
+            Arrival = returning.Arrival with { Remarks = "Corrected return arrival" },
+            Departure = returning.Departure! with
+            {
+                Remarks = "Corrected return departure", SignatureContent = null, SignatureFileName = null,
+                SignatureContentType = null, SignatureSignedAtUtc = null
+            },
+            Services = [new(rtrServiceId, rtrService with { Notes = "Corrected return service" })],
+            Tasks = [new(taskId, task with { Notes = "Corrected return task", Attachments = [taskAttachment with { Content = null }] })]
+        };
+        using var adminRtrCreate = await WritePortalOperationsAsync(admin, id, HttpMethod.Put,
+            $"returns-to-ramp/{Guid.NewGuid()}", returning, returned.RowVersion);
+        adminRtrCreate.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var adminRtrMixed = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, rtrRoute,
+            rtrCorrection with { Services = [rtrCorrection.Services!.Single(), new(Guid.NewGuid(), rtrService)] }, returned.RowVersion);
+        adminRtrMixed.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var adminRtrRemove = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, rtrRoute,
+            rtrCorrection with { Tasks = [] }, returned.RowVersion);
+        adminRtrRemove.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var rtrTaskCorrection = rtrCorrection.Tasks!.Single().Input;
+        var removeRtrSignature = rtrCorrection.Departure! with { RemoveSignature = true };
+        var replacementAttachment = taskAttachment with { Id = Guid.NewGuid() };
+        await AssertSavedDetailsRemovalForbiddenAsync(rtrRoute, returned.RowVersion,
+            rtrCorrection with { Tasks = [new(taskId, rtrTaskCorrection with { Performers = [task.Performers[1]] })] },
+            rtrCorrection with { Tasks = [new(taskId, rtrTaskCorrection with { Attachments = [replacementAttachment] })] },
+            rtrCorrection with { Departure = removeRtrSignature });
+        (await PortalOperationsDetailAsync(client, id)).RowVersion.ShouldBe(returned.RowVersion);
+
+        using var adminRtrSave = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, rtrRoute, rtrCorrection, returned.RowVersion);
+        adminRtrSave.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var editedReturn = (await adminRtrSave.Content.ReadFromJsonAsync<FlightDetailDto>())!.ReturnToRamps!.ShouldHaveSingleItem();
+        editedReturn.Id.ShouldBe(occurrence.Id);
+        editedReturn.CreatedByUserId.ShouldBe(occurrence.CreatedByUserId);
+        editedReturn.UpdatedByUserId.ShouldBe(adminUserId);
+        editedReturn.ReceivedByStaffMemberId.ShouldBe(occurrence.ReceivedByStaffMemberId);
+        editedReturn.HandledByStaffMemberId.ShouldBe(occurrence.HandledByStaffMemberId);
+        editedReturn.ArrivalRemarks.ShouldBe(rtrCorrection.Arrival.Remarks);
+        editedReturn.DepartureRemarks.ShouldBe(rtrCorrection.Departure!.Remarks);
+        editedReturn.HasSignature.ShouldBeTrue();
+        var editedReturnService = editedReturn.Services.ShouldHaveSingleItem();
+        editedReturnService.Id.ShouldBe(rtrServiceId);
+        editedReturnService.CreatedByUserId.ShouldBe(adminRtrService.CreatedByUserId);
+        editedReturnService.UpdatedByUserId.ShouldBe(adminUserId);
+        editedReturnService.Notes.ShouldBe(rtrCorrection.Services!.Single().Input.Notes);
+        var editedReturnTask = editedReturn.Tasks.ShouldHaveSingleItem();
+        editedReturnTask.CreatedByUserId.ShouldBe(adminRtrTask.CreatedByUserId);
+        editedReturnTask.UpdatedByUserId.ShouldBe(adminUserId);
 
         var reloaded = await PortalOperationsDetailAsync(client, id);
         var storedTask = reloaded.ReturnToRamps!.ShouldHaveSingleItem().Tasks.ShouldHaveSingleItem();
         storedTask.Id.ShouldBe(taskId);
-        storedTask.Notes.ShouldBe(task.Notes);
+        storedTask.Notes.ShouldBe(rtrCorrection.Tasks!.Single().Input.Notes);
         storedTask.Performers.OrderBy(period => period.StartUtc)
             .Select(period => (period.Id, period.StaffMemberId, period.StartUtc, period.EndUtc))
             .ShouldBe(task.Performers.Select(period => (period.Id, period.StaffMemberId, period.StartUtc, period.EndUtc)));
@@ -271,6 +482,30 @@ public sealed partial class FlightVisibilityScopeTests
             $"{prefix}/tasks/{taskId}/attachments/{taskAttachment.Id}?expectedUploadedAt={VersionTimestamp(storedTaskAttachment.UploadedAtUtc)}", bytes);
         await AssertPortalMediaAsync(admin,
             $"{prefix}/tasks/{taskId}/attachments/{taskAttachment.Id}?expectedUploadedAt={VersionTimestamp(storedTaskAttachment.UploadedAtUtc)}", bytes);
+
+        var staffCorrection = rtrCorrection with
+        {
+            Departure = removeRtrSignature,
+            Tasks = [new(taskId, rtrTaskCorrection with { Performers = [task.Performers[1]], Attachments = [] })]
+        };
+        using var staffSave = await WritePortalOperationsAsync(client, id, HttpMethod.Put, rtrRoute, staffCorrection, reloaded.RowVersion);
+        staffSave.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var updatedBySubmitter = (await staffSave.Content.ReadFromJsonAsync<FlightDetailDto>())!.ReturnToRamps!.ShouldHaveSingleItem();
+        updatedBySubmitter.HasSignature.ShouldBeFalse();
+        var updatedTask = updatedBySubmitter.Tasks.ShouldHaveSingleItem();
+        updatedTask.Performers.ShouldHaveSingleItem().Id.ShouldBe(task.Performers[1].Id);
+        updatedTask.Attachments.ShouldBeEmpty();
+
+        async Task AssertSavedDetailsRemovalForbiddenAsync(string route, string version, params object[] corrections)
+        {
+            foreach (var correction in corrections)
+            {
+                using var response = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, route, correction, version);
+                response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+                (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+                    .ShouldBe("Operations.Portal.SavedDetailsRemovalForbidden");
+            }
+        }
     }
 
     [Theory]

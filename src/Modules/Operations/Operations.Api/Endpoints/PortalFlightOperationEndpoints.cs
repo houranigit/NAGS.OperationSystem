@@ -42,6 +42,15 @@ internal static class PortalFlightOperationEndpoints
             return (await sender.Send(new SaveFlightCancellationCommand(id, request, rowVersion, PortalOnly: true), ct)).ToOk();
         });
 
+        writes.MapPut("/cancellation/{submissionId:guid}", async (
+            Guid id, Guid submissionId, SaveFlightCancellationRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
+        {
+            if (http.GetIfMatch() is not { } rowVersion)
+                return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+            return (await sender.Send(new SaveFlightCancellationCommand(id, request, rowVersion, PortalOnly: true,
+                TargetSubmissionId: submissionId), ct)).ToOk();
+        });
+
         writes.MapDelete("/cancellation/{submissionId:guid}", async (Guid id, Guid submissionId, HttpRequest http, ISender sender, CancellationToken ct) =>
         {
             if (http.GetIfMatch() is not { } rowVersion)

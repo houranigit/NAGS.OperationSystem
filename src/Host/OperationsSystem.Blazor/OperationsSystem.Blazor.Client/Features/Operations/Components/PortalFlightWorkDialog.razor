@@ -37,7 +37,7 @@
                                                 ValueChanged="@SelectArrivalAsync" Disabled="@saving" />
                             </label>
                         }
-                        @if (arrivalSource is not null || flight.CanSaveArrival)
+                        @if (arrivalSource is not null || CanEditArrival)
                         {
                             <div class="portal-editor-grid">
                                 <PortalOperationDateField Label="Actual time of arrival" Time="@arrivalTime" Required="true"
@@ -98,13 +98,15 @@
                     break;
                 case 1:
                     <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@services" Zone="@zone" Lookups="@lookups"
-                                             AllowedServiceIds="@flight.AllowedServiceIds"
-                                             CanAdd="@(flight.CanAddServices ?? flight.CanSaveServices)" ReadOnly="@(ViewOnly || saving)"
+                                             AllowedServiceIds="@(AdministratorCorrections ? null : flight.AllowedServiceIds)"
+                                             CanAdd="@(!AdministratorCorrections && (flight.CanAddServices ?? flight.CanSaveServices))"
+                                             CanDeleteRecords="@(!AdministratorCorrections)" ReadOnly="@(ViewOnly || saving)"
                                              Validation="@validation" ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
                     break;
                 case 2:
                     <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@tasks" Zone="@zone" Lookups="@lookups" IsTask="true"
-                                             CanAdd="@(flight.CanAddTasks ?? flight.CanSaveTasks)" ReadOnly="@(ViewOnly || saving)"
+                                             CanAdd="@(!AdministratorCorrections && (flight.CanAddTasks ?? flight.CanSaveTasks))"
+                                             CanDeleteRecords="@(!AdministratorCorrections)" ReadOnly="@(ViewOnly || saving)"
                                              Validation="@validation" ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
                     break;
                 case 3:
@@ -123,7 +125,7 @@
                                                 ValueChanged="@SelectDepartureAsync" Disabled="@saving" />
                             </label>
                         }
-                        @if (departureSource is not null || flight.CanSaveDeparture)
+                        @if (departureSource is not null || CanEditDeparture)
                         {
                             <div class="portal-departure-form">
                                 <div class="portal-editor-grid portal-departure-fields">
@@ -182,9 +184,9 @@
                         </div>
                         @if (flight.ReturnToRamps.Count == 0 && pendingReturns.Count == 0)
                         {
-                            <p class="portal-work-note">@(!ViewOnly && ActualDeparture is null ? "Enter departure details before adding a return to ramp." : "No returns to ramp recorded.")</p>
+                            <p class="portal-work-note">@(!ViewOnly && !AdministratorCorrections && ActualDeparture is null ? "Enter departure details before adding a return to ramp." : "No returns to ramp recorded.")</p>
                         }
-                        @if (!ViewOnly && (flight.ReturnToRamps.Any(item => item.IsOpen) || pendingReturns.Any(item => item.IsOpen)))
+                        @if (!ViewOnly && !AdministratorCorrections && (flight.ReturnToRamps.Any(item => item.IsOpen) || pendingReturns.Any(item => item.IsOpen)))
                         {
                             <p class="portal-work-note">Close the open return to ramp before adding another.</p>
                         }

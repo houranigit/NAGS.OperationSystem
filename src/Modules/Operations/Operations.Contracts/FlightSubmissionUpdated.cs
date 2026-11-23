@@ -13,7 +13,8 @@ public sealed record FlightSubmissionUpdated : IntegrationEvent
     /// <summary>Null for work entries, which retain creator account identity rather than a submitting staff snapshot.</summary>
     public required Guid? SubmittedByStaffMemberId { get; init; }
     public required Guid SubmittedByUserId { get; init; }
-    public required Guid UpdatedByStaffMemberId { get; init; }
+    /// <summary>Null when the correction was made by a portal administrator without a staff identity.</summary>
+    public required Guid? UpdatedByStaffMemberId { get; init; }
     public required Guid UpdatedByUserId { get; init; }
     public required string UpdatedByDisplayName { get; init; }
 }

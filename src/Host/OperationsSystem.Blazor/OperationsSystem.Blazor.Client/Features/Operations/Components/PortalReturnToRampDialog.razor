@@ -56,38 +56,47 @@
                     break;
                 case 1:
                     <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@services" Zone="@zone" Lookups="@lookups"
-                                             AllowedServiceIds="@flight.AllowedServiceIds"
-                                             CanAdd="@CanEdit" ReadOnly="@(!CanEdit || saving)" Validation="@validation"
+                                             AllowedServiceIds="@(AdministratorCorrections ? null : flight.AllowedServiceIds)"
+                                             CanAdd="@(CanEdit && !AdministratorCorrections)" CanDeleteRecords="@(!AdministratorCorrections)"
+                                             ReadOnly="@(!CanEdit || saving)" Validation="@validation"
                                              ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
                     break;
                 case 2:
                     <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@tasks" Zone="@zone" Lookups="@lookups" IsTask="true"
-                                             CanAdd="@CanEdit" ReadOnly="@(!CanEdit || saving)" Validation="@validation"
+                                             CanAdd="@(CanEdit && !AdministratorCorrections)" CanDeleteRecords="@(!AdministratorCorrections)"
+                                             ReadOnly="@(!CanEdit || saving)" Validation="@validation"
                                              ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
                     break;
                 case 3:
-                    var editDeparture = CanEdit && !saving && !DepartureFieldsLocked;
+                    var editDeparture = CanEditDeparture && !saving && !DepartureFieldsLocked;
                     <section class="portal-editor-section">
                         <div class="portal-editor-heading">
                             <h3>Actual Departure Details</h3>
                         </div>
-                        <div class="portal-departure-form">
-                            <div class="portal-editor-grid portal-departure-fields">
-                                <PortalOperationDateField Label="Actual time of departure" Time="@departureTime" Required="@RequiresDeparture"
-                                                          Disabled="@(!editDeparture)" Validation="@validation" ValidationField="@DepartureTimeField"
-                                                          Changed="@RefreshValidation" />
-                                <label>
-                                    <span>Departure remarks</span>
-                                    <RadzenTextArea @bind-Value="departureRemarks" @bind-Value:after="RefreshValidation" Immediate="true" Rows="5"
-                                                    Disabled="@(!editDeparture)" aria-invalid="@validation.InvalidAttribute(DepartureRemarksField)"
-                                                    aria-describedby="@validation.DescriptionId(DepartureRemarksField)" />
-                                    <PortalFieldError Validation="@validation" Field="@DepartureRemarksField" />
-                                </label>
+                        @if (AdministratorCorrections && occurrence?.DepartedAtUtc is null)
+                        {
+                            <p class="portal-work-note">No departure reported.</p>
+                        }
+                        else
+                        {
+                            <div class="portal-departure-form">
+                                <div class="portal-editor-grid portal-departure-fields">
+                                    <PortalOperationDateField Label="Actual time of departure" Time="@departureTime" Required="@RequiresDeparture"
+                                                              Disabled="@(!editDeparture)" Validation="@validation" ValidationField="@DepartureTimeField"
+                                                              Changed="@RefreshValidation" />
+                                    <label>
+                                        <span>Departure remarks</span>
+                                        <RadzenTextArea @bind-Value="departureRemarks" @bind-Value:after="RefreshValidation" Immediate="true" Rows="5"
+                                                        Disabled="@(!editDeparture)" aria-invalid="@validation.InvalidAttribute(DepartureRemarksField)"
+                                                        aria-describedby="@validation.DescriptionId(DepartureRemarksField)" />
+                                        <PortalFieldError Validation="@validation" Field="@DepartureRemarksField" />
+                                    </label>
+                                </div>
+                                <PortalWorkSignature @key="signature" FlightId="@flight.Id" Draft="@signature" Zone="@zone"
+                                                     Disabled="@(!editDeparture)" CanRemove="@(!AdministratorCorrections)" Validation="@validation"
+                                                     ValidationField="@SignatureTimeField" Changed="@RefreshValidation" />
                             </div>
-                            <PortalWorkSignature @key="signature" FlightId="@flight.Id" Draft="@signature" Zone="@zone"
-                                                 Disabled="@(!editDeparture)" CanRemove="true" Validation="@validation"
-                                                 ValidationField="@SignatureTimeField" Changed="@RefreshValidation" />
-                        </div>
+                        }
                         @if (occurrence?.DepartedAtUtc is not null)
                         {
                             <p class="portal-actuals-note">
@@ -95,7 +104,7 @@
                                 {
                                     <text>Handled by <strong>@employee</strong>.</text>
                                 }
-                                @if (CanEdit && DepartureFieldsLocked)
+                                @if (CanEditDeparture && DepartureFieldsLocked)
                                 {
                                     <button type="button" class="portal-actuals-update" disabled="@saving"
                                             @onclick="@(() => departureUnlocked = true)">Update departure details…</button>

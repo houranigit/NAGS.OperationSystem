@@ -26,6 +26,7 @@ public partial class PortalReturnToRampDialog
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
     [Parameter] public Guid? OccurrenceId { get; set; }
     [Parameter] public bool ViewOnly { get; set; }
+    [Parameter] public bool AdministratorCorrections { get; set; }
     [Parameter] public PortalFlightOperations? DraftFlight { get; set; }
     [Parameter] public PortalReturnToRampDraft? Draft { get; set; }
     [Parameter] public int DraftSequence { get; set; }
@@ -54,8 +55,11 @@ public partial class PortalReturnToRampDialog
     private bool arrivalUnlocked;
     private bool departureUnlocked;
 
-    private bool CanEdit => !ViewOnly && (DraftFlight is not null || flight is { CanSaveReturnsToRamp: true } data &&
-        (occurrence?.CanEdit ?? (data.DepartureSubmissions.Count > 0 && data.ReturnToRamps.All(item => !item.IsOpen))));
+    private bool CanEdit => !ViewOnly && (AdministratorCorrections
+        ? occurrence?.CanEdit == true
+        : DraftFlight is not null || flight is { CanSaveReturnsToRamp: true } data &&
+            (occurrence?.CanEdit ?? (data.DepartureSubmissions.Count > 0 && data.ReturnToRamps.All(item => !item.IsOpen))));
+    private bool CanEditDeparture => CanEdit && (!AdministratorCorrections || occurrence?.DepartedAtUtc is not null);
 
     private bool ArrivalFieldsLocked => occurrence is not null && !arrivalUnlocked;
     private bool DepartureFieldsLocked => occurrence?.DepartedAtUtc is not null && !departureUnlocked;
@@ -74,7 +78,7 @@ public partial class PortalReturnToRampDialog
         {
             var data = DraftFlight ?? await Operations.GetPortalFlightOperationsAsync(FlightId, lifetime.Token);
             occurrence = data.ReturnToRamps.SingleOrDefault(item => item.Id == OccurrenceId);
-            if (OccurrenceId.HasValue && occurrence is null)
+            if ((OccurrenceId.HasValue || AdministratorCorrections) && occurrence is null)
             {
                 error = "The return to ramp is no longer available.";
                 return;
@@ -83,10 +87,11 @@ public partial class PortalReturnToRampDialog
             zone = StationTimeZone.FromId(data.StationTimeZoneId);
             arrivalUnlocked = false;
             departureUnlocked = false;
-            lookups = ViewOnly || DraftFlight is null && !data.CanSaveReturnsToRamp
+            var loadCatalogs = AdministratorCorrections ? occurrence?.CanEdit == true : DraftFlight is not null || data.CanSaveReturnsToRamp;
+            lookups = ViewOnly || !loadCatalogs
                 ? new([], [], [], [], [], [], [], false)
-                : await PortalWorkLookups.LoadAsync(MasterData, DraftFlight is null ? data : data with { CanSaveReturnsToRamp = true },
-                    occurrenceOnly: true, ct: lifetime.Token);
+                : await PortalWorkLookups.LoadAsync(MasterData, data with { CanSaveReturnsToRamp = true },
+                    occurrenceOnly: true, administratorCorrections: AdministratorCorrections, ct: lifetime.Token);
             arrivalTime = new(zone, occurrence?.ArrivedAtUtc);
             departureTime = new(zone, occurrence?.DepartedAtUtc);
             arrivalRemarks = occurrence?.ArrivalRemarks;
@@ -340,6 +345,9 @@ public partial class PortalReturnToRampDialog
 
     private PortalReturnToRampDepartureRequest? ReadDeparture(DateTimeOffset? arrived)
     {
+        if (AdministratorCorrections && occurrence?.DepartedAtUtc is null)
+            return null;
+
         validation.Step = DepartureStep;
         var departed = departureTime.Read("RTR departure time", validation, DepartureTimeField, required: RequiresDeparture);
         if (arrived > departed)

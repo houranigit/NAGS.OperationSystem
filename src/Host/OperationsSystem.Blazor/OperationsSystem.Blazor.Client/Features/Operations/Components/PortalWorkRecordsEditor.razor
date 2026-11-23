@@ -61,7 +61,7 @@
                             <StatusBadge Label="@status" Tone="@tone" />
                         </span>
                     </button>
-                    @if (!ReadOnly && record.CanDelete)
+                    @if (!ReadOnly && CanDeleteRecords && record.CanDelete)
                     {
                         <RadzenButton Text="Delete" Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
                                       class="portal-work-delete" title="@($"Delete {label}")" aria-label="@($"Delete {label}")"
@@ -122,9 +122,11 @@
                             <span>Performed by *</span>
                             <RadzenDropDown TValue="IEnumerable<Guid>" Data="@PerformerOptions(record)"
                                             TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
+                                            DisabledProperty="@nameof(PortalCatalogChoice.IsDisabled)"
                                             Value="@SelectedPerformerIds(record)" ValueChanged="@(ids => SelectPerformersAsync(record, ids))"
-                                            Multiple="true" Chips="true" MaxSelectedLabels="2" SelectedItemsText="employees"
-                                            AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                            Multiple="true" Chips="@CanDeleteRecords" MaxSelectedLabels="2" SelectedItemsText="employees"
+                                            AllowClear="@CanDeleteRecords" AllowSelectAll="@CanDeleteRecords"
+                                            AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                             Placeholder="Select staff" Disabled="@(!edit || Lookups.Staff.Count == 0 && record.Performers.Count == 0)"
                                             aria-label="Performed by" aria-invalid="@Invalid(record.Id, "performers")"
                                             aria-describedby="@Description(record.Id, "performers")" />
@@ -148,6 +150,7 @@
                     }
 
                     <PortalWorkNotes FlightId="@FlightId" RecordPath="@RecordPath(record)" Draft="@record" CanEdit="@edit"
+                                     CanDeleteSavedAttachments="@CanDeleteRecords"
                                      Visible="@expanded" Validation="@Validation" Changed="@Changed" />
 
                     @{ var serviceOutsideManpowerPermissions = ServiceOutsideManpowerPermissions(record); }
@@ -204,6 +207,7 @@
     [Parameter] public bool IsTask { get; set; }
     [Parameter] public bool CanAdd { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public bool CanDeleteRecords { get; set; } = true;
     [Parameter] public PortalFlightValidation? Validation { get; set; }
     [Parameter] public int ValidationAttempt { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
@@ -270,6 +274,9 @@
 
     private async Task AddAsync()
     {
+        if (ReadOnly || !CanAdd)
+            return;
+
         var record = new PortalWorkDraft(Guid.NewGuid(), IsTask, Zone);
         Records.Add(record);
         focusRecordId = record.Id;
@@ -278,7 +285,7 @@
 
     private async Task RemoveAsync(PortalWorkDraft record)
     {
-        if (record.IsReadingFile)
+        if (ReadOnly || !CanDeleteRecords || !record.CanDelete || record.IsReadingFile)
             return;
 
         if (record.IsNew)
@@ -299,9 +306,11 @@
         await NotifyChangedAsync();
     }
 
-    private async Task RemoveEntryAsync<T>(List<T> entries, T entry)
+    private bool CanRemoveEntry(bool isSaved) => CanDeleteRecords || !isSaved;
+
+    private async Task RemoveEntryAsync<T>(List<T> entries, T entry, bool isSaved)
     {
-        if (entries.Remove(entry))
+        if (!ReadOnly && CanRemoveEntry(isSaved) && entries.Remove(entry))
             await NotifyChangedAsync();
     }
 
@@ -346,9 +355,12 @@
                                                       title="Add period" aria-label="@($"Add period for {performerName}")"
                                                       Click="@(() => AddPeriodAsync(record, period))" />
                                     }
-                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
-                                                  title="@deleteLabel" aria-label="@deleteLabel"
-                                                  Click="@(() => RemoveEntryAsync(record.Performers, period))" />
+                                    @if (CanRemoveEntry(period.IsSaved))
+                                    {
+                                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                                                      title="@deleteLabel" aria-label="@deleteLabel"
+                                                      Click="@(() => RemoveEntryAsync(record.Performers, period, period.IsSaved))" />
+                                    }
                                 </div>
                             }
                             @if (IsTask)
@@ -402,7 +414,8 @@
             .DistinctBy(performer => performer.StaffMemberId)
             .Select(performer => new PortalCatalogChoice(performer.StaffMemberId!.Value, PerformerLabel(performer)))
             .ToArray();
-        return saved.Length == 0 ? Lookups.Staff : Lookups.Staff.Concat(saved).ToArray();
+        return LockSavedOptions(saved.Length == 0 ? Lookups.Staff : Lookups.Staff.Concat(saved),
+            SavedPerformerIds(record));
     }
 
     private string PerformerLabel(PortalPerformerDraft performer) =>
@@ -411,7 +424,12 @@
 
     private async Task SelectPerformersAsync(PortalWorkDraft record, IEnumerable<Guid>? ids)
     {
+        if (ReadOnly)
+            return;
+
         var selected = (ids ?? []).ToHashSet();
+        if (!CanDeleteRecords)
+            selected.UnionWith(SavedPerformerIds(record));
         record.Performers.RemoveAll(performer => performer.StaffMemberId is not { } id || !selected.Contains(id));
         var retained = SelectedPerformerIds(record).ToHashSet();
 
@@ -428,6 +446,18 @@
         }
 
         await NotifyChangedAsync();
+    }
+
+    private static IEnumerable<Guid> SavedPerformerIds(PortalWorkDraft record) =>
+        record.Performers.Where(performer => performer.IsSaved).Select(performer => performer.StaffMemberId).OfType<Guid>();
+
+    private IEnumerable<PortalCatalogChoice> LockSavedOptions(IEnumerable<PortalCatalogChoice> options, IEnumerable<Guid> savedIds)
+    {
+        if (CanDeleteRecords)
+            return options;
+
+        var locked = savedIds.ToHashSet();
+        return options.Select(option => option with { IsDisabled = locked.Contains(option.Id) }).ToArray();
     }
 
     private static bool IsCompletePeriod(PortalOperationTime start, PortalOperationTime end) =>
@@ -470,20 +500,28 @@
 
     private string RecordPath(PortalWorkDraft record) => $"{(IsTask ? "tasks" : "services")}/{record.Id}";
 
-    private static IEnumerable<PortalCatalogChoice> ResourceOptions(
+    private IEnumerable<PortalCatalogChoice> ResourceOptions(
         IReadOnlyList<PortalCatalogChoice> options, List<PortalResourceDraft> rows)
     {
         var saved = rows
             .Where(row => options.All(option => option.Id != row.ResourceId))
             .Select(row => new PortalCatalogChoice(row.ResourceId, row.Name, row.CalculationType))
             .ToArray();
-        return saved.Length == 0 ? options : options.Concat(saved).ToArray();
+        return LockSavedOptions(saved.Length == 0 ? options : options.Concat(saved), SavedResourceIds(rows));
     }
+
+    private static IEnumerable<Guid> SavedResourceIds(IEnumerable<PortalResourceDraft> rows) =>
+        rows.Where(resource => resource.IsSaved).Select(resource => resource.ResourceId);
 
     private async Task SelectResourcesAsync(PortalWorkDraft record, List<PortalResourceDraft> rows,
         IReadOnlyList<PortalCatalogChoice> options, IEnumerable<Guid>? ids)
     {
+        if (ReadOnly)
+            return;
+
         var selected = (ids ?? []).ToHashSet();
+        if (!CanDeleteRecords)
+            selected.UnionWith(SavedResourceIds(rows));
         rows.RemoveAll(resource => !selected.Contains(resource.ResourceId));
         var retained = rows.Select(resource => resource.ResourceId).ToHashSet();
 
@@ -513,10 +551,12 @@
             <span>@title</span>
             <RadzenDropDown TValue="IEnumerable<Guid>" Data="@ResourceOptions(options, rows)"
                             TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
+                            DisabledProperty="@nameof(PortalCatalogChoice.IsDisabled)"
                             Value="@(rows.Select(row => row.ResourceId).ToArray())"
                             ValueChanged="@(ids => SelectResourcesAsync(record, rows, options, ids))"
-                            Multiple="true" Chips="true" MaxSelectedLabels="2" SelectedItemsText="selected"
-                            AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                            Multiple="true" Chips="@CanDeleteRecords" MaxSelectedLabels="2" SelectedItemsText="selected"
+                            AllowClear="@CanDeleteRecords" AllowSelectAll="@CanDeleteRecords"
+                            AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                             Placeholder="@($"Select {title.ToLowerInvariant()}")" Disabled="@(!edit || options.Count == 0 && rows.Count == 0)"
                             aria-label="@title" />
         </label>
@@ -545,12 +585,12 @@
                             {
                                 @PeriodFields(resource.Id, resource.Start, resource.End, edit, end)
                             }
-                            @if (edit)
+                            @if (edit && CanRemoveEntry(resource.IsSaved))
                             {
                                 <div class="portal-work-entry-actions">
                                     <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
                                                   title="@deleteLabel" aria-label="@deleteLabel"
-                                                  Click="@(() => RemoveEntryAsync(rows, resource))" />
+                                                  Click="@(() => RemoveEntryAsync(rows, resource, resource.IsSaved))" />
                                 </div>
                             }
                             <label class="portal-work-full portal-work-entry-notes">

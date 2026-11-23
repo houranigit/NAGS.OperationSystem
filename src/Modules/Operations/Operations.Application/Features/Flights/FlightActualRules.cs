@@ -14,7 +14,7 @@ internal static class FlightActualRules
             ? Error.Validation("Arrival remarks are required for an unknown customer.", "Operations.ArrivalDetails.RemarksRequiredForUnknownCustomer")
             : Result.Success();
 
-    internal static Result RequireArrival(Flight flight, Guid staffId)
+    internal static Result RequireArrival(Flight flight, Guid? staffId)
     {
         var arrival = Arrival(flight, staffId);
         return arrival is not null && arrival.Details.Ata != default &&
@@ -23,7 +23,7 @@ internal static class FlightActualRules
             : Error.Validation("Save valid arrival details before services, tasks or departure.", "Operations.Flight.ArrivalRequired");
     }
 
-    internal static Result Chronology(Flight flight, Guid staffId, DateTimeOffset? arrivalOverride = null, DateTimeOffset? departureOverride = null)
+    internal static Result Chronology(Flight flight, Guid? staffId, DateTimeOffset? arrivalOverride = null, DateTimeOffset? departureOverride = null)
     {
         var ata = arrivalOverride ?? Arrival(flight, staffId)?.Details.Ata;
         var departures = flight.DepartureSubmissions.OrderBy(item => item.CreatedAtUtc).ThenBy(item => item.Id).ToArray();
@@ -62,7 +62,7 @@ internal static class FlightActualRules
         { ["StartUtc"] = ["Occurrences of the same service cannot overlap."], ["EndUtc"] = ["Close or adjust the other occurrence first."] },
         "Occurrences of the same service cannot overlap.", "Operations.FlightService.OverlappingPeriods");
 
-    private static FlightArrivalSubmission? Arrival(Flight flight, Guid staffId)
+    private static FlightArrivalSubmission? Arrival(Flight flight, Guid? staffId)
     {
         var arrivals = flight.ArrivalSubmissions.OrderBy(item => item.CreatedAtUtc).ThenBy(item => item.Id).ToArray();
         return arrivals.FirstOrDefault(item => item.SubmittedByEmployee.StaffMemberId == staffId)

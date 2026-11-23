@@ -234,6 +234,7 @@ public sealed partial class PortalWorkDraft(Guid id, bool isTask, StationTimeZon
 public sealed class PortalPerformerDraft(Guid id, StationTimeZone zone, DateTimeOffset? start = null, DateTimeOffset? end = null)
 {
     public Guid Id { get; } = id;
+    internal bool IsSaved { get; private init; }
     public Guid? StaffMemberId { get; set; }
     public string? DisplayName { get; init; }
     public string? FullName { get; init; }
@@ -244,6 +245,7 @@ public sealed class PortalPerformerDraft(Guid id, StationTimeZone zone, DateTime
     public static PortalPerformerDraft From(PortalFlightPerformer source, StationTimeZone zone) =>
         new(source.Id, zone, source.StartUtc, source.EndUtc)
         {
+            IsSaved = true,
             StaffMemberId = source.StaffMemberId,
             DisplayName = $"{source.FullName} · {source.EmployeeId}",
             FullName = source.FullName,
@@ -270,6 +272,7 @@ public sealed class PortalResourceDraft(Guid id, Guid resourceId, string name, R
     StationTimeZone zone, DateTimeOffset? start = null, DateTimeOffset? end = null)
 {
     public Guid Id { get; } = id;
+    internal bool IsSaved { get; private init; }
     public Guid ResourceId { get; } = resourceId;
     public string Name { get; } = name;
     public ResourceCalculationType CalculationType { get; } = calculationType;
@@ -281,7 +284,7 @@ public sealed class PortalResourceDraft(Guid id, Guid resourceId, string name, R
     public static PortalResourceDraft From(PortalFlightResource source, StationTimeZone zone) =>
         new(source.Id, source.ResourceId, source.Name, source.CalculationType, zone, source.StartUtc, source.EndUtc)
         {
-            Quantity = source.Quantity, Notes = source.Notes
+            IsSaved = true, Quantity = source.Quantity, Notes = source.Notes
         };
 
     public PortalFlightResourceRequest ToRequest(string label, PortalFlightValidation errors, bool closing)
@@ -322,6 +325,7 @@ public sealed record PortalCatalogChoice(Guid Id, string Label, ResourceCalculat
 {
     public string? FullName { get; init; }
     public string? ManpowerTypeName { get; init; }
+    public bool IsDisabled { get; init; }
 }
 
 public sealed record PortalWorkLookups(
@@ -331,7 +335,7 @@ public sealed record PortalWorkLookups(
     IReadOnlyList<PortalCatalogChoice> Supports, bool HasUnavailableCatalogs)
 {
     public static async Task<PortalWorkLookups> LoadAsync(MasterDataApiClient api, PortalFlightOperations flight,
-        bool occurrenceOnly, CancellationToken ct)
+        bool occurrenceOnly, bool administratorCorrections, CancellationToken ct)
     {
         var allowTasks = occurrenceOnly ? flight.CanSaveReturnsToRamp : flight.CanSaveTasks;
         var allowServices = occurrenceOnly ? flight.CanSaveReturnsToRamp : flight.CanSaveServices;
@@ -340,7 +344,7 @@ public sealed record PortalWorkLookups(
         var aircraft = Read(!occurrenceOnly && flight.CanSaveArrival, async () =>
             (await api.GetAircraftTypeOptionsAsync(ct)).Select(item => new PortalCatalogChoice(item.Id, $"{item.Manufacturer} · {item.Model}")));
         var services = Read(allowServices, async () =>
-            (await api.GetPerformedServiceOptionsAsync(ct)).Where(item => flight.AllowedServiceIds?.Contains(item.Id) == true)
+            (await api.GetPerformedServiceOptionsAsync(ct)).Where(item => administratorCorrections || flight.AllowedServiceIds?.Contains(item.Id) == true)
                 .Select(item => new PortalCatalogChoice(item.Id, item.Name)));
         var staff = Read(allowTasks || allowServices, async () =>
             (await api.GetStaffMemberOptionsAsync(flight.StationId, ct))

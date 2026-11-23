@@ -86,7 +86,6 @@
                             @if (CanOpenFlightOperations)
                             {
                                 <PortalFlightOperationsMenu @key="flight.Id" FlightId="@flight.Id"
-                                    ViewOnly="@Auth.IsSystemAdministrator"
                                     ShowDivider="@Auth.HasPermission(OperationsPermissions.FlightsUpdate)" Changed="@ReloadAsync" />
                             }
                         </MenuContent>

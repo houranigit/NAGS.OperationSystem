@@ -24,6 +24,7 @@ public partial class PortalFlightWorkDialog
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
     [Parameter] public int InitialStep { get; set; }
     [Parameter] public bool ViewOnly { get; set; }
+    [Parameter] public bool AdministratorCorrections { get; set; }
 
     private readonly CancellationTokenSource lifetime = new();
     private PortalFlightOperations? flight;
@@ -54,9 +55,11 @@ public partial class PortalFlightWorkDialog
 
     private bool RequiresArrivalRemarks => flight?.IsAdHocFlight == true && flight.CustomerId == UnknownCustomer;
     private bool CanEditArrival => !ViewOnly && flight is { CanSaveArrival: true } data &&
+        (!AdministratorCorrections || arrivalSource is not null) &&
         (!data.IsUnassignedSearchFlight || arrivalSource is null || arrivalSource.SubmittedByEmployee.StaffMemberId == data.CurrentStaffMemberId);
 
     private bool CanEditDeparture => !ViewOnly && flight is { CanSaveDeparture: true } data &&
+        (!AdministratorCorrections || departureSource is not null) &&
         (!data.IsUnassignedSearchFlight || departureSource is null || departureSource.SubmittedByEmployee.StaffMemberId == data.CurrentStaffMemberId);
 
     private bool CanEditNormalWork => !ViewOnly && flight is { } data && (data.CanSaveArrival || data.CanSaveDeparture ||
@@ -76,13 +79,13 @@ public partial class PortalFlightWorkDialog
         }
     }
 
-    private bool CanDraftReturnToRamp => !ViewOnly && flight is { CancellationSubmissions.Count: 0 } data &&
+    private bool CanDraftReturnToRamp => !ViewOnly && !AdministratorCorrections && flight is { CancellationSubmissions.Count: 0 } data &&
         (data.CanSaveReturnsToRamp || data.CanSaveDeparture && data.DepartureSubmissions.Count == 0);
 
     private bool CanAddReturnToRamp => CanDraftReturnToRamp && ActualDeparture.HasValue &&
         flight!.ReturnToRamps.All(item => !item.IsOpen) && pendingReturns.All(item => !item.IsOpen);
 
-    private bool IsGuidedEntry => flight is
+    private bool IsGuidedEntry => !AdministratorCorrections && flight is
     {
         ArrivalSubmissions.Count: 0,
         DepartureSubmissions.Count: 0,
@@ -103,10 +106,11 @@ public partial class PortalFlightWorkDialog
             zone = StationTimeZone.FromId(data.StationTimeZoneId);
             lookups = ViewOnly
                 ? new([], [], [], [], [], [], [], false)
-                : await PortalWorkLookups.LoadAsync(MasterData, data, occurrenceOnly: false, ct: lifetime.Token);
+                : await PortalWorkLookups.LoadAsync(MasterData, data, occurrenceOnly: false,
+                    administratorCorrections: AdministratorCorrections, ct: lifetime.Token);
             services = data.Services.Select(item => PortalWorkDraft.From(item, zone)).ToList();
             tasks = data.Tasks.Select(item => PortalWorkDraft.From(item, zone)).ToList();
-            if (!ViewOnly && (data.CanAddServices ?? data.CanSaveServices) && data.CurrentStaffMemberId is { } staffId)
+            if (!ViewOnly && !AdministratorCorrections && (data.CanAddServices ?? data.CanSaveServices) && data.CurrentStaffMemberId is { } staffId)
             {
                 var staff = lookups.Staff.FirstOrDefault(item => item.Id == staffId);
                 foreach (var planned in data.PlannedServices.Where(item => !item.IsAircraftPerLanding
@@ -240,12 +244,12 @@ public partial class PortalFlightWorkDialog
             return;
         }
 
-        if (!ViewOnly && index == 4)
+        if (!ViewOnly && !AdministratorCorrections && index == 4)
         {
             if (!ValidateReturnToRampEntry())
                 return;
         }
-        else if (!ViewOnly && index > 0)
+        else if (!ViewOnly && !AdministratorCorrections && index > 0)
         {
             validation.ClearStep(0);
             requireArrivalForValidation = true;
@@ -420,7 +424,9 @@ public partial class PortalFlightWorkDialog
             if ((arrival is not null || departure is not null) && flight.CancellationSubmissions.Count > 0)
             {
                 acknowledged = await DialogService.Confirm(
-                    "Another employee reported this flight as canceled. Save your operational report?",
+                    AdministratorCorrections
+                        ? "This flight has a cancellation report. Save the correction to the operational report?"
+                        : "Another employee reported this flight as canceled. Save your operational report?",
                     "Conflicting flight report", new ConfirmOptions { OkButtonText = "Save report", CancelButtonText = "Go back" }) == true;
                 if (!acknowledged)
                     return;
@@ -525,7 +531,8 @@ public partial class PortalFlightWorkDialog
             {
                 [nameof(PortalReturnToRampDialog.FlightId)] = FlightId,
                 [nameof(PortalReturnToRampDialog.OccurrenceId)] = occurrenceId,
-                [nameof(PortalReturnToRampDialog.ViewOnly)] = ViewOnly || WorkChanged()
+                [nameof(PortalReturnToRampDialog.ViewOnly)] = ViewOnly || WorkChanged(),
+                [nameof(PortalReturnToRampDialog.AdministratorCorrections)] = AdministratorCorrections
             },
             PortalWorkDialogLayout.CreateOptions());
         if (result is true)

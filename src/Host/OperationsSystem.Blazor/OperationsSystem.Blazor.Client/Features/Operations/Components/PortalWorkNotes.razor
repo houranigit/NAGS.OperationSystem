@@ -23,7 +23,7 @@
                                                   title="@($"Download {file.FileName}")" aria-label="@($"Download {file.FileName}")"
                                                   Disabled="@busy" Click="@(() => DownloadAsync(file))" />
                                 }
-                                @if (CanEdit)
+                                @if (CanRemove(file))
                                 {
                                     <RadzenButton Text="Delete" Icon="delete" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger"
                                                   title="@($"Delete {file.FileName}")" aria-label="@($"Delete {file.FileName}")"
@@ -66,6 +66,7 @@
     [Parameter, EditorRequired] public string RecordPath { get; set; } = string.Empty;
     [Parameter, EditorRequired] public PortalWorkDraft Draft { get; set; } = default!;
     [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public bool CanDeleteSavedAttachments { get; set; } = true;
     [Parameter] public bool Visible { get; set; }
     [Parameter] public PortalFlightValidation? Validation { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
@@ -83,9 +84,12 @@
         ? PortalFlightValidation.ErrorId(AttachmentField)
         : Validation?.DescriptionId(AttachmentField);
 
+    private bool CanRemove(PortalAttachmentDraft file) => CanEdit &&
+        (CanDeleteSavedAttachments || file.UploadedAtUtc is null);
+
     private async Task RemoveAsync(PortalAttachmentDraft file)
     {
-        if (Files.Remove(file))
+        if (CanRemove(file) && !busy && Files.Remove(file))
             await Changed.InvokeAsync();
     }
 
@@ -97,7 +101,8 @@
         uploadError = null;
         if (args.FileCount > PortalWorkDraft.MaxAttachments - Files.Count)
         {
-            uploadError = $"You can add up to {PortalWorkDraft.MaxAttachments} attachments per record. Select fewer files or delete an attachment.";
+            uploadError = $"You can add up to {PortalWorkDraft.MaxAttachments} attachments per record. " +
+                (CanDeleteSavedAttachments ? "Select fewer files or delete an attachment." : "Select fewer files.");
             pickerRevision++;
             return;
         }

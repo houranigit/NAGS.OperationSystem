@@ -14,7 +14,8 @@ else if (loadError)
         <RadzenIcon Icon="refresh" /><span>Retry flight actions</span>
     </button>
 }
-else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork || !ViewOnly && (CanOpenWork(flight) || flight.CanSaveCancellation)))
+else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork ||
+    !Auth.IsSystemAdministrator && (CanOpenWork(flight) || flight.CanSaveCancellation)))
 {
     @if (ShowDivider)
     {
@@ -36,7 +37,7 @@ else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork || !V
                         @onclick="@(() => OpenCancellationAsync(cancellation.Id))">
                     <RadzenIcon Icon="visibility" /><span>View</span>
                 </button>
-                @if (!ViewOnly)
+                @if (!Auth.IsSystemAdministrator)
                 {
                     <button type="button" role="menuitem" class="os-row-actions-item os-row-actions-item--danger"
                             @onclick="@(() => UndoCancellationAsync(cancellation.Id, flight.RowVersion))">
@@ -46,7 +47,7 @@ else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork || !V
             }
         </RowActionSubmenu>
     }
-    @if (hasSavedWork && (ViewOnly || cancellations.Count == 0))
+    @if (hasSavedWork && (Auth.IsSystemAdministrator || cancellations.Count == 0))
     {
         <RowActionSubmenu Text="Work Order" Icon="assignment">
             <button type="button" role="menuitem" class="os-row-actions-item" @onclick="OpenWorkAsync">
@@ -54,7 +55,7 @@ else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork || !V
             </button>
         </RowActionSubmenu>
     }
-    else if (!ViewOnly && cancellations.Count == 0)
+    else if (!Auth.IsSystemAdministrator && cancellations.Count == 0)
     {
         @if (CanOpenWork(flight))
         {
@@ -78,7 +79,6 @@ else if (!ShowDivider)
 
 @code {
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
-    [Parameter] public bool ViewOnly { get; set; }
     [Parameter] public bool ShowDivider { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
 
@@ -87,6 +87,10 @@ else if (!ShowDivider)
     private bool hasSavedWork;
     private bool isLoading;
     private bool loadError;
+
+    private bool CanCorrectSavedOperations => Auth.IsSystemAdministrator &&
+        Auth.HasPermission(OperationsPermissions.FlightsView) && Auth.HasPermission(OperationsPermissions.FlightsOperate);
+    private bool ViewOnly => Auth.IsSystemAdministrator && !CanCorrectSavedOperations;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -99,14 +103,15 @@ else if (!ShowDivider)
             var flight = await Operations.GetPortalFlightOperationsAsync(FlightId);
             details = flight;
             var staffId = flight.CurrentStaffMemberId;
-            cancellations = ViewOnly ? flight.CancellationSubmissions : flight.CancellationSubmissions
+            var isAdministrator = Auth.IsSystemAdministrator;
+            cancellations = isAdministrator ? flight.CancellationSubmissions : flight.CancellationSubmissions
                 .Where(item => item.SubmittedByEmployee.StaffMemberId == staffId).ToArray();
             var userId = Auth.User?.Id;
-            hasSavedWork = flight.ArrivalSubmissions.Any(item => ViewOnly || item.SubmittedByEmployee.StaffMemberId == staffId)
-                || flight.DepartureSubmissions.Any(item => ViewOnly || item.SubmittedByEmployee.StaffMemberId == staffId)
-                || flight.Services.Any(item => ViewOnly || item.CreatedByUserId == userId)
-                || flight.Tasks.Any(item => ViewOnly || item.CreatedByUserId == userId)
-                || flight.ReturnToRamps.Any(item => ViewOnly || item.CreatedByUserId == userId);
+            hasSavedWork = flight.ArrivalSubmissions.Any(item => isAdministrator || item.SubmittedByEmployee.StaffMemberId == staffId)
+                || flight.DepartureSubmissions.Any(item => isAdministrator || item.SubmittedByEmployee.StaffMemberId == staffId)
+                || flight.Services.Any(item => isAdministrator || item.CreatedByUserId == userId)
+                || flight.Tasks.Any(item => isAdministrator || item.CreatedByUserId == userId)
+                || flight.ReturnToRamps.Any(item => isAdministrator || item.CreatedByUserId == userId);
         }
         catch (ApiException ex) when (ex.IsForbidden || ex.IsNotFound)
         {
@@ -131,7 +136,7 @@ else if (!ShowDivider)
 
     private async Task OpenWorkAsync()
     {
-        if (details is not { } flight || ViewOnly && !hasSavedWork)
+        if (details is not { } flight || Auth.IsSystemAdministrator && !hasSavedWork)
             return;
 
         ContextMenu.Close();
@@ -139,7 +144,8 @@ else if (!ShowDivider)
             new()
             {
                 [nameof(PortalFlightWorkDialog.FlightId)] = FlightId,
-                [nameof(PortalFlightWorkDialog.ViewOnly)] = ViewOnly
+                [nameof(PortalFlightWorkDialog.ViewOnly)] = ViewOnly,
+                [nameof(PortalFlightWorkDialog.AdministratorCorrections)] = CanCorrectSavedOperations
             },
             PortalWorkDialogLayout.CreateOptions());
         if (result is true)
@@ -148,7 +154,7 @@ else if (!ShowDivider)
 
     private async Task OpenCancellationAsync(Guid? submissionId)
     {
-        if (ViewOnly && submissionId is null)
+        if (Auth.IsSystemAdministrator && submissionId is null)
             return;
 
         ContextMenu.Close();
@@ -158,7 +164,8 @@ else if (!ShowDivider)
             {
                 [nameof(PortalFlightCancellationDialog.FlightId)] = FlightId,
                 [nameof(PortalFlightCancellationDialog.SubmissionId)] = submissionId,
-                [nameof(PortalFlightCancellationDialog.ViewOnly)] = ViewOnly
+                [nameof(PortalFlightCancellationDialog.ViewOnly)] = ViewOnly,
+                [nameof(PortalFlightCancellationDialog.AdministratorCorrections)] = CanCorrectSavedOperations
             },
             EditorOptions());
         if (result is true)
@@ -167,7 +174,7 @@ else if (!ShowDivider)
 
     private async Task UndoCancellationAsync(Guid submissionId, string rowVersion)
     {
-        if (ViewOnly)
+        if (Auth.IsSystemAdministrator)
             return;
 
         ContextMenu.Close();

@@ -6,7 +6,7 @@ namespace Operations.Application.Features.Flights;
 
 internal static class FlightTaskBounds
 {
-    internal static Result Validate(Flight flight, SaveFlightTaskRequest input, Guid staffId)
+    internal static Result Validate(Flight flight, SaveFlightTaskRequest input, Guid? staffId)
     {
         var actuals = VisibleActuals(flight, staffId);
         var failures = new Dictionary<string, string[]>();
@@ -48,7 +48,7 @@ internal static class FlightTaskBounds
             resourceOpen ? "Operations.FlightTask.OpenResourcePeriods" : "Operations.FlightTask.OpenPerformerPeriods");
     }
 
-    internal static Result RequireCompletedIfDeparted(Flight flight, SaveFlightTaskRequest input, Guid staffId) =>
+    internal static Result RequireCompletedIfDeparted(Flight flight, SaveFlightTaskRequest input, Guid? staffId) =>
         VisibleActuals(flight, staffId).Departure is null ? Result.Success() : Completion(input);
 
     internal static Result RequireCompletedForDeparture(Flight flight)
@@ -106,7 +106,7 @@ internal static class FlightTaskBounds
         // duration Ends when the task closes.
     }
 
-    private static (DateTimeOffset? Arrival, DateTimeOffset? Departure) VisibleActuals(Flight flight, Guid staffId)
+    private static (DateTimeOffset? Arrival, DateTimeOffset? Departure) VisibleActuals(Flight flight, Guid? staffId)
     {
         var arrivals = flight.ArrivalSubmissions.OrderBy(a => a.CreatedAtUtc).ThenBy(a => a.Id).ToArray();
         var departures = flight.DepartureSubmissions.OrderBy(d => d.CreatedAtUtc).ThenBy(d => d.Id).ToArray();
