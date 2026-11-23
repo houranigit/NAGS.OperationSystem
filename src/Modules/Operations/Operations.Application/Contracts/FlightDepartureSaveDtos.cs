@@ -7,6 +7,7 @@ public sealed record SaveFlightDepartureRequest(
     DateTimeOffset? SignatureSignedAtUtc,
     string? Remarks,
     bool AcknowledgeConflictingSubmission = false,
-    Guid? TargetSubmissionId = null);
+    Guid? TargetSubmissionId = null,
+    Guid? HandledByStaffMemberId = null);
 
 public sealed record FlightDepartureSavedDto(FlightDepartureSubmissionDto Submission, string RowVersion);

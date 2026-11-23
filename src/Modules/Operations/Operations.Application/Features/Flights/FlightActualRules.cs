@@ -27,7 +27,7 @@ internal static class FlightActualRules
     {
         var ata = arrivalOverride ?? Arrival(flight, staffId)?.Details.Ata;
         var departures = flight.DepartureSubmissions.OrderBy(item => item.CreatedAtUtc).ThenBy(item => item.Id).ToArray();
-        var departure = departures.FirstOrDefault(item => item.SubmittedByEmployee.StaffMemberId == staffId)
+        var departure = departures.FirstOrDefault(item => staffId is not null && item.SubmittedByEmployee?.StaffMemberId == staffId)
             ?? departures.FirstOrDefault(item => item.IsAccepted) ?? departures.FirstOrDefault();
         var atd = departureOverride ?? departure?.Details.Atd;
         return ata.HasValue && atd.HasValue && atd < ata
@@ -65,7 +65,7 @@ internal static class FlightActualRules
     private static FlightArrivalSubmission? Arrival(Flight flight, Guid? staffId)
     {
         var arrivals = flight.ArrivalSubmissions.OrderBy(item => item.CreatedAtUtc).ThenBy(item => item.Id).ToArray();
-        return arrivals.FirstOrDefault(item => item.SubmittedByEmployee.StaffMemberId == staffId)
+        return arrivals.FirstOrDefault(item => staffId is not null && item.SubmittedByEmployee?.StaffMemberId == staffId)
             ?? arrivals.FirstOrDefault(item => item.IsAccepted) ?? arrivals.FirstOrDefault();
     }
 }

@@ -17,17 +17,24 @@ public sealed record PortalFlightOperations(
 
 public sealed record PortalStaffSnapshot(Guid StaffMemberId, string FullName, string EmployeeId);
 
-public sealed record PortalFlightArrival(Guid Id, PortalStaffSnapshot SubmittedByEmployee, DateTimeOffset Ata,
+public sealed record PortalFlightArrival(Guid Id, PortalStaffSnapshot? SubmittedByEmployee, DateTimeOffset Ata,
     Guid AircraftTypeId, string AircraftTypeModel, string AircraftTailNumber, string? CustomerWorkReferenceNumber,
     PortalStaffSnapshot ReceivedByEmployee, string? Remarks, bool IsAccepted, DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc = null, string? CreatedByDisplayName = null, string? UpdatedByDisplayName = null);
 
-public sealed record PortalFlightDeparture(Guid Id, PortalStaffSnapshot SubmittedByEmployee, DateTimeOffset Atd,
+public sealed record PortalFlightDeparture(Guid Id, PortalStaffSnapshot? SubmittedByEmployee, DateTimeOffset Atd,
     PortalStaffSnapshot HandledByEmployee, string? Remarks, bool IsAccepted, DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc, bool HasSignature, string? CreatedByDisplayName = null, string? UpdatedByDisplayName = null);
 
-public sealed record PortalFlightCancellation(Guid Id, PortalStaffSnapshot SubmittedByEmployee, DateTimeOffset CanceledAtUtc,
-    string? Remarks, bool IsAccepted, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc);
+public sealed record PortalFlightCancellation(Guid Id, PortalStaffSnapshot? SubmittedByEmployee, DateTimeOffset CanceledAtUtc,
+    string? Remarks, bool IsAccepted, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc,
+    Guid? CreatedByUserId = null, string? CreatedByDisplayName = null)
+{
+    internal string SubmitterName => SubmittedByEmployee?.FullName ?? CreatedByDisplayName ?? "Unknown submitter";
+
+    internal bool IsAccountSubmissionBy(Guid? userId) =>
+        SubmittedByEmployee is null && userId.HasValue && CreatedByUserId == userId;
+}
 
 public sealed record PortalFlightPerformer(Guid Id, Guid StaffMemberId, string FullName, string EmployeeId,
     DateTimeOffset StartUtc, DateTimeOffset? EndUtc, string? Notes = null);
@@ -56,17 +63,20 @@ public sealed record PortalFlightReturnToRamp(Guid Id, int Sequence, DateTimeOff
     string ReceivedByFullName, DateTimeOffset? DepartedAtUtc, string? DepartureRemarks, string? HandledByFullName,
     bool HasSignature, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc, string? CreatedByDisplayName,
     string? UpdatedByDisplayName, bool CanEdit, bool IsOpen, IReadOnlyList<PortalFlightService> Services,
-    IReadOnlyList<PortalFlightTask> Tasks, Guid CreatedByUserId);
+    IReadOnlyList<PortalFlightTask> Tasks, Guid CreatedByUserId,
+    Guid ReceivedByStaffMemberId, Guid? HandledByStaffMemberId);
 
 public sealed record PortalWorkBatchRequest(
     PortalFlightArrivalRequest? Arrival, PortalFlightDepartureRequest? Departure,
     IReadOnlyList<PortalServiceChange> ServiceChanges, IReadOnlyList<PortalTaskChange> TaskChanges);
 
 public sealed record PortalFlightArrivalRequest(DateTimeOffset Ata, Guid AircraftTypeId, string AircraftTailNumber,
-    string? CustomerWorkReferenceNumber, string? Remarks, bool AcknowledgeConflictingSubmission, Guid? TargetSubmissionId);
+    string? CustomerWorkReferenceNumber, string? Remarks, bool AcknowledgeConflictingSubmission, Guid? TargetSubmissionId,
+    Guid? ReceivedByStaffMemberId = null);
 
 public sealed record PortalFlightDepartureRequest(DateTimeOffset Atd, byte[]? SignatureContent,
-    DateTimeOffset? SignatureSignedAtUtc, string? Remarks, bool AcknowledgeConflictingSubmission, Guid? TargetSubmissionId);
+    DateTimeOffset? SignatureSignedAtUtc, string? Remarks, bool AcknowledgeConflictingSubmission, Guid? TargetSubmissionId,
+    Guid? HandledByStaffMemberId = null);
 
 public sealed record PortalServiceChange(Guid RecordId, PortalFlightServiceRequest? Input);
 public sealed record PortalTaskChange(Guid RecordId, PortalFlightTaskRequest? Input);
@@ -94,6 +104,6 @@ public sealed record PortalReturnToRampRequest(PortalReturnToRampArrivalRequest 
     PortalReturnToRampDepartureRequest? Departure, IReadOnlyList<PortalServiceChange> Services,
     IReadOnlyList<PortalTaskChange> Tasks);
 
-public sealed record PortalReturnToRampArrivalRequest(DateTimeOffset ArrivedAtUtc, string? Remarks);
+public sealed record PortalReturnToRampArrivalRequest(DateTimeOffset ArrivedAtUtc, string? Remarks, Guid? ReceivedByStaffMemberId = null);
 public sealed record PortalReturnToRampDepartureRequest(DateTimeOffset DepartedAtUtc, string? Remarks,
-    byte[]? SignatureContent, DateTimeOffset? SignatureSignedAtUtc, bool RemoveSignature);
+    byte[]? SignatureContent, DateTimeOffset? SignatureSignedAtUtc, bool RemoveSignature, Guid? HandledByStaffMemberId = null);

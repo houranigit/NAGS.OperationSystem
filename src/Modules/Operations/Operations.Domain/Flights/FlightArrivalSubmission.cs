@@ -11,7 +11,7 @@ public sealed class FlightArrivalSubmission : Entity<Guid>
     internal FlightArrivalSubmission(
         Guid id,
         Guid flightId,
-        StaffMemberSnapshot submittedByEmployee,
+        StaffMemberSnapshot? submittedByEmployee,
         ArrivalDetails details,
         bool isAccepted,
         Guid createdByUserId,
@@ -19,7 +19,8 @@ public sealed class FlightArrivalSubmission : Entity<Guid>
     {
         Id = id;
         FlightId = flightId;
-        SubmittedByEmployee = new StaffMemberSnapshot(submittedByEmployee.StaffMemberId, submittedByEmployee.FullName, submittedByEmployee.EmployeeId);
+        SubmittedByEmployee = submittedByEmployee is null ? null
+            : new StaffMemberSnapshot(submittedByEmployee.StaffMemberId, submittedByEmployee.FullName, submittedByEmployee.EmployeeId);
         Details = details.Copy();
         IsAccepted = isAccepted;
         CreatedByUserId = createdByUserId;
@@ -27,7 +28,7 @@ public sealed class FlightArrivalSubmission : Entity<Guid>
     }
 
     public Guid FlightId { get; private set; }
-    public StaffMemberSnapshot SubmittedByEmployee { get; private set; } = null!;
+    public StaffMemberSnapshot? SubmittedByEmployee { get; private set; }
     public ArrivalDetails Details { get; private set; } = null!;
     public bool IsAccepted { get; private set; }
     public Guid CreatedByUserId { get; private set; }

@@ -14,7 +14,7 @@ internal static class FlightTaskBounds
         return ResultFor(failures);
     }
 
-    internal static Result ValidateExistingTasks(Flight flight, Guid staffId, DateTimeOffset? arrivalOverride = null,
+    internal static Result ValidateExistingTasks(Flight flight, Guid? staffId, DateTimeOffset? arrivalOverride = null,
         DateTimeOffset? departureOverride = null)
     {
         var actuals = VisibleActuals(flight, staffId);
@@ -110,8 +110,10 @@ internal static class FlightTaskBounds
     {
         var arrivals = flight.ArrivalSubmissions.OrderBy(a => a.CreatedAtUtc).ThenBy(a => a.Id).ToArray();
         var departures = flight.DepartureSubmissions.OrderBy(d => d.CreatedAtUtc).ThenBy(d => d.Id).ToArray();
-        var arrival = arrivals.FirstOrDefault(a => a.SubmittedByEmployee.StaffMemberId == staffId) ?? arrivals.FirstOrDefault(a => a.IsAccepted) ?? arrivals.FirstOrDefault();
-        var departure = departures.FirstOrDefault(d => d.SubmittedByEmployee.StaffMemberId == staffId) ?? departures.FirstOrDefault(d => d.IsAccepted) ?? departures.FirstOrDefault();
+        var arrival = arrivals.FirstOrDefault(a => staffId is not null && a.SubmittedByEmployee?.StaffMemberId == staffId)
+            ?? arrivals.FirstOrDefault(a => a.IsAccepted) ?? arrivals.FirstOrDefault();
+        var departure = departures.FirstOrDefault(d => staffId is not null && d.SubmittedByEmployee?.StaffMemberId == staffId)
+            ?? departures.FirstOrDefault(d => d.IsAccepted) ?? departures.FirstOrDefault();
         return (arrival?.Details.Ata, departure?.Details.Atd);
     }
 

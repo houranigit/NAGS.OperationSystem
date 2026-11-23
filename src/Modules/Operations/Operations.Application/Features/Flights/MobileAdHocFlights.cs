@@ -182,13 +182,13 @@ internal static class MobileAdHocFlights
         var allowed = await resolver.AllowedServiceIdsForStaffAsync(actor.StaffMemberId, actor.StationId, ct);
         var ids = allowed.IsSuccess ? allowed.Value : [];
         var names = await FlightWorkAttribution.NamesAsync(userNames, FlightWorkAttribution.UserIds(flight), ct);
-        var ownCancellation = flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
-        var ownWork = flight.ArrivalSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId) ||
-            flight.DepartureSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == actor.StaffMemberId);
+        var ownCancellation = flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee?.StaffMemberId == actor.StaffMemberId);
+        var ownWork = flight.ArrivalSubmissions.Any(item => item.SubmittedByEmployee?.StaffMemberId == actor.StaffMemberId) ||
+            flight.DepartureSubmissions.Any(item => item.SubmittedByEmployee?.StaffMemberId == actor.StaffMemberId);
         return FlightDetails.Map(flight, station.TimeZoneId, actor.StaffMemberId, !ownCancellation, !ownCancellation,
             !ownCancellation && !ownWork && flight.ServiceRecords.Count == 0 && flight.TaskRecords.Count == 0,
             flight.CancellationSubmissions.Count == 0 && ids.Count > 0, actor.UserId, ids, flight.CancellationSubmissions.Count == 0,
-            flight.CanCorrectOperationalWork(actor.StaffMemberId), names, canEditFlightDetails: true);
+            flight.CanCorrectOperationalWork(actor.StaffMemberId), names, canEditFlightDetails: true, legacyStaffAttribution: true);
     }
 
     internal static Error Invalid() => Error.Validation("Customer, flight number, scheduled arrival and departure are required.", "Operations.AdHoc.RequestInvalid");

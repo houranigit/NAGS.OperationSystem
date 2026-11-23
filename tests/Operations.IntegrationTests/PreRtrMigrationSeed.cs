@@ -81,7 +81,7 @@ internal static class PreRtrMigrationSeed
     internal static async Task InsertDepartureAsync(OperationsDbContext db, FlightDepartureSubmission departure)
     {
         var details = departure.Details;
-        var submitter = departure.SubmittedByEmployee;
+        var submitter = departure.SubmittedByEmployee ?? throw new InvalidOperationException("The published departure schema requires a submitting employee.");
         var signature = details.CustomerSignature ?? throw new InvalidOperationException("The published departure schema requires a customer signature.");
         var handler = details.HandledByEmployee;
         await db.Database.ExecuteSqlInterpolatedAsync($"""
@@ -102,9 +102,9 @@ internal static class PreRtrMigrationSeed
     internal static void MarkDepartureUnchanged(OperationsDbContext db, FlightDepartureSubmission departure)
     {
         // Keep the EF-only index alias aligned with its canonical employee snapshot.
-        var submitter = db.Entry(departure).Property<Guid>("SubmittedByStaffMemberId");
-        submitter.CurrentValue = departure.SubmittedByEmployee.StaffMemberId;
-        submitter.OriginalValue = departure.SubmittedByEmployee.StaffMemberId;
+        var submitter = db.Entry(departure).Property<Guid?>("SubmittedByStaffMemberId");
+        submitter.CurrentValue = departure.SubmittedByEmployee?.StaffMemberId;
+        submitter.OriginalValue = departure.SubmittedByEmployee?.StaffMemberId;
         MarkOwnerAndReferencesUnchanged(db.Entry(departure));
     }
 

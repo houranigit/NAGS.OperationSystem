@@ -15,7 +15,7 @@ else if (loadError)
     </button>
 }
 else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork ||
-    !Auth.IsSystemAdministrator && (CanOpenWork(flight) || flight.CanSaveCancellation)))
+    CanOpenWork(flight) || CanStartCancellation(flight)))
 {
     @if (ShowDivider)
     {
@@ -26,8 +26,11 @@ else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork ||
         <RowActionSubmenu Text="Cancellation order" Icon="event_busy">
             @foreach (var cancellation in cancellations)
             {
-                var reporter = cancellation.SubmittedByEmployee;
-                var reporterLabel = cancellations.Count > 1 ? $"{reporter.FullName} · {reporter.EmployeeId}" : null;
+                var reporterLabel = cancellations.Count > 1
+                    ? cancellation.SubmittedByEmployee is { } employee
+                        ? $"{employee.FullName} · {employee.EmployeeId}"
+                        : cancellation.SubmitterName
+                    : null;
                 @if (reporterLabel is not null)
                 {
                     <div class="os-row-actions-note">@reporterLabel</div>
@@ -37,10 +40,10 @@ else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork ||
                         @onclick="@(() => OpenCancellationAsync(cancellation.Id))">
                     <RadzenIcon Icon="visibility" /><span>View</span>
                 </button>
-                @if (!Auth.IsSystemAdministrator)
+                @if (CanUndoCancellation(cancellation))
                 {
                     <button type="button" role="menuitem" class="os-row-actions-item os-row-actions-item--danger"
-                            @onclick="@(() => UndoCancellationAsync(cancellation.Id, flight.RowVersion))">
+                            @onclick="@(() => UndoCancellationAsync(cancellation, flight.RowVersion))">
                         <RadzenIcon Icon="undo" /><span>Undo</span>
                     </button>
                 }
@@ -55,21 +58,18 @@ else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork ||
             </button>
         </RowActionSubmenu>
     }
-    else if (!Auth.IsSystemAdministrator && cancellations.Count == 0)
+    else if ((Auth.IsSystemAdministrator || cancellations.Count == 0) && CanOpenWork(flight))
     {
-        @if (CanOpenWork(flight))
-        {
-            <button type="button" role="menuitem" class="os-row-actions-item" @onclick="OpenWorkAsync">
-                <RadzenIcon Icon="assignment" /><span>Work Order</span>
-            </button>
-        }
-        @if (flight.CanSaveCancellation)
-        {
-            <button type="button" role="menuitem" class="os-row-actions-item os-row-actions-item--danger"
-                    @onclick="@(() => OpenCancellationAsync(null))">
-                <RadzenIcon Icon="cancel" /><span>Cancel flight</span>
-            </button>
-        }
+        <button type="button" role="menuitem" class="os-row-actions-item" @onclick="OpenWorkAsync">
+            <RadzenIcon Icon="assignment" /><span>Work Order</span>
+        </button>
+    }
+    @if (CanStartCancellation(flight))
+    {
+        <button type="button" role="menuitem" class="os-row-actions-item os-row-actions-item--danger"
+                @onclick="@(() => OpenCancellationAsync(null))">
+            <RadzenIcon Icon="cancel" /><span>Cancel flight</span>
+        </button>
     }
 }
 else if (!ShowDivider)
@@ -88,9 +88,9 @@ else if (!ShowDivider)
     private bool isLoading;
     private bool loadError;
 
-    private bool CanCorrectSavedOperations => Auth.IsSystemAdministrator &&
+    private bool CanOperateAsAdministrator => Auth.IsSystemAdministrator &&
         Auth.HasPermission(OperationsPermissions.FlightsView) && Auth.HasPermission(OperationsPermissions.FlightsOperate);
-    private bool ViewOnly => Auth.IsSystemAdministrator && !CanCorrectSavedOperations;
+    private bool ViewOnly => Auth.IsSystemAdministrator && !CanOperateAsAdministrator;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -105,10 +105,10 @@ else if (!ShowDivider)
             var staffId = flight.CurrentStaffMemberId;
             var isAdministrator = Auth.IsSystemAdministrator;
             cancellations = isAdministrator ? flight.CancellationSubmissions : flight.CancellationSubmissions
-                .Where(item => item.SubmittedByEmployee.StaffMemberId == staffId).ToArray();
+                .Where(item => staffId.HasValue && item.SubmittedByEmployee?.StaffMemberId == staffId).ToArray();
             var userId = Auth.User?.Id;
-            hasSavedWork = flight.ArrivalSubmissions.Any(item => isAdministrator || item.SubmittedByEmployee.StaffMemberId == staffId)
-                || flight.DepartureSubmissions.Any(item => isAdministrator || item.SubmittedByEmployee.StaffMemberId == staffId)
+            hasSavedWork = flight.ArrivalSubmissions.Any(item => isAdministrator || staffId.HasValue && item.SubmittedByEmployee?.StaffMemberId == staffId)
+                || flight.DepartureSubmissions.Any(item => isAdministrator || staffId.HasValue && item.SubmittedByEmployee?.StaffMemberId == staffId)
                 || flight.Services.Any(item => isAdministrator || item.CreatedByUserId == userId)
                 || flight.Tasks.Any(item => isAdministrator || item.CreatedByUserId == userId)
                 || flight.ReturnToRamps.Any(item => isAdministrator || item.CreatedByUserId == userId);
@@ -134,9 +134,16 @@ else if (!ShowDivider)
     private static bool CanOpenWork(PortalFlightOperations flight) =>
         flight.CanSaveArrival || flight.CanSaveDeparture || flight.CanSaveServices || flight.CanSaveTasks || flight.CanSaveReturnsToRamp;
 
+    private bool CanStartCancellation(PortalFlightOperations flight) => flight.CanSaveCancellation && cancellations.Count == 0 &&
+        (Auth.IsSystemAdministrator ? CanOperateAsAdministrator : !hasSavedWork);
+
+    private bool CanUndoCancellation(PortalFlightCancellation report) => Auth.IsSystemAdministrator
+        ? CanOperateAsAdministrator && report.IsAccountSubmissionBy(Auth.User?.Id)
+        : details?.CurrentStaffMemberId is { } staffId && report.SubmittedByEmployee?.StaffMemberId == staffId;
+
     private async Task OpenWorkAsync()
     {
-        if (details is not { } flight || Auth.IsSystemAdministrator && !hasSavedWork)
+        if (details is not { } flight || !hasSavedWork && !CanOpenWork(flight))
             return;
 
         ContextMenu.Close();
@@ -145,7 +152,7 @@ else if (!ShowDivider)
             {
                 [nameof(PortalFlightWorkDialog.FlightId)] = FlightId,
                 [nameof(PortalFlightWorkDialog.ViewOnly)] = ViewOnly,
-                [nameof(PortalFlightWorkDialog.AdministratorCorrections)] = CanCorrectSavedOperations
+                [nameof(PortalFlightWorkDialog.AdministratorEntry)] = CanOperateAsAdministrator
             },
             PortalWorkDialogLayout.CreateOptions());
         if (result is true)
@@ -154,7 +161,7 @@ else if (!ShowDivider)
 
     private async Task OpenCancellationAsync(Guid? submissionId)
     {
-        if (Auth.IsSystemAdministrator && submissionId is null)
+        if (submissionId is null && (details is not { } flight || !CanStartCancellation(flight)))
             return;
 
         ContextMenu.Close();
@@ -165,16 +172,16 @@ else if (!ShowDivider)
                 [nameof(PortalFlightCancellationDialog.FlightId)] = FlightId,
                 [nameof(PortalFlightCancellationDialog.SubmissionId)] = submissionId,
                 [nameof(PortalFlightCancellationDialog.ViewOnly)] = ViewOnly,
-                [nameof(PortalFlightCancellationDialog.AdministratorCorrections)] = CanCorrectSavedOperations
+                [nameof(PortalFlightCancellationDialog.AdministratorEntry)] = CanOperateAsAdministrator
             },
             EditorOptions());
         if (result is true)
             await Changed.InvokeAsync();
     }
 
-    private async Task UndoCancellationAsync(Guid submissionId, string rowVersion)
+    private async Task UndoCancellationAsync(PortalFlightCancellation report, string rowVersion)
     {
-        if (Auth.IsSystemAdministrator)
+        if (!CanUndoCancellation(report))
             return;
 
         ContextMenu.Close();
@@ -183,7 +190,7 @@ else if (!ShowDivider)
 
         try
         {
-            await Operations.UndoPortalCancellationAsync(FlightId, submissionId, rowVersion);
+            await Operations.UndoPortalCancellationAsync(FlightId, report.Id, rowVersion);
             Notifications.Notify(NotificationSeverity.Success, "Cancellation undone");
             await Changed.InvokeAsync();
         }

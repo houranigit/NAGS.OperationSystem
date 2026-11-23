@@ -14,6 +14,8 @@ public partial class PortalReturnToRampDialog
     private const int TasksStep = 2;
     private const int DepartureStep = 3;
     private const string ArrivalTimeField = "rtr-arrival-time";
+    private const string ReceiverField = "rtr-arrival-receiver";
+    private const string HandlerField = "rtr-departure-handler";
     private const string ArrivalRemarksField = "rtr-arrival-remarks";
     private const string DepartureTimeField = "rtr-departure-time";
     private const string DepartureRemarksField = "rtr-departure-remarks";
@@ -26,7 +28,7 @@ public partial class PortalReturnToRampDialog
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
     [Parameter] public Guid? OccurrenceId { get; set; }
     [Parameter] public bool ViewOnly { get; set; }
-    [Parameter] public bool AdministratorCorrections { get; set; }
+    [Parameter] public bool AdministratorEntry { get; set; }
     [Parameter] public PortalFlightOperations? DraftFlight { get; set; }
     [Parameter] public PortalReturnToRampDraft? Draft { get; set; }
     [Parameter] public int DraftSequence { get; set; }
@@ -41,6 +43,8 @@ public partial class PortalReturnToRampDialog
     private PortalOperationTime arrivalTime = default!;
     private PortalOperationTime departureTime = default!;
     private string? arrivalRemarks;
+    private Guid? receivedByStaffMemberId;
+    private Guid? handledByStaffMemberId;
     private string? departureRemarks;
     private PortalSignatureDraft signature = new();
     private List<PortalWorkDraft> services = [];
@@ -55,16 +59,13 @@ public partial class PortalReturnToRampDialog
     private bool arrivalUnlocked;
     private bool departureUnlocked;
 
-    private bool CanEdit => !ViewOnly && (AdministratorCorrections
-        ? occurrence?.CanEdit == true
-        : DraftFlight is not null || flight is { CanSaveReturnsToRamp: true } data &&
-            (occurrence?.CanEdit ?? (data.DepartureSubmissions.Count > 0 && data.ReturnToRamps.All(item => !item.IsOpen))));
-    private bool CanEditDeparture => CanEdit && (!AdministratorCorrections || occurrence?.DepartedAtUtc is not null);
+    private bool CanEdit => !ViewOnly && (DraftFlight is not null || flight is { CanSaveReturnsToRamp: true } data &&
+        (occurrence?.CanEdit ?? (data.DepartureSubmissions.Count > 0 && data.ReturnToRamps.All(item => !item.IsOpen))));
 
     private bool ArrivalFieldsLocked => occurrence is not null && !arrivalUnlocked;
     private bool DepartureFieldsLocked => occurrence?.DepartedAtUtc is not null && !departureUnlocked;
     private bool RequiresDeparture => RequireClosedDraft || occurrence is { IsOpen: false } ||
-        !string.IsNullOrWhiteSpace(departureRemarks) || signature.Bytes is not null;
+        !string.IsNullOrWhiteSpace(departureRemarks) || signature.Bytes is not null || handledByStaffMemberId.HasValue;
 
     private bool IsGuidedEntry => CanEdit && occurrence is null && Draft is null;
 
@@ -78,7 +79,7 @@ public partial class PortalReturnToRampDialog
         {
             var data = DraftFlight ?? await Operations.GetPortalFlightOperationsAsync(FlightId, lifetime.Token);
             occurrence = data.ReturnToRamps.SingleOrDefault(item => item.Id == OccurrenceId);
-            if ((OccurrenceId.HasValue || AdministratorCorrections) && occurrence is null)
+            if (OccurrenceId.HasValue && occurrence is null)
             {
                 error = "The return to ramp is no longer available.";
                 return;
@@ -87,14 +88,16 @@ public partial class PortalReturnToRampDialog
             zone = StationTimeZone.FromId(data.StationTimeZoneId);
             arrivalUnlocked = false;
             departureUnlocked = false;
-            var loadCatalogs = AdministratorCorrections ? occurrence?.CanEdit == true : DraftFlight is not null || data.CanSaveReturnsToRamp;
+            var loadCatalogs = DraftFlight is not null || data.CanSaveReturnsToRamp;
             lookups = ViewOnly || !loadCatalogs
                 ? new([], [], [], [], [], [], [], false)
                 : await PortalWorkLookups.LoadAsync(MasterData, data with { CanSaveReturnsToRamp = true },
-                    occurrenceOnly: true, administratorCorrections: AdministratorCorrections, ct: lifetime.Token);
+                    occurrenceOnly: true, administratorEntry: AdministratorEntry, ct: lifetime.Token);
             arrivalTime = new(zone, occurrence?.ArrivedAtUtc);
             departureTime = new(zone, occurrence?.DepartedAtUtc);
             arrivalRemarks = occurrence?.ArrivalRemarks;
+            receivedByStaffMemberId = occurrence?.ReceivedByStaffMemberId;
+            handledByStaffMemberId = occurrence?.HandledByStaffMemberId;
             departureRemarks = occurrence?.DepartureRemarks;
             services = occurrence?.Services.Select(item => PortalWorkDraft.From(item, zone)).ToList() ?? [];
             tasks = occurrence?.Tasks.Select(item => PortalWorkDraft.From(item, zone)).ToList() ?? [];
@@ -129,6 +132,8 @@ public partial class PortalReturnToRampDialog
         arrivalTime = new(zone, input.Arrival.ArrivedAtUtc);
         departureTime = new(zone, input.Departure?.DepartedAtUtc);
         arrivalRemarks = input.Arrival.Remarks;
+        receivedByStaffMemberId = input.Arrival.ReceivedByStaffMemberId;
+        handledByStaffMemberId = input.Departure?.HandledByStaffMemberId;
         departureRemarks = input.Departure?.Remarks;
         signature = new()
         {
@@ -187,6 +192,8 @@ public partial class PortalReturnToRampDialog
     private bool WorkChanged() => arrivalTime.HasChanged || departureTime.HasChanged ||
         PortalWorkDraft.Trim(arrivalRemarks) != occurrence?.ArrivalRemarks ||
         PortalWorkDraft.Trim(departureRemarks) != occurrence?.DepartureRemarks ||
+        receivedByStaffMemberId != occurrence?.ReceivedByStaffMemberId ||
+        handledByStaffMemberId != occurrence?.HandledByStaffMemberId ||
         signature.Bytes is not null || signature.RemoveSaved || services.Concat(tasks).Any(row => row.HasChanges());
 
     private bool WorkFilesLoading() => signature.IsReading || services.Concat(tasks).Any(row => row.IsReadingFile);
@@ -331,13 +338,16 @@ public partial class PortalReturnToRampDialog
         var departure = ReadDeparture(arrived);
         var serviceChanges = ReadServices(arrived, departure?.DepartedAtUtc);
         var taskChanges = ReadTasks(arrived, departure?.DepartedAtUtc);
-        return new(new(arrived.GetValueOrDefault(), PortalWorkDraft.Trim(arrivalRemarks)), departure, serviceChanges, taskChanges);
+        return new(new(arrived.GetValueOrDefault(), PortalWorkDraft.Trim(arrivalRemarks),
+            AdministratorEntry ? receivedByStaffMemberId : null), departure, serviceChanges, taskChanges);
     }
 
     private DateTimeOffset? ReadArrival()
     {
         validation.Step = ArrivalStep;
         var arrived = arrivalTime.Read("RTR arrival time", validation, ArrivalTimeField, required: true);
+        if (AdministratorEntry && (receivedByStaffMemberId is null || receivedByStaffMemberId == Guid.Empty))
+            validation.Add(ReceiverField, "Receiving employee is required.");
         if (PortalWorkDraft.Trim(arrivalRemarks)?.Length > 2000)
             validation.Add(ArrivalRemarksField, "RTR arrival remarks must be at most 2,000 characters.");
         return arrived;
@@ -345,11 +355,10 @@ public partial class PortalReturnToRampDialog
 
     private PortalReturnToRampDepartureRequest? ReadDeparture(DateTimeOffset? arrived)
     {
-        if (AdministratorCorrections && occurrence?.DepartedAtUtc is null)
-            return null;
-
         validation.Step = DepartureStep;
         var departed = departureTime.Read("RTR departure time", validation, DepartureTimeField, required: RequiresDeparture);
+        if (AdministratorEntry && (departed.HasValue || RequiresDeparture) && (handledByStaffMemberId is null || handledByStaffMemberId == Guid.Empty))
+            validation.Add(HandlerField, "Handling employee is required.");
         if (arrived > departed)
             validation.Add(DepartureTimeField, "Return-to-ramp departure cannot be before arrival.");
         if (PortalWorkDraft.Trim(departureRemarks)?.Length > 2000)
@@ -359,7 +368,8 @@ public partial class PortalReturnToRampDialog
         if (departed.HasValue && services.All(row => row.Deleted) && tasks.All(row => row.Deleted))
             validation.Add(DepartureTimeField, "Record at least one service or task before closing the return to ramp.");
         return departed is { } end
-            ? new(end, PortalWorkDraft.Trim(departureRemarks), signature.Bytes, signedAt, signature.RemoveSaved)
+            ? new(end, PortalWorkDraft.Trim(departureRemarks), signature.Bytes, signedAt, signature.RemoveSaved,
+                AdministratorEntry ? handledByStaffMemberId : null)
             : null;
     }
 

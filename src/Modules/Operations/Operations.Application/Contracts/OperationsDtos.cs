@@ -1,3 +1,5 @@
+using Operations.Domain.ValueObjects;
+
 namespace Operations.Application.Contracts;
 
 public enum FlightReportStatus
@@ -33,7 +35,17 @@ public sealed record FlightListItemDto(
     string Status = nameof(FlightReportStatus.Scheduled));
 
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
-public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId);
+public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId)
+{
+    internal static AssignedEmployeeDto? MapSubmitter(StaffMemberSnapshot? employee, string? creatorName, bool legacyStaffAttribution)
+    {
+        if (employee is not null)
+            return new(employee.StaffMemberId, employee.FullName, employee.EmployeeId);
+
+        // Older Android clients require an employee object. An empty ID cannot match a staff account.
+        return legacyStaffAttribution ? new(Guid.Empty, creatorName ?? "System administrator", string.Empty) : null;
+    }
+}
 
 public sealed record FlightDetailDto(
     Guid Id,

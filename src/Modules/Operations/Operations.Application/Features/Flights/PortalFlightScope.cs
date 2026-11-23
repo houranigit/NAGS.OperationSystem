@@ -71,10 +71,6 @@ internal sealed record FlightOperationAccess(MobileFlightScopeContext? StaffActo
             ? portalScope.ResolveCorrectionAsync(cancellationToken)
             : ResolveAsync(mobileScope, portalScope, portalOnly, cancellationToken);
 
-    internal static Error ExistingRecordsOnly() => Error.Forbidden(
-        "System administrators can only update existing flight operation records.",
-        "Operations.Portal.ExistingRecordsOnly");
-
     internal static async Task<Result<FlightOperationAccess>> ResolveAsync(IMobileFlightScope mobileScope,
         PortalFlightScope? portalScope, bool portalOnly, CancellationToken cancellationToken)
     {

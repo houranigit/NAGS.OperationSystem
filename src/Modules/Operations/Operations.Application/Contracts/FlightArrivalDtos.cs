@@ -4,7 +4,7 @@ namespace Operations.Application.Contracts;
 
 public sealed record FlightArrivalSubmissionDto(
     Guid Id,
-    AssignedEmployeeDto SubmittedByEmployee,
+    AssignedEmployeeDto? SubmittedByEmployee,
     DateTimeOffset Ata,
     Guid AircraftTypeId,
     string AircraftTypeModel,
@@ -20,9 +20,10 @@ public sealed record FlightArrivalSubmissionDto(
     Guid? CreatedByUserId = null,
     Guid? UpdatedByUserId = null)
 {
-    public static FlightArrivalSubmissionDto Map(FlightArrivalSubmission submission, IReadOnlyDictionary<Guid, string>? names = null) => new(
+    public static FlightArrivalSubmissionDto Map(FlightArrivalSubmission submission, IReadOnlyDictionary<Guid, string>? names = null,
+        bool legacyStaffAttribution = false) => new(
         submission.Id,
-        new(submission.SubmittedByEmployee.StaffMemberId, submission.SubmittedByEmployee.FullName, submission.SubmittedByEmployee.EmployeeId),
+        AssignedEmployeeDto.MapSubmitter(submission.SubmittedByEmployee, names?.GetValueOrDefault(submission.CreatedByUserId), legacyStaffAttribution),
         submission.Details.Ata, submission.Details.AircraftType.AircraftTypeId, submission.Details.AircraftType.Model,
         submission.Details.AircraftTailNumber, submission.Details.CustomerWorkReferenceNumber,
         new(submission.Details.ReceivedByEmployee.StaffMemberId, submission.Details.ReceivedByEmployee.FullName, submission.Details.ReceivedByEmployee.EmployeeId),
@@ -38,6 +39,7 @@ public sealed record SaveFlightArrivalRequest(
     string? CustomerWorkReferenceNumber,
     string? Remarks,
     bool AcknowledgeConflictingSubmission = false,
-    Guid? TargetSubmissionId = null);
+    Guid? TargetSubmissionId = null,
+    Guid? ReceivedByStaffMemberId = null);
 
 public sealed record FlightArrivalSavedDto(FlightArrivalSubmissionDto Submission, string RowVersion);

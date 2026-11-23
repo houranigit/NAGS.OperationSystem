@@ -124,7 +124,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsAccepted")
                         .HasColumnType("bit");
 
-                    b.Property<Guid>("SubmittedByStaffMemberId")
+                    b.Property<Guid?>("SubmittedByStaffMemberId")
                         .ValueGeneratedOnUpdateSometimes()
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("SubmittedByStaffMemberId");
@@ -142,9 +142,17 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasFilter("[IsAccepted] = 1");
 
                     b.HasIndex("FlightId", "SubmittedByStaffMemberId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[SubmittedByStaffMemberId] IS NOT NULL");
 
-                    b.ToTable("flight_arrival_submissions", "operations");
+                    b.HasIndex(new[] { "FlightId" }, "IX_flight_arrival_submissions_FlightId_Unlinked")
+                        .IsUnique()
+                        .HasFilter("[SubmittedByStaffMemberId] IS NULL");
+
+                    b.ToTable("flight_arrival_submissions", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_flight_arrival_submissions_SubmitterSnapshot", "([SubmittedByStaffMemberId] IS NULL AND [SubmittedByStaffFullName] IS NULL AND [SubmittedByStaffEmployeeId] IS NULL) OR ([SubmittedByStaffMemberId] IS NOT NULL AND [SubmittedByStaffFullName] IS NOT NULL AND [SubmittedByStaffEmployeeId] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Operations.Domain.Flights.FlightAssignedEmployee", b =>
@@ -179,7 +187,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsAccepted")
                         .HasColumnType("bit");
 
-                    b.Property<Guid>("SubmittedByStaffMemberId")
+                    b.Property<Guid?>("SubmittedByStaffMemberId")
                         .ValueGeneratedOnUpdateSometimes()
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("SubmittedByStaffMemberId");
@@ -197,9 +205,17 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasFilter("[IsAccepted] = 1");
 
                     b.HasIndex("FlightId", "SubmittedByStaffMemberId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[SubmittedByStaffMemberId] IS NOT NULL");
 
-                    b.ToTable("flight_cancellation_submissions", "operations");
+                    b.HasIndex(new[] { "FlightId" }, "IX_flight_cancellation_submissions_FlightId_Unlinked")
+                        .IsUnique()
+                        .HasFilter("[SubmittedByStaffMemberId] IS NULL");
+
+                    b.ToTable("flight_cancellation_submissions", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_flight_cancellation_submissions_SubmitterSnapshot", "([SubmittedByStaffMemberId] IS NULL AND [SubmittedByStaffFullName] IS NULL AND [SubmittedByStaffEmployeeId] IS NULL) OR ([SubmittedByStaffMemberId] IS NOT NULL AND [SubmittedByStaffFullName] IS NOT NULL AND [SubmittedByStaffEmployeeId] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Operations.Domain.Flights.FlightDepartureSubmission", b =>
@@ -219,7 +235,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsAccepted")
                         .HasColumnType("bit");
 
-                    b.Property<Guid>("SubmittedByStaffMemberId")
+                    b.Property<Guid?>("SubmittedByStaffMemberId")
                         .ValueGeneratedOnUpdateSometimes()
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("SubmittedByStaffMemberId");
@@ -237,9 +253,17 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasFilter("[IsAccepted] = 1");
 
                     b.HasIndex("FlightId", "SubmittedByStaffMemberId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[SubmittedByStaffMemberId] IS NOT NULL");
 
-                    b.ToTable("flight_departure_submissions", "operations");
+                    b.HasIndex(new[] { "FlightId" }, "IX_flight_departure_submissions_FlightId_Unlinked")
+                        .IsUnique()
+                        .HasFilter("[SubmittedByStaffMemberId] IS NULL");
+
+                    b.ToTable("flight_departure_submissions", "operations", t =>
+                        {
+                            t.HasCheckConstraint("CK_flight_departure_submissions_SubmitterSnapshot", "([SubmittedByStaffMemberId] IS NULL AND [SubmittedByStaffFullName] IS NULL AND [SubmittedByStaffEmployeeId] IS NULL) OR ([SubmittedByStaffMemberId] IS NOT NULL AND [SubmittedByStaffFullName] IS NOT NULL AND [SubmittedByStaffEmployeeId] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Operations.Domain.Flights.FlightReturnToRamp", b =>
@@ -1021,8 +1045,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Navigation("Details")
                         .IsRequired();
 
-                    b.Navigation("SubmittedByEmployee")
-                        .IsRequired();
+                    b.Navigation("SubmittedByEmployee");
                 });
 
             modelBuilder.Entity("Operations.Domain.Flights.FlightAssignedEmployee", b =>
@@ -1128,8 +1151,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Navigation("Details")
                         .IsRequired();
 
-                    b.Navigation("SubmittedByEmployee")
-                        .IsRequired();
+                    b.Navigation("SubmittedByEmployee");
                 });
 
             modelBuilder.Entity("Operations.Domain.Flights.FlightDepartureSubmission", b =>
@@ -1267,8 +1289,7 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Navigation("Details")
                         .IsRequired();
 
-                    b.Navigation("SubmittedByEmployee")
-                        .IsRequired();
+                    b.Navigation("SubmittedByEmployee");
                 });
 
             modelBuilder.Entity("Operations.Domain.Flights.FlightReturnToRamp", b =>

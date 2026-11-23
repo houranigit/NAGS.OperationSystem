@@ -93,11 +93,11 @@ public sealed partial class PortalWorkDraft(Guid id, bool isTask, StationTimeZon
         return this;
     }
 
-    public static PortalWorkDraft FromPlan(PlannedServiceModel planned, Guid staffId, PortalCatalogChoice? staff, StationTimeZone zone) =>
+    public static PortalWorkDraft FromPlan(PlannedServiceModel planned, Guid? staffId, PortalCatalogChoice? staff, StationTimeZone zone) =>
         new(Guid.NewGuid(), false, zone)
         {
             IsPlanned = true, ServiceId = planned.ServiceId, ServiceName = planned.Name,
-            Performers = [new(Guid.NewGuid(), zone)
+            Performers = staffId is null ? [] : [new(Guid.NewGuid(), zone)
             {
                 StaffMemberId = staffId,
                 DisplayName = staff?.Label ?? "You",
@@ -335,7 +335,7 @@ public sealed record PortalWorkLookups(
     IReadOnlyList<PortalCatalogChoice> Supports, bool HasUnavailableCatalogs)
 {
     public static async Task<PortalWorkLookups> LoadAsync(MasterDataApiClient api, PortalFlightOperations flight,
-        bool occurrenceOnly, bool administratorCorrections, CancellationToken ct)
+        bool occurrenceOnly, bool administratorEntry, CancellationToken ct)
     {
         var allowTasks = occurrenceOnly ? flight.CanSaveReturnsToRamp : flight.CanSaveTasks;
         var allowServices = occurrenceOnly ? flight.CanSaveReturnsToRamp : flight.CanSaveServices;
@@ -344,9 +344,9 @@ public sealed record PortalWorkLookups(
         var aircraft = Read(!occurrenceOnly && flight.CanSaveArrival, async () =>
             (await api.GetAircraftTypeOptionsAsync(ct)).Select(item => new PortalCatalogChoice(item.Id, $"{item.Manufacturer} · {item.Model}")));
         var services = Read(allowServices, async () =>
-            (await api.GetPerformedServiceOptionsAsync(ct)).Where(item => administratorCorrections || flight.AllowedServiceIds?.Contains(item.Id) == true)
+            (await api.GetPerformedServiceOptionsAsync(ct)).Where(item => administratorEntry || flight.AllowedServiceIds?.Contains(item.Id) == true)
                 .Select(item => new PortalCatalogChoice(item.Id, item.Name)));
-        var staff = Read(allowTasks || allowServices, async () =>
+        var staff = Read(allowTasks || allowServices || administratorEntry && (flight.CanSaveArrival || flight.CanSaveDeparture), async () =>
             (await api.GetStaffMemberOptionsAsync(flight.StationId, ct))
                 .Select(item => new PortalCatalogChoice(item.Id, $"{item.FullName} · {item.EmployeeId}")
                 {

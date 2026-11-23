@@ -12,6 +12,8 @@ public partial class PortalFlightWorkDialog
     private static readonly Guid UnknownCustomer = new("50000000-0000-0000-0000-000000000001");
     private const string ArrivalTimeField = "arrival-time";
     private const string AircraftField = "arrival-aircraft";
+    private const string ReceiverField = "arrival-receiver";
+    private const string HandlerField = "departure-handler";
     private const string TailField = "arrival-tail";
     private const string ArrivalRemarksField = "arrival-remarks";
     private const string DepartureTimeField = "departure-time";
@@ -24,7 +26,7 @@ public partial class PortalFlightWorkDialog
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
     [Parameter] public int InitialStep { get; set; }
     [Parameter] public bool ViewOnly { get; set; }
-    [Parameter] public bool AdministratorCorrections { get; set; }
+    [Parameter] public bool AdministratorEntry { get; set; }
 
     private readonly CancellationTokenSource lifetime = new();
     private PortalFlightOperations? flight;
@@ -33,6 +35,8 @@ public partial class PortalFlightWorkDialog
     private PortalFlightArrival? arrivalSource;
     private PortalOperationTime arrivalTime = default!;
     private Guid? aircraftTypeId;
+    private Guid? receivedByStaffMemberId;
+    private Guid? handledByStaffMemberId;
     private string? tailNumber;
     private string? arrivalReference;
     private string? arrivalRemarks;
@@ -55,12 +59,10 @@ public partial class PortalFlightWorkDialog
 
     private bool RequiresArrivalRemarks => flight?.IsAdHocFlight == true && flight.CustomerId == UnknownCustomer;
     private bool CanEditArrival => !ViewOnly && flight is { CanSaveArrival: true } data &&
-        (!AdministratorCorrections || arrivalSource is not null) &&
-        (!data.IsUnassignedSearchFlight || arrivalSource is null || arrivalSource.SubmittedByEmployee.StaffMemberId == data.CurrentStaffMemberId);
+        (!data.IsUnassignedSearchFlight || arrivalSource is null || IsStaffSubmitter(arrivalSource.SubmittedByEmployee, data.CurrentStaffMemberId));
 
     private bool CanEditDeparture => !ViewOnly && flight is { CanSaveDeparture: true } data &&
-        (!AdministratorCorrections || departureSource is not null) &&
-        (!data.IsUnassignedSearchFlight || departureSource is null || departureSource.SubmittedByEmployee.StaffMemberId == data.CurrentStaffMemberId);
+        (!data.IsUnassignedSearchFlight || departureSource is null || IsStaffSubmitter(departureSource.SubmittedByEmployee, data.CurrentStaffMemberId));
 
     private bool CanEditNormalWork => !ViewOnly && flight is { } data && (data.CanSaveArrival || data.CanSaveDeparture ||
         data.CanSaveServices || data.CanSaveTasks || services.Concat(tasks).Any(row => row.CanEdit || row.CanSetEnd || row.CanDelete));
@@ -79,13 +81,13 @@ public partial class PortalFlightWorkDialog
         }
     }
 
-    private bool CanDraftReturnToRamp => !ViewOnly && !AdministratorCorrections && flight is { CancellationSubmissions.Count: 0 } data &&
+    private bool CanDraftReturnToRamp => !ViewOnly && flight is { CancellationSubmissions.Count: 0 } data &&
         (data.CanSaveReturnsToRamp || data.CanSaveDeparture && data.DepartureSubmissions.Count == 0);
 
     private bool CanAddReturnToRamp => CanDraftReturnToRamp && ActualDeparture.HasValue &&
         flight!.ReturnToRamps.All(item => !item.IsOpen) && pendingReturns.All(item => !item.IsOpen);
 
-    private bool IsGuidedEntry => !AdministratorCorrections && flight is
+    private bool IsGuidedEntry => flight is
     {
         ArrivalSubmissions.Count: 0,
         DepartureSubmissions.Count: 0,
@@ -107,11 +109,12 @@ public partial class PortalFlightWorkDialog
             lookups = ViewOnly
                 ? new([], [], [], [], [], [], [], false)
                 : await PortalWorkLookups.LoadAsync(MasterData, data, occurrenceOnly: false,
-                    administratorCorrections: AdministratorCorrections, ct: lifetime.Token);
+                    administratorEntry: AdministratorEntry, ct: lifetime.Token);
             services = data.Services.Select(item => PortalWorkDraft.From(item, zone)).ToList();
             tasks = data.Tasks.Select(item => PortalWorkDraft.From(item, zone)).ToList();
-            if (!ViewOnly && !AdministratorCorrections && (data.CanAddServices ?? data.CanSaveServices) && data.CurrentStaffMemberId is { } staffId)
+            if (!ViewOnly && (data.CanAddServices ?? data.CanSaveServices) && (AdministratorEntry || data.CurrentStaffMemberId.HasValue))
             {
+                var staffId = data.CurrentStaffMemberId;
                 var staff = lookups.Staff.FirstOrDefault(item => item.Id == staffId);
                 foreach (var planned in data.PlannedServices.Where(item => !item.IsAircraftPerLanding
                     && lookups.Services.Any(choice => choice.Id == item.ServiceId)
@@ -120,9 +123,9 @@ public partial class PortalFlightWorkDialog
             }
 
             flight = data;
-            SetArrival(data.ArrivalSubmissions.OrderByDescending(item => item.SubmittedByEmployee.StaffMemberId == data.CurrentStaffMemberId)
+            SetArrival(data.ArrivalSubmissions.OrderByDescending(item => IsStaffSubmitter(item.SubmittedByEmployee, data.CurrentStaffMemberId))
                 .ThenByDescending(item => item.IsAccepted).FirstOrDefault());
-            SetDeparture(data.DepartureSubmissions.OrderByDescending(item => item.SubmittedByEmployee.StaffMemberId == data.CurrentStaffMemberId)
+            SetDeparture(data.DepartureSubmissions.OrderByDescending(item => IsStaffSubmitter(item.SubmittedByEmployee, data.CurrentStaffMemberId))
                 .ThenByDescending(item => item.IsAccepted).FirstOrDefault());
             step = IsGuidedEntry ? 0 : Math.Clamp(InitialStep, 0, StepLabels.Length - 1);
         }
@@ -148,6 +151,7 @@ public partial class PortalFlightWorkDialog
     {
         unlockedArrivalId = null;
         arrivalSource = source;
+        receivedByStaffMemberId = source?.ReceivedByEmployee.StaffMemberId;
         arrivalTime = new(zone, source?.Ata);
         aircraftTypeId = source?.AircraftTypeId ?? flight?.AircraftTypeId;
         tailNumber = source?.AircraftTailNumber;
@@ -159,6 +163,7 @@ public partial class PortalFlightWorkDialog
     {
         unlockedDepartureId = null;
         departureSource = source;
+        handledByStaffMemberId = source?.HandledByEmployee.StaffMemberId;
         departureTime = new(zone, source?.Atd);
         departureRemarks = source?.Remarks;
         signature = source is { HasSignature: true }
@@ -169,10 +174,10 @@ public partial class PortalFlightWorkDialog
     internal static string MediaVersion(DateTimeOffset stamp) => Uri.EscapeDataString(stamp.ToString("O"));
 
     private IEnumerable<PortalCatalogChoice> ArrivalOptions() => flight!.ArrivalSubmissions
-        .Select(item => new PortalCatalogChoice(item.Id, $"{item.SubmittedByEmployee.FullName} · {zone.Format(item.Ata)}"));
+        .Select(item => new PortalCatalogChoice(item.Id, $"{item.SubmittedByEmployee?.FullName ?? item.CreatedByDisplayName ?? "Unknown submitter"} · {zone.Format(item.Ata)}"));
 
     private IEnumerable<PortalCatalogChoice> DepartureOptions() => flight!.DepartureSubmissions
-        .Select(item => new PortalCatalogChoice(item.Id, $"{item.SubmittedByEmployee.FullName} · {zone.Format(item.Atd)}"));
+        .Select(item => new PortalCatalogChoice(item.Id, $"{item.SubmittedByEmployee?.FullName ?? item.CreatedByDisplayName ?? "Unknown submitter"} · {zone.Format(item.Atd)}"));
 
     private async Task SelectArrivalAsync(Guid? id)
     {
@@ -196,23 +201,25 @@ public partial class PortalFlightWorkDialog
         aircraftTypeId != (arrivalSource?.AircraftTypeId ?? flight?.AircraftTypeId) ||
         PortalWorkDraft.Trim(tailNumber) != arrivalSource?.AircraftTailNumber ||
         PortalWorkDraft.Trim(arrivalReference) != arrivalSource?.CustomerWorkReferenceNumber ||
-        PortalWorkDraft.Trim(arrivalRemarks) != arrivalSource?.Remarks;
+        PortalWorkDraft.Trim(arrivalRemarks) != arrivalSource?.Remarks ||
+        receivedByStaffMemberId != arrivalSource?.ReceivedByEmployee.StaffMemberId;
 
     private bool DepartureChanged() => departureTime.Local != Local(departureSource?.Atd) ||
-        PortalWorkDraft.Trim(departureRemarks) != departureSource?.Remarks || signature.Bytes is not null;
+        PortalWorkDraft.Trim(departureRemarks) != departureSource?.Remarks || signature.Bytes is not null ||
+        handledByStaffMemberId != departureSource?.HandledByEmployee.StaffMemberId;
 
     private DateTime? Local(DateTimeOffset? value) => value is { } time ? zone.ToLocalDateTime(time) : null;
 
     private DateTimeOffset? ArrivalFor(Guid? staffId)
     {
-        var report = flight!.ArrivalSubmissions.OrderByDescending(item => item.SubmittedByEmployee.StaffMemberId == staffId)
+        var report = flight!.ArrivalSubmissions.OrderByDescending(item => IsStaffSubmitter(item.SubmittedByEmployee, staffId))
             .ThenByDescending(item => item.IsAccepted).ThenBy(item => item.CreatedAtUtc).ThenBy(item => item.Id).FirstOrDefault();
         return report?.Id == arrivalSource?.Id ? ActualArrival : report?.Ata;
     }
 
     private DateTimeOffset? DepartureFor(Guid? staffId)
     {
-        var report = flight!.DepartureSubmissions.OrderByDescending(item => item.SubmittedByEmployee.StaffMemberId == staffId)
+        var report = flight!.DepartureSubmissions.OrderByDescending(item => IsStaffSubmitter(item.SubmittedByEmployee, staffId))
             .ThenByDescending(item => item.IsAccepted).ThenBy(item => item.CreatedAtUtc).ThenBy(item => item.Id).FirstOrDefault();
         return report?.Id == departureSource?.Id ? ActualDeparture : report?.Atd;
     }
@@ -223,10 +230,10 @@ public partial class PortalFlightWorkDialog
         PortalWorkDraft.ValidateActualBounds(work, errors, ArrivalFor(staffId), DepartureFor(staffId));
         if (arrivalTime.HasChanged)
             PortalWorkDraft.ValidateActualBounds(work, errors, ActualArrival,
-                DepartureFor(arrivalSource?.SubmittedByEmployee.StaffMemberId ?? staffId), includeUnchanged: true);
+                DepartureFor(arrivalSource?.SubmittedByEmployee?.StaffMemberId ?? staffId), includeUnchanged: true);
         if (departureTime.HasChanged)
             PortalWorkDraft.ValidateActualBounds(work, errors,
-                ArrivalFor(departureSource?.SubmittedByEmployee.StaffMemberId ?? staffId), ActualDeparture, includeUnchanged: true);
+                ArrivalFor(departureSource?.SubmittedByEmployee?.StaffMemberId ?? staffId), ActualDeparture, includeUnchanged: true);
     }
 
     private bool NormalWorkChanged() => ArrivalChanged() || DepartureChanged() || services.Concat(tasks).Any(row => row.HasChanges());
@@ -244,12 +251,12 @@ public partial class PortalFlightWorkDialog
             return;
         }
 
-        if (!ViewOnly && !AdministratorCorrections && index == 4)
+        if (!ViewOnly && index == 4)
         {
             if (!ValidateReturnToRampEntry())
                 return;
         }
-        else if (!ViewOnly && !AdministratorCorrections && index > 0)
+        else if (!ViewOnly && index > 0)
         {
             validation.ClearStep(0);
             requireArrivalForValidation = true;
@@ -332,11 +339,14 @@ public partial class PortalFlightWorkDialog
             errors.Add(AircraftField, "Aircraft type is required.");
         if (string.IsNullOrWhiteSpace(tailNumber))
             errors.Add(TailField, "Tail number is required.");
+        if (AdministratorEntry && (receivedByStaffMemberId is null || receivedByStaffMemberId == Guid.Empty))
+            errors.Add(ReceiverField, "Receiving employee is required.");
         if (RequiresArrivalRemarks && string.IsNullOrWhiteSpace(arrivalRemarks))
             errors.Add(ArrivalRemarksField, "Describe the Unknown customer in Arrival remarks.");
 
         return new(ata.GetValueOrDefault(), aircraftTypeId.GetValueOrDefault(), tailNumber?.Trim() ?? string.Empty,
-            PortalWorkDraft.Trim(arrivalReference), PortalWorkDraft.Trim(arrivalRemarks), false, arrivalSource?.Id);
+            PortalWorkDraft.Trim(arrivalReference), PortalWorkDraft.Trim(arrivalRemarks), false, arrivalSource?.Id,
+            AdministratorEntry ? receivedByStaffMemberId : null);
     }
 
     private PortalFlightDepartureRequest? ReadDeparture(PortalFlightValidation errors, bool requireDeparture = false)
@@ -353,13 +363,16 @@ public partial class PortalFlightWorkDialog
         }
 
         var atd = departureTime.Read("Actual time of departure", errors, DepartureTimeField, required: true);
-        if (ArrivalFor(departureSource?.SubmittedByEmployee.StaffMemberId ?? flight!.CurrentStaffMemberId) is { } ata &&
+        if (ArrivalFor(departureSource?.SubmittedByEmployee?.StaffMemberId ?? flight!.CurrentStaffMemberId) is { } ata &&
             atd is { } end && end < ata)
             errors.Add(DepartureTimeField, "Actual departure cannot be before actual arrival.");
+        if (AdministratorEntry && (handledByStaffMemberId is null || handledByStaffMemberId == Guid.Empty))
+            errors.Add(HandlerField, "Handling employee is required.");
         PortalWorkDraft.ValidateDeparturePeriods(services, tasks, errors, DepartureTimeField);
         var signedAt = signature.SigningTime?.Read("Signed at", errors, SignatureTimeField, required: true);
         return new(atd.GetValueOrDefault(), signature.Bytes, signedAt,
-            PortalWorkDraft.Trim(departureRemarks), false, departureSource?.Id);
+            PortalWorkDraft.Trim(departureRemarks), false, departureSource?.Id,
+            AdministratorEntry ? handledByStaffMemberId : null);
     }
 
     private PortalServiceChange[] ReadServices(PortalFlightValidation errors)
@@ -424,9 +437,7 @@ public partial class PortalFlightWorkDialog
             if ((arrival is not null || departure is not null) && flight.CancellationSubmissions.Count > 0)
             {
                 acknowledged = await DialogService.Confirm(
-                    AdministratorCorrections
-                        ? "This flight has a cancellation report. Save the correction to the operational report?"
-                        : "Another employee reported this flight as canceled. Save your operational report?",
+                    "This flight has a cancellation report. Save the operational report?",
                     "Conflicting flight report", new ConfirmOptions { OkButtonText = "Save report", CancelButtonText = "Go back" }) == true;
                 if (!acknowledged)
                     return;
@@ -476,10 +487,10 @@ public partial class PortalFlightWorkDialog
         services = saved.Services.Select(item => PortalWorkDraft.From(item, zone)).Concat(unrecordedPlan).ToList();
         tasks = saved.Tasks.Select(item => PortalWorkDraft.From(item, zone)).ToList();
         SetArrival(saved.ArrivalSubmissions.OrderByDescending(item => item.Id == arrivalSource?.Id)
-            .ThenByDescending(item => item.SubmittedByEmployee.StaffMemberId == saved.CurrentStaffMemberId)
+            .ThenByDescending(item => IsStaffSubmitter(item.SubmittedByEmployee, saved.CurrentStaffMemberId))
             .ThenByDescending(item => item.IsAccepted).FirstOrDefault());
         SetDeparture(saved.DepartureSubmissions.OrderByDescending(item => item.Id == departureSource?.Id)
-            .ThenByDescending(item => item.SubmittedByEmployee.StaffMemberId == saved.CurrentStaffMemberId)
+            .ThenByDescending(item => IsStaffSubmitter(item.SubmittedByEmployee, saved.CurrentStaffMemberId))
             .ThenByDescending(item => item.IsAccepted).FirstOrDefault());
     }
 
@@ -532,7 +543,7 @@ public partial class PortalFlightWorkDialog
                 [nameof(PortalReturnToRampDialog.FlightId)] = FlightId,
                 [nameof(PortalReturnToRampDialog.OccurrenceId)] = occurrenceId,
                 [nameof(PortalReturnToRampDialog.ViewOnly)] = ViewOnly || WorkChanged(),
-                [nameof(PortalReturnToRampDialog.AdministratorCorrections)] = AdministratorCorrections
+                [nameof(PortalReturnToRampDialog.AdministratorEntry)] = AdministratorEntry
             },
             PortalWorkDialogLayout.CreateOptions());
         if (result is true)
@@ -555,6 +566,7 @@ public partial class PortalFlightWorkDialog
             new Dictionary<string, object?>
             {
                 [nameof(PortalReturnToRampDialog.FlightId)] = FlightId,
+                [nameof(PortalReturnToRampDialog.AdministratorEntry)] = AdministratorEntry,
                 [nameof(PortalReturnToRampDialog.DraftFlight)] = flight,
                 [nameof(PortalReturnToRampDialog.Draft)] = draft,
                 [nameof(PortalReturnToRampDialog.DraftSequence)] = sequence,

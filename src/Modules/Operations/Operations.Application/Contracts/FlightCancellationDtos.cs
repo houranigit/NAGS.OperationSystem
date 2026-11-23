@@ -4,18 +4,23 @@ namespace Operations.Application.Contracts;
 
 public sealed record FlightCancellationSubmissionDto(
     Guid Id,
-    AssignedEmployeeDto SubmittedByEmployee,
+    AssignedEmployeeDto? SubmittedByEmployee,
     DateTimeOffset CanceledAtUtc,
     string? Remarks,
     bool IsAccepted,
     DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? UpdatedAtUtc)
+    DateTimeOffset? UpdatedAtUtc,
+    Guid? CreatedByUserId = null,
+    string? CreatedByDisplayName = null)
 {
-    public static FlightCancellationSubmissionDto Map(FlightCancellationSubmission submission) => new(
-        submission.Id,
-        new(submission.SubmittedByEmployee.StaffMemberId, submission.SubmittedByEmployee.FullName, submission.SubmittedByEmployee.EmployeeId),
-        submission.Details.CanceledAtUtc, submission.Details.Remarks, submission.IsAccepted,
-        submission.CreatedAtUtc, submission.UpdatedAtUtc);
+    public static FlightCancellationSubmissionDto Map(FlightCancellationSubmission submission,
+        IReadOnlyDictionary<Guid, string>? names = null, bool legacyStaffAttribution = false)
+    {
+        var creatorName = submission.SubmittedByEmployee is null ? names?.GetValueOrDefault(submission.CreatedByUserId) : null;
+        return new(submission.Id, AssignedEmployeeDto.MapSubmitter(submission.SubmittedByEmployee, creatorName, legacyStaffAttribution),
+            submission.Details.CanceledAtUtc, submission.Details.Remarks, submission.IsAccepted,
+            submission.CreatedAtUtc, submission.UpdatedAtUtc, submission.CreatedByUserId, creatorName);
+    }
 }
 
 public sealed record SaveFlightCancellationRequest(

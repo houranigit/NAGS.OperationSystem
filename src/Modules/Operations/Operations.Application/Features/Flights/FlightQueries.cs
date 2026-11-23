@@ -142,23 +142,23 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
 internal static class FlightDetails
 {
     internal static FlightDetailDto MapAdministrator(Flight flight, string stationTimeZoneId,
-        IReadOnlyDictionary<Guid, string> names, bool canCorrect)
+        IReadOnlyDictionary<Guid, string> names, bool canCorrect, Guid currentUserId)
     {
-        var canCorrectWork = canCorrect && flight.CancellationSubmissions.Count == 0;
+        var canSaveWork = canCorrect && flight.CancellationSubmissions.Count == 0;
+        var canSaveActuals = canCorrect && !flight.CancellationSubmissions.Any(item => item.IsOwnedBy(null, currentUserId));
+        var canSaveCancellation = canCorrect && flight.ServiceRecords.Count == 0 && flight.TaskRecords.Count == 0 &&
+            flight.ReturnToRamps.Count == 0 && (flight.CancellationSubmissions.Count > 0 || !flight.HasSubmittedActuals(null, currentUserId));
         return Map(flight, stationTimeZoneId,
-            canSaveArrival: canCorrect && flight.ArrivalSubmissions.Count > 0,
-            canSaveDeparture: canCorrect && flight.DepartureSubmissions.Count > 0,
-            canSaveCancellation: canCorrect && flight.CancellationSubmissions.Count > 0,
-            canSaveServices: canCorrectWork && flight.Services.Count > 0,
-            allowedServiceIds: canCorrectWork ? flight.ServiceRecords.Select(item => item.Service.ServiceId).Distinct().ToArray() : null,
-            canSaveTasks: canCorrectWork,
-            assignedWorkCorrection: canCorrectWork,
-            userDisplayNames: names, creatorOnlyWorkDelete: true) with
+            canSaveArrival: canSaveActuals,
+            canSaveDeparture: canSaveActuals,
+            canSaveCancellation: canSaveCancellation,
+            canSaveServices: canSaveWork,
+            currentUserId: currentUserId,
+            canSaveTasks: canSaveWork,
+            assignedWorkCorrection: canSaveWork,
+            userDisplayNames: names, creatorOnlyWorkDelete: true, unrestrictedServices: true) with
         {
-            CanAddServices = false,
-            CanAddTasks = false,
-            CanSaveTasks = canCorrectWork && flight.Tasks.Count > 0,
-            CanSaveReturnsToRamp = false
+            CanSaveReturnsToRamp = canSaveWork && flight.DepartureSubmissions.Count > 0
         };
     }
 
@@ -166,19 +166,20 @@ internal static class FlightDetails
         bool canOperate, IReadOnlyList<Guid> allowedServiceIds, IReadOnlyDictionary<Guid, string> names, bool portalOnly)
     {
         var staffId = actor.StaffMemberId;
-        var ownCancellation = flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == staffId);
-        var ownWork = flight.ArrivalSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == staffId) ||
-            flight.DepartureSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == staffId);
+        var ownCancellation = flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee?.StaffMemberId == staffId);
+        var ownWork = flight.ArrivalSubmissions.Any(item => item.SubmittedByEmployee?.StaffMemberId == staffId) ||
+            flight.DepartureSubmissions.Any(item => item.SubmittedByEmployee?.StaffMemberId == staffId);
         var canSaveWork = canOperate && flight.CancellationSubmissions.Count == 0;
         var canSaveCancellation = canOperate && !ownWork && flight.ServiceRecords.Count == 0 && flight.TaskRecords.Count == 0 &&
             (!portalOnly || flight.ReturnToRamps.Count == 0);
         var detail = Map(flight, stationTimeZoneId, staffId, canOperate && !ownCancellation, canOperate && !ownCancellation,
             canSaveCancellation, canSaveWork && allowedServiceIds.Count > 0, actor.UserId, allowedServiceIds,
-            canSaveWork, flight.CanCorrectOperationalWork(staffId), names, canEditFlightDetails: canOperate, creatorOnlyWorkDelete: portalOnly);
+            canSaveWork, flight.CanCorrectOperationalWork(staffId), names, canEditFlightDetails: canOperate, creatorOnlyWorkDelete: portalOnly,
+            legacyStaffAttribution: !portalOnly);
         return portalOnly ? detail with { CanSaveReturnsToRamp = canSaveWork && flight.DepartureSubmissions.Count > 0 } : detail;
     }
 
-    public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null, bool canSaveTasks = false, bool assignedWorkCorrection = false, IReadOnlyDictionary<Guid, string>? userDisplayNames = null, bool canEditFlightDetails = false, bool creatorOnlyWorkDelete = false)
+    public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null, bool canSaveTasks = false, bool assignedWorkCorrection = false, IReadOnlyDictionary<Guid, string>? userDisplayNames = null, bool canEditFlightDetails = false, bool creatorOnlyWorkDelete = false, bool unrestrictedServices = false, bool legacyStaffAttribution = false)
     {
         var search = currentStaffMemberId is { } staffId && FlightSearchPolicy.IsUnassignedRegular(flight, staffId);
         var canAdd = !search || !flight.HasOperationalRecords();
@@ -186,9 +187,9 @@ internal static class FlightDetails
         var taskWrites = canSaveTasks;
         if (search)
         {
-            canSaveArrival &= canAdd || flight.ArrivalSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == currentStaffMemberId);
-            canSaveDeparture &= flight.DepartureSubmissions.Count == 0 || flight.DepartureSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == currentStaffMemberId);
-            canSaveCancellation &= flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == currentStaffMemberId);
+            canSaveArrival &= canAdd || flight.ArrivalSubmissions.Any(item => item.SubmittedByEmployee?.StaffMemberId == currentStaffMemberId);
+            canSaveDeparture &= flight.DepartureSubmissions.Count == 0 || flight.DepartureSubmissions.Any(item => item.SubmittedByEmployee?.StaffMemberId == currentStaffMemberId);
+            canSaveCancellation &= flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee?.StaffMemberId == currentStaffMemberId);
             serviceWrites = canSaveTasks && (canAdd && canSaveServices || flight.Services.Any(item => item.Window.ToUtc is null ||
                 item.CreatedByUserId == currentUserId && allowedServiceIds?.Contains(item.Service.ServiceId) == true));
             taskWrites &= canAdd || flight.Tasks.Any(item => item.Window.ToUtc is null || item.CreatedByUserId == currentUserId);
@@ -204,11 +205,12 @@ internal static class FlightDetails
             flight.AssignedEmployees.Select(employee => new AssignedEmployeeDto(employee.Employee.StaffMemberId,
                 employee.Employee.FullName, employee.Employee.EmployeeId)).ToList(),
             flight.CreatedAtUtc, flight.UpdatedAtUtc, Convert.ToBase64String(flight.RowVersion), stationTimeZoneId,
-            flight.ArrivalSubmissions.OrderBy(a => a.CreatedAtUtc).ThenBy(a => a.Id).Select(item => FlightArrivalSubmissionDto.Map(item, userDisplayNames)).ToList(),
+            flight.ArrivalSubmissions.OrderBy(a => a.CreatedAtUtc).ThenBy(a => a.Id).Select(item => FlightArrivalSubmissionDto.Map(item, userDisplayNames, legacyStaffAttribution)).ToList(),
             currentStaffMemberId, canSaveArrival, flight.CancellationSubmissions.Count > 0,
-            flight.DepartureSubmissions.OrderBy(d => d.CreatedAtUtc).ThenBy(d => d.Id).Select(item => FlightDepartureSubmissionDto.Map(item, userDisplayNames)).ToList(), canSaveDeparture,
-            flight.CancellationSubmissions.OrderBy(c => c.CreatedAtUtc).ThenBy(c => c.Id).Select(FlightCancellationSubmissionDto.Map).ToList(), canSaveCancellation,
-            flight.Services.OrderBy(s => s.CreatedAtUtc).ThenBy(s => s.Id).Select(s => FlightServiceDto.Map(s, currentUserId, serviceWrites && (allowedServiceIds?.Contains(s.Service.ServiceId) == true || search && s.Window.ToUtc is null), assignedWorkCorrection,
+            flight.DepartureSubmissions.OrderBy(d => d.CreatedAtUtc).ThenBy(d => d.Id).Select(item => FlightDepartureSubmissionDto.Map(item, userDisplayNames, legacyStaffAttribution)).ToList(), canSaveDeparture,
+            flight.CancellationSubmissions.OrderBy(c => c.CreatedAtUtc).ThenBy(c => c.Id)
+                .Select(c => FlightCancellationSubmissionDto.Map(c, userDisplayNames, legacyStaffAttribution)).ToList(), canSaveCancellation,
+            flight.Services.OrderBy(s => s.CreatedAtUtc).ThenBy(s => s.Id).Select(s => FlightServiceDto.Map(s, currentUserId, serviceWrites && (unrestrictedServices || allowedServiceIds?.Contains(s.Service.ServiceId) == true || search && s.Window.ToUtc is null), assignedWorkCorrection,
                 userDisplayNames?.GetValueOrDefault(s.CreatedByUserId), s.EndedByUserId is { } closer ? userDisplayNames?.GetValueOrDefault(closer) : null,
                 s.UpdatedByUserId is { } updater ? userDisplayNames?.GetValueOrDefault(updater) : null,
                 closeOnly: search && (s.CreatedByUserId != currentUserId || allowedServiceIds?.Contains(s.Service.ServiceId) != true),
@@ -221,7 +223,7 @@ internal static class FlightDetails
             canEditFlightDetails && currentUserId is { } userId && flight.CanEditAdHocDetails(userId),
             flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType, search, canSaveServices && canAdd, canSaveTasks && canAdd,
             flight.ReturnToRamps.OrderBy(r => r.Sequence).Select(r => FlightReturnToRampDto.Map(flight, r, currentUserId,
-                canSaveTasks, allowedServiceIds, userDisplayNames, creatorOnlyWorkDelete)).ToList(),
+                canSaveTasks, allowedServiceIds, userDisplayNames, creatorOnlyWorkDelete, unrestrictedServices)).ToList(),
             canSaveTasks, flight.LastReturnToRampSequence,
             canSaveTasks && flight.CancellationSubmissions.Count == 0 && currentStaffMemberId is { } sharingStaffId &&
             flight.OperationType.OperationTypeId != MasterData.Contracts.Seeding.WellKnownMasterDataIds.AdHocOperationType && !flight.IsPerLanding &&

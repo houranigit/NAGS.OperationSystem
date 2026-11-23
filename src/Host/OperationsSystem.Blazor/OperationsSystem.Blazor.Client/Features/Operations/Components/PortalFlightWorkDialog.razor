@@ -43,6 +43,14 @@
                                 <PortalOperationDateField Label="Actual time of arrival" Time="@arrivalTime" Required="true"
                                                           Disabled="@(!CanEditArrivalFields)" Validation="@validation" ValidationField="@ArrivalTimeField"
                                                           Changed="@RefreshValidation" />
+                                @if (AdministratorEntry)
+                                {
+                                    <PortalWorkStaffField Label="Receiving employee" Options="@lookups.Staff"
+                                                          SavedId="@arrivalSource?.ReceivedByEmployee.StaffMemberId"
+                                                          SavedName="@arrivalSource?.ReceivedByEmployee.FullName"
+                                                          @bind-Value="receivedByStaffMemberId" @bind-Value:after="RefreshValidation"
+                                                          Disabled="@(!CanEditArrivalFields)" Validation="@validation" Field="@ReceiverField" />
+                                }
                                 <label>
                                     <span>Aircraft type *</span>
                                     <RadzenDropDown TValue="Guid?" Data="@PortalWorkLookups.WithSaved(lookups.Aircraft, arrivalSource?.AircraftTypeId ?? flight.AircraftTypeId, arrivalSource?.AircraftTypeModel ?? flight.AircraftTypeModel)"
@@ -78,7 +86,7 @@
                                     {
                                         <text> and updated by <strong>@updater</strong> on <strong>@ActualsTimestamp(updatedAt)</strong></text>
                                     }.
-                                    @if (submittedArrival.ReceivedByEmployee.StaffMemberId != submittedArrival.SubmittedByEmployee.StaffMemberId)
+                                    @if (submittedArrival.ReceivedByEmployee.StaffMemberId != submittedArrival.SubmittedByEmployee?.StaffMemberId)
                                     {
                                         <text> Received by <strong>@submittedArrival.ReceivedByEmployee.FullName</strong>.</text>
                                     }
@@ -98,15 +106,13 @@
                     break;
                 case 1:
                     <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@services" Zone="@zone" Lookups="@lookups"
-                                             AllowedServiceIds="@(AdministratorCorrections ? null : flight.AllowedServiceIds)"
-                                             CanAdd="@(!AdministratorCorrections && (flight.CanAddServices ?? flight.CanSaveServices))"
-                                             CanDeleteRecords="@(!AdministratorCorrections)" ReadOnly="@(ViewOnly || saving)"
+                                             AllowedServiceIds="@(AdministratorEntry ? null : flight.AllowedServiceIds)"
+                                             CanAdd="@(flight.CanAddServices ?? flight.CanSaveServices)" ReadOnly="@(ViewOnly || saving)"
                                              Validation="@validation" ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
                     break;
                 case 2:
                     <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@tasks" Zone="@zone" Lookups="@lookups" IsTask="true"
-                                             CanAdd="@(!AdministratorCorrections && (flight.CanAddTasks ?? flight.CanSaveTasks))"
-                                             CanDeleteRecords="@(!AdministratorCorrections)" ReadOnly="@(ViewOnly || saving)"
+                                             CanAdd="@(flight.CanAddTasks ?? flight.CanSaveTasks)" ReadOnly="@(ViewOnly || saving)"
                                              Validation="@validation" ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
                     break;
                 case 3:
@@ -132,6 +138,14 @@
                                     <PortalOperationDateField Label="Actual time of departure" Time="@departureTime" Required="true"
                                                               Disabled="@(!canEditDepartureFields)" Validation="@validation" ValidationField="@DepartureTimeField"
                                                               Changed="@RefreshValidation" />
+                                    @if (AdministratorEntry)
+                                    {
+                                        <PortalWorkStaffField Label="Handling employee" Options="@lookups.Staff"
+                                                              SavedId="@departureSource?.HandledByEmployee.StaffMemberId"
+                                                              SavedName="@departureSource?.HandledByEmployee.FullName"
+                                                              @bind-Value="handledByStaffMemberId" @bind-Value:after="RefreshValidation"
+                                                              Disabled="@(!canEditDepartureFields)" Validation="@validation" Field="@HandlerField" />
+                                    }
                                     <label>
                                         <span>Departure remarks</span>
                                         <RadzenTextArea @bind-Value="departureRemarks" @bind-Value:after="RefreshValidation"
@@ -154,7 +168,7 @@
                                     {
                                         <text> and updated by <strong>@updater</strong> on <strong>@ActualsTimestamp(updatedAt)</strong></text>
                                     }.
-                                    @if (submittedDeparture.HandledByEmployee.StaffMemberId != submittedDeparture.SubmittedByEmployee.StaffMemberId)
+                                    @if (submittedDeparture.HandledByEmployee.StaffMemberId != submittedDeparture.SubmittedByEmployee?.StaffMemberId)
                                     {
                                         <text> Handled by <strong>@submittedDeparture.HandledByEmployee.FullName</strong>.</text>
                                     }
@@ -184,9 +198,9 @@
                         </div>
                         @if (flight.ReturnToRamps.Count == 0 && pendingReturns.Count == 0)
                         {
-                            <p class="portal-work-note">@(!ViewOnly && !AdministratorCorrections && ActualDeparture is null ? "Enter departure details before adding a return to ramp." : "No returns to ramp recorded.")</p>
+                            <p class="portal-work-note">@(!ViewOnly && ActualDeparture is null ? "Enter departure details before adding a return to ramp." : "No returns to ramp recorded.")</p>
                         }
-                        @if (!ViewOnly && !AdministratorCorrections && (flight.ReturnToRamps.Any(item => item.IsOpen) || pendingReturns.Any(item => item.IsOpen)))
+                        @if (!ViewOnly && (flight.ReturnToRamps.Any(item => item.IsOpen) || pendingReturns.Any(item => item.IsOpen)))
                         {
                             <p class="portal-work-note">Close the open return to ramp before adding another.</p>
                         }

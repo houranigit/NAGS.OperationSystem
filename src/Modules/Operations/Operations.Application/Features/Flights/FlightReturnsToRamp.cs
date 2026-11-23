@@ -42,10 +42,6 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
         var existing = flight.ReturnToRamps.SingleOrDefault(r => r.Id == request.OccurrenceId);
         var priorServices = flight.ServiceRecords.Where(s => s.ReturnToRampId == request.OccurrenceId).ToArray();
         var priorTasks = flight.TaskRecords.Where(t => t.ReturnToRampId == request.OccurrenceId).ToArray();
-        if (isAdministrator && (existing is null || (existing.DepartureDetails is null) != (input.Departure is null) ||
-            !priorServices.Select(service => service.Id).ToHashSet().SetEquals(input.Services.Select(change => change.RecordId)) ||
-            !priorTasks.Select(task => task.Id).ToHashSet().SetEquals(input.Tasks.Select(change => change.RecordId))))
-            return FlightOperationAccess.ExistingRecordsOnly();
         if (flight.CancellationSubmissions.Count > 0) return FlightServiceWrites.Cancellation();
         if (flight.DepartureSubmissions.Count == 0)
             return Error.Conflict("Record flight departure before adding RTR.", "Operations.ReturnToRamp.DepartureRequired");
@@ -63,12 +59,12 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
         FlightDetailDto Response()
         {
             if (isAdministrator)
-                return FlightDetails.MapAdministrator(flight, station.TimeZoneId, names, canCorrect: true);
+                return FlightDetails.MapAdministrator(flight, station.TimeZoneId, names, canCorrect: true, currentUserId: userId);
             var actor = access.Actor;
             return request.PortalOnly
                 ? FlightDetails.MapOperational(flight, station.TimeZoneId, actor, true, allowedServiceIds, names, portalOnly: true)
                 : FlightDetails.Map(flight, station.TimeZoneId, actor.StaffMemberId, true, true, false, allowedServiceIds.Count > 0,
-                    userId, allowedServiceIds, true, flight.CanCorrectOperationalWork(actor.StaffMemberId), names, true);
+                    userId, allowedServiceIds, true, flight.CanCorrectOperationalWork(actor.StaffMemberId), names, true, legacyStaffAttribution: true);
         }
         var signatureCheck = ValidateSignature(input.Departure);
         if (signatureCheck.IsFailure) return signatureCheck.Error;
@@ -76,8 +72,12 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
         var matches = existing is not null && existing.ArrivalDetails.ArrivedAtUtc == input.Arrival.ArrivedAtUtc && existing.ArrivalDetails.Remarks == Normalize(input.Arrival.Remarks) &&
             existing.DepartureDetails?.DepartedAtUtc == input.Departure?.DepartedAtUtc && existing.DepartureDetails?.Remarks == Normalize(input.Departure?.Remarks) &&
             priorServices.Length == input.Services.Count && priorTasks.Length == input.Tasks.Count;
+        var selectedReceiverId = isAdministrator ? input.Arrival.ReceivedByStaffMemberId : null;
+        var selectedHandlerId = isAdministrator ? input.Departure?.HandledByStaffMemberId : null;
         if (existing is not null)
         {
+            matches &= (selectedReceiverId is null || selectedReceiverId == existing.ArrivalDetails.ReceivedByEmployee.StaffMemberId) &&
+                (selectedHandlerId is null || selectedHandlerId == existing.DepartureDetails?.HandledByEmployee.StaffMemberId);
             if (input.Departure?.RemoveSignature == true) matches &= existing.DepartureDetails?.CustomerSignature is null;
             else if (input.Departure?.SignatureContent is { } bytes)
                 matches &= existing.DepartureDetails?.CustomerSignature is { } signature && signature.SignedAtUtc == input.Departure.SignatureSignedAtUtc && await SignatureMatches(signature.StorageKey, bytes, ct);
@@ -112,11 +112,12 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
         if (matches) return Response();
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
         if (isAdministrator &&
-            (input.Departure?.RemoveSignature == true && existing?.DepartureDetails?.CustomerSignature is not null ||
-             input.Services.Any(change => !PortalFlightRecordCorrections.RetainsSavedDetails(
-                 priorServices.Single(item => item.Id == change.RecordId), change.Input)) ||
-             input.Tasks.Any(change => !PortalFlightRecordCorrections.RetainsSavedDetails(
-                 priorTasks.Single(item => item.Id == change.RecordId), change.Input))))
+            (existing is { DepartureDetails: { } savedDeparture } && existing.CreatedByUserId != userId &&
+                (input.Departure is null || input.Departure.RemoveSignature && savedDeparture.CustomerSignature is not null) ||
+             input.Services.Any(change => priorServices.SingleOrDefault(item => item.Id == change.RecordId) is { } saved &&
+                 saved.CreatedByUserId != userId && !PortalFlightRecordCorrections.RetainsSavedDetails(saved, change.Input)) ||
+             input.Tasks.Any(change => priorTasks.SingleOrDefault(item => item.Id == change.RecordId) is { } saved &&
+                 saved.CreatedByUserId != userId && !PortalFlightRecordCorrections.RetainsSavedDetails(saved, change.Input))))
             return PortalFlightRecordCorrections.SavedDetailsRemovalForbidden();
         if (request.PortalOnly && priorTasks.Any(task => task.CreatedByUserId != userId && input.Tasks.All(change => change.RecordId != task.Id)))
             return FlightTaskWrites.PortalDeleteReadOnly();
@@ -126,16 +127,31 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
         {
             if (request.PortalOnly && deleted.CreatedByUserId != userId)
                 return FlightServiceWrites.PortalDeleteReadOnly();
-            if (!allowedServiceIds.Contains(deleted.Service.ServiceId)) return Error.Validation("This service is not allowed for your manpower type.", "Operations.WorkOrder.ServiceNotAllowed");
+            if (!isAdministrator && !allowedServiceIds.Contains(deleted.Service.ServiceId)) return Error.Validation("This service is not allowed for your manpower type.", "Operations.WorkOrder.ServiceNotAllowed");
         }
-        StaffMemberSnapshot? employee = null;
-        if (!isAdministrator)
+        var receiver = existing?.ArrivalDetails.ReceivedByEmployee;
+        var handler = existing?.DepartureDetails?.HandledByEmployee;
+        if (isAdministrator)
+        {
+            var received = await resolver.ActualEmployeeAsync(selectedReceiverId, receiver, flight.Station.StationId, "receiving", ct);
+            if (received.IsFailure) return received.Error;
+            receiver = received.Value;
+            if (input.Departure is not null)
+            {
+                var handled = await resolver.ActualEmployeeAsync(selectedHandlerId, handler, flight.Station.StationId, "handling", ct);
+                if (handled.IsFailure) return handled.Error;
+                handler = handled.Value;
+            }
+        }
+        else
         {
             var staff = await resolver.StaffMembersForStationAsync([access.Actor.StaffMemberId], flight.Station.StationId, ct);
             if (staff.IsFailure) return staff.Error;
-            employee = staff.Value.Single();
+            var employee = staff.Value.Single();
+            receiver ??= employee;
+            handler ??= employee;
         }
-        var arrival = RtrArrivalDetails.Create(input.Arrival.ArrivedAtUtc, existing?.ArrivalDetails.ReceivedByEmployee ?? employee, input.Arrival.Remarks);
+        var arrival = RtrArrivalDetails.Create(input.Arrival.ArrivedAtUtc, receiver, input.Arrival.Remarks);
         if (arrival.IsFailure) return arrival.Error;
         var serviceInputs = new List<ReturnToRampServiceInput>();
         foreach (var change in input.Services)
@@ -178,7 +194,7 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
             RtrDepartureDetails? departure = null;
             if (input.Departure is { } end)
             {
-                var result = RtrDepartureDetails.Create(end.DepartedAtUtc, signature, existing?.DepartureDetails?.HandledByEmployee ?? employee, end.Remarks);
+                var result = RtrDepartureDetails.Create(end.DepartedAtUtc, signature, handler, end.Remarks);
                 if (result.IsFailure) return result.Error; departure = result.Value;
             }
             var saved = flight.SaveReturnToRamp(request.OccurrenceId, arrival.Value, departure, serviceInputs, taskInputs, userId, clock.GetUtcNow());
@@ -212,7 +228,7 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
                 {
                     FlightId = flight.Id, FlightNumber = flight.FlightNumber.Value, SubmissionId = existing.Id,
                     SubmissionKind = global::Operations.Contracts.FlightSubmissionKind.ReturnToRamp,
-                    SubmittedByStaffMemberId = existing.ArrivalDetails.ReceivedByEmployee.StaffMemberId, SubmittedByUserId = existing.CreatedByUserId,
+                    SubmittedByStaffMemberId = null, SubmittedByUserId = existing.CreatedByUserId,
                     UpdatedByStaffMemberId = access.StaffActor?.StaffMemberId, UpdatedByUserId = userId, UpdatedByDisplayName = names.GetValueOrDefault(userId) ?? "", OccurredOnUtc = clock.GetUtcNow()
                 });
             db.SetOriginalRowVersion(flight, request.RowVersion);

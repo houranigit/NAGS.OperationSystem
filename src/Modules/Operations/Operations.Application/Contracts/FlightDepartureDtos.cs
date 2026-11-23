@@ -6,7 +6,7 @@ namespace Operations.Application.Contracts;
 
 public sealed record FlightDepartureSubmissionDto(
     Guid Id,
-    AssignedEmployeeDto SubmittedByEmployee,
+    AssignedEmployeeDto? SubmittedByEmployee,
     DateTimeOffset Atd,
     AssignedEmployeeDto HandledByEmployee,
     string? Remarks,
@@ -20,9 +20,10 @@ public sealed record FlightDepartureSubmissionDto(
     Guid? CreatedByUserId = null,
     Guid? UpdatedByUserId = null)
 {
-    public static FlightDepartureSubmissionDto Map(FlightDepartureSubmission submission, IReadOnlyDictionary<Guid, string>? names = null) => new(
+    public static FlightDepartureSubmissionDto Map(FlightDepartureSubmission submission, IReadOnlyDictionary<Guid, string>? names = null,
+        bool legacyStaffAttribution = false) => new(
         submission.Id,
-        new(submission.SubmittedByEmployee.StaffMemberId, submission.SubmittedByEmployee.FullName, submission.SubmittedByEmployee.EmployeeId),
+        AssignedEmployeeDto.MapSubmitter(submission.SubmittedByEmployee, names?.GetValueOrDefault(submission.CreatedByUserId), legacyStaffAttribution),
         submission.Details.Atd,
         new(submission.Details.HandledByEmployee.StaffMemberId, submission.Details.HandledByEmployee.FullName, submission.Details.HandledByEmployee.EmployeeId),
         submission.Details.Remarks, submission.IsAccepted, submission.CreatedAtUtc, submission.UpdatedAtUtc,

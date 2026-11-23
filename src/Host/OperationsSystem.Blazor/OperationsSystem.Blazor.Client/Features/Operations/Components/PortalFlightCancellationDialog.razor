@@ -1,4 +1,5 @@
 @inject OperationsApiClient Operations
+@inject AuthSession Auth
 @inject DialogService Dialogs
 @inject NotificationService Notifications
 
@@ -16,7 +17,7 @@
             </h3>
             @if (ShowsExactSubmission && submission is { } report)
             {
-                <div>Submitted by <strong>@report.SubmittedByEmployee.FullName</strong></div>
+                <div>Submitted by <strong>@report.SubmitterName</strong></div>
             }
             <div class="pcf-date">
                 <PortalOperationDateField Label="@($"Cancellation date and time ({currentFlight.StationTimeZoneId})")"
@@ -58,7 +59,7 @@
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
     [Parameter] public Guid? SubmissionId { get; set; }
     [Parameter] public bool ViewOnly { get; set; }
-    [Parameter] public bool AdministratorCorrections { get; set; }
+    [Parameter] public bool AdministratorEntry { get; set; }
 
     private PortalFlightOperations? flight;
     private PortalFlightCancellation? submission;
@@ -68,10 +69,10 @@
     private bool isLoading = true;
     private bool isSaving;
 
-    private bool ShowsExactSubmission => ViewOnly || AdministratorCorrections;
-    private bool CanSave => !ViewOnly && flight?.CanSaveCancellation == true &&
-        (!AdministratorCorrections || submission is not null);
-    private bool CanUndo => !ShowsExactSubmission && submission is not null;
+    private bool ShowsExactSubmission => ViewOnly || AdministratorEntry;
+    private bool CanSave => !ViewOnly && flight?.CanSaveCancellation == true;
+    private bool CanUndo => !ViewOnly && submission is { } report &&
+        (!AdministratorEntry || report.IsAccountSubmissionBy(Auth.User?.Id));
 
     protected override async Task OnInitializedAsync()
     {
@@ -81,8 +82,9 @@
             var report = ShowsExactSubmission
                 ? details.CancellationSubmissions.FirstOrDefault(item => item.Id == SubmissionId)
                 : details.CancellationSubmissions.FirstOrDefault(item =>
-                    item.SubmittedByEmployee.StaffMemberId == details.CurrentStaffMemberId);
-            if (report?.Id != SubmissionId || report is null && (ShowsExactSubmission || !details.CanSaveCancellation))
+                    details.CurrentStaffMemberId.HasValue && item.SubmittedByEmployee?.StaffMemberId == details.CurrentStaffMemberId);
+            if (report?.Id != SubmissionId || report is null &&
+                (ViewOnly || !details.CanSaveCancellation || AdministratorEntry && details.CancellationSubmissions.Count > 0))
             {
                 errorMessage = "Flight actions have changed. Close this dialog and open the actions menu again.";
                 return;
@@ -130,14 +132,14 @@
         {
             var hasOpposingReports = details.ArrivalSubmissions.Count > 0 || details.DepartureSubmissions.Count > 0;
             if (hasOpposingReports && await Dialogs.Confirm(
-                AdministratorCorrections
+                AdministratorEntry && submission is not null
                     ? "Arrival or departure has been reported for this flight. Save the correction to this cancellation?"
-                    : "Another employee reported arrival or departure. Submit your cancellation as a separate report?",
+                    : "Arrival or departure has been reported for this flight. Submit your cancellation as a separate report?",
                 "Confirm cancellation report", new ConfirmOptions { OkButtonText = "Continue", CancelButtonText = "Back" }) != true)
                 return;
 
             var request = new PortalFlightCancellationRequest(utc, remarks, hasOpposingReports);
-            if (AdministratorCorrections && submission is { } report)
+            if (AdministratorEntry && submission is { } report)
                 await Operations.UpdatePortalCancellationAsync(FlightId, report.Id, request, details.RowVersion);
             else
                 await Operations.SavePortalCancellationAsync(FlightId, request, details.RowVersion);

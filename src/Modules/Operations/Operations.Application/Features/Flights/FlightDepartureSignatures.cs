@@ -29,11 +29,11 @@ public sealed class GetMobileFlightDepartureSignatureQueryHandler(
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         if (flight is null) return NotFound();
         var submissions = flight.DepartureSubmissions.OrderBy(d => d.CreatedAtUtc).ThenBy(d => d.Id).ToArray();
-        var visible = submissions.FirstOrDefault(d => d.SubmittedByEmployee.StaffMemberId == staffId)
+        var visible = submissions.FirstOrDefault(d => staffId is not null && d.SubmittedByEmployee?.StaffMemberId == staffId)
             ?? submissions.FirstOrDefault(d => d.IsAccepted) ?? submissions.FirstOrDefault();
         var requested = submissions.SingleOrDefault(d => d.Id == request.SubmissionId);
         if (requested is null || !resolved.Value.IsAdministratorView && requested.Id != visible?.Id &&
-            requested.SubmittedByEmployee.StaffMemberId != staffId &&
+            requested.SubmittedByEmployee?.StaffMemberId != staffId &&
             !flight.CanCorrectOperationalWork(staffId))
             return NotFound();
         if (requested.Details.CustomerSignature is not { } signature) return NotFound();

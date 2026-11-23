@@ -105,6 +105,17 @@ public sealed class MasterDataResolver(IMasterDataReader reader)
         return snapshots;
     }
 
+    internal async Task<Result<StaffMemberSnapshot>> ActualEmployeeAsync(Guid? selectedId, StaffMemberSnapshot? recordedEmployee,
+        Guid stationId, string role, CancellationToken ct)
+    {
+        if (recordedEmployee is not null && (selectedId is null || selectedId == recordedEmployee.StaffMemberId))
+            return recordedEmployee;
+        if (!selectedId.HasValue || selectedId == Guid.Empty)
+            return Error.Validation($"Select a {role} employee.", "Operations.Flight.ActualEmployeeRequired");
+        var staff = await StaffMembersForStationAsync([selectedId.Value], stationId, ct);
+        return staff.IsFailure ? staff.Error : staff.Value.Single();
+    }
+
     public async Task<Result<IReadOnlyList<StaffMemberSnapshot>>> StaffMembersForStationAsync(
         IReadOnlyCollection<Guid> ids,
         Guid stationId,

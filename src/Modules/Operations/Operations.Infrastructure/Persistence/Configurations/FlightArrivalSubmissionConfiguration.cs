@@ -8,12 +8,14 @@ public sealed class FlightArrivalSubmissionConfiguration : IEntityTypeConfigurat
 {
     public void Configure(EntityTypeBuilder<FlightArrivalSubmission> builder)
     {
-        builder.ToTable("flight_arrival_submissions");
+        builder.ToTable("flight_arrival_submissions", table => table.HasCheckConstraint("CK_flight_arrival_submissions_SubmitterSnapshot",
+            "([SubmittedByStaffMemberId] IS NULL AND [SubmittedByStaffFullName] IS NULL AND [SubmittedByStaffEmployeeId] IS NULL) OR " +
+            "([SubmittedByStaffMemberId] IS NOT NULL AND [SubmittedByStaffFullName] IS NOT NULL AND [SubmittedByStaffEmployeeId] IS NOT NULL)"));
         builder.HasKey(a => a.Id);
         builder.Property(a => a.Id).ValueGeneratedNever();
         // This EF-only shadow property defines the composite index on the owner. Its value
         // shares the snapshot's column; SubmittedByEmployee supplies the staff identity.
-        builder.Property<Guid>("SubmittedByStaffMemberId").HasColumnName("SubmittedByStaffMemberId").IsRequired();
+        builder.Property<Guid?>("SubmittedByStaffMemberId").HasColumnName("SubmittedByStaffMemberId");
 
         builder.OwnsOne(a => a.SubmittedByEmployee, employee =>
         {
@@ -21,7 +23,7 @@ public sealed class FlightArrivalSubmissionConfiguration : IEntityTypeConfigurat
             employee.Property(e => e.FullName).HasColumnName("SubmittedByStaffFullName").HasMaxLength(200).IsRequired();
             employee.Property(e => e.EmployeeId).HasColumnName("SubmittedByStaffEmployeeId").HasMaxLength(50).IsRequired();
         });
-        builder.Navigation(a => a.SubmittedByEmployee).IsRequired();
+        builder.Navigation(a => a.SubmittedByEmployee).IsRequired(false);
 
         builder.OwnsOne(a => a.Details, details =>
         {
@@ -48,7 +50,10 @@ public sealed class FlightArrivalSubmissionConfiguration : IEntityTypeConfigurat
         });
         builder.Navigation(a => a.Details).IsRequired();
 
-        builder.HasIndex(nameof(FlightArrivalSubmission.FlightId), "SubmittedByStaffMemberId").IsUnique();
+        builder.HasIndex(nameof(FlightArrivalSubmission.FlightId), "SubmittedByStaffMemberId").IsUnique()
+            .HasFilter("[SubmittedByStaffMemberId] IS NOT NULL");
+        builder.HasIndex(a => a.FlightId, "IX_flight_arrival_submissions_FlightId_Unlinked").IsUnique()
+            .HasFilter("[SubmittedByStaffMemberId] IS NULL");
         builder.HasIndex(a => a.FlightId).IsUnique().HasFilter("[IsAccepted] = 1");
     }
 }

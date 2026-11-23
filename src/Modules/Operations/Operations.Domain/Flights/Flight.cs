@@ -202,25 +202,41 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
-    /// <summary>Records or updates one employee's cancellation. Existing RTRs, tasks, services, and submission collections must be loaded.</summary>
+    /// <summary>Records or updates a cancellation. Existing RTRs, tasks, services, and submission collections must be loaded.</summary>
     public Result<FlightCancellationSubmission> SubmitCancellation(
         StaffMemberSnapshot? submittedByEmployee,
         CancellationDetails? details,
         Guid submittedByUserId,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        Guid? targetSubmissionId = null,
+        bool allowUnlinkedSubmitter = false)
     {
-        if (submittedByEmployee is null || submittedByEmployee.StaffMemberId == Guid.Empty)
+        var staffId = submittedByEmployee?.StaffMemberId;
+        if (staffId == Guid.Empty || staffId is null && !allowUnlinkedSubmitter)
             return Error.Validation("Submitting employee is required.", "Operations.CancellationSubmission.SubmittedByEmployeeRequired");
         if (submittedByUserId == Guid.Empty)
             return Error.Validation("Submitting user is required.", "Operations.CancellationSubmission.SubmittedByUserRequired");
         if (details is null)
             return Error.Validation("Cancellation details are required.", "Operations.CancellationSubmission.DetailsRequired");
-        if (_arrivalSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId) ||
-            _departureSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId) ||
-            _services.Count > 0 || _tasks.Count > 0 || _returnToRamps.Count > 0)
-            return Error.Conflict("An employee with operational submissions cannot submit cancellation. Existing performed work also prevents cancellation.", "Operations.CancellationSubmission.OperationsAlreadyRecorded");
 
-        var submission = _cancellationSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId);
+        if (targetSubmissionId == Guid.Empty)
+            return Error.Validation("Target cancellation submission is required.", "Operations.CancellationSubmission.TargetRequired");
+        if (!targetSubmissionId.HasValue && staffId is null && _cancellationSubmissions.Count > 1)
+            return Error.Conflict("Select the cancellation submission to update.", "Operations.CancellationSubmission.TargetRequired");
+        var submission = targetSubmissionId is { } targetId
+            ? _cancellationSubmissions.SingleOrDefault(item => item.Id == targetId)
+            : _cancellationSubmissions.SingleOrDefault(item => staffId is null || item.IsOwnedBy(staffId, submittedByUserId));
+        if (targetSubmissionId.HasValue && submission is null)
+            return Error.NotFound("Cancellation submission not found.", "Operations.CancellationSubmission.NotFound");
+        if (submission is not null && staffId.HasValue && !submission.IsOwnedBy(staffId, submittedByUserId))
+            return Error.Forbidden("Only the submitting employee can amend this cancellation.", "Operations.CancellationSubmission.EditForbidden");
+
+        var ownerStaffId = submission is null ? staffId : submission.SubmittedByEmployee?.StaffMemberId;
+        var ownerUserId = submission?.CreatedByUserId ?? submittedByUserId;
+        if (HasSubmittedActuals(ownerStaffId, ownerUserId) ||
+            _services.Count > 0 || _tasks.Count > 0 || _returnToRamps.Count > 0)
+            return Error.Conflict("A submitter with operational submissions cannot submit cancellation. Existing performed work also prevents cancellation.", "Operations.CancellationSubmission.OperationsAlreadyRecorded");
+
         if (submission is not null)
         {
             if (submission.Details == details)
@@ -244,13 +260,13 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     /// <summary>Removes only the caller's identified cancellation. Existing cancellation submissions must be loaded.</summary>
-    public Result RevertCancellation(Guid staffMemberId, Guid submissionId, DateTimeOffset now)
+    public Result RevertCancellation(Guid? staffMemberId, Guid submissionId, DateTimeOffset now, Guid? userId = null)
     {
-        if (staffMemberId == Guid.Empty || submissionId == Guid.Empty)
-            return Error.Validation("The employee and cancellation submission are required.", "Operations.CancellationSubmission.IdentityRequired");
-        var own = _cancellationSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == staffMemberId);
-        if (_cancellationSubmissions.Any(item => item.Id == submissionId && item.SubmittedByEmployee.StaffMemberId != staffMemberId))
-            return Error.Forbidden("Only the submitting employee can revert this cancellation.", "Operations.Cancellation.RevertForbidden");
+        if (staffMemberId == Guid.Empty || submissionId == Guid.Empty || staffMemberId is null && (userId is null || userId == Guid.Empty))
+            return Error.Validation("The submitter and cancellation submission are required.", "Operations.CancellationSubmission.IdentityRequired");
+        var own = _cancellationSubmissions.SingleOrDefault(item => item.IsOwnedBy(staffMemberId, userId));
+        if (_cancellationSubmissions.Any(item => item.Id == submissionId && !item.IsOwnedBy(staffMemberId, userId)))
+            return Error.Forbidden("Only the original submitter can revert this cancellation.", "Operations.Cancellation.RevertForbidden");
         if (own is null) return Result.Success();
         if (own.Id != submissionId)
             return Error.Conflict("Your cancellation changed. Reload the flight before reverting it.", "Operations.Cancellation.SubmissionChanged");
@@ -260,32 +276,46 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
+    public bool HasSubmittedActuals(Guid? staffMemberId, Guid userId)
+    {
+        bool OwnsActual(StaffMemberSnapshot? employee, Guid creator) => staffMemberId is { } staffId
+            ? employee?.StaffMemberId == staffId
+            : employee is null && creator == userId;
+
+        return _arrivalSubmissions.Any(item => OwnsActual(item.SubmittedByEmployee, item.CreatedByUserId)) ||
+            _departureSubmissions.Any(item => OwnsActual(item.SubmittedByEmployee, item.CreatedByUserId));
+    }
+
     /// <summary>Records or updates one employee's arrival. Existing submission collections must be loaded.</summary>
     public Result<FlightArrivalSubmission> SubmitArrival(
         StaffMemberSnapshot? submittedByEmployee,
         ArrivalDetails? details,
         Guid submittedByUserId,
         DateTimeOffset now,
-        Guid? targetSubmissionId = null)
+        Guid? targetSubmissionId = null,
+        bool allowUnlinkedSubmitter = false)
     {
-        if (submittedByEmployee is null || submittedByEmployee.StaffMemberId == Guid.Empty)
+        var staffId = submittedByEmployee?.StaffMemberId;
+        if (staffId == Guid.Empty || staffId is null && !allowUnlinkedSubmitter)
             return Error.Validation("Submitting employee is required.", "Operations.ArrivalSubmission.SubmittedByEmployeeRequired");
         if (submittedByUserId == Guid.Empty)
             return Error.Validation("Submitting user is required.", "Operations.ArrivalSubmission.SubmittedByUserRequired");
         if (details is null)
             return Error.Validation("Arrival details are required.", "Operations.ArrivalSubmission.DetailsRequired");
-        if (_cancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId))
+        if (_cancellationSubmissions.Any(item => item.IsOwnedBy(staffId, submittedByUserId)))
             return Error.Conflict("Revert your cancellation before submitting arrival details.", "Operations.Flight.CancellationSubmitted");
 
         if (targetSubmissionId == Guid.Empty)
             return Error.Validation("Target arrival submission is required.", "Operations.ArrivalSubmission.TargetRequired");
         var submission = targetSubmissionId is { } arrivalId
             ? _arrivalSubmissions.SingleOrDefault(item => item.Id == arrivalId)
-            : _arrivalSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId);
+            : staffId is null ? null : _arrivalSubmissions.SingleOrDefault(item => item.SubmittedByEmployee?.StaffMemberId == staffId);
         if (targetSubmissionId.HasValue && submission is null)
             return Error.NotFound("Arrival submission not found.", "Operations.ArrivalSubmission.NotFound");
-        if (submission is not null && submission.SubmittedByEmployee.StaffMemberId != submittedByEmployee.StaffMemberId &&
-            !CanCorrectOperationalWork(submittedByEmployee.StaffMemberId))
+        if (submission is null && staffId is null && _arrivalSubmissions.Count > 0)
+            return Error.Conflict("Select the arrival submission to update.", "Operations.ArrivalSubmission.TargetRequired");
+        if (submission is not null && staffId is not null && submission.SubmittedByEmployee?.StaffMemberId != staffId &&
+            !CanCorrectOperationalWork(staffId))
             return Error.Forbidden("Only assigned employees can update another employee's arrival.", "Operations.ArrivalSubmission.AssignmentRequired");
         if (submission is not null)
         {
@@ -315,26 +345,30 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         DepartureDetails? details,
         Guid submittedByUserId,
         DateTimeOffset now,
-        Guid? targetSubmissionId = null)
+        Guid? targetSubmissionId = null,
+        bool allowUnlinkedSubmitter = false)
     {
-        if (submittedByEmployee is null || submittedByEmployee.StaffMemberId == Guid.Empty)
+        var staffId = submittedByEmployee?.StaffMemberId;
+        if (staffId == Guid.Empty || staffId is null && !allowUnlinkedSubmitter)
             return Error.Validation("Submitting employee is required.", "Operations.DepartureSubmission.SubmittedByEmployeeRequired");
         if (submittedByUserId == Guid.Empty)
             return Error.Validation("Submitting user is required.", "Operations.DepartureSubmission.SubmittedByUserRequired");
         if (details is null)
             return Error.Validation("Departure details are required.", "Operations.DepartureSubmission.DetailsRequired");
-        if (_cancellationSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId))
+        if (_cancellationSubmissions.Any(item => item.IsOwnedBy(staffId, submittedByUserId)))
             return Error.Conflict("Revert your cancellation before submitting departure details.", "Operations.Flight.CancellationSubmitted");
 
         if (targetSubmissionId == Guid.Empty)
             return Error.Validation("Target departure submission is required.", "Operations.DepartureSubmission.TargetRequired");
         var submission = targetSubmissionId is { } departureId
             ? _departureSubmissions.SingleOrDefault(item => item.Id == departureId)
-            : _departureSubmissions.SingleOrDefault(item => item.SubmittedByEmployee.StaffMemberId == submittedByEmployee.StaffMemberId);
+            : staffId is null ? null : _departureSubmissions.SingleOrDefault(item => item.SubmittedByEmployee?.StaffMemberId == staffId);
         if (targetSubmissionId.HasValue && submission is null)
             return Error.NotFound("Departure submission not found.", "Operations.DepartureSubmission.NotFound");
-        if (submission is not null && submission.SubmittedByEmployee.StaffMemberId != submittedByEmployee.StaffMemberId &&
-            !CanCorrectOperationalWork(submittedByEmployee.StaffMemberId))
+        if (submission is null && staffId is null && _departureSubmissions.Count > 0)
+            return Error.Conflict("Select the departure submission to update.", "Operations.DepartureSubmission.TargetRequired");
+        if (submission is not null && staffId is not null && submission.SubmittedByEmployee?.StaffMemberId != staffId &&
+            !CanCorrectOperationalWork(staffId))
             return Error.Forbidden("Only assigned employees can update another employee's departure.", "Operations.DepartureSubmission.AssignmentRequired");
         if (submission is not null)
         {
@@ -400,15 +434,15 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
     /// <summary>Atomically saves one normal service and its complete performer list under stable client IDs.</summary>
     public Result<FlightService> SaveService(Guid recordId, ServiceSnapshot? service, string? customerReferenceNumber,
         TimeWindow? window, string? notes, IReadOnlyList<FlightServicePerformerInput> performers, Guid userId, DateTimeOffset now,
-        Guid? assignedEditorStaffMemberId = null, bool existingCorrectionOnly = false)
+        Guid? assignedEditorStaffMemberId = null, bool administrator = false)
     {
         var check = ValidateServiceWrite(userId, null);
         if (check.IsFailure) return check.Error;
         var existing = _services.SingleOrDefault(item => item.Id == recordId);
-        if (existing?.ReturnToRampId is not null || existingCorrectionOnly && existing is null)
+        if (existing?.ReturnToRampId is not null)
             return Error.NotFound("Performed service was not found on this flight.", "Operations.FlightService.NotFound");
         if (existing is not null && service is not null && existing.Service.ServiceId != service.ServiceId && existing.HasOtherUserEnd &&
-            !existingCorrectionOnly && !CanCorrectOperationalWork(assignedEditorStaffMemberId))
+            !administrator && !CanCorrectOperationalWork(assignedEditorStaffMemberId))
             return FlightService.SelectionReadOnly();
         var created = FlightService.Create(Id, service, customerReferenceNumber, window, notes, userId, now.ToUniversalTime(), id: recordId);
         if (created.IsFailure) return created.Error;
@@ -973,13 +1007,13 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightService> RemoveService(Guid serviceId, Guid userId, DateTimeOffset now, Guid? returnToRampId = null,
-        Guid? assignedEditorStaffMemberId = null)
+        Guid? assignedEditorStaffMemberId = null, bool administrator = false)
     {
         var found = FindServiceForWrite(serviceId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         if (found.Value.HasOtherUserEnd &&
-            !(returnToRampId is null && CanCorrectOperationalWork(assignedEditorStaffMemberId)))
+            !(returnToRampId is null && (administrator || CanCorrectOperationalWork(assignedEditorStaffMemberId))))
             return Error.Forbidden("A service with another employee's end time cannot be deleted.", "Operations.FlightService.DeleteReadOnly");
         if (returnToRampId is { } occurrenceId)
         {
@@ -996,13 +1030,13 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
     }
 
     public Result<FlightTask> RemoveTask(Guid taskId, Guid userId, DateTimeOffset now, Guid? returnToRampId = null,
-        Guid? assignedEditorStaffMemberId = null)
+        Guid? assignedEditorStaffMemberId = null, bool administrator = false)
     {
         var found = FindTaskForWrite(taskId, userId, returnToRampId);
         if (found.IsFailure)
             return found.Error;
         if (found.Value.ReturnToRampId is null && found.Value.HasOtherUserEnd &&
-            !(returnToRampId is null && CanCorrectOperationalWork(assignedEditorStaffMemberId)))
+            !(returnToRampId is null && (administrator || CanCorrectOperationalWork(assignedEditorStaffMemberId))))
             return Error.Forbidden("A task with another employee's end time cannot be deleted.", "Operations.FlightTask.DeleteReadOnly");
         if (returnToRampId is { } occurrenceId)
         {

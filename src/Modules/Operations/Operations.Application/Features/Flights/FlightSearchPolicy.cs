@@ -18,7 +18,7 @@ internal static class FlightSearchPolicy
         Error.Forbidden("Only existing open work can be completed on this unassigned flight.", "Operations.Search.NewWorkReadOnly");
 
     internal static Result Arrival(Flight flight, Guid staffId, FlightArrivalSubmission? existing) =>
-        !IsUnassignedRegular(flight, staffId) || existing?.SubmittedByEmployee.StaffMemberId == staffId || !flight.HasOperationalRecords()
+        !IsUnassignedRegular(flight, staffId) || existing?.SubmittedByEmployee?.StaffMemberId == staffId || !flight.HasOperationalRecords()
             ? Result.Success() : Error.Forbidden("Arrival details are read-only on this unassigned flight.", "Operations.Search.ArrivalReadOnly");
 
     internal static bool ServiceClosure(FlightService record, SaveFlightServiceRequest input, bool mediaMatches) =>
