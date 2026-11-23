@@ -3,6 +3,8 @@ using BuildingBlocks.Application.Abstractions;
 using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
 using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Contracts;
@@ -31,6 +33,48 @@ public sealed class FlightReturnToRampSaveTests
         result.Value.ReturnToRamps!.Single().IsOpen.ShouldBeTrue(); result.Value.CanSaveReturnsToRamp.ShouldBeTrue();
         (await f.Save(Guid.NewGuid(), f.Empty)).Error.Code.ShouldBe("Operations.ReturnToRamp.OpenExists");
         (await f.Db.FlightUserActivities.CountAsync()).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Competing_rtr_open_that_reaches_the_unique_index_returns_stale()
+    {
+        var interceptor = new SaveCallback();
+        await using var f = await Fixture.Create(saveInterceptor: interceptor);
+        var winningId = Guid.NewGuid();
+        interceptor.BeforeSave = async ct =>
+        {
+            await using var winnerDb = f.OpenPeerContext();
+            var flight = await winnerDb.Flights.Include(item => item.DepartureSubmissions).SingleAsync(ct);
+            var receiver = new StaffMemberSnapshot(f.OtherStaff, "Colleague", "E2");
+            var arrival = RtrArrivalDetails.Create(Now, receiver, "Competing open").Value;
+            flight.SaveReturnToRamp(winningId, arrival, null, [], [], f.Other, Now).IsSuccess.ShouldBeTrue();
+            winnerDb.Entry(flight).Property(item => item.RowVersion).CurrentValue = [2, 0, 0, 0, 0, 0, 0, 0];
+            await winnerDb.SaveChangesAsync(ct);
+            throw new DbUpdateException("Injected competing open occurrence insert failure.");
+        };
+
+        var result = await f.Save(Guid.NewGuid(), f.Empty, version: Version);
+
+        result.Error.Code.ShouldBe("General.ConcurrencyConflict");
+        var persisted = await f.Db.Flights.AsNoTracking().Include(item => item.ReturnToRamps).SingleAsync();
+        var occurrence = persisted.ReturnToRamps.ShouldHaveSingleItem();
+        occurrence.Id.ShouldBe(winningId);
+        occurrence.IsOpen.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Rtr_open_write_failure_is_rethrown_when_the_flight_version_is_unchanged()
+    {
+        var interceptor = new SaveCallback();
+        await using var f = await Fixture.Create(saveInterceptor: interceptor);
+        var failure = new DbUpdateException("Injected unrelated write failure.");
+        interceptor.BeforeSave = _ => throw failure;
+
+        var error = await Should.ThrowAsync<DbUpdateException>(() => f.Save(Guid.NewGuid(), f.Empty, version: Version));
+
+        error.ShouldBeSameAs(failure);
+        var persisted = await f.Db.Flights.AsNoTracking().Include(item => item.ReturnToRamps).SingleAsync();
+        persisted.ReturnToRamps.ShouldBeEmpty();
     }
 
     [Fact]
@@ -177,7 +221,20 @@ public sealed class FlightReturnToRampSaveTests
 
     private sealed class Fixture : IAsyncDisposable
     {
-        public required OperationsDbContext Db { get; init; }
+        private readonly DbContextOptions<OperationsDbContext> peerOptions;
+        public OperationsDbContext Db { get; }
+
+        private Fixture(SaveCallback? saveInterceptor)
+        {
+            var options = new DbContextOptionsBuilder<OperationsDbContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString(), new InMemoryDatabaseRoot());
+            peerOptions = options.Options;
+            if (saveInterceptor is not null)
+                options.AddInterceptors(saveInterceptor);
+            Db = new OperationsDbContext(options.Options);
+        }
+
+        public OperationsDbContext OpenPeerContext() => new(peerOptions);
         public SchedulingMasterDataReader Reader { get; } = new();
         public MemoryStorage Storage { get; } = new();
         public Guid Owner { get; } = Guid.NewGuid(); public Guid Other { get; } = Guid.NewGuid();
@@ -218,9 +275,9 @@ public sealed class FlightReturnToRampSaveTests
         {
             Db.ChangeTracker.Clear(); var flight = await Db.Flights.SingleAsync(); Db.Entry(flight).Property(x => x.RowVersion).CurrentValue = [2, 0, 0, 0, 0, 0, 0, 0]; await Db.SaveChangesAsync(); Db.ChangeTracker.Clear();
         }
-        public static async Task<Fixture> Create(bool departure = true, bool assigned = true)
+        public static async Task<Fixture> Create(bool departure = true, bool assigned = true, SaveCallback? saveInterceptor = null)
         {
-            var f = new Fixture { Db = new(new DbContextOptionsBuilder<OperationsDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options) };
+            var f = new Fixture(saveInterceptor);
             f.Reader.StaffMembers[f.OwnerStaff] = new(f.OwnerStaff, "Original", "E1", f.Reader.StationId, f.Owner, true);
             f.Reader.StaffMembers[f.OtherStaff] = new(f.OtherStaff, "Colleague", "E2", f.Reader.StationId, f.Other, true);
             var owner = new StaffMemberSnapshot(f.OwnerStaff, "Original", "E1"); var other = new StaffMemberSnapshot(f.OtherStaff, "Colleague", "E2");
@@ -232,6 +289,20 @@ public sealed class FlightReturnToRampSaveTests
         }
         public ValueTask DisposeAsync() => Db.DisposeAsync();
     }
+
+    private sealed class SaveCallback : SaveChangesInterceptor
+    {
+        public Func<CancellationToken, Task>? BeforeSave { get; set; }
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (BeforeSave is { } callback)
+                await callback(cancellationToken);
+            return result;
+        }
+    }
+
     private sealed class ScopeImpl(MobileFlightScopeContext value) : IMobileFlightScope { public Task<Result<MobileFlightScopeContext>> ResolveAsync(CancellationToken ct) => Task.FromResult(Result.Success(value)); }
     private sealed class User(Guid id, bool canOperate) : IUserContext
     {

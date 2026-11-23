@@ -239,9 +239,15 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
             return Response();
         }
         catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
-        catch (DbUpdateException) when (existing is null)
+        catch (DbUpdateException)
         {
-            if (await db.Flights.AsNoTracking().AnyAsync(f => f.ReturnToRamps.Any(r => r.Id == request.OccurrenceId), ct)) return ConcurrencyErrors.Stale;
+            // A competing RTR can hit the open-occurrence or sequence index before the flight's rowversion check.
+            var persisted = await db.Flights.AsNoTracking().Where(item => item.Id == flight.Id)
+                .Select(item => item.RowVersion).SingleOrDefaultAsync(ct);
+            if (persisted is not null && !persisted.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
+            if (existing is null &&
+                await db.Flights.AsNoTracking().AnyAsync(f => f.ReturnToRamps.Any(r => r.Id == request.OccurrenceId), ct))
+                return ConcurrencyErrors.Stale;
             throw;
         }
         finally { await FlightServiceFiles.DeleteUnreferencedAsync(db, storage, createdKeys.Concat(oldKeys)); }
