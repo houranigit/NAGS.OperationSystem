@@ -1,4 +1,5 @@
 using BuildingBlocks.Application.Abstractions;
+using BuildingBlocks.Contracts.Authorization;
 using BuildingBlocks.Domain.Results;
 using Operations.Application.Authorization;
 using Operations.Domain.Authorization;
@@ -8,6 +9,21 @@ namespace Operations.Application.Features.Flights;
 
 public sealed class PortalFlightScope(IOperationsScope scope, IUserContext user, TimeProvider clock)
 {
+    internal async Task<Result<FlightOperationAccess>> ResolveReadAsync(CancellationToken cancellationToken)
+    {
+        if (user.UserType != UserType.SystemAdministrator)
+            return await ResolveAsync(cancellationToken);
+
+        if (!user.HasPermission(OperationsPermissions.Flights.View) || user.UserId is null)
+            return Denied();
+
+        var resolved = await scope.ResolveAsync(cancellationToken);
+        if (resolved.IsFailure)
+            return resolved.Error;
+
+        return resolved.Value.IsAdministrator ? new FlightOperationAccess(null, resolved.Value) : Denied();
+    }
+
     internal async Task<Result<FlightOperationAccess>> ResolveAsync(CancellationToken cancellationToken)
     {
         if (!user.HasPermission(OperationsPermissions.Flights.View) || !user.HasPermission(OperationsPermissions.Flights.Operate))
@@ -27,11 +43,20 @@ public sealed class PortalFlightScope(IOperationsScope scope, IUserContext user,
         "Operations.Portal.FlightOperationsForbidden");
 }
 
-internal sealed record FlightOperationAccess(MobileFlightScopeContext Actor, OperationsScopeContext? PortalScope = null)
+internal sealed record FlightOperationAccess(MobileFlightScopeContext? StaffActor, OperationsScopeContext? PortalScope = null)
 {
+    internal bool IsAdministratorView => PortalScope?.IsAdministrator == true;
+    internal MobileFlightScopeContext Actor => StaffActor ?? throw new InvalidOperationException("An employee is required for flight operations.");
+
     internal IQueryable<Flight> Apply(IQueryable<Flight> flights) => PortalScope is { } portal
         ? FlightListQuery.ApplyPortalVisibility(flights, portal)
         : MobileFlightQuery.ApplyReadScope(flights, Actor);
+
+    internal static Task<Result<FlightOperationAccess>> ResolveReadAsync(IMobileFlightScope mobileScope,
+        PortalFlightScope? portalScope, bool portalOnly, CancellationToken cancellationToken) =>
+        portalOnly && portalScope is not null
+            ? portalScope.ResolveReadAsync(cancellationToken)
+            : ResolveAsync(mobileScope, portalScope, portalOnly, cancellationToken);
 
     internal static async Task<Result<FlightOperationAccess>> ResolveAsync(IMobileFlightScope mobileScope,
         PortalFlightScope? portalScope, bool portalOnly, CancellationToken cancellationToken)

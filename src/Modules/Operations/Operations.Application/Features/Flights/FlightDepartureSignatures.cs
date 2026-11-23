@@ -21,9 +21,9 @@ public sealed class GetMobileFlightDepartureSignatureQueryHandler(
     public async Task<Result<FlightDepartureSignatureContent>> Handle(
         GetMobileFlightDepartureSignatureQuery request, CancellationToken cancellationToken)
     {
-        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, cancellationToken);
+        var resolved = await FlightOperationAccess.ResolveReadAsync(scope, portalScope, request.PortalOnly, cancellationToken);
         if (resolved.IsFailure) return resolved.Error;
-        var staffId = resolved.Value.Actor.StaffMemberId;
+        var staffId = resolved.Value.StaffActor?.StaffMemberId;
         var flight = await resolved.Value.Apply(db.Flights.AsNoTracking())
             .Include(f => f.DepartureSubmissions).Include(f => f.AssignedEmployees).Include(f => f.PlannedServices)
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
@@ -32,7 +32,7 @@ public sealed class GetMobileFlightDepartureSignatureQueryHandler(
         var visible = submissions.FirstOrDefault(d => d.SubmittedByEmployee.StaffMemberId == staffId)
             ?? submissions.FirstOrDefault(d => d.IsAccepted) ?? submissions.FirstOrDefault();
         var requested = submissions.SingleOrDefault(d => d.Id == request.SubmissionId);
-        if (requested is null || requested.Id != visible?.Id &&
+        if (requested is null || !resolved.Value.IsAdministratorView && requested.Id != visible?.Id &&
             requested.SubmittedByEmployee.StaffMemberId != staffId &&
             !flight.CanCorrectOperationalWork(staffId))
             return NotFound();

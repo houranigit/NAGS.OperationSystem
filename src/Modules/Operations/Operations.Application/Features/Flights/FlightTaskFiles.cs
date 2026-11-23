@@ -20,7 +20,7 @@ public sealed class GetMobileFlightTaskAttachmentQueryHandler(IOperationsDbConte
 {
     public async Task<Result<FlightTaskAttachmentContent>> Handle(GetMobileFlightTaskAttachmentQuery request, CancellationToken cancellationToken)
     {
-        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, cancellationToken);
+        var resolved = await FlightOperationAccess.ResolveReadAsync(scope, portalScope, request.PortalOnly, cancellationToken);
         if (resolved.IsFailure) return resolved.Error;
         var flight = await resolved.Value.Apply(db.Flights.AsNoTracking())
             .Include(f => f.TaskRecords).ThenInclude(s => s.Attachments)

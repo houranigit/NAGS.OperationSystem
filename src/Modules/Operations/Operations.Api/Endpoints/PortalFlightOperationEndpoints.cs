@@ -21,28 +21,28 @@ internal static class PortalFlightOperationEndpoints
     internal static void Map(RouteGroupBuilder flights)
     {
         var operations = flights.MapGroup("/{id:guid}/operations")
-            .RequirePermission(OperationsPermissions.Flights.View)
-            .RequirePermission(OperationsPermissions.Flights.Operate);
+            .RequirePermission(OperationsPermissions.Flights.View);
+        var writes = operations.MapGroup("").RequirePermission(OperationsPermissions.Flights.Operate);
 
         operations.MapGet("", async (Guid id, ISender sender, CancellationToken ct) =>
             (await sender.Send(new GetPortalFlightOperationsQuery(id), ct)).ToOk());
 
-        operations.MapPut("/batch", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
+        writes.MapPut("/batch", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
             SaveBatchAsync(id, http, sender, ct, portalOnly: true))
             .WithMetadata(new RequestSizeLimitAttribute(FlightOperationsBatchPolicy.MaxJsonRequestBytes));
 
-        operations.MapPut("/returns-to-ramp/{occurrenceId:guid}", (Guid id, Guid occurrenceId, HttpRequest http, ISender sender, CancellationToken ct) =>
+        writes.MapPut("/returns-to-ramp/{occurrenceId:guid}", (Guid id, Guid occurrenceId, HttpRequest http, ISender sender, CancellationToken ct) =>
             SaveReturnToRampAsync(id, occurrenceId, http, sender, ct, portalOnly: true))
             .WithMetadata(new RequestSizeLimitAttribute(FlightOperationsBatchPolicy.MaxJsonRequestBytes));
 
-        operations.MapPut("/cancellation", async (Guid id, SaveFlightCancellationRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
+        writes.MapPut("/cancellation", async (Guid id, SaveFlightCancellationRequest request, HttpRequest http, ISender sender, CancellationToken ct) =>
         {
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
             return (await sender.Send(new SaveFlightCancellationCommand(id, request, rowVersion, PortalOnly: true), ct)).ToOk();
         });
 
-        operations.MapDelete("/cancellation/{submissionId:guid}", async (Guid id, Guid submissionId, HttpRequest http, ISender sender, CancellationToken ct) =>
+        writes.MapDelete("/cancellation/{submissionId:guid}", async (Guid id, Guid submissionId, HttpRequest http, ISender sender, CancellationToken ct) =>
         {
             if (http.GetIfMatch() is not { } rowVersion)
                 return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);

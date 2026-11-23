@@ -100,7 +100,7 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
 
     private async Task<Result<FlightDetailDto>> LoadAsync(Guid id, bool portalOnly, CancellationToken cancellationToken)
     {
-        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, portalOnly, cancellationToken);
+        var resolved = await FlightOperationAccess.ResolveReadAsync(scope, portalScope, portalOnly, cancellationToken);
         if (resolved.IsFailure)
             return resolved.Error;
 
@@ -111,12 +111,15 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
         var station = await masterData.GetStationAsync(flight.Station.StationId, cancellationToken);
         if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
             return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
+        var names = await FlightWorkAttribution.NamesAsync(userNames,
+            FlightWorkAttribution.UserIds(flight), cancellationToken);
+        if (resolved.Value.IsAdministratorView)
+            return FlightDetails.Map(flight, station.TimeZoneId, userDisplayNames: names);
+
         var actor = resolved.Value.Actor;
         var canOperate = portalOnly || user?.HasPermission(OperationsPermissions.Flights.Operate) == true;
         var allowed = await new MasterDataResolver(masterData).AllowedServiceIdsForStaffAsync(actor.StaffMemberId, flight.Station.StationId, cancellationToken);
         var allowedIds = allowed.IsSuccess ? allowed.Value : [];
-        var names = await FlightWorkAttribution.NamesAsync(userNames,
-            FlightWorkAttribution.UserIds(flight), cancellationToken);
         return FlightDetails.MapOperational(flight, station.TimeZoneId, actor, canOperate, allowedIds, names, portalOnly);
     }
 }

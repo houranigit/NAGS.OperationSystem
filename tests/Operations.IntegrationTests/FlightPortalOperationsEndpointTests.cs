@@ -13,7 +13,7 @@ public sealed partial class FlightVisibilityScopeTests
         ["operations.flights.view", "operations.flights.operate"];
 
     [Fact]
-    public async Task Portal_operations_require_an_eligible_linked_operator_even_with_register_access()
+    public async Task Portal_operations_allow_administrator_reads_and_require_a_linked_operator_to_write()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
@@ -35,7 +35,7 @@ public sealed partial class FlightVisibilityScopeTests
         var path = $"{Base}/flights/{id}";
         var input = new SaveFlightCancellationRequest(DateTimeOffset.UtcNow, null);
 
-        foreach (var denied in new[] { admin, readerClient, viewer })
+        foreach (var denied in new[] { readerClient, viewer })
         {
             using var register = await denied.GetAsync(path);
             register.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -56,6 +56,16 @@ public sealed partial class FlightVisibilityScopeTests
         dispatcherCancel.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         using var crossStationEditor = await workerClient.GetAsync($"{Base}/flights/{otherFlight}/operations");
         crossStationEditor.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        var adminView = await PortalOperationsDetailAsync(admin, id);
+        AssertReadOnlyPortalOperations(adminView);
+        var adminCrossStationView = await PortalOperationsDetailAsync(admin, otherFlight);
+        adminCrossStationView.Id.ShouldBe(otherFlight);
+        AssertReadOnlyPortalOperations(adminCrossStationView);
+        using var adminCreateCancellation = await WritePortalOperationsAsync(admin, otherFlight, HttpMethod.Put, "cancellation",
+            input, adminCrossStationView.RowVersion);
+        adminCreateCancellation.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var adminMobileRead = await admin.GetAsync($"{Base}/flights/mobile/{id}");
+        adminMobileRead.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await PortalOperationsDetailAsync(workerClient, id)).RowVersion.ShouldBe(detail.RowVersion);
     }
 
@@ -87,6 +97,14 @@ public sealed partial class FlightVisibilityScopeTests
         var revertPath = $"cancellation/{saved.Submission.Id}";
         using var otherUndo = await WritePortalOperationsAsync(workerClient, id, HttpMethod.Delete, revertPath, null, saved.RowVersion);
         otherUndo.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var adminView = await PortalOperationsDetailAsync(admin, id);
+        AssertReadOnlyPortalOperations(adminView);
+        adminView.CancellationSubmissions!.ShouldHaveSingleItem().ShouldBe(saved.Submission);
+        using var adminCorrection = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "cancellation",
+            input with { Remarks = "Administrator correction" }, saved.RowVersion);
+        adminCorrection.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var adminUndo = await WritePortalOperationsAsync(admin, id, HttpMethod.Delete, revertPath, null, saved.RowVersion);
+        adminUndo.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
         var arrival = new SaveFlightArrivalRequest(now.AddMinutes(-30), aircraftId, "HZ-PORTAL", null, null);
         var work = OperationsBatchInput(arrival);
@@ -167,13 +185,27 @@ public sealed partial class FlightVisibilityScopeTests
         var signaturePath = $"{prefix}/departure-signatures/{normalDeparture.Id}" +
             $"?expectedUpdatedAt={VersionTimestamp(normalDeparture.UpdatedAtUtc ?? normalDeparture.CreatedAtUtc)}";
         await AssertPortalMediaAsync(client, signaturePath, bytes);
-        using var unlinkedSignatureRead = await admin.GetAsync(signaturePath);
-        unlinkedSignatureRead.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        await AssertPortalMediaAsync(admin, signaturePath, bytes);
         var attachmentPath = $"{prefix}/services/{recordId}/attachments/{attachment.Id}";
         await AssertPortalMediaAsync(client,
             $"{attachmentPath}?expectedUploadedAt={VersionTimestamp(storedAttachment.UploadedAtUtc)}", bytes);
-        using var staleMedia = await client.GetAsync($"{attachmentPath}?expectedUploadedAt={VersionTimestamp(storedAttachment.UploadedAtUtc.AddSeconds(1))}");
+        await AssertPortalMediaAsync(admin,
+            $"{attachmentPath}?expectedUploadedAt={VersionTimestamp(storedAttachment.UploadedAtUtc)}", bytes);
+        using var staleMedia = await admin.GetAsync($"{attachmentPath}?expectedUploadedAt={VersionTimestamp(storedAttachment.UploadedAtUtc.AddSeconds(1))}");
         staleMedia.StatusCode.ShouldBe(HttpStatusCode.PreconditionFailed);
+
+        var adminWork = await PortalOperationsDetailAsync(admin, id);
+        AssertReadOnlyPortalOperations(adminWork);
+        adminWork.ArrivalSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(work.ArrivalSubmissions!.Single().Id);
+        adminWork.DepartureSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(normalDeparture.Id);
+        var adminService = adminWork.Services!.ShouldHaveSingleItem();
+        adminService.Id.ShouldBe(recordId);
+        adminService.CanEdit.ShouldBeFalse();
+        adminService.CanSetEnd.ShouldBeFalse();
+        adminService.CanDelete.ShouldBeFalse();
+        using var adminBatch = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "batch",
+            OperationsBatchInput(services: [new(recordId, service with { Notes = "Administrator correction" })]), adminWork.RowVersion);
+        adminBatch.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
         using var removeResponse = await WritePortalOperationsAsync(client, id, HttpMethod.Put, "batch",
             OperationsBatchInput(services: [new(recordId, null)]), work.RowVersion);
@@ -211,6 +243,20 @@ public sealed partial class FlightVisibilityScopeTests
         returned.DepartureSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(normalDeparture.Id);
         await AssertPortalMediaAsync(client,
             $"{prefix}/returns-to-ramp/{occurrenceId}/signature?expectedUpdatedAt={VersionTimestamp(occurrence.UpdatedAtUtc ?? occurrence.CreatedAtUtc)}", bytes);
+        await AssertPortalMediaAsync(admin,
+            $"{prefix}/returns-to-ramp/{occurrenceId}/signature?expectedUpdatedAt={VersionTimestamp(occurrence.UpdatedAtUtc ?? occurrence.CreatedAtUtc)}", bytes);
+
+        var adminRtr = (await PortalOperationsDetailAsync(admin, id)).ReturnToRamps!.ShouldHaveSingleItem();
+        adminRtr.Id.ShouldBe(occurrenceId);
+        adminRtr.CanEdit.ShouldBeFalse();
+        var adminTask = adminRtr.Tasks.ShouldHaveSingleItem();
+        adminTask.Id.ShouldBe(taskId);
+        adminTask.CanEdit.ShouldBeFalse();
+        adminTask.CanSetEnd.ShouldBeFalse();
+        adminTask.CanDelete.ShouldBeFalse();
+        using var adminRtrSave = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{occurrenceId}",
+            returning with { Arrival = returning.Arrival with { Remarks = "Administrator correction" } }, returned.RowVersion);
+        adminRtrSave.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
         var reloaded = await PortalOperationsDetailAsync(client, id);
         var storedTask = reloaded.ReturnToRamps!.ShouldHaveSingleItem().Tasks.ShouldHaveSingleItem();
@@ -222,6 +268,8 @@ public sealed partial class FlightVisibilityScopeTests
         var storedTaskAttachment = storedTask.Attachments.ShouldHaveSingleItem();
         storedTaskAttachment.Id.ShouldBe(taskAttachment.Id);
         await AssertPortalMediaAsync(client,
+            $"{prefix}/tasks/{taskId}/attachments/{taskAttachment.Id}?expectedUploadedAt={VersionTimestamp(storedTaskAttachment.UploadedAtUtc)}", bytes);
+        await AssertPortalMediaAsync(admin,
             $"{prefix}/tasks/{taskId}/attachments/{taskAttachment.Id}?expectedUploadedAt={VersionTimestamp(storedTaskAttachment.UploadedAtUtc)}", bytes);
     }
 
@@ -434,6 +482,19 @@ public sealed partial class FlightVisibilityScopeTests
 
     private static async Task<FlightDetailDto> PortalOperationsDetailAsync(HttpClient client, Guid id) =>
         (await client.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/{id}/operations"))!;
+
+    private static void AssertReadOnlyPortalOperations(FlightDetailDto detail)
+    {
+        detail.CurrentStaffMemberId.ShouldBeNull();
+        detail.CanSaveArrival.ShouldBeFalse();
+        detail.CanSaveDeparture.ShouldBeFalse();
+        detail.CanSaveCancellation.ShouldBeFalse();
+        detail.CanSaveServices.ShouldBeFalse();
+        detail.CanSaveTasks.ShouldBeFalse();
+        detail.CanSaveReturnsToRamp.ShouldBeFalse();
+        detail.CanAddServices.ShouldBe(false);
+        detail.CanAddTasks.ShouldBe(false);
+    }
 
     private static async Task<HttpResponseMessage> WritePortalOperationsAsync(HttpClient client, Guid id,
         HttpMethod method, string route, object? input, string version)

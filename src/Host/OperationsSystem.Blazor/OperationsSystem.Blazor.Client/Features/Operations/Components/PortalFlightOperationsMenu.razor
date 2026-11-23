@@ -14,25 +14,39 @@ else if (loadError)
         <RadzenIcon Icon="refresh" /><span>Retry flight actions</span>
     </button>
 }
-else if (details is { } flight && (ownCancellation is not null || hasOwnWork || CanOpenWork(flight) || flight.CanSaveCancellation))
+else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork || !ViewOnly && (CanOpenWork(flight) || flight.CanSaveCancellation)))
 {
     @if (ShowDivider)
     {
         <div class="os-row-actions-sep" role="separator"></div>
     }
-    @if (ownCancellation is { } cancellation)
+    @if (cancellations.Count > 0)
     {
         <RowActionSubmenu Text="Cancellation order" Icon="event_busy">
-            <button type="button" role="menuitem" class="os-row-actions-item" @onclick="@(() => OpenCancellationAsync(cancellation.Id))">
-                <RadzenIcon Icon="visibility" /><span>View</span>
-            </button>
-            <button type="button" role="menuitem" class="os-row-actions-item os-row-actions-item--danger"
-                    @onclick="@(() => UndoCancellationAsync(cancellation.Id, flight.RowVersion))">
-                <RadzenIcon Icon="undo" /><span>Undo</span>
-            </button>
+            @foreach (var cancellation in cancellations)
+            {
+                var reporter = cancellation.SubmittedByEmployee;
+                var reporterLabel = cancellations.Count > 1 ? $"{reporter.FullName} · {reporter.EmployeeId}" : null;
+                @if (reporterLabel is not null)
+                {
+                    <div class="os-row-actions-note">@reporterLabel</div>
+                }
+                <button @key="cancellation.Id" type="button" role="menuitem" class="os-row-actions-item"
+                        aria-label="@(reporterLabel is null ? null : $"View cancellation by {reporterLabel}")"
+                        @onclick="@(() => OpenCancellationAsync(cancellation.Id))">
+                    <RadzenIcon Icon="visibility" /><span>View</span>
+                </button>
+                @if (!ViewOnly)
+                {
+                    <button type="button" role="menuitem" class="os-row-actions-item os-row-actions-item--danger"
+                            @onclick="@(() => UndoCancellationAsync(cancellation.Id, flight.RowVersion))">
+                        <RadzenIcon Icon="undo" /><span>Undo</span>
+                    </button>
+                }
+            }
         </RowActionSubmenu>
     }
-    else if (hasOwnWork)
+    @if (hasSavedWork && (ViewOnly || cancellations.Count == 0))
     {
         <RowActionSubmenu Text="Work Order" Icon="assignment">
             <button type="button" role="menuitem" class="os-row-actions-item" @onclick="OpenWorkAsync">
@@ -40,7 +54,7 @@ else if (details is { } flight && (ownCancellation is not null || hasOwnWork || 
             </button>
         </RowActionSubmenu>
     }
-    else
+    else if (!ViewOnly && cancellations.Count == 0)
     {
         @if (CanOpenWork(flight))
         {
@@ -64,12 +78,13 @@ else if (!ShowDivider)
 
 @code {
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
+    [Parameter] public bool ViewOnly { get; set; }
     [Parameter] public bool ShowDivider { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
 
     private PortalFlightOperations? details;
-    private PortalFlightCancellation? ownCancellation;
-    private bool hasOwnWork;
+    private IReadOnlyList<PortalFlightCancellation> cancellations = [];
+    private bool hasSavedWork;
     private bool isLoading;
     private bool loadError;
 
@@ -84,13 +99,14 @@ else if (!ShowDivider)
             var flight = await Operations.GetPortalFlightOperationsAsync(FlightId);
             details = flight;
             var staffId = flight.CurrentStaffMemberId;
-            ownCancellation = flight.CancellationSubmissions.FirstOrDefault(item => item.SubmittedByEmployee.StaffMemberId == staffId);
+            cancellations = ViewOnly ? flight.CancellationSubmissions : flight.CancellationSubmissions
+                .Where(item => item.SubmittedByEmployee.StaffMemberId == staffId).ToArray();
             var userId = Auth.User?.Id;
-            hasOwnWork = flight.ArrivalSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == staffId)
-                || flight.DepartureSubmissions.Any(item => item.SubmittedByEmployee.StaffMemberId == staffId)
-                || flight.Services.Any(item => item.CreatedByUserId == userId)
-                || flight.Tasks.Any(item => item.CreatedByUserId == userId)
-                || flight.ReturnToRamps.Any(item => item.CreatedByUserId == userId);
+            hasSavedWork = flight.ArrivalSubmissions.Any(item => ViewOnly || item.SubmittedByEmployee.StaffMemberId == staffId)
+                || flight.DepartureSubmissions.Any(item => ViewOnly || item.SubmittedByEmployee.StaffMemberId == staffId)
+                || flight.Services.Any(item => ViewOnly || item.CreatedByUserId == userId)
+                || flight.Tasks.Any(item => ViewOnly || item.CreatedByUserId == userId)
+                || flight.ReturnToRamps.Any(item => ViewOnly || item.CreatedByUserId == userId);
         }
         catch (ApiException ex) when (ex.IsForbidden || ex.IsNotFound)
         {
@@ -115,12 +131,16 @@ else if (!ShowDivider)
 
     private async Task OpenWorkAsync()
     {
-        if (details is not { } flight)
+        if (details is not { } flight || ViewOnly && !hasSavedWork)
             return;
 
         ContextMenu.Close();
         var result = await Dialogs.OpenAsync<PortalFlightWorkDialog>($"Work order · {flight.FlightNumber}",
-            new() { [nameof(PortalFlightWorkDialog.FlightId)] = FlightId },
+            new()
+            {
+                [nameof(PortalFlightWorkDialog.FlightId)] = FlightId,
+                [nameof(PortalFlightWorkDialog.ViewOnly)] = ViewOnly
+            },
             PortalWorkDialogLayout.CreateOptions());
         if (result is true)
             await Changed.InvokeAsync();
@@ -128,13 +148,17 @@ else if (!ShowDivider)
 
     private async Task OpenCancellationAsync(Guid? submissionId)
     {
+        if (ViewOnly && submissionId is null)
+            return;
+
         ContextMenu.Close();
         var result = await Dialogs.OpenAsync<PortalFlightCancellationDialog>(
             submissionId is null ? "Cancel flight" : "Cancellation order",
             new()
             {
                 [nameof(PortalFlightCancellationDialog.FlightId)] = FlightId,
-                [nameof(PortalFlightCancellationDialog.SubmissionId)] = submissionId
+                [nameof(PortalFlightCancellationDialog.SubmissionId)] = submissionId,
+                [nameof(PortalFlightCancellationDialog.ViewOnly)] = ViewOnly
             },
             EditorOptions());
         if (result is true)
@@ -143,6 +167,9 @@ else if (!ShowDivider)
 
     private async Task UndoCancellationAsync(Guid submissionId, string rowVersion)
     {
+        if (ViewOnly)
+            return;
+
         ContextMenu.Close();
         if (!await PortalFlightCancellationDialog.ConfirmUndoAsync(Dialogs))
             return;

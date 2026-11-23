@@ -182,7 +182,7 @@
                         </div>
                         @if (flight.ReturnToRamps.Count == 0 && pendingReturns.Count == 0)
                         {
-                            <p class="portal-work-note">@(ActualDeparture is null ? "Enter departure details before adding a return to ramp." : "No returns to ramp recorded.")</p>
+                            <p class="portal-work-note">@(!ViewOnly && ActualDeparture is null ? "Enter departure details before adding a return to ramp." : "No returns to ramp recorded.")</p>
                         }
                         @if (!ViewOnly && (flight.ReturnToRamps.Any(item => item.IsOpen) || pendingReturns.Any(item => item.IsOpen)))
                         {

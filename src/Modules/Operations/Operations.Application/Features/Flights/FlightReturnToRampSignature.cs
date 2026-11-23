@@ -15,7 +15,7 @@ public sealed class GetMobileFlightReturnToRampSignatureQueryHandler(IOperations
 {
     public async Task<Result<FlightDepartureSignatureContent>> Handle(GetMobileFlightReturnToRampSignatureQuery request, CancellationToken ct)
     {
-        var resolved = await FlightOperationAccess.ResolveAsync(scope, portalScope, request.PortalOnly, ct);
+        var resolved = await FlightOperationAccess.ResolveReadAsync(scope, portalScope, request.PortalOnly, ct);
         if (resolved.IsFailure) return resolved.Error;
         var flight = await resolved.Value.Apply(db.Flights.AsNoTracking()).Include(f => f.ReturnToRamps)
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, ct);
