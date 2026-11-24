@@ -40,7 +40,9 @@ public sealed record FlightListItemDto(
     string? ApprovedByDisplayName = null,
     DateTimeOffset? ApprovedAtUtc = null,
     int ApprovedReturnToRampSequence = 0,
-    string? WorkOrderNumber = null);
+    string? WorkOrderNumber = null,
+    bool IsAdHocFlight = false,
+    DateTimeOffset? ActualArrivalUtc = null);
 
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId)

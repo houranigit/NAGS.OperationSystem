@@ -60,6 +60,12 @@ public static class UiStrings
         public static string TypePerLanding => UiText.Get("Flights.TypePerLanding", "Per Landing");
         public static string TypeAdHoc => UiText.Get("Flights.TypeAdHoc", "Ad Hoc");
         public static string AwaitingAta => UiText.Get("Flights.AwaitingAta", "Awaiting ATA");
+        public static string StaNow => UiText.Get("Flights.StaNow", "STA now");
+        public static string StaIn(string duration) => string.Format(UiText.Get("Flights.StaIn", "STA in {0}"), duration);
+        public static string StaAgo(string duration) => string.Format(UiText.Get("Flights.StaAgo", "STA {0} ago"), duration);
+        public static string StaOn(string date) => string.Format(UiText.Get("Flights.StaOn", "STA {0}"), date);
+        public static string OnGroundFor(string duration) => string.Format(UiText.Get("Flights.OnGroundFor", "On ground {0}"), duration);
+        public static string OnGroundSince(string date) => string.Format(UiText.Get("Flights.OnGroundSince", "On ground since {0}"), date);
         public static string TotalCount(int count) => string.Format(
             count == 1 ? UiText.Get("Flights.TotalOne", "{0:N0} flight") : UiText.Get("Flights.TotalMany", "{0:N0} flights"),
             count);

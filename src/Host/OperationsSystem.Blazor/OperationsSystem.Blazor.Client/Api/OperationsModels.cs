@@ -19,7 +19,9 @@ public sealed record FlightListItem(
     string? ApprovedByDisplayName = null,
     DateTimeOffset? ApprovedAtUtc = null,
     int ApprovedReturnToRampSequence = 0,
-    string? WorkOrderNumber = null)
+    string? WorkOrderNumber = null,
+    bool IsAdHocFlight = false,
+    DateTimeOffset? ActualArrivalUtc = null)
 {
     internal bool IsApprovalLocked => FlightApprovalStatuses.IsLocked(ApprovalStatus);
 }

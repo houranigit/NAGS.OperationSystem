@@ -775,6 +775,12 @@
   <data name="Flights.TypePerLanding" xml:space="preserve"><value>لكل هبوط</value></data>
   <data name="Flights.TypeAdHoc" xml:space="preserve"><value>Ad Hoc</value></data>
   <data name="Flights.AwaitingAta" xml:space="preserve"><value>بانتظار ATA</value></data>
+  <data name="Flights.StaNow" xml:space="preserve"><value>الوصول المجدول الآن</value></data>
+  <data name="Flights.StaIn" xml:space="preserve"><value>الوصول المجدول خلال {0}</value></data>
+  <data name="Flights.StaAgo" xml:space="preserve"><value>الوصول المجدول منذ {0}</value></data>
+  <data name="Flights.StaOn" xml:space="preserve"><value>الوصول المجدول {0}</value></data>
+  <data name="Flights.OnGroundFor" xml:space="preserve"><value>على الأرض منذ {0}</value></data>
+  <data name="Flights.OnGroundSince" xml:space="preserve"><value>على الأرض منذ {0}</value></data>
   <data name="Flights.TotalOne" xml:space="preserve"><value>عدد الرحلات {0:N0}</value></data>
   <data name="Flights.TotalMany" xml:space="preserve"><value>عدد الرحلات {0:N0}</value></data>
   <data name="Notifications.Title" xml:space="preserve"><value>الإشعارات</value></data>

@@ -79,7 +79,11 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 OperationTypeName = flight.OperationType.Name,
                 ScheduledArrivalUtc = flight.Schedule.Sta,
                 ScheduledDepartureUtc = flight.Schedule.Std,
+                IsAdHocFlight = flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType,
                 IsPerLanding = flight.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
+                ActualArrivalUtc = flight.ArrivalSubmissions.OrderByDescending(arrival => arrival.IsAccepted)
+                    .ThenBy(arrival => arrival.CreatedAtUtc).ThenBy(arrival => arrival.Id)
+                    .Select(arrival => (DateTimeOffset?)arrival.Details.Ata).FirstOrDefault(),
                 AircraftTypeModel = flight.AircraftType == null ? null : flight.AircraftType.Model,
                 HasArrivalSubmission = hasArrival,
                 HasDepartureSubmission = hasDeparture,
@@ -120,7 +124,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             versions.TryGetValue(item.CustomerId, out var version) ? version : CustomerLogoVersions.None,
             item.StationId, item.HasArrivalSubmission, item.HasDepartureSubmission, item.HasCancellationSubmission,
             item.Status.ToString(), item.ApprovalStatus, item.ApprovedByDisplayName, item.ApprovedAtUtc,
-            item.ApprovedReturnToRampSequence, item.ApprovalNumber)).ToList();
+            item.ApprovedReturnToRampSequence, item.ApprovalNumber, item.IsAdHocFlight, item.ActualArrivalUtc)).ToList();
         return paging.ToResult(versionedItems, total);
     }
 }

@@ -255,6 +255,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         var refs = await SetupMasterDataAsync(admin);
         var userId = (await admin.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("id").GetGuid();
         var now = DateTimeOffset.UtcNow;
+        var actualArrival = now.AddMinutes(-45);
         var employee = new StaffMemberSnapshot(Guid.NewGuid(), "Report employee", "REPORT");
         var cancelingEmployee = new StaffMemberSnapshot(Guid.NewGuid(), "Canceling employee", "CANCEL");
         var scenarios = new (string Number, string Status, int MinutesUntilSta)[]
@@ -277,9 +278,16 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
                 FlightNumber.Create(number).Value, ScheduledTime.Create(sta, sta.AddHours(1)).Value,
                 null, [new(refs.ServiceId, "Service")], [], userId, now).Value;
             if (status is "OnGround" or "Departed" or "ReturnedToRamp" or "Conflict")
-                flight.SubmitArrival(employee, ArrivalDetails.Create(null, now.AddHours(-1),
+                flight.SubmitArrival(employee, ArrivalDetails.Create(null, actualArrival,
                     new(Guid.NewGuid(), "Airbus", "A320"), "HZ-TEST", employee, null).Value, userId, now)
                     .IsSuccess.ShouldBeTrue();
+            if (status == "OnGround")
+            {
+                var secondEmployee = new StaffMemberSnapshot(Guid.NewGuid(), "Second employee", "SECOND");
+                flight.SubmitArrival(secondEmployee, ArrivalDetails.Create(null, now.AddHours(-1),
+                    new(Guid.NewGuid(), "Airbus", "A320"), "HZ-TEST", secondEmployee, null).Value,
+                    userId, now.AddSeconds(1)).IsSuccess.ShouldBeTrue();
+            }
             if (status is "Departed" or "ReturnedToRamp")
                 flight.SubmitDeparture(employee, DepartureDetails.Create(now.AddMinutes(-30), null, employee, null).Value,
                     userId, now).IsSuccess.ShouldBeTrue();
@@ -303,9 +311,11 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         }
 
         var path = $"{Base}/flights?stationId={refs.StationId}&sort=flightnumber:asc";
-        var unfiltered = (await admin.GetFromJsonAsync<PagedList<PortalFlightStatus>>($"{path}&pageSize=100"))!;
+        var unfiltered = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{path}&pageSize=100"))!;
         unfiltered.Items.Select(item => (item.FlightNumber, item.Status))
             .ShouldBe(scenarios.Select(scenario => (scenario.Number, scenario.Status)));
+        unfiltered.Items.Single(item => item.Status == "OnGround").ActualArrivalUtc.ShouldBe(actualArrival);
+        unfiltered.Items.Single(item => item.Status == "ArrivalNotRecorded").ActualArrivalUtc.ShouldBeNull();
 
         var filter = $"{path}&status=duesoon,%20ReturnedToRamp,DueSoon&pageSize=1";
         var first = (await admin.GetFromJsonAsync<PagedList<PortalFlightStatus>>($"{filter}&page=1"))!;

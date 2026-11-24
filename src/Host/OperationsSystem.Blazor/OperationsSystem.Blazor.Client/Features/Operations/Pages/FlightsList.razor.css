@@ -104,25 +104,27 @@
     color: var(--os-color-primary-strong);
 }
 
-.ofl-per-landing-badge {
+.ofl-flight-type-badge {
     display: inline-flex;
     align-items: center;
-    gap: var(--os-space-1);
-    padding: 0.125rem 0.4rem;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 1rem;
+    height: 1rem;
+    padding-inline: 0.125rem;
     border-radius: var(--os-radius-pill);
-    background: var(--os-color-info-bg);
-    color: var(--rz-secondary);
-    font-size: 0.5rem;
-    font-weight: 600;
-    line-height: 1.4;
+    font-size: 0.5625rem;
+    font-weight: 700;
+    line-height: 1;
     white-space: nowrap;
 }
 
-.ofl-per-landing-badge::before {
-    content: "";
-    width: 0.3rem;
-    height: 0.3rem;
-    border-radius: 50%;
-    background: currentColor;
-    flex: 0 0 auto;
+.os-role-cell-text > .ofl-flight-status {
+    background: none;
+    font-size: 0.6875rem;
+    font-weight: 600;
+}
+
+.ofl-flight-status.os-pill--critical {
+    color: var(--os-color-danger-strong);
 }

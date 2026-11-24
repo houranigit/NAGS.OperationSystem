@@ -241,7 +241,9 @@ public sealed class FlightSchedulingTests
 
             result.IsSuccess.ShouldBeTrue();
             result.Value.TotalCount.ShouldBe(expected.LongLength);
-            result.Value.Items.ShouldHaveSingleItem().Id.ShouldBe(expected[page - 1].Id);
+            var item = result.Value.Items.ShouldHaveSingleItem();
+            item.Id.ShouldBe(expected[page - 1].Id);
+            item.IsAdHocFlight.ShouldBe(item.Id == adHoc.Id || item.Id == adHocWithPerLandingService.Id);
         }
     }
 
