@@ -163,6 +163,7 @@ class FlightsViewModelTest {
         assertTrue(changes.tryEmit(Unit))
 
         assertEquals(listOf("new"), vm.state.value.items.map { it.id })
+        assertFalse(vm.state.value.isUsingCachedList)
         assertEquals("v2", vm.state.value.detail!!.rowVersion)
         assertEquals(1, listReads)
         assertEquals(1, detailReads)

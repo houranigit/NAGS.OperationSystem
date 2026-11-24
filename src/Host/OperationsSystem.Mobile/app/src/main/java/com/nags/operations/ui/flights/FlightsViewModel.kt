@@ -492,8 +492,9 @@ class FlightsViewModel internal constructor(
                             currentCoroutineContext().ensureActive()
                             if (range != null) {
                                 acceptStation(cached.stationId)
+                                // An equal or newer same-station snapshot can refresh an already live list.
                                 val retainedLive = online.value && !current.isUsingCachedList &&
-                                    cached.stationId == current.stationId && cached.asOfUtc == current.listAsOfUtc
+                                    cached.stationId == current.stationId
                                 presentList(category, range.first, range.second, fromCache = !retainedLive)
                                 return@launch
                             }
