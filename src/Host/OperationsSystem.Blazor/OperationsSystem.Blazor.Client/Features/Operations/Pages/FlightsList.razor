@@ -22,122 +22,115 @@
             </Actions>
         </PageHeader>
 
-        @if (!pageSizeReady)
-        {
-            <LoadingCard />
-        }
-        else
-        {
-            <DataListCard @ref="list" TItem="FlightListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
-                          HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
-                          PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
-                          PageSizeText="@FlightCountText"
-                          ColumnLayoutKey="@GridKey"
-                          SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
-                          SearchPlaceholder="Search flight number, customer, or ID" CountLabel="flights" EmptyText="No flights match your filters."
-                          UseCollapsibleFilters="true" ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync">
-                <Toolbar>
-                    <div class="ofl-flight-type">
-                        <RadzenSelectBar TValue="FlightType" Value="@flightType" ValueChanged="@OnFlightTypeChangedAsync"
-                                         AriaLabel="@UiStrings.Flights.FlightType">
-                            <Items>
-                                <RadzenSelectBarItem Value="@FlightType.All" Text="@UiStrings.Flights.TypeAll" />
-                                <RadzenSelectBarItem Value="@FlightType.Scheduled" Text="@UiStrings.Flights.TypeScheduled" />
-                                <RadzenSelectBarItem Value="@FlightType.PerLanding" Text="@UiStrings.Flights.TypePerLanding" />
-                                <RadzenSelectBarItem Value="@FlightType.AdHoc" Text="@UiStrings.Flights.TypeAdHoc" />
-                            </Items>
-                        </RadzenSelectBar>
-                    </div>
-                </Toolbar>
-                <Filters>
-                    <div class="ofl-filters">
-                        <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
-                        <DataListFilter TValue="Guid?" Placeholder="All customers" Data="@customerOptions" Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync" AllowFiltering="true" />
-                        <DataListFilter TValue="IEnumerable<string>" Placeholder="All statuses" Data="@statusOptions" Value="@statusFilters" ValueChanged="@OnStatusFilterChangedAsync" Multiple="true" Chips="true" />
-                        <DataListFilter TValue="Guid?" Placeholder="All operations" Data="@operationTypeOptions" Value="@operationTypeFilter" ValueChanged="@OnOperationTypeFilterChangedAsync" />
-                        <RadzenDatePicker Disabled="@(stationFilter is null)" TValue="DateTime?" Value="@fromFilter" Change="@OnFromFilterChangedAsync"
-                                          DateFormat="yyyy-MM-dd" ShowTime="false" AllowClear="true"
-                                          Placeholder="From date" class="ofl-date-filter" />
-                        <RadzenDatePicker Disabled="@(stationFilter is null)" TValue="DateTime?" Value="@toFilter" Change="@OnToFilterChangedAsync"
-                                          DateFormat="yyyy-MM-dd" ShowTime="false" AllowClear="true"
-                                          Placeholder="To date" class="ofl-date-filter" />
-                    </div>
-                </Filters>
-                <Columns>
-                    <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" UniqueID="flight-number" Title="Flight #" MinWidth="120px">
-                        <Template Context="flight">
-                            <div class="os-role-cell">
-                                <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
-                                <div class="os-role-cell-text">
-                                    <div class="os-role-cell-title">
-                                        <strong>@flight.FlightNumber</strong>
-                                        @if (flight.IsPerLanding)
-                                        {
-                                            <span class="ofl-per-landing-badge">Per Landing</span>
-                                        }
-                                    </div>
-                                    <span>STA @DateTimeDisplay(flight)</span>
+        <DataListCard @ref="list" TItem="FlightListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
+                      HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
+                      PageSize="@currentPageSize" PageSizeReady="@pageSizeReady" PageSizeChanged="@OnPageSizeChangedAsync"
+                      PageSizeText="@FlightCountText"
+                      ColumnLayoutKey="@GridKey"
+                      SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
+                      SearchPlaceholder="Search flight number, customer, or ID" CountLabel="flights" EmptyText="No flights match your filters."
+                      UseCollapsibleFilters="true" ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync">
+            <Toolbar>
+                <div class="ofl-flight-type">
+                    <RadzenSelectBar TValue="FlightType" Value="@flightType" ValueChanged="@OnFlightTypeChangedAsync"
+                                     AriaLabel="@UiStrings.Flights.FlightType">
+                        <Items>
+                            <RadzenSelectBarItem Value="@FlightType.All" Text="@UiStrings.Flights.TypeAll" />
+                            <RadzenSelectBarItem Value="@FlightType.Scheduled" Text="@UiStrings.Flights.TypeScheduled" />
+                            <RadzenSelectBarItem Value="@FlightType.PerLanding" Text="@UiStrings.Flights.TypePerLanding" />
+                            <RadzenSelectBarItem Value="@FlightType.AdHoc" Text="@UiStrings.Flights.TypeAdHoc" />
+                        </Items>
+                    </RadzenSelectBar>
+                </div>
+            </Toolbar>
+            <Filters>
+                <div class="ofl-filters">
+                    <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
+                    <DataListFilter TValue="Guid?" Placeholder="All customers" Data="@customerOptions" Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync" AllowFiltering="true" />
+                    <DataListFilter TValue="IEnumerable<string>" Placeholder="All statuses" Data="@statusOptions" Value="@statusFilters" ValueChanged="@OnStatusFilterChangedAsync" Multiple="true" Chips="true" />
+                    <DataListFilter TValue="Guid?" Placeholder="All operations" Data="@operationTypeOptions" Value="@operationTypeFilter" ValueChanged="@OnOperationTypeFilterChangedAsync" />
+                    <RadzenDatePicker Disabled="@(stationFilter is null)" TValue="DateTime?" Value="@fromFilter" Change="@OnFromFilterChangedAsync"
+                                      DateFormat="yyyy-MM-dd" ShowTime="false" AllowClear="true"
+                                      Placeholder="From date" class="ofl-date-filter" />
+                    <RadzenDatePicker Disabled="@(stationFilter is null)" TValue="DateTime?" Value="@toFilter" Change="@OnToFilterChangedAsync"
+                                      DateFormat="yyyy-MM-dd" ShowTime="false" AllowClear="true"
+                                      Placeholder="To date" class="ofl-date-filter" />
+                </div>
+            </Filters>
+            <Columns>
+                <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" UniqueID="flight-number" Title="Flight #" MinWidth="120px">
+                    <Template Context="flight">
+                        <div class="os-role-cell">
+                            <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
+                            <div class="os-role-cell-text">
+                                <div class="os-role-cell-title">
+                                    <strong>@flight.FlightNumber</strong>
+                                    @if (flight.IsPerLanding)
+                                    {
+                                        <span class="ofl-per-landing-badge">Per Landing</span>
+                                    }
                                 </div>
+                                <span>STA @DateTimeDisplay(flight)</span>
                             </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="FlightListItem" Property="StationIataCode" UniqueID="station" Title="Station" Width="120px" />
-                    <RadzenDataGridColumn TItem="FlightListItem" Property="OperationTypeName" UniqueID="operation" Title="Operation" Width="120px" />
-                    <RadzenDataGridColumn TItem="FlightListItem" UniqueID="duration" Title="Duration" Sortable="false" Width="120px">
-                        <Template Context="flight">@DurationDisplay(flight)</Template>
-                    </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="FlightListItem" UniqueID="status" Title="Status" Sortable="false" Width="180px">
-                        <Template Context="flight">
-                            @{
-                                var status = statusOptions.FirstOrDefault(option => option.Value == flight.Status);
-                            }
-                            <StatusBadge Label="@(status?.Label ?? flight.Status ?? "—")" Tone="@(status?.Tone ?? "neutral")" Icon="@(status?.Icon)" />
-                        </Template>
-                    </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="FlightListItem" UniqueID="approval-status" Title="Approval status" Sortable="false" Width="160px">
-                        <Template Context="flight">
-                            @{
-                                var approval = ApprovalBadge(flight.ApprovalStatus);
-                            }
-                            <StatusBadge Label="@approval.Label" Tone="@approval.Tone" Icon="@approval.Icon" />
-                        </Template>
-                    </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="FlightListItem" UniqueID="work-order" Title="WO#" Sortable="false" Width="120px">
-                        <Template Context="flight">
-                            @if (flight.WorkOrderNumber is { } workOrderNumber)
+                        </div>
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FlightListItem" Property="StationIataCode" UniqueID="station" Title="Station" Width="120px" />
+                <RadzenDataGridColumn TItem="FlightListItem" Property="OperationTypeName" UniqueID="operation" Title="Operation" Width="120px" />
+                <RadzenDataGridColumn TItem="FlightListItem" UniqueID="duration" Title="Duration" Sortable="false" Width="120px">
+                    <Template Context="flight">@DurationDisplay(flight)</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FlightListItem" UniqueID="status" Title="Status" Sortable="false" Width="180px">
+                    <Template Context="flight">
+                        @{
+                            var status = statusOptions.FirstOrDefault(option => option.Value == flight.Status);
+                        }
+                        <StatusBadge Label="@(status?.Label ?? flight.Status ?? "—")" Tone="@(status?.Tone ?? "neutral")" Icon="@(status?.Icon)" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FlightListItem" UniqueID="approval-status" Title="Approval status" Sortable="false" Width="160px">
+                    <Template Context="flight">
+                        @{
+                            var approval = ApprovalBadge(flight.ApprovalStatus);
+                        }
+                        <StatusBadge Label="@approval.Label" Tone="@approval.Tone" Icon="@approval.Icon" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FlightListItem" UniqueID="work-order" Title="WO#" Sortable="false" Width="120px">
+                    <Template Context="flight">
+                        @if (flight.WorkOrderNumber is { } workOrderNumber)
+                        {
+                            <strong>@workOrderNumber</strong>
+                        }
+                        else
+                        {
+                            <text>—</text>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+            <RowActions Context="flight">
+                @{
+                    var canEditSchedule = !flight.IsApprovalLocked && Auth.HasPermission(OperationsPermissions.FlightsUpdate);
+                }
+                @if (CanOpenFlightOperations || canEditSchedule)
+                {
+                    <RowActionMenu>
+                        <ChildContent>
+                            <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
+                                       Visible="@canEditSchedule" OnClick="@(() => OpenEditAsync(flight.Id))" />
+                        </ChildContent>
+                        <MenuContent>
+                            @if (CanOpenFlightOperations)
                             {
-                                <strong>@workOrderNumber</strong>
+                                <PortalFlightOperationsMenu @key="flight.Id" FlightId="@flight.Id"
+                                    ShowDivider="@canEditSchedule" Changed="@ReloadAsync" />
                             }
-                            else
-                            {
-                                <text>—</text>
-                            }
-                        </Template>
-                    </RadzenDataGridColumn>
-                </Columns>
-                <RowActions Context="flight">
-                    @{
-                        var canEditSchedule = !flight.IsApprovalLocked && Auth.HasPermission(OperationsPermissions.FlightsUpdate);
-                    }
-                    @if (CanOpenFlightOperations || canEditSchedule)
-                    {
-                        <RowActionMenu>
-                            <ChildContent>
-                                <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
-                                           Visible="@canEditSchedule" OnClick="@(() => OpenEditAsync(flight.Id))" />
-                            </ChildContent>
-                            <MenuContent>
-                                @if (CanOpenFlightOperations)
-                                {
-                                    <PortalFlightOperationsMenu @key="flight.Id" FlightId="@flight.Id"
-                                        ShowDivider="@canEditSchedule" Changed="@ReloadAsync" />
-                                }
-                            </MenuContent>
-                        </RowActionMenu>
-                    }
-                </RowActions>
-            </DataListCard>
-        }
+                        </MenuContent>
+                    </RowActionMenu>
+                }
+            </RowActions>
+        </DataListCard>
     </div>
 </RequirePermission>
 
@@ -176,7 +169,7 @@
     private DateTime? fromFilter;
     private DateTime? toFilter;
     private int currentPage = 1;
-    private int currentPageSize = 10;
+    private int currentPageSize = GridPreferences.DefaultPageSize;
     private bool pageSizeReady;
     private string? currentSort;
     private IReadOnlyList<StationFilterOption> stationOptions = [];
@@ -211,7 +204,6 @@
         appliedSearchQuery = SearchQuery;
         searchTerm = SearchQuery ?? string.Empty;
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
-        // Mount the grid with the restored size before its column layout can trigger a reload.
         pageSizeReady = true;
         await Task.WhenAll(
             LoadStationOptionsAsync(),

@@ -12,6 +12,8 @@ namespace OperationsSystem.Blazor.Client.State;
 /// </summary>
 public sealed class GridPreferences(IJSRuntime jsRuntime)
 {
+    internal const int DefaultPageSize = 25;
+
     private const string KeyPrefix = "os:grid:pageSize:";
 
     private static string ColumnLayoutKey(string gridKey, Guid userId) =>

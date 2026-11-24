@@ -11,7 +11,7 @@
 *@
 
 <div class="os-list-card">
-    @if (ShowToolbar)
+    @if (ShowToolbar && PageSizeReady)
     {
         <div class="@ToolbarCssClass">
             <div class="os-list-toolbar-main">
@@ -90,7 +90,11 @@
         </div>
     }
 
-    @if (HasError)
+    @if (!PageSizeReady)
+    {
+        <LoadingCard />
+    }
+    else if (HasError)
     {
         <div class="os-list-state">
             <ErrorState Message="@(ErrorMessage ?? UiStrings.Errors.LoadFailed)" OnRetry="@OnRetry" />
@@ -180,7 +184,10 @@
     [Parameter] public EventCallback<LoadDataArgs> LoadData { get; set; }
 
     /// <summary>Current page size. Bind this to a persisted value to restore the user's choice.</summary>
-    [Parameter] public int PageSize { get; set; } = 10;
+    [Parameter] public int PageSize { get; set; } = GridPreferences.DefaultPageSize;
+
+    /// <summary>Defers grid creation while the page reads a saved size.</summary>
+    [Parameter] public bool PageSizeReady { get; set; } = true;
 
     /// <summary>Raised when the user picks a different page size from the pager dropdown.</summary>
     [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
@@ -231,6 +238,9 @@
     /// </summary>
     public async Task ReloadAsync()
     {
+        if (!PageSizeReady)
+            return;
+
         if (!HasError && grid is not null)
             await grid.FirstPage(true);
         else
@@ -239,7 +249,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (columnPreferencesRequested || ColumnLayoutKey is not { } key || Auth.User is not { Id: var userId })
+        if (!PageSizeReady || columnPreferencesRequested || ColumnLayoutKey is not { } key || Auth.User is not { Id: var userId })
             return;
 
         columnPreferencesRequested = true;

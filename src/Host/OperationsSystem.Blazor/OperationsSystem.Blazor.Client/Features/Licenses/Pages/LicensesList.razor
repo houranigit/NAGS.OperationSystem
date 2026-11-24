@@ -22,7 +22,7 @@
 
         <DataListCard @ref="list" TItem="LicenseListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
-                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      PageSize="@currentPageSize" PageSizeReady="@pageSizeReady" PageSizeChanged="@OnPageSizeChangedAsync"
                       ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="@UiStrings.Licenses.SearchPlaceholder"
@@ -76,7 +76,8 @@
     private IReadOnlyList<LicenseListItem> items = [];
     private int totalCount;
     private int currentPage = 1;
-    private int currentPageSize = 10;
+    private int currentPageSize = GridPreferences.DefaultPageSize;
+    private bool pageSizeReady;
     private bool isLoading;
     private bool loadError;
 
@@ -93,6 +94,7 @@
     protected override async Task OnInitializedAsync()
     {
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        pageSizeReady = true;
         await FetchAsync();
     }
 

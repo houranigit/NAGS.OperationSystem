@@ -1,6 +1,7 @@
 using OperationsSystem.Blazor.Client.Api;
 using OperationsSystem.Blazor.Client.Features.AtaChapters.Components;
 using OperationsSystem.Blazor.Client.Shared;
+using OperationsSystem.Blazor.Client.State;
 using Radzen;
 
 namespace OperationsSystem.Blazor.Client.Features.AtaChapters.Pages;
@@ -12,7 +13,9 @@ public partial class AtaChaptersPage
     private IReadOnlyList<AtaChapterModel> chapters = [];
     private IReadOnlyList<AtaChapterCategoryModel> categories = [];
     private int chapterCount, categoryCount;
-    private int chapterPage = 1, categoryPage = 1, chapterPageSize = 25, categoryPageSize = 10;
+    private int chapterPage = 1, categoryPage = 1;
+    private int chapterPageSize = GridPreferences.DefaultPageSize;
+    private int categoryPageSize = GridPreferences.DefaultPageSize;
     private bool loadingChapters, loadingCategories, chapterError, categoryError;
     private string chapterSearch = string.Empty, categorySearch = string.Empty;
     private string? chapterSort, categorySort;

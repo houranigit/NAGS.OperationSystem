@@ -22,7 +22,7 @@
 
         <DataListCard @ref="list" TItem="AircraftTypeListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
-                      PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      PageSize="@currentPageSize" PageSizeReady="@pageSizeReady" PageSizeChanged="@OnPageSizeChangedAsync"
                       ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="Search by model" CountLabel="aircraft types" EmptyText="No aircraft types match your filters.">
@@ -75,7 +75,8 @@
     private IReadOnlyList<AircraftTypeListItem> items = [];
     private int totalCount;
     private int currentPage = 1;
-    private int currentPageSize = 10;
+    private int currentPageSize = GridPreferences.DefaultPageSize;
+    private bool pageSizeReady;
     private bool isLoading;
     private bool loadError;
     private string searchTerm = string.Empty;
@@ -86,6 +87,7 @@
     protected override async Task OnInitializedAsync()
     {
         currentPageSize = await GridPrefs.GetPageSizeAsync(GridKey, currentPageSize, PageSizes);
+        pageSizeReady = true;
         await FetchAsync();
     }
 

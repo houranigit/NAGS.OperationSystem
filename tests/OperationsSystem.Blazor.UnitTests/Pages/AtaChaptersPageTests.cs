@@ -22,7 +22,7 @@ public sealed class AtaChaptersPageTests
         runtime.Requests.ShouldBe(new[]
         {
             "/masterdata/ata-chapters?page=1&pageSize=25",
-            "/masterdata/ata-chapter-categories?page=1&pageSize=10"
+            "/masterdata/ata-chapter-categories?page=1&pageSize=25"
         }, ignoreOrder: true);
         page.Read<IReadOnlyList<AtaChapterModel>>("chapters").ShouldHaveSingleItem().ShouldBe(runtime.Chapter);
         page.Read<IReadOnlyList<AtaChapterCategoryModel>>("categories").ShouldHaveSingleItem().ShouldBe(runtime.Category);

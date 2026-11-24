@@ -33,7 +33,7 @@
     private IReadOnlyList<AuditTrailListItem> items = [];
     private int totalCount;
     private int page = 1;
-    private int pageSize = 20;
+    private int pageSize = GridPreferences.DefaultPageSize;
     private bool isLoading = true;
     private bool loadError;
 
