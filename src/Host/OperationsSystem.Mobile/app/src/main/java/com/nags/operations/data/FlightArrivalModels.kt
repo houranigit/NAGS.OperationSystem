@@ -86,14 +86,14 @@ fun FlightDetail.requiresArrivalRemarks(): Boolean =
     operationTypeId.equals("30000000-0000-0000-0000-000000000001", true) &&
         customerId.equals("50000000-0000-0000-0000-000000000001", true)
 
-fun FlightDetail.arrivalEditable(): Boolean = canSaveArrival && validArrivalId(currentStaffMemberId) &&
+fun FlightDetail.arrivalEditable(): Boolean = !isApprovalLocked && canSaveArrival && validArrivalId(currentStaffMemberId) &&
     !hasOwnCancellation() && (arrivalSubmissions.isEmpty() || arrivalSubmissions.any {
         it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, ignoreCase = true)
     })
 
 /** Corrections preserve attribution; station-wide categories share assigned employees' operational authority. */
 fun FlightDetail.canUpdateArrivalSubmission(submissionId: String): Boolean =
-    canSaveArrival && validArrivalId(currentStaffMemberId) && !hasOwnCancellation() &&
+    !isApprovalLocked && canSaveArrival && validArrivalId(currentStaffMemberId) && !hasOwnCancellation() &&
         arrivalSubmissions.any { it.id.equals(submissionId, true) &&
             (it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true) || isPerLanding || isAdHocFlight ||
                 assignedEmployees.any { employee -> employee.staffMemberId.equals(currentStaffMemberId, true) }) }

@@ -25,6 +25,8 @@ public sealed partial class Flight
         var existing = _returnToRamps.SingleOrDefault(r => r.Id == id);
         if (_departureSubmissions.Count == 0)
             return Error.Conflict("Record departure before adding return to ramp.", "Operations.ReturnToRamp.DepartureRequired");
+        var approval = EnsureApprovalAllowsReturnToRamp(id);
+        if (approval.IsFailure) return approval.Error;
         if (existing is null && _returnToRamps.Any(r => r.IsOpen) || departure is null &&
             _returnToRamps.Any(r => r.Id != id && (r.IsOpen || existing is not null && r.Sequence > existing.Sequence)))
             return Error.Conflict("Close the previous return to ramp first.", "Operations.ReturnToRamp.OpenExists");
@@ -91,6 +93,7 @@ public sealed partial class Flight
         if (existing is null)
         {
             _returnToRamps.Add(candidate); LastReturnToRampSequence = candidate.Sequence;
+            ApprovalStatus = FlightApprovalStatus.PendingRtr;
             _services.AddRange(candidate.Services); _tasks.AddRange(candidate.Tasks);
         }
         else

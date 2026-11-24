@@ -51,4 +51,16 @@ class FlightFormSummaryTest {
         assertEquals(null, summary.hasCancellationSubmission)
         assertEquals(FlightCardReportStatus.Scheduled, summary.cardReportStatus())
     }
+
+    @Test fun recordingCardUsesCurrentApprovalAndAttribution() {
+        val list = flight.formCardSummary(null, emptyList())
+        val approved = flight.copy(approvalStatus = "PendingRtr", approvedByDisplayName = "Reviewer",
+            approvedAtUtc = "2026-11-12T13:00:00Z", approvedReturnToRampSequence = 1)
+        val summary = approved.formCardSummary(list, emptyList())
+
+        assertTrue(summary.isApprovalLocked)
+        assertEquals("Reviewer", summary.approvedByDisplayName)
+        assertEquals(approved.approvedAtUtc, summary.approvedAtUtc)
+        assertEquals(1, summary.approvedReturnToRampSequence)
+    }
 }

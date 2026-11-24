@@ -23,6 +23,33 @@
             }
             @switch (step)
             {
+                case 0 when IsCancellationReview:
+                    <section class="portal-editor-section">
+                        <div class="portal-editor-heading">
+                            <h3>Cancellation details</h3>
+                        </div>
+                        @foreach (var report in flight.CancellationSubmissions)
+                        {
+                            <div class="portal-editor-grid" @key="report.Id">
+                                <div>
+                                    <strong>Cancellation date and time</strong>
+                                    <p class="portal-work-note">@ActualsTimestamp(report.CanceledAtUtc)</p>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(report.Remarks))
+                                {
+                                    <div>
+                                        <strong>Remarks</strong>
+                                        <p class="portal-work-note">@report.Remarks</p>
+                                    </div>
+                                }
+                                <p class="portal-actuals-note portal-editor-full">
+                                    This section was submitted by <strong>@report.SubmitterName</strong>
+                                    on <strong>@ActualsTimestamp(report.CreatedAtUtc)</strong>.
+                                </p>
+                            </div>
+                        }
+                    </section>
+                    break;
                 case 0:
                     <section class="portal-editor-section">
                         <div class="portal-editor-heading">
@@ -107,12 +134,12 @@
                 case 1:
                     <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@services" Zone="@zone" Lookups="@lookups"
                                              AllowedServiceIds="@(AdministratorEntry ? null : flight.AllowedServiceIds)"
-                                             CanAdd="@(flight.CanAddServices ?? flight.CanSaveServices)" ReadOnly="@(ViewOnly || saving)"
+                                             CanAdd="@(!NormalWorkReadOnly && (flight.CanAddServices ?? flight.CanSaveServices))" ReadOnly="@(NormalWorkReadOnly || saving)"
                                              Validation="@validation" ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
                     break;
                 case 2:
                     <PortalWorkRecordsEditor FlightId="@flight.Id" Records="@tasks" Zone="@zone" Lookups="@lookups" IsTask="true"
-                                             CanAdd="@(flight.CanAddTasks ?? flight.CanSaveTasks)" ReadOnly="@(ViewOnly || saving)"
+                                             CanAdd="@(!NormalWorkReadOnly && (flight.CanAddTasks ?? flight.CanSaveTasks))" ReadOnly="@(NormalWorkReadOnly || saving)"
                                              Validation="@validation" ValidationAttempt="@validationFocusAttempt" Changed="@RefreshValidation" />
                     break;
                 case 3:
@@ -198,15 +225,17 @@
                         </div>
                         @if (flight.ReturnToRamps.Count == 0 && pendingReturns.Count == 0)
                         {
-                            <p class="portal-work-note">@(!ViewOnly && ActualDeparture is null ? "Enter departure details before adding a return to ramp." : "No returns to ramp recorded.")</p>
+                            <p class="portal-work-note">@(!ViewOnly && !flight.IsApprovalLocked
+                                ? "Approve the flight before adding a return to ramp."
+                                : "No returns to ramp recorded.")</p>
                         }
-                        @if (!ViewOnly && (flight.ReturnToRamps.Any(item => item.IsOpen) || pendingReturns.Any(item => item.IsOpen)))
+                        @if (CanDraftReturnToRamp && (flight.ReturnToRamps.Any(item => item.IsOpen) || pendingReturns.Any(item => item.IsOpen)))
                         {
                             <p class="portal-work-note">Close the open return to ramp before adding another.</p>
                         }
                         @foreach (var occurrence in flight.ReturnToRamps)
                         {
-                            var canEditOccurrence = !ViewOnly && occurrence.CanEdit && !WorkChanged();
+                            var canEditOccurrence = !ViewOnly && flight.CanEditReturnToRamp(occurrence) && !WorkChanged();
                             <div class="portal-occurrence" @key="occurrence.Id">
                                 <div>
                                     <strong>RTR @occurrence.Sequence</strong>
@@ -259,8 +288,19 @@
                 }
                 @if (CanEditNormalWork || pendingReturns.Count > 0)
                 {
-                    <RadzenButton Text="Save" BusyText="Saving…" IsBusy="@saving" Icon="check" ButtonStyle="ButtonStyle.Primary"
-                                  Click="@SaveAsync" />
+                    <RadzenButton Text="Save" BusyText="Saving…" IsBusy="@(saving && !changingApproval)" Icon="check" ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@saving" Click="@SaveAsync" />
+                }
+                @if (flight.CanUnlock)
+                {
+                    <RadzenButton Text="Unlock" BusyText="Unlocking…" IsBusy="@changingApproval" Icon="lock_open"
+                                  ButtonStyle="ButtonStyle.Primary" Disabled="@saving" Click="@(() => ChangeApprovalAsync(unlock: true))" />
+                }
+                else if (flight.CanApprove)
+                {
+                    <RadzenButton Text="Approve" BusyText="Approving…" IsBusy="@changingApproval" Icon="verified"
+                                  ButtonStyle="ButtonStyle.Primary" Disabled="@(saving || WorkChanged() || WorkFilesLoading())"
+                                  Click="@(() => ChangeApprovalAsync(unlock: false))" />
                 }
             </div>
         }

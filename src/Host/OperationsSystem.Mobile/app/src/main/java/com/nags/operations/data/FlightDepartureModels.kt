@@ -41,14 +41,14 @@ data class SaveFlightDepartureRequest(
 @Serializable
 data class FlightDepartureSaved(val submission: FlightDepartureSubmission, val rowVersion: String)
 
-fun FlightDetail.departureEditable(): Boolean = canSaveDeparture && validArrivalId(currentStaffMemberId) &&
+fun FlightDetail.departureEditable(): Boolean = !isApprovalLocked && canSaveDeparture && validArrivalId(currentStaffMemberId) &&
     !hasOwnCancellation() && (departureSubmissions.isEmpty() || departureSubmissions.any {
         it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, ignoreCase = true)
     })
 
 /** A targeted correction never creates a report on behalf of the signed-in employee. */
 fun FlightDetail.canUpdateDepartureSubmission(submissionId: String): Boolean =
-    canSaveDeparture && validArrivalId(currentStaffMemberId) && !hasOwnCancellation() &&
+    !isApprovalLocked && canSaveDeparture && validArrivalId(currentStaffMemberId) && !hasOwnCancellation() &&
         departureSubmissions.any { it.id.equals(submissionId, true) &&
             (it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true) || isPerLanding || isAdHocFlight ||
                 assignedEmployees.any { employee -> employee.staffMemberId.equals(currentStaffMemberId, true) }) }

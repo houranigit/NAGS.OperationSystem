@@ -24,6 +24,12 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<PortalFlightOperations> GetPortalFlightOperationsAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<PortalFlightOperations>(PortalOperationsPath(id), ct);
 
+    public Task<PortalFlightOperations> ApprovePortalFlightAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.PutAsync<object, PortalFlightOperations>($"{PortalOperationsPath(id)}/approval", new { }, rowVersion, ct);
+
+    public Task<PortalFlightOperations> UnlockPortalFlightAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
+        api.DeleteAsync<PortalFlightOperations>($"{PortalOperationsPath(id)}/approval", rowVersion, ct);
+
     public Task<PortalFlightOperations> SavePortalFlightWorkAsync(Guid id, PortalWorkBatchRequest request,
         string rowVersion, CancellationToken ct = default) =>
         PutPortalWorkAsync(

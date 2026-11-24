@@ -206,6 +206,7 @@ internal fun FlightRtrUpdateForm(flight: FlightDetail, record: FlightReturnToRam
     onSaveReviewed: suspend (FlightDetail, String, String, SaveFlightReturnToRampRequest, FlightReturnToRampRecord) -> Unit,
     onDiscardReviewed: suspend (String, String) -> Unit,
     onReload: suspend () -> FlightDetail, onClose: () -> Unit,
+    currentFlight: FlightDetail = flight,
 ) {
     val zone = stationTimeZone(flight.stationTimeZoneId)
     val reviewing = pending?.status?.let { it != "pending" } == true
@@ -292,8 +293,8 @@ internal fun FlightRtrUpdateForm(flight: FlightDetail, record: FlightReturnToRam
         }
     }
     val changed = draft.fingerprint() != baseline
-    val eligible = reviewed.canSaveReturnsToRamp && !reviewed.hasCancellationSubmission &&
-        (onlineRecord?.canEdit ?: reviewed.canAddReturnToRamp())
+    val eligible = (onlineRecord?.let(reviewed::canEditReturnToRamp) ?: reviewed.canAddReturnToRamp()) &&
+        (!currentFlight.isApprovalLocked || record.sequence > currentFlight.approvedReturnToRampSequence)
     val enabled = ready && eligible && !saving
     val close = { media.clear(); onClose() }
     val title = if (reviewing) stringResource(R.string.flight_review_action) else stringResource(R.string.rtr_form_number, record.sequence)

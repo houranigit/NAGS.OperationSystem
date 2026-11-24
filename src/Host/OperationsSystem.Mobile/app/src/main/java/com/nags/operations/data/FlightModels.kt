@@ -59,8 +59,14 @@ data class FlightListItem(
     val latestReturnToRampDepartureAtUtc: String? = null,
     // Missing evidence in older snapshots keeps the earlier schedule-only visibility rule.
     val visibilityPolicyVersion: Int? = null,
+    val approvalStatus: String = "NotApproved",
+    val approvedByDisplayName: String? = null,
+    val approvedAtUtc: String? = null,
+    val approvedReturnToRampSequence: Int = 0,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
+
+    val isApprovalLocked: Boolean get() = approvalLocksFlight(approvalStatus)
 }
 
 @Serializable
@@ -125,9 +131,17 @@ data class FlightDetail(
     val canSaveReturnsToRamp: Boolean = false,
     val lastReturnToRampSequence: Int = 0,
     val canShare: Boolean = false,
+    val approvalStatus: String = "NotApproved",
+    val approvedByDisplayName: String? = null,
+    val approvedAtUtc: String? = null,
+    val approvedReturnToRampSequence: Int = 0,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
+
+    val isApprovalLocked: Boolean get() = approvalLocksFlight(approvalStatus)
 }
+
+private fun approvalLocksFlight(status: String): Boolean = status == "Approved" || status == "PendingRtr"
 
 @Serializable
 data class InviteEmployeesRequest(val staffMemberIds: List<String>)

@@ -12,4 +12,5 @@ public static class OperationsPermissions
     public const string FlightsUpdate = "operations.flights.update";
     public const string FlightsAssign = "operations.flights.assign";
     public const string FlightsOperate = "operations.flights.operate";
+    public const string FlightsApprove = "operations.flights.approve";
 }

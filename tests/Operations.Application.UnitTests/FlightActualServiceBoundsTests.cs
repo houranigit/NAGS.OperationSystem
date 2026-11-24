@@ -317,7 +317,7 @@ public sealed class FlightActualServiceBoundsTests
                 new StationSnapshot(inner.StationId, "RUH", "Riyadh"), new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
                 FlightNumber.Create("SV100", "SV").Value, ScheduledTime.Create(Now.AddHours(-1), Now.AddHours(1)).Value,
                 null, [new ServiceSnapshot(inner.ServiceId, "Service")], [employee], userId, Now).Value;
-            if (existingArrival)
+            if (existingArrival || work == Work.Rtr)
                 flight.SubmitArrival(employee, ArrivalDetails.Create("REF-ARR", initialArrival,
                     new AircraftTypeSnapshot(reader.AircraftId, "Airbus", "A320"), "HZ-TEST", employee, "Arrival").Value,
                     userId, Now).IsSuccess.ShouldBeTrue();
@@ -342,10 +342,13 @@ public sealed class FlightActualServiceBoundsTests
             }
             else if (work == Work.Rtr)
             {
+                flight.Approve(userId, "Reviewer", Now).IsSuccess.ShouldBeTrue();
                 var occurrence = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddHours(2), employee, null).Value, userId, Now).Value;
                 flight.AddService(new ServiceSnapshot(inner.ServiceId, "Service"), null,
                     TimeWindow.Create(Now.AddMinutes(135), null).Value, null, userId, Now, occurrence.Id,
                     [new(employee, TimeWindow.Create(Now.AddMinutes(140), null).Value)]).IsSuccess.ShouldBeTrue();
+                // This fixture represents an editable flight with RTR work saved before the approval feature.
+                db.Entry(flight).Property(item => item.ApprovalStatus).CurrentValue = FlightApprovalStatus.NotApproved;
             }
             db.Flights.Add(flight);
             db.Entry(flight).Property(f => f.RowVersion).CurrentValue = InitialVersion.ToArray();

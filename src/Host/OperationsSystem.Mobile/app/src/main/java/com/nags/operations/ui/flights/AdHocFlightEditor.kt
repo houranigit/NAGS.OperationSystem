@@ -94,7 +94,7 @@ internal fun AdHocFlightEditor(viewModel: FlightsViewModel, initialFlight: Fligh
         tasks.any { it.flightId == initialFlight.id } || departures.any { it.flightId == initialFlight.id }
     val scopeValid = context?.stationId == initialFlight.stationId && initialFlight.isInFlightWindow(java.time.Instant.now()) &&
         (initialFlight.rowVersion != LOCAL_ADHOC_VERSION || context?.canCreate == true)
-    val editable = initialFlight.canEditFlightDetails && !hasOperationalIntent && scopeValid
+    val editable = !initialFlight.isApprovalLocked && initialFlight.canEditFlightDetails && !hasOperationalIntent && scopeValid
     val editorFlight = context?.takeIf { initialFlight.rowVersion == LOCAL_ADHOC_VERSION && it.stationId == initialFlight.stationId }
         ?.let { station -> initialFlight.copy(currentStaffMemberId = station.currentStaffMemberId,
             canSaveArrival = station.canSaveArrival, canSaveDeparture = station.canSaveDeparture,

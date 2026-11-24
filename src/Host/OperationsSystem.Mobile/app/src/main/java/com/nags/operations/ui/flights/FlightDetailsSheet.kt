@@ -103,6 +103,7 @@ import com.nags.operations.ui.components.FlightAircraftOperationRow
 import com.nags.operations.ui.components.FlightReportBadge
 import com.nags.operations.ui.components.FlightNumberWithTypeBadge
 import com.nags.operations.ui.components.FlightTypeBadgeOverlap
+import com.nags.operations.ui.components.FlightApprovalLockWidth
 import com.nags.operations.ui.components.flightTypeBadgeDiameter
 import com.nags.operations.ui.components.flightReportLabel
 import com.nags.operations.ui.components.flightReportBadgeTextStyle
@@ -248,7 +249,7 @@ internal fun FlightDetailsSheet(
                                     emptyLabel = stringResource(R.string.flights_no_assigned_staff),
                                     expanded = staffExpanded, onToggle = { staffExpanded = !staffExpanded },
                                 )
-                                if (state.canInviteEmployees) {
+                                if (state.canInviteEmployees && !flight.isApprovalLocked) {
                                     DetailDivider()
                                     TextButton(onClick = onInvite, enabled = state.isOnline && !flight.fromCache && !state.isInviting && !state.isLoadingDetail,
                                         modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.tertiary)) {
@@ -432,7 +433,8 @@ private fun FlightIdentity(flight: FlightDetail, reportStatus: FlightCardReportS
                 val identityHeight = with(density) { maxOf(48.dp,
                     heading.size.height.toDp() + typeDiameter / 3 + 2.dp + badge.size.height.toDp() + 4.dp) }
                 val iconWidth = if (reportStatus == FlightCardReportStatus.Conflict || reportStatus == FlightCardReportStatus.ReturnedToRamp) 13.dp else 0.dp
-                val copyWidth = with(density) { maxOf(heading.size.width.toDp() + typeDiameter - FlightTypeBadgeOverlap,
+                val lockWidth = if (flight.isApprovalLocked) FlightApprovalLockWidth else 0.dp
+                val copyWidth = with(density) { maxOf(heading.size.width.toDp() + typeDiameter - FlightTypeBadgeOverlap + lockWidth,
                     badge.size.width.toDp() + 12.dp + iconWidth) }
                 val stacked = maxWidth < identityHeight + 10.dp + copyWidth + 8.dp + metrics.toolbarWidth
                 Column {
@@ -441,7 +443,7 @@ private fun FlightIdentity(flight: FlightDetail, reportStatus: FlightCardReportS
                         Column(Modifier.weight(1f).height(identityHeight), verticalArrangement = Arrangement.spacedBy(2.dp),
                             horizontalAlignment = Alignment.Start) {
                             FlightNumberWithTypeBadge(flightNumber, flight.isPerLanding, flight.isAdHocFlight,
-                                headingStyle, Modifier.fillMaxWidth())
+                                headingStyle, Modifier.fillMaxWidth(), showApprovalLock = flight.isApprovalLocked)
                             FlightReportBadge(reportStatus, compact = true)
                         }
                         if (!stacked) actions()

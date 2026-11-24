@@ -27,6 +27,12 @@ internal static class PortalFlightOperationEndpoints
         operations.MapGet("", async (Guid id, ISender sender, CancellationToken ct) =>
             (await sender.Send(new GetPortalFlightOperationsQuery(id), ct)).ToOk());
 
+        operations.MapPut("/approval", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
+            SetApprovalAsync(id, true, http, sender, ct));
+
+        operations.MapDelete("/approval", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
+            SetApprovalAsync(id, false, http, sender, ct));
+
         writes.MapPut("/batch", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
             SaveBatchAsync(id, http, sender, ct, portalOnly: true))
             .WithMetadata(new RequestSizeLimitAttribute(FlightOperationsBatchPolicy.MaxJsonRequestBytes));
@@ -87,6 +93,15 @@ internal static class PortalFlightOperationEndpoints
             return result.IsFailure ? ApiResults.Problem(result.Error) :
                 PrivateFile(response, result.Value.Content, result.Value.ContentType, result.Value.FileName);
         });
+    }
+
+    private static async Task<IResult> SetApprovalAsync(Guid id, bool approve, HttpRequest http, ISender sender, CancellationToken ct)
+    {
+        if (http.GetIfMatch() is not { } rowVersion)
+            return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+        var result = await sender.Send(new SetFlightApprovalCommand(id, approve, rowVersion), ct);
+        return result.IsFailure ? ApiResults.Problem(result.Error) : (await sender.Send(new GetPortalFlightOperationsQuery(id), ct)).ToOk();
     }
 
     private static IResult PrivateFile(HttpResponse response, Stream content, string contentType, string? fileName = null)

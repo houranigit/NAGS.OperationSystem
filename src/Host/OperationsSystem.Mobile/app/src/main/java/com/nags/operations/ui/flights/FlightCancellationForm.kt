@@ -2,6 +2,8 @@ package com.nags.operations.ui.flights
 
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -12,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.nags.operations.R
 import com.nags.operations.ui.components.InlineNotice
 import com.nags.operations.ui.components.InlineNoticeKind
@@ -117,11 +120,14 @@ internal fun FlightCancellationForm(
         loadCustomerLogo, requestClose, saveEnabled = enabled, saveLoading = saving, onSave = { save(false) },
         progressStatus = progressStatus, compact = true,
         identityContent = { positioned ->
-            FlightCard(cardFlight, onClick = null, loadCustomerLogo = loadCustomerLogo,
-                reportStatus = reportStatus,
-                pendingSyncLabel = pendingLabel, hasSyncError = cardNeedsReview,
-                cancellationAtUtc = pendingInput?.canceledAtUtc ?: cardFlight.latestCancellationAtUtc,
-                onFlightNumberPositioned = positioned)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlightCard(cardFlight, onClick = null, loadCustomerLogo = loadCustomerLogo,
+                    reportStatus = reportStatus,
+                    pendingSyncLabel = pendingLabel, hasSyncError = cardNeedsReview,
+                    cancellationAtUtc = pendingInput?.canceledAtUtc ?: cardFlight.latestCancellationAtUtc,
+                    onFlightNumberPositioned = positioned)
+                FlightApprovalNote(flight, entryZone)
+            }
         }) {
         saveError?.let { InlineNotice(it, kind = InlineNoticeKind.Error) }
         if (needsReview) {

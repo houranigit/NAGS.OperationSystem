@@ -64,6 +64,10 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 HasArrivalSubmission = hasArrival,
                 HasDepartureSubmission = hasDeparture,
                 HasCancellationSubmission = hasCancellation,
+                flight.ApprovalStatus,
+                flight.ApprovedByDisplayName,
+                flight.ApprovedAtUtc,
+                flight.ApprovedReturnToRampSequence,
                 Status = hasCancellation && (hasArrival || hasDeparture || flight.ReturnToRamps.Any()) ? FlightReportStatus.Conflict
                     : hasCancellation ? FlightReportStatus.Canceled
                     : flight.ReturnToRamps.Any(ramp => ramp.DepartureDetails == null) ? FlightReportStatus.ReturnedToRamp
@@ -94,7 +98,8 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             stationTimeZones[item.StationId], item.AircraftTypeModel, item.CustomerId,
             versions.TryGetValue(item.CustomerId, out var version) ? version : CustomerLogoVersions.None,
             item.StationId, item.HasArrivalSubmission, item.HasDepartureSubmission, item.HasCancellationSubmission,
-            item.Status.ToString())).ToList();
+            item.Status.ToString(), item.ApprovalStatus, item.ApprovedByDisplayName, item.ApprovedAtUtc,
+            item.ApprovedReturnToRampSequence)).ToList();
         return paging.ToResult(versionedItems, total);
     }
 }
@@ -142,7 +147,7 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
 internal static class FlightDetails
 {
     internal static FlightDetailDto MapAdministrator(Flight flight, string stationTimeZoneId,
-        IReadOnlyDictionary<Guid, string> names, bool canCorrect, Guid currentUserId)
+        IReadOnlyDictionary<Guid, string> names, bool canCorrect, Guid currentUserId, bool canReview = true)
     {
         var canSaveWork = canCorrect && flight.CancellationSubmissions.Count == 0;
         var canSaveActuals = canCorrect && !flight.CancellationSubmissions.Any(item => item.IsOwnedBy(null, currentUserId));
@@ -156,14 +161,11 @@ internal static class FlightDetails
             currentUserId: currentUserId,
             canSaveTasks: canSaveWork,
             assignedWorkCorrection: canSaveWork,
-            userDisplayNames: names, creatorOnlyWorkDelete: true, unrestrictedServices: true) with
-        {
-            CanSaveReturnsToRamp = canSaveWork && flight.DepartureSubmissions.Count > 0
-        };
+            userDisplayNames: names, creatorOnlyWorkDelete: true, unrestrictedServices: true, canReview: canReview);
     }
 
     internal static FlightDetailDto MapOperational(Flight flight, string stationTimeZoneId, MobileFlightScopeContext actor,
-        bool canOperate, IReadOnlyList<Guid> allowedServiceIds, IReadOnlyDictionary<Guid, string> names, bool portalOnly)
+        bool canOperate, IReadOnlyList<Guid> allowedServiceIds, IReadOnlyDictionary<Guid, string> names, bool portalOnly, bool canReview = false)
     {
         var staffId = actor.StaffMemberId;
         var ownCancellation = flight.CancellationSubmissions.Any(item => item.SubmittedByEmployee?.StaffMemberId == staffId);
@@ -172,15 +174,30 @@ internal static class FlightDetails
         var canSaveWork = canOperate && flight.CancellationSubmissions.Count == 0;
         var canSaveCancellation = canOperate && !ownWork && flight.ServiceRecords.Count == 0 && flight.TaskRecords.Count == 0 &&
             (!portalOnly || flight.ReturnToRamps.Count == 0);
-        var detail = Map(flight, stationTimeZoneId, staffId, canOperate && !ownCancellation, canOperate && !ownCancellation,
+        return Map(flight, stationTimeZoneId, staffId, canOperate && !ownCancellation, canOperate && !ownCancellation,
             canSaveCancellation, canSaveWork && allowedServiceIds.Count > 0, actor.UserId, allowedServiceIds,
             canSaveWork, flight.CanCorrectOperationalWork(staffId), names, canEditFlightDetails: canOperate, creatorOnlyWorkDelete: portalOnly,
-            legacyStaffAttribution: !portalOnly);
-        return portalOnly ? detail with { CanSaveReturnsToRamp = canSaveWork && flight.DepartureSubmissions.Count > 0 } : detail;
+            legacyStaffAttribution: !portalOnly, canReview: canReview);
     }
 
-    public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null, bool canSaveTasks = false, bool assignedWorkCorrection = false, IReadOnlyDictionary<Guid, string>? userDisplayNames = null, bool canEditFlightDetails = false, bool creatorOnlyWorkDelete = false, bool unrestrictedServices = false, bool legacyStaffAttribution = false)
+    public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null, bool canSaveTasks = false, bool assignedWorkCorrection = false, IReadOnlyDictionary<Guid, string>? userDisplayNames = null, bool canEditFlightDetails = false, bool creatorOnlyWorkDelete = false, bool unrestrictedServices = false, bool legacyStaffAttribution = false, bool canReview = false)
     {
+        var canSaveReturnsToRamp = canSaveTasks && flight.CancellationSubmissions.Count == 0 && flight.DepartureSubmissions.Count > 0 &&
+            (flight.EnsureApprovalAllowsReturnToRamp(Guid.Empty).IsSuccess ||
+                flight.ReturnToRamps.Any(occurrence => flight.EnsureApprovalAllowsReturnToRamp(occurrence.Id).IsSuccess));
+        var canShare = canSaveTasks && flight.CancellationSubmissions.Count == 0 && currentStaffMemberId is { } sharingStaffId &&
+            flight.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType && !flight.IsPerLanding &&
+            flight.AssignedEmployees.Any(employee => employee.Employee.StaffMemberId == sharingStaffId);
+        if (flight.IsApprovalLocked)
+        {
+            canSaveArrival = false;
+            canSaveDeparture = false;
+            canSaveCancellation = false;
+            canSaveServices = false;
+            canSaveTasks = false;
+            canEditFlightDetails = false;
+        }
+
         var search = currentStaffMemberId is { } staffId && FlightSearchPolicy.IsUnassignedRegular(flight, staffId);
         var canAdd = !search || !flight.HasOperationalRecords();
         var serviceWrites = canSaveServices;
@@ -223,11 +240,12 @@ internal static class FlightDetails
             canEditFlightDetails && currentUserId is { } userId && flight.CanEditAdHocDetails(userId),
             flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType, search, canSaveServices && canAdd, canSaveTasks && canAdd,
             flight.ReturnToRamps.OrderBy(r => r.Sequence).Select(r => FlightReturnToRampDto.Map(flight, r, currentUserId,
-                canSaveTasks, allowedServiceIds, userDisplayNames, creatorOnlyWorkDelete, unrestrictedServices)).ToList(),
-            canSaveTasks, flight.LastReturnToRampSequence,
-            canSaveTasks && flight.CancellationSubmissions.Count == 0 && currentStaffMemberId is { } sharingStaffId &&
-            flight.OperationType.OperationTypeId != MasterData.Contracts.Seeding.WellKnownMasterDataIds.AdHocOperationType && !flight.IsPerLanding &&
-            flight.AssignedEmployees.Any(employee => employee.Employee.StaffMemberId == sharingStaffId));
+                canSaveReturnsToRamp && flight.EnsureApprovalAllowsReturnToRamp(r.Id).IsSuccess,
+                allowedServiceIds, userDisplayNames, creatorOnlyWorkDelete, unrestrictedServices)).ToList(),
+            canSaveReturnsToRamp, flight.LastReturnToRampSequence, canShare,
+            flight.ApprovalStatus, flight.ApprovedByDisplayName, flight.ApprovedAtUtc, flight.ApprovedReturnToRampSequence,
+            canReview && flight.ApprovalStatus != FlightApprovalStatus.Approved,
+            canReview && flight.ApprovalStatus == FlightApprovalStatus.Approved);
     }
 }
 

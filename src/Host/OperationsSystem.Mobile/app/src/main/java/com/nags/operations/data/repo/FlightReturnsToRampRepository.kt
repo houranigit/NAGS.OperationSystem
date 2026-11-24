@@ -56,14 +56,18 @@ class FlightReturnsToRampRepository(
             "You are not eligible to update this return to ramp. Reload the flight."
         }
         val baseline = flight.returnToRamps.firstOrNull { it.id == occurrenceId }
-        check(if (baseline == null) flight.canAddReturnToRamp() else baseline.canEdit) {
-            "Record departure and close the previous return to ramp before adding another."
+        val rows = dao.rows(owner).filter { it.flightId == flight.id }
+        val pendingOccurrences = rows.filter { it.status == "pending" && it.occurrenceId != occurrenceId }
+            .map { it.preview(json) }.associateBy { it.id }
+        val priorOccurrences = flight.returnToRamps.filterNot { it.id in pendingOccurrences } + pendingOccurrences.values
+        check(if (baseline == null) flight.canAddReturnToRamp(priorOccurrences) else flight.canEditReturnToRamp(baseline)) {
+            "Approve the flight and close the previous return to ramp before adding another. Approved records are locked."
         }
         val normalized = input.normalized()
         check(normalized.validationErrors(flight.rowVersion, flight.allowedServiceIds?.toSet(), baseline = baseline).isEmpty()) {
             "Complete the required return-to-ramp fields and work periods before saving."
         }
-        val existing = dao.rows(owner).firstOrNull { it.flightId == flight.id && it.occurrenceId == occurrenceId }
+        val existing = rows.firstOrNull { it.occurrenceId == occurrenceId }
         if (expectedChangeId != null) {
             check(existing?.changeId == expectedChangeId) { "This saved input changed. Reopen Review before continuing." }
             check(existing?.attemptInputJson == null) { "Retry synchronization before reviewing a request whose result is unknown." }

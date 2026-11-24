@@ -110,6 +110,8 @@ public sealed class SaveFlightServiceCommandHandler(IOperationsDbContext db, IMo
                 return Error.Forbidden("The selected service cannot change after another employee has entered its end time.", "Operations.FlightService.SelectionReadOnly");
         }
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
+        var approvalLock = flight.EnsureApprovalAllowsEdit();
+        if (approvalLock.IsFailure) return approvalLock.Error;
         var performerIds = input.Performers.Select(p => p.Id).ToArray();
         var attachmentIds = input.Attachments?.Select(a => a.Id).ToArray() ?? [];
         var foreignIds = await db.Flights.AsNoTracking().AnyAsync(f =>
@@ -290,6 +292,8 @@ public sealed class DeleteFlightServiceCommandHandler(IOperationsDbContext db, I
             if (!assignedCorrection && (record.CreatedByUserId != resolved.Value.UserId || record.Window.ToUtc is not null && record.EndedByUserId != resolved.Value.UserId))
                 return Error.Forbidden("Only its creator can delete a service, and another employee's end time must be retained.", "Operations.FlightService.DeleteReadOnly");
             if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
+            var approvalLock = flight.EnsureApprovalAllowsEdit();
+            if (approvalLock.IsFailure) return approvalLock.Error;
             var keys = record.Attachments.Select(a => a.Details.StorageKey).ToArray();
             var removed = flight.RemoveService(record.Id, resolved.Value.UserId, clock.GetUtcNow(),
                 assignedEditorStaffMemberId: assignedCorrection ? resolved.Value.StaffMemberId : null);

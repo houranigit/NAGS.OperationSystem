@@ -70,8 +70,8 @@
     private bool isSaving;
 
     private bool ShowsExactSubmission => ViewOnly || AdministratorEntry;
-    private bool CanSave => !ViewOnly && flight?.CanSaveCancellation == true;
-    private bool CanUndo => !ViewOnly && submission is { } report &&
+    private bool CanSave => !ViewOnly && flight is { IsApprovalLocked: false, CanSaveCancellation: true };
+    private bool CanUndo => !ViewOnly && flight is { IsApprovalLocked: false } && submission is { } report &&
         (!AdministratorEntry || report.IsAccountSubmissionBy(Auth.User?.Id));
 
     protected override async Task OnInitializedAsync()

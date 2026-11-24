@@ -386,10 +386,10 @@ fun FlightsScreen(
         ) ?: FlightCardReportStatus.Scheduled
         FlightDetailsSheet(state = state, actuals = actuals, reportStatus = sheetReportStatus, listItem = sheetListItem, workItems = sheetWork,
             showCancellation = !ownsWork && !ownsCancellation && state.detail?.cancellationEditable() == true,
-            showOperations = !ownsCancellation,
+            showOperations = !ownsCancellation || state.detail?.isApprovalLocked == true,
             showShare = onPublishShare != null && state.detail?.canShowShareAction(ownsCancellation) == true,
             onShare = { shareOpen = true },
-            showRevertCancellation = !reverting && state.detail?.canSaveCancellation == true &&
+            showRevertCancellation = !reverting && state.detail?.let { !it.isApprovalLocked && it.canSaveCancellation } == true &&
                 (state.detail?.ownCancellation() != null || pendingCancellation?.operation == "save") &&
                 (pendingCancellation?.operation != "revert" || pendingCancellation.status != "pending"),
             showReviewCancellation = pendingCancellation?.operation == "save" && pendingCancellation.status != "pending",

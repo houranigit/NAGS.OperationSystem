@@ -112,6 +112,8 @@ public sealed class UpdateMobileAdHocFlightDetailsCommandHandler(IOperationsDbCo
         if (flight.HasOperationalRecords())
             return Error.Conflict("Flight details are locked after operational work is saved.", "Operations.AdHoc.DetailsLocked");
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
+        var approvalLock = flight.EnsureApprovalAllowsEdit();
+        if (approvalLock.IsFailure) return approvalLock.Error;
         var window = MobileAdHocFlights.InWindow(parsed.Value.Schedule, actor);
         if (window.IsFailure) return window.Error;
         var references = await MobileAdHocFlights.ReferencesAsync(resolver, request.Input.CustomerId, actor.StationId, ct);

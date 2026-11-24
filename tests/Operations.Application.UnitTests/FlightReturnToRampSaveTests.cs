@@ -125,7 +125,7 @@ public sealed class FlightReturnToRampSaveTests
     [InlineData(true)]
     public async Task Unassigned_searcher_can_create_start_and_close_rtr_without_gaining_normal_work_rights(bool foreignOccurrence)
     {
-        await using var f = await Fixture.Create(assigned: false);
+        await using var f = await Fixture.Create(assigned: false, approve: false);
         await f.SeedNormalWorkClosedByOther();
         var before = await f.Detail(); before.IsSuccess.ShouldBeTrue();
         AssertUnassignedPermissions(before.Value);
@@ -201,8 +201,8 @@ public sealed class FlightReturnToRampSaveTests
         detail.CanAddServices.ShouldBe(false); detail.CanAddTasks.ShouldBe(false);
         detail.CanSaveCancellation.ShouldBeFalse(); detail.CanEditFlightDetails.ShouldBeFalse();
         var service = detail.Services!.Single(); var task = detail.Tasks!.Single();
-        service.CanEdit.ShouldBeTrue(); service.CanSetEnd.ShouldBeFalse(); service.CanDelete.ShouldBeFalse(); service.CanChangeService.ShouldBeFalse();
-        task.CanEdit.ShouldBeTrue(); task.CanSetEnd.ShouldBeFalse(); task.CanDelete.ShouldBeFalse();
+        service.CanEdit.ShouldBeFalse(); service.CanSetEnd.ShouldBeFalse(); service.CanDelete.ShouldBeFalse(); service.CanChangeService.ShouldBeFalse();
+        task.CanEdit.ShouldBeFalse(); task.CanSetEnd.ShouldBeFalse(); task.CanDelete.ShouldBeFalse();
     }
 
     [Fact]
@@ -256,7 +256,9 @@ public sealed class FlightReturnToRampSaveTests
             new GetMobileFlightByIdQueryHandler(Db, Scope(false), Reader, new User(Owner, canOperate)).Handle(new(FlightId), default);
         public async Task SeedNormalWorkClosedByOther()
         {
-            Db.ChangeTracker.Clear(); var flight = await Db.Flights.SingleAsync();
+            Db.ChangeTracker.Clear();
+            var flight = await Db.Flights.Include(item => item.ArrivalSubmissions)
+                .Include(item => item.DepartureSubmissions).SingleAsync();
             var employee = new StaffMemberSnapshot(OwnerStaff, "Original", "E1");
             var start = Now.AddMinutes(-40); var end = Now.AddMinutes(-20);
             var serviceId = Guid.NewGuid(); var service = new ServiceSnapshot(Reader.ServiceId, "Normal service"); var person = Guid.NewGuid();
@@ -269,13 +271,14 @@ public sealed class FlightReturnToRampSaveTests
                 [new(employee, TimeWindow.Create(start, null).Value, null, taskPerson)], [], [], [], Owner, Now).IsSuccess.ShouldBeTrue();
             flight.SaveTask(taskId, (FlightTaskType)0, null, null, TimeWindow.Create(start, end).Value, "Normal task",
                 [new(employee, TimeWindow.Create(start, end).Value, null, taskPerson)], [], [], [], Other, Now).IsSuccess.ShouldBeTrue();
+            flight.Approve(Other, "Colleague", Now).IsSuccess.ShouldBeTrue();
             await Db.SaveChangesAsync(); Db.ChangeTracker.Clear();
         }
         public async Task ChangeVersion()
         {
             Db.ChangeTracker.Clear(); var flight = await Db.Flights.SingleAsync(); Db.Entry(flight).Property(x => x.RowVersion).CurrentValue = [2, 0, 0, 0, 0, 0, 0, 0]; await Db.SaveChangesAsync(); Db.ChangeTracker.Clear();
         }
-        public static async Task<Fixture> Create(bool departure = true, bool assigned = true, SaveCallback? saveInterceptor = null)
+        public static async Task<Fixture> Create(bool departure = true, bool assigned = true, SaveCallback? saveInterceptor = null, bool approve = true)
         {
             var f = new Fixture(saveInterceptor);
             f.Reader.StaffMembers[f.OwnerStaff] = new(f.OwnerStaff, "Original", "E1", f.Reader.StationId, f.Owner, true);
@@ -284,7 +287,11 @@ public sealed class FlightReturnToRampSaveTests
             var flight = Flight.ScheduleNew(new(Guid.NewGuid(), "SV", "Customer"), new(f.Reader.StationId, "RUH", "Riyadh"), new(Guid.NewGuid(), "Transit"),
                 FlightNumber.Create("SV100", "SV").Value, ScheduledTime.Create(Now.AddHours(-2), Now.AddHours(2)).Value, null, [new(f.Reader.ServiceId, "Planned service")], assigned ? [owner, other] : [other], f.Owner, Now).Value;
             flight.SubmitArrival(owner, ArrivalDetails.Create(null, Now.AddHours(-1), new(Guid.NewGuid(), "Airbus", "A320"), "HZ-TEST", owner, null).Value, f.Owner, Now);
-            if (departure) flight.SubmitDeparture(owner, DepartureDetails.Create(Now.AddMinutes(-10), null, owner, null).Value, f.Owner, Now);
+            if (departure)
+            {
+                flight.SubmitDeparture(owner, DepartureDetails.Create(Now.AddMinutes(-10), null, owner, null).Value, f.Owner, Now).IsSuccess.ShouldBeTrue();
+                if (approve) flight.Approve(f.Owner, "Original", Now).IsSuccess.ShouldBeTrue();
+            }
             f.Db.Flights.Add(flight); f.Db.Entry(flight).Property(x => x.RowVersion).CurrentValue = Version.ToArray(); await f.Db.SaveChangesAsync(); f.FlightId = flight.Id; f.Db.ChangeTracker.Clear(); return f;
         }
         public ValueTask DisposeAsync() => Db.DisposeAsync();

@@ -69,6 +69,10 @@ fun FlightListItem.withVisibilityReports(detail: FlightDetail): FlightListItem =
     latestReturnToRampDepartureAtUtc = latestFlightTime(detail.returnToRamps.mapNotNull { it.departedAtUtc }),
     latestCancellationAtUtc = latestFlightTime(detail.cancellationSubmissions.map { it.canceledAtUtc }),
     visibilityPolicyVersion = FLIGHT_VISIBILITY_POLICY_VERSION,
+    approvalStatus = detail.approvalStatus,
+    approvedByDisplayName = detail.approvedByDisplayName,
+    approvedAtUtc = detail.approvedAtUtc,
+    approvedReturnToRampSequence = detail.approvedReturnToRampSequence,
 )
 
 internal fun latestFlightTime(values: List<String>): String? = values.mapNotNull { value ->

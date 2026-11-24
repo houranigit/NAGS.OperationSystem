@@ -45,6 +45,7 @@ public sealed class FlightUserActivityPersistenceTests(FlightUserActivityPersist
         var task = flight.AddTask(FlightTaskType.Major, null, null, taskWindow, "Original", author, Now.AddHours(-3),
             initialPerformers: [new(receiving, taskWindow)]).Value;
         flight.UpdateTask(task.Id, task.TaskType, null, null, taskWindow, "Latest", taskEditor, Now.AddHours(-2)).IsSuccess.ShouldBeTrue();
+        flight.Approve(author, "Reviewer", Now.AddMinutes(-100)).IsSuccess.ShouldBeTrue();
         var rtr = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddHours(6), receiving, null).Value, rtrCreator, Now.AddMinutes(-90)).Value;
         var returnWindow = TimeWindow.Create(Now.AddHours(6), Now.AddMinutes(390)).Value;
         flight.AddService(new(Guid.NewGuid(), "RTR service"), null, returnWindow, null, rtrCreator, Now.AddMinutes(-90), rtr.Id,
@@ -61,7 +62,13 @@ public sealed class FlightUserActivityPersistenceTests(FlightUserActivityPersist
             adHocCreator, Now.AddHours(-1), Guid.NewGuid(), new string('A', 64)).Value;
         adHoc.UpdateAdHocDetails(adHoc.Customer, FlightNumber.CreateAdHoc("LATER").Value, adHoc.Schedule, adHocCreator, Now.AddHours(1)).IsSuccess.ShouldBeTrue();
         var planningOnly = FlightFor(planningCreator);
-        db.Flights.AddRange(flight, canceled, adHoc, planningOnly); await db.SaveChangesAsync();
+        foreach (var item in new[] { flight, canceled, adHoc, planningOnly })
+            await PreRtrMigrationSeed.InsertFlightOwnerAsync(db, item, includesReturnToRampSequence: true);
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE [operations].[flights] SET [AdHocCreationFingerprint] = {adHoc.AdHocCreationFingerprint}
+            WHERE [Id] = {adHoc.Id}
+            """);
+        await db.SaveChangesAsync();
         await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE [operations].[flight_services] SET [EndedByUserId] = {closerWithoutRecordingTime} WHERE [Id] = {service.Id}");
         var version = flight.RowVersion.ToArray(); db.ChangeTracker.Clear();
 

@@ -81,8 +81,13 @@ data class FlightReturnToRampRecord(
     }
 }
 
-fun FlightDetail.canAddReturnToRamp(): Boolean = canSaveReturnsToRamp && departureSubmissions.isNotEmpty() &&
-    !hasCancellationSubmission && returnToRamps.none { it.isOpen }
+fun FlightDetail.canAddReturnToRamp(occurrences: List<FlightReturnToRampRecord> = returnToRamps): Boolean =
+    isApprovalLocked && canSaveReturnsToRamp && departureSubmissions.isNotEmpty() &&
+        !hasCancellationSubmission && occurrences.none { it.isOpen }
+
+fun FlightDetail.canEditReturnToRamp(occurrence: FlightReturnToRampRecord): Boolean =
+    canSaveReturnsToRamp && !hasCancellationSubmission && occurrence.canEdit &&
+        (!isApprovalLocked || occurrence.sequence > approvedReturnToRampSequence)
 
 /** Latest occurrence owns the card's work summary; normal work remains its separate initial cycle. */
 fun FlightListItem.withReturnToRampReports(detail: FlightDetail): FlightListItem {

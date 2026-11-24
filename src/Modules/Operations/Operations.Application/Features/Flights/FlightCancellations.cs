@@ -86,6 +86,8 @@ public sealed class SaveFlightCancellationCommandHandler(
         if (existing is not null && existing.Details == details.Value)
             return Response(existing);
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
+        var approvalLock = flight.EnsureApprovalAllowsEdit();
+        if (approvalLock.IsFailure) return approvalLock.Error;
         if ((flight.ArrivalSubmissions.Count > 0 || flight.DepartureSubmissions.Count > 0) &&
             !input.AcknowledgeConflictingSubmission)
             return Error.Conflict("Another employee reported arrival or departure for this flight. Confirm before saving cancellation.",

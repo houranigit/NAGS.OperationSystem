@@ -55,4 +55,5 @@ fun FlightDetail.hasOwnWork(): Boolean = !currentStaffMemberId.isNullOrBlank() &
     (arrivalSubmissions.any { it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true) } ||
         departureSubmissions.any { it.submittedByEmployee.staffMemberId.equals(currentStaffMemberId, true) })
 
-fun FlightDetail.cancellationEditable(): Boolean = canSaveCancellation && validArrivalId(currentStaffMemberId) && !hasOwnWork()
+fun FlightDetail.cancellationEditable(): Boolean =
+    !isApprovalLocked && canSaveCancellation && validArrivalId(currentStaffMemberId) && !hasOwnWork()

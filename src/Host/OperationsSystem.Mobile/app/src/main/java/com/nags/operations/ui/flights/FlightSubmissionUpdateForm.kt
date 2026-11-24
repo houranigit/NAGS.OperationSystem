@@ -81,7 +81,8 @@ import kotlinx.serialization.json.Json
 /** Attribution describes the original submission, independently of its operational ATA/ATD. */
 @Composable
 internal fun FlightSubmissionNote(name: String, submittedAt: String, zone: ZoneId, onUpdate: (() -> Unit)? = null, updateLabel: String? = null,
-    needsReview: Boolean = false, updatedByDisplayName: String? = null, updatedAtUtc: String? = null, savedLocally: Boolean = false) {
+    needsReview: Boolean = false, updatedByDisplayName: String? = null, updatedAtUtc: String? = null, savedLocally: Boolean = false,
+    attributionPrefix: Int = R.string.flight_submission_note_prefix) {
     val locale = LocalLocale.current.platformLocale
     val timestampTemplate = stringResource(R.string.flight_submission_timestamp)
     val timestamp = remember(submittedAt, zone, locale, timestampTemplate) {
@@ -101,7 +102,7 @@ internal fun FlightSubmissionNote(name: String, submittedAt: String, zone: ZoneI
         }.getOrNull() }
     }
     val updatedBy = stringResource(R.string.flight_submission_note_updated_by)
-    val prefix = stringResource(if (savedLocally) R.string.flight_actuals_saved_locally else R.string.flight_submission_note_prefix)
+    val prefix = stringResource(if (savedLocally) R.string.flight_actuals_saved_locally else attributionPrefix)
     val on = stringResource(R.string.flight_submission_note_on)
     val update = updateLabel ?: stringResource(R.string.flight_submission_update)
     val updateColor = if (needsReview) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
@@ -128,6 +129,14 @@ internal fun FlightSubmissionNote(name: String, submittedAt: String, zone: ZoneI
         color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+@Composable
+internal fun FlightApprovalNote(flight: FlightDetail, zone: ZoneId) {
+    if (!flight.isApprovalLocked) return
+    val name = flight.approvedByDisplayName ?: return
+    val approvedAt = flight.approvedAtUtc ?: return
+    FlightSubmissionNote(name, approvedAt, zone, attributionPrefix = R.string.flight_approval_note_prefix)
+}
+
 /** A correction saves only this explicit target; the parent work draft remains mounted underneath. */
 @Composable
 internal fun FlightSubmissionUpdateForm(
@@ -145,6 +154,7 @@ internal fun FlightSubmissionUpdateForm(
     onClose: () -> Unit,
     reviewMode: Boolean = false,
     cachedReview: Boolean = false,
+    currentApprovalLocked: Boolean = flight.isApprovalLocked,
     onSaveReviewed: suspend (FlightDetail, FlightOperationReviewTarget, suspend () -> Unit) -> Unit = { _, _, _ -> error("Review saving is unavailable.") },
     onDiscardReviewed: suspend (FlightOperationReviewTarget) -> Unit = { error("Review discard is unavailable.") },
 ) {
@@ -234,7 +244,7 @@ internal fun FlightSubmissionUpdateForm(
     val eligible = if (isArrival) {
         if (submissionId.isBlank()) reviewed.arrivalEditable() else reviewed.canUpdateArrivalSubmission(submissionId)
     } else if (submissionId.isBlank()) reviewed.departureEditable() else reviewed.canUpdateDepartureSubmission(submissionId)
-    val enabled = eligible && !saving
+    val enabled = eligible && !saving && !currentApprovalLocked
     var picker by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     var confirmCanceled by rememberSaveable { mutableStateOf(false) }

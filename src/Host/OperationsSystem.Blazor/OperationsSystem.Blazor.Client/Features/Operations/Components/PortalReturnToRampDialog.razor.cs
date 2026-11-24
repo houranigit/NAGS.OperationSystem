@@ -60,7 +60,8 @@ public partial class PortalReturnToRampDialog
     private bool departureUnlocked;
 
     private bool CanEdit => !ViewOnly && (DraftFlight is not null || flight is { CanSaveReturnsToRamp: true } data &&
-        (occurrence?.CanEdit ?? (data.DepartureSubmissions.Count > 0 && data.ReturnToRamps.All(item => !item.IsOpen))));
+        (occurrence is { } saved ? data.CanEditReturnToRamp(saved) : data.IsApprovalLocked &&
+            data.DepartureSubmissions.Count > 0 && data.ReturnToRamps.All(item => !item.IsOpen)));
 
     private bool ArrivalFieldsLocked => occurrence is not null && !arrivalUnlocked;
     private bool DepartureFieldsLocked => occurrence?.DepartedAtUtc is not null && !departureUnlocked;

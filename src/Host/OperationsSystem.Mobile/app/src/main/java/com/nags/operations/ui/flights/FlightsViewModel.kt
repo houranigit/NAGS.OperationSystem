@@ -709,7 +709,7 @@ class FlightsViewModel internal constructor(
     fun openInvitations() {
         val current = _state.value
         val flight = current.detail ?: return
-        if (!current.canInviteEmployees || flight.isPerLanding || !online.value || flight.fromCache) return
+        if (!current.canInviteEmployees || flight.isApprovalLocked || flight.isPerLanding || !online.value || flight.fromCache) return
         _state.update {
             it.copy(isInvitationOpen = true, selectedInvitationIds = emptySet(), invitationOptions = emptyList(),
                 availableInvitationIds = emptySet(), invitationError = null, invitationStale = false,
@@ -821,7 +821,7 @@ class FlightsViewModel internal constructor(
             return
         }
         if (!online.value || flight.fromCache || !current.isInvitationOpen || current.isInviting || current.isLoadingInvitations ||
-            !current.invitationOptionsLoaded || !current.canInviteEmployees || flight.isPerLanding ||
+            !current.invitationOptionsLoaded || !current.canInviteEmployees || flight.isApprovalLocked || flight.isPerLanding ||
             current.selectedInvitationIds.isEmpty() ||
             !current.availableInvitationIds.containsAll(current.selectedInvitationIds)) return
         _state.update { it.copy(isInviting = true, invitationError = null, invitationStale = false) }

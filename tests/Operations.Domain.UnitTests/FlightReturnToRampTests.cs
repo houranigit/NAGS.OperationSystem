@@ -102,12 +102,10 @@ public sealed class FlightReturnToRampTests
         flight.UpdatedAtUtc.ShouldBeNull();
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void AnyDepartureSubmission_IncludingUnacceptedConflicts_AllowsOneOpenOccurrenceWithoutAnAtdBound(bool pending)
+    [Fact]
+    public void ApprovedDeparture_AllowsOneOpenOccurrenceWithoutAnAtdBound()
     {
-        var flight = DepartedFlight(pending);
+        var flight = DepartedFlight();
         var departure = flight.DepartureSubmissions[0];
         var arrival = Arrival(TestData.Now.AddHours(-2));
         var user = Guid.NewGuid();
@@ -134,7 +132,7 @@ public sealed class FlightReturnToRampTests
         rtr.Services.ShouldBeEmpty();
         rtr.Tasks.ShouldBeEmpty();
         departure.Details.Atd.ShouldBe(TestData.Now.AddHours(1));
-        flight.DepartureSubmissions.ShouldAllBe(item => item.IsAccepted == !pending);
+        flight.DepartureSubmissions.ShouldAllBe(item => item.IsAccepted);
         flight.Schedule.ShouldBe(TestData.Schedule());
     }
 
@@ -272,10 +270,10 @@ public sealed class FlightReturnToRampTests
     [Fact]
     public void NormalWorkAndEachOccurrence_HaveSeparateWriteScopes_AndCannotStealEachOthersChildren()
     {
-        var flight = DepartedFlight();
+        var flight = DepartedFlight(approve: false);
         var user = Guid.NewGuid();
-        var normalService = flight.AddService(TestData.Service(), null, Window(), null, user, TestData.Now).Value;
-        var normalTask = flight.AddTask(FlightTaskType.Major, null, null, Window(), null, user, TestData.Now).Value;
+        var (normalService, normalTask) = AddNormalWork(flight, user);
+        flight.Approve(user, "Reviewer", TestData.Now).IsSuccess.ShouldBeTrue();
         var first = Start(flight);
         var firstService = AddCompletedService(flight, first);
         var firstTask = AddCompletedTask(flight, first);
@@ -560,7 +558,9 @@ public sealed class FlightReturnToRampTests
         var flight = ScheduleFlight();
         var sharedSignature = Signature("shared.png");
         var normalDetails = DepartureDetails.Create(TestData.Now.AddHours(1), sharedSignature, TestData.Staff(), null).Value;
+        RecordArrival(flight);
         flight.SubmitDeparture(TestData.Staff(), normalDetails, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
+        flight.Approve(Guid.NewGuid(), "Reviewer", TestData.Now).IsSuccess.ShouldBeTrue();
         var flightSignature = flight.DepartureSubmissions.Single().Details.CustomerSignature;
         var first = Start(flight);
         AddCompletedService(flight, first);
@@ -615,9 +615,10 @@ public sealed class FlightReturnToRampTests
     [Fact]
     public void RemovingAnOccurrence_RemovesOnlyItsOwnedWorkAndPreservesOtherAndNormalRecords()
     {
-        var flight = DepartedFlight();
-        var normalService = flight.AddService(TestData.Service(), null, Window(), null, Guid.NewGuid(), TestData.Now).Value;
-        var normalTask = flight.AddTask(FlightTaskType.Major, null, null, Window(), null, Guid.NewGuid(), TestData.Now).Value;
+        var flight = DepartedFlight(approve: false);
+        var actor = Guid.NewGuid();
+        var (normalService, normalTask) = AddNormalWork(flight, actor);
+        flight.Approve(actor, "Reviewer", TestData.Now).IsSuccess.ShouldBeTrue();
         var first = Start(flight);
         var firstService = AddCompletedService(flight, first);
         var firstTask = AddCompletedTask(flight, first);
@@ -669,15 +670,34 @@ public sealed class FlightReturnToRampTests
         Flight.ScheduleNew(TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(),
             TestData.Schedule(), null, [TestData.Service()], [], Guid.NewGuid(), TestData.Now).Value;
 
-    private static Flight DepartedFlight(bool pending = false)
+    private static Flight DepartedFlight(bool approve = true)
     {
         var flight = ScheduleFlight();
         var details = DepartureDetails.Create(TestData.Now.AddHours(1),
             CustomerSignature.Create("flight.png", "signatures/flight.png", "image/png", 100, TestData.Now).Value, TestData.Staff(), null).Value;
+        RecordArrival(flight);
         flight.SubmitDeparture(TestData.Staff(), details, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
-        if (pending)
-            flight.SubmitDeparture(TestData.Staff(), details, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
+        if (approve)
+            flight.Approve(Guid.NewGuid(), "Reviewer", TestData.Now).IsSuccess.ShouldBeTrue();
         return flight;
+    }
+
+    private static void RecordArrival(Flight flight)
+    {
+        var employee = TestData.Staff();
+        var arrival = ArrivalDetails.Create(null, TestData.Now, TestData.AircraftType(), "HZ-ABC", employee, null).Value;
+        flight.SubmitArrival(employee, arrival, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
+    }
+
+    private static (FlightService Service, FlightTask Task) AddNormalWork(Flight flight, Guid actor)
+    {
+        var period = TimeWindow.Create(TestData.Now, TestData.Now.AddMinutes(10)).Value;
+        var employee = TestData.Staff();
+        var service = flight.AddService(TestData.Service(), null, period, null, actor, TestData.Now,
+            initialPerformers: [new(employee, period)]).Value;
+        var task = flight.AddTask(FlightTaskType.Major, null, null, period, null, actor, TestData.Now,
+            initialPerformers: [new(employee, period)]).Value;
+        return (service, task);
     }
 
     private static RtrArrivalDetails Arrival(DateTimeOffset? at = null, string? remarks = null) =>

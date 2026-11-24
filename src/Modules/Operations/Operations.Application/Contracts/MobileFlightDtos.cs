@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using Operations.Domain.Flights;
+
 namespace Operations.Application.Contracts;
 
 public sealed record MobileFlightListItemDto(
@@ -32,7 +35,12 @@ public sealed record MobileFlightListItemDto(
     DateTimeOffset? LastInteractionAtUtc = null,
     DateTimeOffset? LatestDepartureAtUtc = null,
     DateTimeOffset? LatestReturnToRampDepartureAtUtc = null,
-    int VisibilityPolicyVersion = 1);
+    int VisibilityPolicyVersion = 1,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<FlightApprovalStatus>))]
+    FlightApprovalStatus ApprovalStatus = FlightApprovalStatus.NotApproved,
+    string? ApprovedByDisplayName = null,
+    DateTimeOffset? ApprovedAtUtc = null,
+    int ApprovedReturnToRampSequence = 0);
 
 public sealed record MobileFlightDetailsBatchRequest(IReadOnlyList<Guid>? FlightIds);
 

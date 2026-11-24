@@ -284,8 +284,11 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
                 flight.SubmitDeparture(employee, DepartureDetails.Create(now.AddMinutes(-30), null, employee, null).Value,
                     userId, now).IsSuccess.ShouldBeTrue();
             if (status == "ReturnedToRamp")
+            {
+                flight.Approve(userId, "Reviewer", now).IsSuccess.ShouldBeTrue();
                 flight.StartReturnToRamp(RtrArrivalDetails.Create(now.AddMinutes(-15), employee, null).Value,
                     userId, now).IsSuccess.ShouldBeTrue();
+            }
             if (status is "Canceled" or "Conflict")
                 flight.SubmitCancellation(cancelingEmployee, CancellationDetails.Create(now, null).Value,
                     userId, now).IsSuccess.ShouldBeTrue();

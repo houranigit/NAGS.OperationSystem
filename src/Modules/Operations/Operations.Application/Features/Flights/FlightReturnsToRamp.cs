@@ -20,7 +20,7 @@ public sealed record SaveFlightReturnToRampCommand(Guid FlightId, Guid Occurrenc
 
 public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db, IMobileFlightScope scope,
     MasterDataResolver resolver, IMasterDataReader masterData, IFileStorage storage, TimeProvider clock,
-    IMobileSyncBroadcaster mobileSync, IUserDisplayNameReader? userNames = null, PortalFlightScope? portalScope = null)
+    IMobileSyncBroadcaster mobileSync, IUserDisplayNameReader? userNames = null, PortalFlightScope? portalScope = null, IUserContext? user = null)
     : ICommandHandler<SaveFlightReturnToRampCommand, FlightDetailDto>
 {
     public async Task<Result<FlightDetailDto>> Handle(SaveFlightReturnToRampCommand request, CancellationToken ct)
@@ -62,7 +62,7 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
                 return FlightDetails.MapAdministrator(flight, station.TimeZoneId, names, canCorrect: true, currentUserId: userId);
             var actor = access.Actor;
             return request.PortalOnly
-                ? FlightDetails.MapOperational(flight, station.TimeZoneId, actor, true, allowedServiceIds, names, portalOnly: true)
+                ? FlightDetails.MapOperational(flight, station.TimeZoneId, actor, true, allowedServiceIds, names, portalOnly: true, canReview: PortalFlightScope.CanReview(user))
                 : FlightDetails.Map(flight, station.TimeZoneId, actor.StaffMemberId, true, true, false, allowedServiceIds.Count > 0,
                     userId, allowedServiceIds, true, flight.CanCorrectOperationalWork(actor.StaffMemberId), names, true, legacyStaffAttribution: true);
         }
@@ -111,6 +111,8 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
         if (inlineBytes > FlightOperationsBatchPolicy.MaxInlineBytes) return Invalid("The combined RTR edit must contain at most 100 MB of new files.");
         if (matches) return Response();
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
+        var approvalLock = flight.EnsureApprovalAllowsReturnToRamp(request.OccurrenceId);
+        if (approvalLock.IsFailure) return approvalLock.Error;
         if (isAdministrator &&
             (existing is { DepartureDetails: { } savedDeparture } && existing.CreatedByUserId != userId &&
                 (input.Departure is null || input.Departure.RemoveSignature && savedDeparture.CustomerSignature is not null) ||

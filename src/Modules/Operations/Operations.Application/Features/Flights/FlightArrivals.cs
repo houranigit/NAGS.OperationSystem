@@ -99,6 +99,8 @@ public sealed class SaveFlightArrivalCommandHandler(
 
         if (!flight.RowVersion.SequenceEqual(request.RowVersion))
             return ConcurrencyErrors.Stale;
+        var approvalLock = flight.EnsureApprovalAllowsEdit();
+        if (approvalLock.IsFailure) return approvalLock.Error;
         if (flight.CancellationSubmissions.Any(c => c.SubmittedByEmployee?.StaffMemberId != actor.StaffMemberId) &&
             !input.AcknowledgeConflictingSubmission)
             return Error.Conflict("Another employee reported this flight as canceled. Confirm before saving work details.",

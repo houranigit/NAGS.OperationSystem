@@ -375,7 +375,7 @@ public sealed class FlightServicePersistenceTests(FlightServicePersistenceTests.
         var task = flight.AddTask(FlightTaskType.Major, null, null, parent, null, actor, Now,
             initialPerformers: [new(employee, firstShift)]).Value;
         var taskFirstId = task.Performers.Single().Id;
-        db.Flights.Add(flight);
+        await PreRtrMigrationSeed.InsertFlightOwnerAsync(db, flight, includesReturnToRampSequence: true);
         await db.SaveChangesAsync();
         var version = flight.RowVersion.ToArray();
         db.ChangeTracker.Clear();

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
 
 namespace Operations.Application.Contracts;
@@ -32,7 +34,12 @@ public sealed record FlightListItemDto(
     bool HasArrivalSubmission = false,
     bool HasDepartureSubmission = false,
     bool HasCancellationSubmission = false,
-    string Status = nameof(FlightReportStatus.Scheduled));
+    string Status = nameof(FlightReportStatus.Scheduled),
+    [property: JsonConverter(typeof(JsonStringEnumConverter<FlightApprovalStatus>))]
+    FlightApprovalStatus ApprovalStatus = FlightApprovalStatus.NotApproved,
+    string? ApprovedByDisplayName = null,
+    DateTimeOffset? ApprovedAtUtc = null,
+    int ApprovedReturnToRampSequence = 0);
 
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId)
@@ -89,4 +96,14 @@ public sealed record FlightDetailDto(
     bool IsUnassignedSearchFlight = false,
     bool? CanAddServices = null,
     bool? CanAddTasks = null,
-    IReadOnlyList<FlightReturnToRampDto>? ReturnToRamps = null, bool CanSaveReturnsToRamp = false, int LastReturnToRampSequence = 0, bool CanShare = false);
+    IReadOnlyList<FlightReturnToRampDto>? ReturnToRamps = null,
+    bool CanSaveReturnsToRamp = false,
+    int LastReturnToRampSequence = 0,
+    bool CanShare = false,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<FlightApprovalStatus>))]
+    FlightApprovalStatus ApprovalStatus = FlightApprovalStatus.NotApproved,
+    string? ApprovedByDisplayName = null,
+    DateTimeOffset? ApprovedAtUtc = null,
+    int ApprovedReturnToRampSequence = 0,
+    bool CanApprove = false,
+    bool CanUnlock = false);

@@ -3,6 +3,9 @@ package com.nags.operations.ui.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,6 +45,7 @@ internal fun flightTypeBadgeTextStyle(): TextStyle = MaterialTheme.typography.la
 )
 
 internal val FlightTypeBadgeOverlap = 1.dp
+internal val FlightApprovalLockWidth = 16.dp
 
 @Composable
 internal fun flightTypeBadgeDiameter(): Dp {
@@ -52,16 +56,21 @@ internal fun flightTypeBadgeDiameter(): Dp {
 /** Reserves the floating badge's bounds while anchoring it to the measured, possibly truncated number. */
 @Composable
 internal fun FlightNumberWithTypeBadge(number: String, isPerLanding: Boolean, isAdHoc: Boolean,
-    style: TextStyle, modifier: Modifier = Modifier, onNumberPositioned: ((Float, Int) -> Unit)? = null) {
+    style: TextStyle, modifier: Modifier = Modifier, showApprovalLock: Boolean = false,
+    onNumberPositioned: ((Float, Int) -> Unit)? = null) {
     Layout(modifier = modifier, content = {
         Text(number, Modifier.onGloballyPositioned {
             onNumberPositioned?.invoke(it.positionInWindow().y, it.size.height)
         }, style = style, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
         FlightTypeBadge(isPerLanding, isAdHoc)
+        if (showApprovalLock) Icon(Icons.Outlined.Lock, stringResource(R.string.flight_approval_locked),
+            Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }) { measurables, constraints ->
         val badge = measurables[1].measure(Constraints())
+        val lock = measurables.getOrNull(2)?.measure(Constraints())
         val overlap = FlightTypeBadgeOverlap.roundToPx()
-        val extraWidth = (badge.width - overlap).coerceAtLeast(0)
+        val badgeWidth = (badge.width - overlap).coerceAtLeast(0)
+        val extraWidth = badgeWidth + if (lock != null) FlightApprovalLockWidth.roundToPx() else 0
         val numberPlaceable = measurables[0].measure(constraints.copy(minWidth = 0, minHeight = 0,
             maxWidth = (constraints.maxWidth - extraWidth).coerceAtLeast(0)))
         val topInset = badge.height / 3
@@ -71,6 +80,8 @@ internal fun FlightNumberWithTypeBadge(number: String, isPerLanding: Boolean, is
         layout(width, height) {
             numberPlaceable.place(0, topInset)
             badge.place((numberPlaceable.width - overlap).coerceAtLeast(0), 0)
+            lock?.place(numberPlaceable.width + extraWidth - lock.width,
+                (topInset + (numberPlaceable.height - lock.height) / 2).coerceAtLeast(0))
         }
     }
 }

@@ -23,7 +23,7 @@ class FlightReturnsToRampRepositoryTest {
     private val flight = FlightDetail("44444444-4444-4444-4444-444444444444", "SV100", "customer", "SV", "Airline", "station", "JED",
         "Station", "operation", "Transit", scheduledArrivalUtc = at.minusSeconds(3600).toString(), scheduledDepartureUtc = at.toString(),
         isPerLanding = false, createdAtUtc = at.toString(), rowVersion = "AAAAAAAAAAE=", stationTimeZoneId = "Asia/Riyadh",
-        currentStaffMemberId = employee.staffMemberId, canSaveReturnsToRamp = true,
+        currentStaffMemberId = employee.staffMemberId, canSaveReturnsToRamp = true, approvalStatus = "Approved",
         departureSubmissions = listOf(FlightDepartureSubmission("departure", employee, at.toString(), employee,
             isAccepted = true, hasSignature = false, createdAtUtc = at.toString())))
     private val input = SaveFlightReturnToRampRequest(FlightReturnToRampArrivalInput(at.plusSeconds(60).toString(), " arrival "))
@@ -40,7 +40,8 @@ class FlightReturnsToRampRepositoryTest {
         send = { _, _, request, version ->
             attempts += request to version
             failure?.let { throw it }
-            flight.copy(rowVersion = "AAAAAAAAAAI=", returnToRamps = listOf(preview.copy(createdByUserId = owner.value!!.substringAfter('|'))))
+            flight.copy(rowVersion = "AAAAAAAAAAI=", approvalStatus = "PendingRtr",
+                returnToRamps = listOf(preview.copy(createdByUserId = owner.value!!.substringAfter('|'))))
         }, accepted = { _, _ -> }, schedule = {}, json = Json,
         fetchFlight = { current }, hasBlockingPriorWork = { blocked }, now = { at })
 
@@ -58,11 +59,27 @@ class FlightReturnsToRampRepositoryTest {
     }
 
     @Test fun prerequisitesAndPermissionFailuresNeverPublishLocalInput() = runBlocking {
-        for (invalid in listOf(flight.copy(departureSubmissions = emptyList()), flight.copy(canSaveReturnsToRamp = false),
+        for (invalid in listOf(flight.copy(approvalStatus = "NotApproved"), flight.copy(approvalStatus = "Unlocked"),
+            flight.copy(departureSubmissions = emptyList()), flight.copy(canSaveReturnsToRamp = false),
             flight.copy(hasCancellationSubmission = true), flight.copy(returnToRamps = listOf(preview.copy(id = "another-open"))))) {
             assertTrue(runCatching { repo().save(invalid, id, input, preview) }.isFailure)
         }
         assertTrue(dao.rows(owner.value!!).isEmpty())
+    }
+
+    @Test fun pendingReturnCanBeEditedAndAnotherCanStartAfterItCloses() = runBlocking {
+        val prior = preview.copy(sequence = 1, departedAtUtc = at.toString(), isOpen = false)
+        val pending = preview.copy(id = "55555555-5555-5555-5555-555555555555", sequence = 2, isOpen = false,
+            departedAtUtc = at.plusSeconds(90).toString())
+        val reviewFlight = flight.copy(approvalStatus = "PendingRtr", approvedReturnToRampSequence = 1,
+            returnToRamps = listOf(prior, pending))
+        assertFalse(reviewFlight.canEditReturnToRamp(prior))
+        assertTrue(reviewFlight.canEditReturnToRamp(pending))
+        assertFalse(reviewFlight.canAddReturnToRamp(listOf(prior, pending.copy(isOpen = true))))
+        assertTrue(runCatching { repo().save(reviewFlight, id, input, prior) }.isFailure)
+        val newId = "66666666-6666-6666-6666-666666666666"
+        repo().save(reviewFlight, newId, input, preview.copy(id = newId, sequence = 3))
+        assertEquals(newId, dao.rows(owner.value!!).single().occurrenceId)
     }
 
     @Test fun unknownAttemptReplaysExactlyAfterUserEditsAndProcessRestart() = runBlocking {

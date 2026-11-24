@@ -94,7 +94,7 @@ class FlightCancellationsRepository(
     private suspend fun revertWithinGate(flight: FlightDetail): Unit = submissionGate.withLock {
         val owner = checkNotNull(currentOwner()) { "Sign in to revert your cancellation." }
         val observed = generation
-        check(flight.canSaveCancellation) { "You cannot revert this cancellation." }
+        check(!flight.isApprovalLocked && flight.canSaveCancellation) { "You cannot revert this cancellation." }
         check(flight.isInFlightWindow(now())) { "This flight is outside your current flight window." }
         localWrites.withLock { transaction {
             check(accepting && observed == generation && owner == currentOwner()) { "Your session changed. Reopen the flight." }

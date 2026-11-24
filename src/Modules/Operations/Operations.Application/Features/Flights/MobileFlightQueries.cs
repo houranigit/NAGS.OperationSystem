@@ -118,10 +118,11 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
                 canCorrect: user?.HasPermission(OperationsPermissions.Flights.Operate) == true, currentUserId: resolved.Value.UserId);
 
         var actor = resolved.Value.Actor;
-        var canOperate = portalOnly || user?.HasPermission(OperationsPermissions.Flights.Operate) == true;
+        var canOperate = user?.HasPermission(OperationsPermissions.Flights.Operate) == true;
         var allowed = await new MasterDataResolver(masterData).AllowedServiceIdsForStaffAsync(actor.StaffMemberId, flight.Station.StationId, cancellationToken);
         var allowedIds = allowed.IsSuccess ? allowed.Value : [];
-        return FlightDetails.MapOperational(flight, station.TimeZoneId, actor, canOperate, allowedIds, names, portalOnly);
+        return FlightDetails.MapOperational(flight, station.TimeZoneId, actor, canOperate, allowedIds, names, portalOnly,
+            canReview: portalOnly && PortalFlightScope.CanReview(user));
     }
 }
 
@@ -235,7 +236,8 @@ internal static class MobileFlightQuery
             row.Flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType, null,
             row.Flight.DepartureSubmissions.Select(d => (DateTimeOffset?)d.Details.Atd).Max(),
             row.Flight.ReturnToRamps.Where(r => r.DepartureDetails != null)
-                .Select(r => (DateTimeOffset?)r.DepartureDetails!.DepartedAtUtc).Max(), 1));
+                .Select(r => (DateTimeOffset?)r.DepartureDetails!.DepartedAtUtc).Max(), 1,
+            row.Flight.ApprovalStatus, row.Flight.ApprovedByDisplayName, row.Flight.ApprovedAtUtc, row.Flight.ApprovedReturnToRampSequence));
 
     public static IQueryable<Flight> ApplyReadScope(IQueryable<Flight> query, MobileFlightScopeContext scope,
         MobileFlightCategory? category = null) => category.HasValue ? ApplyScope(query, scope, category) : ApplyVisibility(query, scope);

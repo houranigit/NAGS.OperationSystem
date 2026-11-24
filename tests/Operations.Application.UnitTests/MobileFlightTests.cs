@@ -274,6 +274,7 @@ public sealed class MobileFlightTests
                 Guid.NewGuid(), Now).IsSuccess.ShouldBeTrue();
         if (scenario.EndsWith("rtr", StringComparison.Ordinal))
         {
+            flight.Approve(UserId, "Assigned staff", Now).IsSuccess.ShouldBeTrue();
             var occurrence = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddHours(-60), employee, null).Value, UserId, Now).Value;
             if (scenario == "closed-rtr")
             {
@@ -446,12 +447,16 @@ public sealed class MobileFlightTests
         var flight = FlightFor("100", assigned: true);
         var employee = new StaffMemberSnapshot(StaffId, "Assigned staff", "E1");
         var signature = CustomerSignature.Create("signature.png", "signatures/mobile-card.png", "image/png", 100, Now).Value;
+        var normalWindow = TimeWindow.Create(Now.AddMinutes(-20), Now.AddMinutes(-5)).Value;
+        flight.SubmitArrival(employee, ArrivalDetails.Create(null, Now.AddHours(-1),
+            new(Guid.NewGuid(), "Airbus", "A320"), "HZ-TEST", employee, null).Value, UserId, Now).IsSuccess.ShouldBeTrue();
         flight.SubmitDeparture(employee, DepartureDetails.Create(Now, signature, employee, null).Value,
             UserId, Now).IsSuccess.ShouldBeTrue();
-        flight.AddService(new ServiceSnapshot(Guid.NewGuid(), "Normal work"), null,
-            TimeWindow.Create(Now, null).Value, null, UserId, Now).IsSuccess.ShouldBeTrue();
-        flight.AddTask(FlightTaskType.Minor, null, null,
-            TimeWindow.Create(Now, Now.AddMinutes(5)).Value, null, UserId, Now).IsSuccess.ShouldBeTrue();
+        flight.AddService(new ServiceSnapshot(Guid.NewGuid(), "Normal work"), null, normalWindow, null, UserId, Now,
+            initialPerformers: [new(employee, normalWindow)]).IsSuccess.ShouldBeTrue();
+        flight.AddTask(FlightTaskType.Minor, null, null, normalWindow, null, UserId, Now,
+            initialPerformers: [new(employee, normalWindow)]).IsSuccess.ShouldBeTrue();
+        flight.Approve(UserId, "Assigned staff", Now).IsSuccess.ShouldBeTrue();
 
         var first = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddMinutes(10), employee, null).Value,
             UserId, Now).Value;

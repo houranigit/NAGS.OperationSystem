@@ -13,7 +13,15 @@ public sealed record PortalFlightOperations(
     IReadOnlyList<PortalFlightCancellation> CancellationSubmissions, bool CanSaveCancellation,
     IReadOnlyList<PortalFlightService> Services, bool CanSaveServices, IReadOnlyList<Guid>? AllowedServiceIds,
     IReadOnlyList<PortalFlightTask> Tasks, bool CanSaveTasks, bool? CanAddServices, bool? CanAddTasks,
-    IReadOnlyList<PortalFlightReturnToRamp> ReturnToRamps, bool CanSaveReturnsToRamp, int LastReturnToRampSequence);
+    IReadOnlyList<PortalFlightReturnToRamp> ReturnToRamps, bool CanSaveReturnsToRamp, int LastReturnToRampSequence,
+    string ApprovalStatus = FlightApprovalStatuses.NotApproved, string? ApprovedByDisplayName = null,
+    DateTimeOffset? ApprovedAtUtc = null, int ApprovedReturnToRampSequence = 0, bool CanApprove = false, bool CanUnlock = false)
+{
+    internal bool IsApprovalLocked => FlightApprovalStatuses.IsLocked(ApprovalStatus);
+
+    internal bool CanEditReturnToRamp(PortalFlightReturnToRamp occurrence) =>
+        occurrence.CanEdit && (!IsApprovalLocked || occurrence.Sequence > ApprovedReturnToRampSequence);
+}
 
 public sealed record PortalStaffSnapshot(Guid StaffMemberId, string FullName, string EmployeeId);
 

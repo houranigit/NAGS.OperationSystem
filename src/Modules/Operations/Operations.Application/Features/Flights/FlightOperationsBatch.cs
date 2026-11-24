@@ -21,7 +21,7 @@ public sealed record SaveFlightOperationsBatchCommand(Guid FlightId, SaveFlightO
 /// <summary>Prepares one flight edit in memory and publishes its entire graph and outbox in one SaveChanges.</summary>
 public sealed class SaveFlightOperationsBatchCommandHandler(
     IOperationsDbContext db, IMobileFlightScope scope, MasterDataResolver resolver, IMasterDataReader masterData,
-    TimeProvider clock, IMobileSyncBroadcaster mobileSync, IFileStorage storage, IUserDisplayNameReader? userNames = null, PortalFlightScope? portalScope = null)
+    TimeProvider clock, IMobileSyncBroadcaster mobileSync, IFileStorage storage, IUserDisplayNameReader? userNames = null, PortalFlightScope? portalScope = null, IUserContext? user = null)
     : ICommandHandler<SaveFlightOperationsBatchCommand, FlightDetailDto>
 {
     private sealed record ServiceEdit(FlightServiceBatchChange Change, FlightService? Existing, bool Matches,
@@ -198,11 +198,13 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             FlightWorkAttribution.UserIds(flight).Append(actorUserId), ct);
         FlightDetailDto Response() => actor is null
             ? FlightDetails.MapAdministrator(flight, station.TimeZoneId, names, canCorrect: true, currentUserId: actorUserId)
-            : FlightDetails.MapOperational(flight, station.TimeZoneId, actor, true, allowedIds, names, request.PortalOnly);
+            : FlightDetails.MapOperational(flight, station.TimeZoneId, actor, true, allowedIds, names, request.PortalOnly, canReview: request.PortalOnly && PortalFlightScope.CanReview(user));
         // Recover only a complete prior success. Never acknowledge individual members of a stale batch.
         if (arrivalMatches && departureMatches && preparedServices.All(item => item.Matches) && preparedTasks.All(item => item.Matches))
             return Response();
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
+        var approvalLock = flight.EnsureApprovalAllowsEdit();
+        if (approvalLock.IsFailure) return approvalLock.Error;
         if (administrator &&
             (preparedServices.Any(edit => edit.Existing is { } saved && saved.CreatedByUserId != actorUserId && edit.Change.Input is { } desired &&
                 !PortalFlightRecordCorrections.RetainsSavedDetails(saved, desired)) ||

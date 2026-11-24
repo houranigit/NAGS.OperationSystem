@@ -192,7 +192,8 @@ internal fun FlightWorkSubmissionUpdateForm(
     val hasPublishedTarget = if (isService) serviceRecord != null else taskRecord != null
     val canAdd = if (isService) reviewed.canAddServices ?: reviewed.canSaveServices else reviewed.canAddTasks ?: reviewed.canSaveTasks
     val hasWriteCapability = if (hasPublishedTarget) canEdit || canSetEnd || canDelete else canAdd
-    val enabled = !saving && !missing && !reviewed.hasCancellationSubmission && hasWriteCapability &&
+    val enabled = !saving && !missing && !reviewed.isApprovalLocked && !latestFlight.isApprovalLocked &&
+        !reviewed.hasCancellationSubmission && hasWriteCapability &&
         (if (isService) reviewed.canSaveServices else reviewed.canSaveTasks)
     val openPerformerIds = if (isService) serviceRecord?.performers.orEmpty().filter { it.endUtc == null }.map { it.id }.toSet()
         else taskRecord?.performers.orEmpty().filter { it.endUtc == null }.map { it.id }.toSet()

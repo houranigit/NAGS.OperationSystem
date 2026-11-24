@@ -63,6 +63,9 @@ public sealed class BrowserApiClient(IJSRuntime jsRuntime, AuthTokenStore tokenS
     public Task DeleteAsync(string path, string? ifMatch, CancellationToken cancellationToken = default) =>
         SendAsync(HttpMethod.Delete, path, body: null, ifMatch, cancellationToken);
 
+    public Task<TResponse> DeleteAsync<TResponse>(string path, string? ifMatch, CancellationToken cancellationToken = default) =>
+        SendAsync<TResponse>(HttpMethod.Delete, path, body: null, ifMatch, cancellationToken);
+
     public async Task UploadFileAsync(
         string path,
         byte[] content,

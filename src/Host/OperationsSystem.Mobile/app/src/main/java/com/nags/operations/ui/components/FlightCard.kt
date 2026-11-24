@@ -120,6 +120,7 @@ fun FlightCard(
                                 isPerLanding = flight.isPerLanding,
                                 isAdHoc = flight.isAdHocFlight || flight.isMyAdHocFlight,
                                 style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold).cardScale(scale),
+                                showApprovalLock = flight.isApprovalLocked,
                                 modifier = Modifier.weight(1f), onNumberPositioned = onFlightNumberPositioned,
                             )
                             FlightReportBadge(reportStatus, Modifier.widthIn(max = badgeWidth), compact = compact)

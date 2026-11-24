@@ -24,7 +24,7 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         await db.Database.MigrateAsync(TaskBaseline);
         var previous = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
         var actor = Guid.NewGuid();
-        var flight = DepartedFlight();
+        var flight = DepartedFlight(approve: false);
         var work = AddWork(flight, null, actor, Now.AddMinutes(1), Now.AddMinutes(-30));
         var canceled = ScheduleFlight();
         canceled.SubmitCancellation(Employee(), CancellationDetails.Create(Now, "Canceled").Value, actor, Now).IsSuccess.ShouldBeTrue();
@@ -52,6 +52,8 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         reloaded.PlannedServices.ShouldHaveSingleItem().Id.ShouldBe(flight.PlannedServices.Single().Id);
         reloaded.AssignedEmployees.ShouldHaveSingleItem().Id.ShouldBe(flight.AssignedEmployees.Single().Id);
         reloaded.DepartureSubmissions.ShouldHaveSingleItem().Details.ShouldBe(flight.DepartureSubmissions.Single().Details);
+        reloaded.ApprovalStatus.ShouldBe(FlightApprovalStatus.NotApproved);
+        reloaded.ApprovedAtUtc.ShouldBeNull();
         reloaded.LastReturnToRampSequence.ShouldBe(0);
         reloaded.ReturnToRamps.ShouldBeEmpty();
         var savedService = reloaded.Services.ShouldHaveSingleItem();
@@ -84,11 +86,9 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         await db.Database.MigrateAsync();
         var actor = Guid.NewGuid();
         var closer = Guid.NewGuid();
-        var flight = DepartedFlight();
-        // Neither of these two submissions is accepted; recorded departure is sufficient.
-        flight.SubmitDeparture(Employee(), Departure(), actor, Now).IsSuccess.ShouldBeTrue();
-        flight.DepartureSubmissions.ShouldAllBe(item => !item.IsAccepted);
+        var flight = DepartedFlight(approve: false);
         var normal = AddWork(flight, null, actor, Now, Now.AddMinutes(-30));
+        flight.Approve(actor, "Flight reviewer", Now).IsSuccess.ShouldBeTrue();
         var receiver = Employee();
         var arrival = RtrArrivalDetails.Create(Now.ToOffset(TimeSpan.FromHours(3)), receiver, "  Returned for inspection  ").Value;
         var first = flight.StartReturnToRamp(arrival, actor, Now.AddMinutes(1)).Value;
@@ -104,6 +104,11 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         db.ChangeTracker.Clear();
 
         var reloaded = await LoadAsync(db, flight.Id);
+        reloaded.ApprovalStatus.ShouldBe(FlightApprovalStatus.PendingRtr);
+        reloaded.ApprovedByUserId.ShouldBe(actor);
+        reloaded.ApprovedByDisplayName.ShouldBe("Flight reviewer");
+        reloaded.ApprovedAtUtc.ShouldBe(Now);
+        reloaded.ApprovedReturnToRampSequence.ShouldBe(0);
         reloaded.LastReturnToRampSequence.ShouldBe(2);
         reloaded.ReturnToRamps.Select(item => item.Sequence).OrderBy(sequence => sequence).ShouldBe([1, 2]);
         reloaded.Services.ShouldHaveSingleItem().Id.ShouldBe(normal.Service.Id);
@@ -190,14 +195,11 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         var firstLegacySignature = CustomerSignature.Create("display-not-stored.png", legacyKey, "image/png", 512,
             Now.AddMinutes(-20)).Value;
         var firstDetails = DepartureDetails.Create(Now.AddMinutes(-12), firstLegacySignature, handler, "Original remarks").Value;
+        RecordArrival(flight, creator);
         var first = flight.SubmitDeparture(firstSubmitter, firstDetails, creator, Now.AddMinutes(-10)).Value;
         var correctedDetails = DepartureDetails.Create(firstDetails.Atd, firstLegacySignature, handler, "Corrected remarks").Value;
         flight.SubmitDeparture(firstSubmitter, correctedDetails, editor, Now.AddMinutes(-8)).IsSuccess.ShouldBeTrue();
-        var secondLegacySignature = CustomerSignature.Create("second-display-not-stored.jpg", "legacy/", "image/jpeg", 2048,
-            Now.AddMinutes(-19)).Value;
-        var second = flight.SubmitDeparture(secondSubmitter,
-            DepartureDetails.Create(Now.AddMinutes(-11), secondLegacySignature, handler, null).Value,
-            creator, Now.AddMinutes(-5)).Value;
+        flight.Approve(creator, "Flight reviewer", Now).IsSuccess.ShouldBeTrue();
         var signed = flight.StartReturnToRamp(Arrival(), creator, Now).Value;
         var signedWork = AddWork(flight, signed.Id, creator, Now, Now);
         var storedReturnSignature = CustomerSignature.Create("preserved-customer-display.png", "returns/opaque-key.png", "image/png", 4096,
@@ -208,6 +210,13 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         flight.CloseReturnToRamp(unsigned.Id,
             RtrDepartureDetails.Create(Now.AddMinutes(70), null, handler, "No signature provided").Value,
             editor, Now.AddMinutes(71)).IsSuccess.ShouldBeTrue();
+        flight.Approve(creator, "Flight reviewer", Now.AddMinutes(72)).IsSuccess.ShouldBeTrue();
+        flight.Unlock(Now.AddMinutes(73)).IsSuccess.ShouldBeTrue();
+        var secondLegacySignature = CustomerSignature.Create("second-display-not-stored.jpg", "legacy/", "image/jpeg", 2048,
+            Now.AddMinutes(-19)).Value;
+        var second = flight.SubmitDeparture(secondSubmitter,
+            DepartureDetails.Create(Now.AddMinutes(-11), secondLegacySignature, handler, null).Value,
+            creator, Now.AddMinutes(-5)).Value;
         await PreRtrMigrationSeed.InsertFlightOwnerAsync(db, flight, includesReturnToRampSequence: true);
         // The historical normal-departure schema has only key, MIME, and size. RTR already stores all five fields.
         foreach (var submission in flight.DepartureSubmissions)
@@ -230,6 +239,8 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         var reloaded = await LoadAsync(db, flight.Id);
         reloaded.RowVersion.ShouldBe(version);
         reloaded.UpdatedAtUtc.ShouldBe(rootUpdatedAt);
+        reloaded.ApprovalStatus.ShouldBe(FlightApprovalStatus.NotApproved);
+        reloaded.EnsureApprovalAllowsReturnToRamp(signed.Id).IsSuccess.ShouldBeTrue();
         reloaded.LastReturnToRampSequence.ShouldBe(2);
         reloaded.DepartureSubmissions.Count.ShouldBe(2);
         reloaded.DepartureSubmissions.ShouldAllBe(item => !item.IsAccepted);
@@ -357,11 +368,14 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         var handler = Employee();
         var shared = Signature();
         var normalDetails = DepartureDetails.Create(Now.AddMinutes(-10), shared, handler, "Normal departure").Value;
+        RecordArrival(flight, actor);
         var normal = flight.SubmitDeparture(submitter, normalDetails, actor, Now).Value;
+        flight.Approve(actor, "Flight reviewer", Now).IsSuccess.ShouldBeTrue();
         var occurrence = flight.StartReturnToRamp(Arrival(), actor, Now).Value;
         AddWork(flight, occurrence.Id, actor, Now, Now);
         var returnDetails = RtrDepartureDetails.Create(Now.AddMinutes(30), shared, handler, "RTR departure").Value;
         flight.CloseReturnToRamp(occurrence.Id, returnDetails, actor, Now.AddMinutes(31)).IsSuccess.ShouldBeTrue();
+        flight.Approve(actor, "Flight reviewer", Now.AddMinutes(31)).IsSuccess.ShouldBeTrue();
         normal.Details.CustomerSignature.ShouldNotBeSameAs(shared);
         occurrence.DepartureDetails.ShouldNotBeNull().CustomerSignature.ShouldNotBeSameAs(shared);
         normal.Details.CustomerSignature.ShouldNotBeSameAs(occurrence.DepartureDetails.CustomerSignature);
@@ -378,6 +392,7 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         var originalVersion = reloaded.RowVersion.ToArray();
         var changedSigningTime = CustomerSignature.Create(shared.FileName, shared.StorageKey, shared.ContentType,
             shared.SizeBytes, shared.SignedAtUtc.AddSeconds(1)).Value;
+        reloaded.Unlock(Now.AddMinutes(32)).IsSuccess.ShouldBeTrue();
         reloaded.SubmitDeparture(submitter, DepartureDetails.Create(savedNormal.Details.Atd, changedSigningTime,
             savedNormal.Details.HandledByEmployee, savedNormal.Details.Remarks).Value, editor, Now.AddMinutes(32)).IsSuccess.ShouldBeTrue();
         await db.SaveChangesAsync();
@@ -437,8 +452,9 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         await using var db = fixture.CreateContext();
         await db.Database.MigrateAsync();
         var actor = Guid.NewGuid();
-        var flight = DepartedFlight();
+        var flight = DepartedFlight(approve: false);
         var normal = AddWork(flight, null, actor, Now, Now.AddMinutes(-30));
+        flight.Approve(actor, "Flight reviewer", Now).IsSuccess.ShouldBeTrue();
         var first = flight.StartReturnToRamp(Arrival(), actor, Now).Value;
         var work = AddWork(flight, first.Id, actor, Now, Now);
         flight.CloseReturnToRamp(first.Id, ReturnDeparture(), actor, Now).IsSuccess.ShouldBeTrue();
@@ -536,7 +552,7 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
     }
 
     [Fact]
-    public async Task Departure_must_be_recorded_before_start_and_stale_eligibility_needs_a_reload()
+    public async Task Departure_and_approval_are_required_before_start_and_stale_eligibility_needs_a_reload()
     {
         await using var db = fixture.CreateContext();
         await db.Database.MigrateAsync();
@@ -551,7 +567,11 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         var stale = await LoadAsync(competing, flight.Id);
         var version = stale.RowVersion.ToArray();
         stale.StartReturnToRamp(Arrival(), Guid.NewGuid(), Now).IsFailure.ShouldBeTrue();
-        recordingDeparture.SubmitDeparture(Employee(), Departure(), Guid.NewGuid(), Now).IsSuccess.ShouldBeTrue();
+        var reviewer = Guid.NewGuid();
+        RecordArrival(recordingDeparture, reviewer);
+        recordingDeparture.SubmitDeparture(Employee(), Departure(), reviewer, Now).IsSuccess.ShouldBeTrue();
+        recordingDeparture.StartReturnToRamp(Arrival(), reviewer, Now).Error.Code.ShouldBe("Operations.FlightApproval.ReturnToRampRequiresApproval");
+        recordingDeparture.Approve(reviewer, "Flight reviewer", Now).IsSuccess.ShouldBeTrue();
         await db.SaveChangesAsync();
 
         stale.StartReturnToRamp(Arrival(), Guid.NewGuid(), Now).IsFailure.ShouldBeTrue();
@@ -668,9 +688,10 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
                 winner.RemoveReturnToRamp(current.Id, actor, matchingClock).IsSuccess.ShouldBeTrue();
                 break;
         }
-        stale.UpdatePlanning(stale.Schedule, new AircraftTypeSnapshot(Guid.NewGuid(), "Airbus", "A321"),
-            stale.PlannedServices.Select(item => new ServiceSnapshot(item.Service.ServiceId, item.Service.Name)).ToArray(),
-            null, matchingClock).IsSuccess.ShouldBeTrue();
+        var staleOccurrence = stale.ReturnToRamps.ShouldHaveSingleItem();
+        var staleArrival = RtrArrivalDetails.Create(staleOccurrence.ArrivalDetails.ArrivedAtUtc,
+            staleOccurrence.ArrivalDetails.ReceivedByEmployee, "Concurrent arrival correction").Value;
+        stale.UpdateReturnToRampArrival(staleOccurrence.Id, staleArrival, actor, matchingClock).IsSuccess.ShouldBeTrue();
         await db.SaveChangesAsync();
 
         var staleWriteError = await Record.ExceptionAsync(() => competing.SaveChangesAsync());
@@ -712,8 +733,9 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         await using var db = fixture.CreateContext();
         await db.Database.MigrateAsync();
         var actor = Guid.NewGuid();
-        var flight = DepartedFlight();
+        var flight = DepartedFlight(approve: false);
         var normal = AddWork(flight, null, actor, Now, Now.AddMinutes(-30));
+        flight.Approve(actor, "Flight reviewer", Now).IsSuccess.ShouldBeTrue();
         var first = flight.StartReturnToRamp(Arrival(), actor, Now).Value;
         var removedWork = AddWork(flight, first.Id, actor, Now, Now);
         flight.CloseReturnToRamp(first.Id, ReturnDeparture(Signature()), actor, Now).IsSuccess.ShouldBeTrue();
@@ -821,11 +843,22 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         return (service, task);
     }
 
-    private static Flight DepartedFlight()
+    private static Flight DepartedFlight(bool approve = true)
     {
         var flight = ScheduleFlight();
-        flight.SubmitDeparture(Employee(), Departure(), Guid.NewGuid(), Now).IsSuccess.ShouldBeTrue();
+        var actor = Guid.NewGuid();
+        RecordArrival(flight, actor);
+        flight.SubmitDeparture(Employee(), Departure(), actor, Now).IsSuccess.ShouldBeTrue();
+        if (approve)
+            flight.Approve(actor, "Flight reviewer", Now).IsSuccess.ShouldBeTrue();
         return flight;
+    }
+
+    private static void RecordArrival(Flight flight, Guid actor)
+    {
+        var employee = Employee();
+        var details = ArrivalDetails.Create(null, Now.AddHours(-1), flight.AircraftType!, "HZ-ABC", employee, null).Value;
+        flight.SubmitArrival(employee, details, actor, Now).IsSuccess.ShouldBeTrue();
     }
 
     private static DepartureDetails Departure() => DepartureDetails.Create(Now.AddMinutes(-10),

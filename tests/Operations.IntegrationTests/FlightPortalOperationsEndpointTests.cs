@@ -5,6 +5,7 @@ using MasterData.Contracts.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Operations.Application.Contracts;
+using Operations.Domain.Flights;
 using Operations.Domain.ValueObjects;
 using Operations.Infrastructure.Persistence;
 using Shouldly;
@@ -15,6 +16,81 @@ public sealed partial class FlightVisibilityScopeTests
 {
     private static readonly string[] PortalOperatorPermissions =
         ["operations.flights.view", "operations.flights.operate"];
+
+    [Fact]
+    public async Task Portal_approval_permission_is_scoped_and_locks_validated_work_until_unlocked()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var operatorLogin = await CreateStaffLoginAsync(admin, refs, PortalOperatorPermissions);
+        using var flightOperator = operatorLogin.Client;
+        var reviewerLogin = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.approve"]);
+        using var reviewer = reviewerLogin.Client;
+        var reviewerName = (await reviewer.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("displayName").GetString();
+        var ata = DateTimeOffset.UtcNow.AddHours(-1);
+        var id = await SchedulePortalFlightAtAsync(admin, refs, "8721", ata, [operatorLogin.StaffId, reviewerLogin.StaffId]);
+        var outsideScope = await SchedulePortalFlightAtAsync(admin, refs, "8722", ata, [operatorLogin.StaffId]);
+        var aircraft = await OperationsBatchAircraftAsync(admin);
+
+        var initial = await PortalOperationsDetailAsync(reviewer, id);
+        initial.ApprovalStatus.ShouldBe(FlightApprovalStatus.NotApproved);
+        initial.CanApprove.ShouldBeTrue();
+        initial.CanUnlock.ShouldBeFalse();
+        initial.CanSaveArrival.ShouldBeFalse();
+        initial.ApprovedAtUtc.ShouldBeNull();
+
+        using var forbidden = await WritePortalOperationsAsync(flightOperator, id, HttpMethod.Put, "approval", null, initial.RowVersion);
+        forbidden.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var inaccessible = await WritePortalOperationsAsync(reviewer, outsideScope, HttpMethod.Put, "approval", null, initial.RowVersion);
+        inaccessible.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        using var missingActuals = await WritePortalOperationsAsync(reviewer, id, HttpMethod.Put, "approval", null, initial.RowVersion);
+        missingActuals.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await missingActuals.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.FlightApproval.ActualTimesRequired");
+
+        var arrival = new SaveFlightArrivalRequest(ata, aircraft, "HZ-APPROVAL", null, null);
+        var departure = new SaveFlightDepartureRequest(ata, null, null, null);
+        using var beforeReview = await WritePortalOperationsAsync(flightOperator, id, HttpMethod.Put, "batch",
+            OperationsBatchInput(arrival, departure), initial.RowVersion);
+        beforeReview.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var beforeReviewDetail = (await beforeReview.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        using var invalidTimes = await WritePortalOperationsAsync(reviewer, id, HttpMethod.Put, "approval", null, beforeReviewDetail.RowVersion);
+        invalidTimes.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await invalidTimes.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.FlightApproval.ActualTimesInvalid");
+
+        using var corrected = await WritePortalOperationsAsync(flightOperator, id, HttpMethod.Put, "batch",
+            OperationsBatchInput(departure: departure with { Atd = ata.AddMinutes(40) }), beforeReviewDetail.RowVersion);
+        corrected.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var ready = (await corrected.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        var approved = await ApprovePortalFlightAsync(reviewer, id, ready.RowVersion);
+        approved.CanApprove.ShouldBeFalse();
+        approved.CanUnlock.ShouldBeTrue();
+        approved.ApprovedByDisplayName.ShouldBe(reviewerName);
+        approved.ApprovedAtUtc.ShouldNotBeNull();
+        approved.RowVersion.ShouldNotBe(ready.RowVersion);
+
+        var operatorDetail = await PortalOperationsDetailAsync(flightOperator, id);
+        operatorDetail.CanSaveArrival.ShouldBeFalse();
+        operatorDetail.CanSaveDeparture.ShouldBeFalse();
+        operatorDetail.CanSaveServices.ShouldBeFalse();
+        operatorDetail.CanSaveTasks.ShouldBeFalse();
+        var change = OperationsBatchInput(arrival with { Remarks = "Corrected after review" });
+        await AssertPortalOperationsConflictAsync(
+            await WritePortalOperationsAsync(flightOperator, id, HttpMethod.Put, "batch", change, approved.RowVersion),
+            "Operations.FlightApproval.Locked");
+        await AssertPortalOperationsConflictAsync(
+            await WritePortalOperationsAsync(reviewer, id, HttpMethod.Delete, "approval", null, ready.RowVersion),
+            "General.ConcurrencyConflict");
+
+        using var unlock = await WritePortalOperationsAsync(reviewer, id, HttpMethod.Delete, "approval", null, approved.RowVersion);
+        unlock.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var unlocked = (await unlock.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        unlocked.ApprovalStatus.ShouldBe(FlightApprovalStatus.Unlocked);
+        unlocked.CanApprove.ShouldBeTrue();
+        using var update = await WritePortalOperationsAsync(flightOperator, id, HttpMethod.Put, "batch", change, unlocked.RowVersion);
+        update.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
 
     [Fact]
     public async Task Portal_operations_enforce_actor_scope_and_administrator_staff_selection()
@@ -174,16 +250,45 @@ public sealed partial class FlightVisibilityScopeTests
             rtrArrival.AddMinutes(5), rtrArrival.AddMinutes(20));
         var rtrInput = new SaveFlightReturnToRampRequest(new(rtrArrival, ReceivedByStaffMemberId: receiver.StaffId),
             new(rtrArrival.AddMinutes(25), HandledByStaffMemberId: handler.StaffId), [new(Guid.NewGuid(), rtrWork)], []);
+
+        await AssertPortalOperationsConflictAsync(
+            await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{rtrId}", rtrInput, staffSaved.RowVersion),
+            "Operations.FlightApproval.ReturnToRampRequiresApproval");
+        var approved = await ApprovePortalFlightAsync(admin, id, staffSaved.RowVersion);
         using var rtrResponse = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{rtrId}",
-            rtrInput, staffSaved.RowVersion);
+            rtrInput, approved.RowVersion);
         rtrResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var rtr = (await rtrResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!.ReturnToRamps!.ShouldHaveSingleItem();
+        var pendingRtr = (await rtrResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        pendingRtr.ApprovalStatus.ShouldBe(FlightApprovalStatus.PendingRtr);
+        var rtr = pendingRtr.ReturnToRamps!.ShouldHaveSingleItem();
         rtr.Id.ShouldBe(rtrId);
         rtr.CreatedByUserId.ShouldBe(administratorId);
         rtr.ReceivedByStaffMemberId.ShouldBe(receiver.StaffId);
         rtr.HandledByStaffMemberId.ShouldBe(handler.StaffId);
         rtr.IsOpen.ShouldBeFalse();
         rtr.Services.ShouldHaveSingleItem().CreatedByUserId.ShouldBe(administratorId);
+
+        var secondArrival = rtrArrival.AddMinutes(30);
+        var secondWork = OperationsBatchClosedService(unrestrictedServiceId, handler.StaffId,
+            secondArrival.AddMinutes(5), secondArrival.AddMinutes(20));
+        var secondRtrId = Guid.NewGuid();
+        var secondRtrInput = new SaveFlightReturnToRampRequest(new(secondArrival, ReceivedByStaffMemberId: receiver.StaffId),
+            new(secondArrival.AddMinutes(25), HandledByStaffMemberId: handler.StaffId), [new(Guid.NewGuid(), secondWork)], []);
+        using var secondRtr = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{secondRtrId}",
+            secondRtrInput, pendingRtr.RowVersion);
+        secondRtr.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var twoPendingReturns = (await secondRtr.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        twoPendingReturns.ApprovalStatus.ShouldBe(FlightApprovalStatus.PendingRtr);
+        twoPendingReturns.ReturnToRamps!.Select(item => item.Id).ShouldBe([rtrId, secondRtrId]);
+        twoPendingReturns.ReturnToRamps!.ShouldAllBe(item => item.CanEdit);
+
+        var reapproved = await ApprovePortalFlightAsync(admin, id, twoPendingReturns.RowVersion);
+        reapproved.ApprovedReturnToRampSequence.ShouldBe(2);
+        reapproved.ReturnToRamps!.ShouldAllBe(item => !item.CanEdit);
+        await AssertPortalOperationsConflictAsync(
+            await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{rtrId}",
+                rtrInput with { Arrival = rtrInput.Arrival with { Remarks = "Change approved occurrence" } }, reapproved.RowVersion),
+            "Operations.FlightApproval.ReturnToRampLocked");
     }
 
     [Fact]
@@ -239,8 +344,23 @@ public sealed partial class FlightVisibilityScopeTests
         targetedResult.Submission.SubmittedByEmployee.ShouldBeNull();
         (await PortalOperationsDetailAsync(admin, id)).CancellationSubmissions!.ShouldHaveSingleItem().ShouldBe(targetedResult.Submission);
 
+        var approved = await ApprovePortalFlightAsync(otherAdmin, id, targetedResult.RowVersion);
+        approved.CancellationSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(submission.Id);
+        approved.CanSaveCancellation.ShouldBeFalse();
+        approved.CanSaveReturnsToRamp.ShouldBeFalse();
+        await AssertPortalOperationsConflictAsync(
+            await WritePortalOperationsAsync(admin, id, HttpMethod.Delete, path, null, approved.RowVersion),
+            "Operations.FlightApproval.Locked");
+        await AssertPortalOperationsConflictAsync(
+            await WritePortalOperationsAsync(admin, id, HttpMethod.Put, path, input, approved.RowVersion),
+            "Operations.FlightApproval.Locked");
+        using var unlock = await WritePortalOperationsAsync(otherAdmin, id, HttpMethod.Delete, "approval", null, approved.RowVersion);
+        unlock.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var unlocked = (await unlock.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        unlocked.ApprovalStatus.ShouldBe(FlightApprovalStatus.Unlocked);
+
         using var staffSave = await WritePortalOperationsAsync(staffClient, id, HttpMethod.Put, "cancellation",
-            input with { Remarks = "Separate staff cancellation" }, targetedResult.RowVersion);
+            input with { Remarks = "Separate staff cancellation" }, unlocked.RowVersion);
         staffSave.StatusCode.ShouldBe(HttpStatusCode.OK);
         var staffSaved = (await staffSave.Content.ReadFromJsonAsync<FlightCancellationSavedDto>())!;
         staffSaved.Submission.SubmittedByEmployee!.StaffMemberId.ShouldBe(staff.StaffId);
@@ -446,7 +566,7 @@ public sealed partial class FlightVisibilityScopeTests
         adminWork.CanSaveDeparture.ShouldBeTrue();
         adminWork.CanAddServices.ShouldBe(true);
         adminWork.CanAddTasks.ShouldBe(true);
-        adminWork.CanSaveReturnsToRamp.ShouldBeTrue();
+        adminWork.CanSaveReturnsToRamp.ShouldBeFalse();
         adminWork.ArrivalSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(normalArrival.Id);
         adminWork.DepartureSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(normalDeparture.Id);
         var adminService = adminWork.Services!.ShouldHaveSingleItem();
@@ -573,8 +693,9 @@ public sealed partial class FlightVisibilityScopeTests
         var returning = new SaveFlightReturnToRampRequest(new(rtrArrival, "Return recorded via portal"),
             new(rtrDeparture, "RTR departure", bytes, "rtr.png", "image/png", rtrDeparture),
             [new(rtrServiceId, rtrService)], [new(taskId, task)]);
+        var approved = await ApprovePortalFlightAsync(admin, id, withoutService.RowVersion);
         using var rtrResponse = await WritePortalOperationsAsync(client, id, HttpMethod.Put, $"returns-to-ramp/{occurrenceId}",
-            returning, withoutService.RowVersion);
+            returning, approved.RowVersion);
         rtrResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         var returned = (await rtrResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!;
         var occurrence = returned.ReturnToRamps!.ShouldHaveSingleItem();
@@ -709,6 +830,8 @@ public sealed partial class FlightVisibilityScopeTests
             OperationsBatchInput(new(ata, aircraftId, "HZ-PORTAL", null, null), departure), initial.RowVersion);
         actualsResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         var actuals = (await actualsResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        if (returnToRamp)
+            actuals = await ApprovePortalFlightAsync(admin, id, actuals.RowVersion);
 
         var rtrArrival = ata.AddHours(2);
         var route = returnToRamp ? $"returns-to-ramp/{Guid.NewGuid()}" : "batch";
@@ -797,6 +920,8 @@ public sealed partial class FlightVisibilityScopeTests
             OperationsBatchInput(new(ata, aircraftId, "HZ-PORTAL", null, null), departure), initial.RowVersion);
         actualsResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         var actuals = (await actualsResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        if (returnToRamp)
+            actuals = await ApprovePortalFlightAsync(admin, id, actuals.RowVersion);
 
         var rtrArrival = ata.AddHours(2);
         var route = returnToRamp ? $"returns-to-ramp/{Guid.NewGuid()}" : "batch";
@@ -901,6 +1026,15 @@ public sealed partial class FlightVisibilityScopeTests
 
     private static async Task<FlightDetailDto> PortalOperationsDetailAsync(HttpClient client, Guid id) =>
         (await client.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/{id}/operations"))!;
+
+    private static async Task<FlightDetailDto> ApprovePortalFlightAsync(HttpClient client, Guid id, string version)
+    {
+        using var response = await WritePortalOperationsAsync(client, id, HttpMethod.Put, "approval", null, version);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var approved = (await response.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        approved.ApprovalStatus.ShouldBe(FlightApprovalStatus.Approved);
+        return approved;
+    }
 
     private static void AssertAdministratorCanStartWork(FlightDetailDto detail)
     {

@@ -11,11 +11,13 @@ public sealed class FlightReturnToRampEditTests
     private static readonly DateTimeOffset Now = TestData.Now;
 
     [Fact]
-    public void New_occurrence_requires_departure_and_only_one_open_occurrence_is_allowed()
+    public void New_occurrence_requires_departure_and_approval_and_only_one_open_occurrence_is_allowed()
     {
         var flight = Flight(); var id = Guid.NewGuid();
         flight.SaveReturnToRamp(id, Arrival(), null, [], [], _actor, Now).Error.Code.ShouldBe("Operations.ReturnToRamp.DepartureRequired");
         Depart(flight);
+        flight.SaveReturnToRamp(id, Arrival(), null, [], [], _actor, Now).Error.Code.ShouldBe("Operations.FlightApproval.ReturnToRampRequiresApproval");
+        Approve(flight);
         flight.SaveReturnToRamp(id, Arrival(), null, [], [], _actor, Now).IsSuccess.ShouldBeTrue();
         flight.SaveReturnToRamp(Guid.NewGuid(), Arrival(), null, [], [], _actor, Now).Error.Code.ShouldBe("Operations.ReturnToRamp.OpenExists");
         flight.ReturnToRamps.Count.ShouldBe(1); flight.LastReturnToRampSequence.ShouldBe(1);
@@ -24,7 +26,7 @@ public sealed class FlightReturnToRampEditTests
     [Fact]
     public void Invalid_closure_does_not_mutate_arrival_or_existing_work()
     {
-        var flight = Flight(); Depart(flight); var id = Guid.NewGuid(); var service = Service();
+        var flight = Flight(); Depart(flight); Approve(flight); var id = Guid.NewGuid(); var service = Service();
         var saved = flight.SaveReturnToRamp(id, Arrival(), null, [service], [], _actor, Now).Value;
         var prior = saved.ArrivalDetails;
         var rejected = flight.SaveReturnToRamp(id, RtrArrivalDetails.Create(Now.AddMinutes(-5), _staff, "Changed").Value,
@@ -36,7 +38,7 @@ public sealed class FlightReturnToRampEditTests
     [Fact]
     public void Correction_preserves_record_and_performer_identity_original_author_and_attachments()
     {
-        var flight = Flight(); Depart(flight); var id = Guid.NewGuid(); var service = Service();
+        var flight = Flight(); Depart(flight); Approve(flight); var id = Guid.NewGuid(); var service = Service();
         flight.SaveReturnToRamp(id, Arrival(), null, [service], [], _actor, Now).IsSuccess.ShouldBeTrue();
         var original = flight.ServiceRecords.Single(); var attachmentId = Guid.NewGuid();
         flight.AddServiceAttachment(original.Id, AttachmentDetails.Create("photo.png", "fixture/file.png", "image/png", 100, AttachmentKind.Image).Value,
@@ -55,7 +57,7 @@ public sealed class FlightReturnToRampEditTests
     [Fact]
     public void Closed_previous_occurrence_allows_next_and_cannot_be_reopened_under_it()
     {
-        var flight = Flight(); Depart(flight); var first = Guid.NewGuid(); var closed = TimeWindow.Create(Now, Now.AddMinutes(20)).Value;
+        var flight = Flight(); Depart(flight); Approve(flight); var first = Guid.NewGuid(); var closed = TimeWindow.Create(Now, Now.AddMinutes(20)).Value;
         var service = Service() with { Window = closed };
         service = service with { Performers = [service.Performers.Single() with { Window = closed }] };
         flight.SaveReturnToRamp(first, Arrival(), RtrDepartureDetails.Create(Now.AddMinutes(30), null, _staff, null).Value, [service], [], _actor, Now).IsSuccess.ShouldBeTrue();
@@ -68,7 +70,11 @@ public sealed class FlightReturnToRampEditTests
     [Fact]
     public void Reconciliation_cannot_take_work_from_normal_flight_or_another_occurrence()
     {
-        var flight = Flight(); Depart(flight); var normal = flight.AddService(TestData.Service(), null, TimeWindow.Create(Now, null).Value, null, _actor, Now).Value;
+        var flight = Flight(); Depart(flight);
+        var period = TimeWindow.Create(Now.AddMinutes(-20), Now.AddMinutes(-10)).Value;
+        var normal = flight.AddService(TestData.Service(), null, period, null, _actor, Now,
+            initialPerformers: [new(_staff, period)]).Value;
+        Approve(flight);
         var desired = Service() with { Id = normal.Id };
         flight.SaveReturnToRamp(Guid.NewGuid(), Arrival(), null, [desired], [], _actor, Now).Error.Code.ShouldBe("Operations.ReturnToRamp.WorkIdConflict");
         flight.ReturnToRamps.ShouldBeEmpty(); normal.ReturnToRampId.ShouldBeNull();
@@ -78,8 +84,10 @@ public sealed class FlightReturnToRampEditTests
     public void Work_children_cannot_be_moved_between_normal_and_return_to_ramp_work()
     {
         var flight = Flight(); Depart(flight); var personId = Guid.NewGuid();
-        var normal = flight.AddService(TestData.Service(), null, TimeWindow.Create(Now, null).Value, null, _actor, Now,
-            initialPerformers: [new(_staff, TimeWindow.Create(Now, null).Value, personId)]).Value;
+        var period = TimeWindow.Create(Now.AddMinutes(-20), Now.AddMinutes(-10)).Value;
+        var normal = flight.AddService(TestData.Service(), null, period, null, _actor, Now,
+            initialPerformers: [new(_staff, period, personId)]).Value;
+        Approve(flight);
         var requested = Service();
         requested = requested with { Performers = [requested.Performers.Single() with { Id = personId }] };
         flight.SaveReturnToRamp(Guid.NewGuid(), Arrival(), null, [requested], [], _actor, Now).Error.Code.ShouldBe("Operations.ReturnToRamp.ChildIdConflict");
@@ -87,7 +95,14 @@ public sealed class FlightReturnToRampEditTests
     }
 
     private Flight Flight() => Operations.Domain.Flights.Flight.ScheduleNew(TestData.Customer(), TestData.Station(), TestData.OperationType(), TestData.FlightNo(), TestData.Schedule(), null, [TestData.Service()], [_staff], _actor, Now).Value;
-    private void Depart(Flight flight) => flight.SubmitDeparture(_staff, DepartureDetails.Create(Now.AddMinutes(-10), null, _staff, null).Value, _actor, Now);
+    private void Depart(Flight flight)
+    {
+        var arrival = ArrivalDetails.Create(null, Now.AddMinutes(-20), TestData.AircraftType(), "HZ-ABC", _staff, null).Value;
+        flight.SubmitArrival(_staff, arrival, _actor, Now).IsSuccess.ShouldBeTrue();
+        flight.SubmitDeparture(_staff, DepartureDetails.Create(Now.AddMinutes(-10), null, _staff, null).Value, _actor, Now).IsSuccess.ShouldBeTrue();
+    }
+
+    private void Approve(Flight flight) => flight.Approve(_actor, "Reviewer", Now).IsSuccess.ShouldBeTrue();
     private RtrArrivalDetails Arrival() => RtrArrivalDetails.Create(Now, _staff, null).Value;
     private ReturnToRampServiceInput Service() => new(Guid.NewGuid(), TestData.Service(), null, TimeWindow.Create(Now, null).Value, null,
         [new FlightServicePerformerInput(_staff, TimeWindow.Create(Now, null).Value, Guid.NewGuid())]);

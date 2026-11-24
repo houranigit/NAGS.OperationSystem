@@ -234,7 +234,10 @@ public sealed class MobileAdHocFlightTests
                 case "cancellation":
                     flight.SubmitCancellation(actor, CancellationDetails.Create(Now, null).Value, actorId, Now.AddMinutes(3)).IsSuccess.ShouldBeTrue(); break;
                 case "return-to-ramp":
+                    flight.SubmitArrival(actor, ArrivalDetails.Create(null, Now.AddMinutes(-1),
+                        new(Guid.NewGuid(), "Airbus", "A320"), "HZ-A", actor, null).Value, actorId, Now).IsSuccess.ShouldBeTrue();
                     flight.SubmitDeparture(actor, DepartureDetails.Create(Now, null, actor, null).Value, actorId, Now).IsSuccess.ShouldBeTrue();
+                    flight.Approve(actorId, "Reviewer", Now).IsSuccess.ShouldBeTrue();
                     flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddMinutes(1), actor, null).Value, actorId, Now.AddMinutes(3)).IsSuccess.ShouldBeTrue(); break;
             }
             Db.Entry(flight).Property(item => item.RowVersion).CurrentValue = [90, 0, 0, 0, 0, 0, 0, 0];

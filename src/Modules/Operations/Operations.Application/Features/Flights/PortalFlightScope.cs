@@ -9,19 +9,36 @@ namespace Operations.Application.Features.Flights;
 
 public sealed class PortalFlightScope(IOperationsScope scope, IUserContext user, TimeProvider clock)
 {
+    internal static bool CanReview(IUserContext? caller) =>
+        caller?.UserType == UserType.SystemAdministrator ||
+        caller?.UserType == UserType.StationStaff && caller.HasPermission(OperationsPermissions.Flights.Approve);
+
+    internal Task<Result<FlightOperationAccess>> ResolveApprovalAsync(CancellationToken cancellationToken) =>
+        CanReview(user)
+            ? ResolveReadAsync(cancellationToken)
+            : Task.FromResult<Result<FlightOperationAccess>>(Error.Forbidden(
+                "Flight approval permission is required.", "Operations.Flight.ApprovalForbidden"));
+
     internal async Task<Result<FlightOperationAccess>> ResolveReadAsync(CancellationToken cancellationToken)
     {
-        if (user.UserType != UserType.SystemAdministrator)
+        if (!CanReview(user))
             return await ResolveAsync(cancellationToken);
 
         if (!user.HasPermission(OperationsPermissions.Flights.View) || user.UserId is not { } userId)
             return Denied();
 
-        var resolved = await scope.ResolveAsync(cancellationToken);
+        var resolved = await scope.ResolveForWriteAsync(cancellationToken);
         if (resolved.IsFailure)
             return resolved.Error;
 
-        return resolved.Value.IsAdministrator ? new FlightOperationAccess(null, resolved.Value, userId) : Denied();
+        var portal = resolved.Value;
+        if (portal.IsAdministrator)
+            return new FlightOperationAccess(null, portal, userId);
+
+        if (portal is not { StationId: { } stationId, StaffMemberId: { } staffId })
+            return Denied();
+
+        return new FlightOperationAccess(new MobileFlightScopeContext(stationId, staffId, userId, clock.GetUtcNow()), portal);
     }
 
     internal Task<Result<FlightOperationAccess>> ResolveCorrectionAsync(CancellationToken cancellationToken) =>

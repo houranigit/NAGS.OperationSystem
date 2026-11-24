@@ -98,6 +98,8 @@ public sealed class SaveFlightTaskCommandHandler(IOperationsDbContext db, IMobil
                 return Error.Forbidden("Only its recorded closer or an assigned employee can change or clear End.", "Operations.FlightTask.EndReadOnly");
         }
         if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
+        var approvalLock = flight.EnsureApprovalAllowsEdit();
+        if (approvalLock.IsFailure) return approvalLock.Error;
         var performerIds = input.Performers.Select(item => item.Id).ToArray();
         var toolIds = input.Tools.Select(item => item.Id).ToArray();
         var materialIds = input.Materials.Select(item => item.Id).ToArray();
@@ -208,6 +210,8 @@ public sealed class DeleteFlightTaskCommandHandler(IOperationsDbContext db, IMob
             if (!assignedCorrection && (record.CreatedByUserId != resolved.Value.UserId || record.Window.ToUtc is not null && record.EndedByUserId != resolved.Value.UserId))
                 return Error.Forbidden("Only its creator can delete a task, and another employee's end time must be retained.", "Operations.FlightTask.DeleteReadOnly");
             if (!flight.RowVersion.SequenceEqual(request.RowVersion)) return ConcurrencyErrors.Stale;
+            var approvalLock = flight.EnsureApprovalAllowsEdit();
+            if (approvalLock.IsFailure) return approvalLock.Error;
             var keys = record.Attachments.Select(a => a.Details.StorageKey).ToArray();
             var removed = flight.RemoveTask(record.Id, resolved.Value.UserId, clock.GetUtcNow(),
                 assignedEditorStaffMemberId: assignedCorrection ? resolved.Value.StaffMemberId : null);

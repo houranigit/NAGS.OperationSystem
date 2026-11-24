@@ -28,6 +28,8 @@ internal fun FlightDetail.formCardSummary(listItem: FlightListItem?, targets: Li
         latestReturnToRampSequence = returnToRamps.maxOfOrNull { it.sequence } ?: listItem?.latestReturnToRampSequence,
         activeWorkCount = targets.count { !it.completed }, completedWorkCount = targets.count { it.completed },
         latestCancellationAtUtc = listItem?.latestCancellationAtUtc,
+        approvalStatus = approvalStatus, approvedByDisplayName = approvedByDisplayName,
+        approvedAtUtc = approvedAtUtc, approvedReturnToRampSequence = approvedReturnToRampSequence,
     ).let { summary ->
         if (listItem == null) summary.withVisibilityReports(this) else summary.copy(
             latestDepartureAtUtc = listItem.latestDepartureAtUtc,

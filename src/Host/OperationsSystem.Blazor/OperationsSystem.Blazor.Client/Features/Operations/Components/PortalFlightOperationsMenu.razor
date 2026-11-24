@@ -15,7 +15,7 @@ else if (loadError)
     </button>
 }
 else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork ||
-    CanOpenWork(flight) || CanStartCancellation(flight)))
+    CanReviewApproval(flight) || CanOpenWork(flight) || CanStartCancellation(flight)))
 {
     @if (ShowDivider)
     {
@@ -50,7 +50,7 @@ else if (details is { } flight && (cancellations.Count > 0 || hasSavedWork ||
             }
         </RowActionSubmenu>
     }
-    @if (hasSavedWork && (Auth.IsSystemAdministrator || cancellations.Count == 0))
+    @if (CanReviewApproval(flight) || hasSavedWork && (Auth.IsSystemAdministrator || cancellations.Count == 0))
     {
         <RowActionSubmenu Text="Work Order" Icon="assignment">
             <button type="button" role="menuitem" class="os-row-actions-item" @onclick="OpenWorkAsync">
@@ -90,7 +90,9 @@ else if (!ShowDivider)
 
     private bool CanOperateAsAdministrator => Auth.IsSystemAdministrator &&
         Auth.HasPermission(OperationsPermissions.FlightsView) && Auth.HasPermission(OperationsPermissions.FlightsOperate);
-    private bool ViewOnly => Auth.IsSystemAdministrator && !CanOperateAsAdministrator;
+    private bool ViewOnly => Auth.IsSystemAdministrator
+        ? !CanOperateAsAdministrator
+        : !Auth.HasPermission(OperationsPermissions.FlightsOperate);
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -134,16 +136,20 @@ else if (!ShowDivider)
     private static bool CanOpenWork(PortalFlightOperations flight) =>
         flight.CanSaveArrival || flight.CanSaveDeparture || flight.CanSaveServices || flight.CanSaveTasks || flight.CanSaveReturnsToRamp;
 
-    private bool CanStartCancellation(PortalFlightOperations flight) => flight.CanSaveCancellation && cancellations.Count == 0 &&
+    private static bool CanReviewApproval(PortalFlightOperations flight) => flight.CanApprove || flight.CanUnlock;
+
+    private bool CanStartCancellation(PortalFlightOperations flight) => !flight.IsApprovalLocked &&
+        flight.CanSaveCancellation && cancellations.Count == 0 &&
         (Auth.IsSystemAdministrator ? CanOperateAsAdministrator : !hasSavedWork);
 
-    private bool CanUndoCancellation(PortalFlightCancellation report) => Auth.IsSystemAdministrator
+    private bool CanUndoCancellation(PortalFlightCancellation report) => details is { IsApprovalLocked: false } &&
+        (Auth.IsSystemAdministrator
         ? CanOperateAsAdministrator && report.IsAccountSubmissionBy(Auth.User?.Id)
-        : details?.CurrentStaffMemberId is { } staffId && report.SubmittedByEmployee?.StaffMemberId == staffId;
+        : details.CurrentStaffMemberId is { } staffId && report.SubmittedByEmployee?.StaffMemberId == staffId);
 
     private async Task OpenWorkAsync()
     {
-        if (details is not { } flight || !hasSavedWork && !CanOpenWork(flight))
+        if (details is not { } flight || !CanReviewApproval(flight) && !hasSavedWork && !CanOpenWork(flight))
             return;
 
         ContextMenu.Close();

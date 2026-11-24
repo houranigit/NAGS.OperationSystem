@@ -8,7 +8,8 @@ namespace OperationsSystem.Blazor.Client.Features.Operations.Components;
 
 public partial class PortalFlightWorkDialog
 {
-    private static readonly string[] StepLabels = ["Arrival", "Services", "Tasks", "Departure", "Returns to ramp"];
+    private static readonly string[] WorkStepLabels = ["Arrival", "Services", "Tasks", "Departure", "Returns to ramp"];
+    private static readonly string[] CancellationStepLabels = ["Cancellation"];
     private static readonly Guid UnknownCustomer = new("50000000-0000-0000-0000-000000000001");
     private const string ArrivalTimeField = "arrival-time";
     private const string AircraftField = "arrival-aircraft";
@@ -50,21 +51,29 @@ public partial class PortalFlightWorkDialog
     private PortalFlightValidation validation = new();
     private int validationFocusAttempt;
     private bool requireArrivalForValidation;
-    private bool requireDepartureForValidation;
     private bool savedChanges;
     private string? error;
     private bool loading = true;
     private bool saving;
+    private bool changingApproval;
     private int step;
 
+    private string[] StepLabels => IsCancellationReview ? CancellationStepLabels : WorkStepLabels;
+    private bool IsCancellationReview => flight is
+    {
+        CancellationSubmissions.Count: > 0, ArrivalSubmissions.Count: 0, DepartureSubmissions.Count: 0,
+        Services.Count: 0, Tasks.Count: 0, ReturnToRamps.Count: 0
+    };
+
+    private bool NormalWorkReadOnly => ViewOnly || IsCancellationReview || flight?.IsApprovalLocked == true;
     private bool RequiresArrivalRemarks => flight?.IsAdHocFlight == true && flight.CustomerId == UnknownCustomer;
-    private bool CanEditArrival => !ViewOnly && flight is { CanSaveArrival: true } data &&
+    private bool CanEditArrival => !NormalWorkReadOnly && flight is { CanSaveArrival: true } data &&
         (!data.IsUnassignedSearchFlight || arrivalSource is null || IsStaffSubmitter(arrivalSource.SubmittedByEmployee, data.CurrentStaffMemberId));
 
-    private bool CanEditDeparture => !ViewOnly && flight is { CanSaveDeparture: true } data &&
+    private bool CanEditDeparture => !NormalWorkReadOnly && flight is { CanSaveDeparture: true } data &&
         (!data.IsUnassignedSearchFlight || departureSource is null || IsStaffSubmitter(departureSource.SubmittedByEmployee, data.CurrentStaffMemberId));
 
-    private bool CanEditNormalWork => !ViewOnly && flight is { } data && (data.CanSaveArrival || data.CanSaveDeparture ||
+    private bool CanEditNormalWork => !NormalWorkReadOnly && flight is { } data && (data.CanSaveArrival || data.CanSaveDeparture ||
         data.CanSaveServices || data.CanSaveTasks || services.Concat(tasks).Any(row => row.CanEdit || row.CanSetEnd || row.CanDelete));
 
     private DateTimeOffset? ActualArrival => arrivalTime.TryReadUtc(out var time, out _) ? time : null;
@@ -81,8 +90,8 @@ public partial class PortalFlightWorkDialog
         }
     }
 
-    private bool CanDraftReturnToRamp => !ViewOnly && flight is { CancellationSubmissions.Count: 0 } data &&
-        (data.CanSaveReturnsToRamp || data.CanSaveDeparture && data.DepartureSubmissions.Count == 0);
+    private bool CanDraftReturnToRamp => !ViewOnly &&
+        flight is { IsApprovalLocked: true, CancellationSubmissions.Count: 0, CanSaveReturnsToRamp: true };
 
     private bool CanAddReturnToRamp => CanDraftReturnToRamp && ActualDeparture.HasValue &&
         flight!.ReturnToRamps.All(item => !item.IsOpen) && pendingReturns.All(item => !item.IsOpen);
@@ -106,23 +115,11 @@ public partial class PortalFlightWorkDialog
         {
             var data = await Operations.GetPortalFlightOperationsAsync(FlightId, lifetime.Token);
             zone = StationTimeZone.FromId(data.StationTimeZoneId);
-            lookups = ViewOnly
-                ? new([], [], [], [], [], [], [], false)
-                : await PortalWorkLookups.LoadAsync(MasterData, data, occurrenceOnly: false,
-                    administratorEntry: AdministratorEntry, ct: lifetime.Token);
+            lookups = await LoadWorkLookupsAsync(data);
+            flight = data;
             services = data.Services.Select(item => PortalWorkDraft.From(item, zone)).ToList();
             tasks = data.Tasks.Select(item => PortalWorkDraft.From(item, zone)).ToList();
-            if (!ViewOnly && (data.CanAddServices ?? data.CanSaveServices) && (AdministratorEntry || data.CurrentStaffMemberId.HasValue))
-            {
-                var staffId = data.CurrentStaffMemberId;
-                var staff = lookups.Staff.FirstOrDefault(item => item.Id == staffId);
-                foreach (var planned in data.PlannedServices.Where(item => !item.IsAircraftPerLanding
-                    && lookups.Services.Any(choice => choice.Id == item.ServiceId)
-                    && data.Services.All(existing => existing.ServiceId != item.ServiceId)))
-                    services.Add(PortalWorkDraft.FromPlan(planned, staffId, staff, zone));
-            }
-
-            flight = data;
+            AddPlannedServiceDrafts(data);
             SetArrival(data.ArrivalSubmissions.OrderByDescending(item => IsStaffSubmitter(item.SubmittedByEmployee, data.CurrentStaffMemberId))
                 .ThenByDescending(item => item.IsAccepted).FirstOrDefault());
             SetDeparture(data.DepartureSubmissions.OrderByDescending(item => IsStaffSubmitter(item.SubmittedByEmployee, data.CurrentStaffMemberId))
@@ -145,6 +142,25 @@ public partial class PortalFlightWorkDialog
         {
             loading = false;
         }
+    }
+
+    private Task<PortalWorkLookups> LoadWorkLookupsAsync(PortalFlightOperations data) => ViewOnly
+        ? Task.FromResult(new PortalWorkLookups([], [], [], [], [], [], [], false))
+        : PortalWorkLookups.LoadAsync(MasterData, data, occurrenceOnly: false,
+            administratorEntry: AdministratorEntry, ct: lifetime.Token);
+
+    private void AddPlannedServiceDrafts(PortalFlightOperations data)
+    {
+        if (NormalWorkReadOnly || !(data.CanAddServices ?? data.CanSaveServices) ||
+            !AdministratorEntry && !data.CurrentStaffMemberId.HasValue)
+            return;
+
+        var staffId = data.CurrentStaffMemberId;
+        var staff = lookups.Staff.FirstOrDefault(item => item.Id == staffId);
+        foreach (var planned in data.PlannedServices.Where(item => !item.IsAircraftPerLanding
+            && lookups.Services.Any(choice => choice.Id == item.ServiceId)
+            && data.Services.All(existing => existing.ServiceId != item.ServiceId)))
+            services.Add(PortalWorkDraft.FromPlan(planned, staffId, staff, zone));
     }
 
     private void SetArrival(PortalFlightArrival? source)
@@ -251,12 +267,7 @@ public partial class PortalFlightWorkDialog
             return;
         }
 
-        if (!ViewOnly && index == 4)
-        {
-            if (!ValidateReturnToRampEntry())
-                return;
-        }
-        else if (!ViewOnly && index > 0)
+        if (!NormalWorkReadOnly && index is > 0 and < 4)
         {
             validation.ClearStep(0);
             requireArrivalForValidation = true;
@@ -316,7 +327,7 @@ public partial class PortalFlightWorkDialog
                 ReadTasks(validation);
                 break;
             case 3:
-                ReadDeparture(validation, requireDeparture: requireDepartureForValidation);
+                ReadDeparture(validation);
                 break;
         }
     }
@@ -349,19 +360,12 @@ public partial class PortalFlightWorkDialog
             AdministratorEntry ? receivedByStaffMemberId : null);
     }
 
-    private PortalFlightDepartureRequest? ReadDeparture(PortalFlightValidation errors, bool requireDeparture = false)
+    private PortalFlightDepartureRequest? ReadDeparture(PortalFlightValidation errors)
     {
-        if (!DepartureChanged() && (!requireDeparture || departureSource is not null))
+        if (!DepartureChanged() || !CanEditDeparture)
             return null;
 
         errors.Step = 3;
-        if (!CanEditDeparture)
-        {
-            if (requireDeparture && departureSource is null)
-                errors.Add(DepartureTimeField, "Departure details are required before adding a return to ramp.");
-            return null;
-        }
-
         var atd = departureTime.Read("Actual time of departure", errors, DepartureTimeField, required: true);
         if (ArrivalFor(departureSource?.SubmittedByEmployee?.StaffMemberId ?? flight!.CurrentStaffMemberId) is { } ata &&
             atd is { } end && end < ata)
@@ -394,6 +398,22 @@ public partial class PortalFlightWorkDialog
             .Select(pair => pair.row.ToTaskChange(pair.index + 1, errors, closing)).ToArray();
     }
 
+    private PortalWorkBatchRequest? ReadNormalWork()
+    {
+        if (NormalWorkReadOnly)
+            return null;
+
+        var needsArrival = requireArrivalForValidation || DepartureChanged() ||
+            services.Concat(tasks).Any(row => !row.Deleted && row.HasChanges());
+        var arrival = ReadArrival(validation, needsArrival);
+        var servicesToSave = ReadServices(validation);
+        var tasksToSave = ReadTasks(validation);
+        var departure = ReadDeparture(validation);
+        return arrival is null && departure is null && servicesToSave.Length == 0 && tasksToSave.Length == 0
+            ? null
+            : new(arrival, departure, servicesToSave, tasksToSave);
+    }
+
     private async Task SaveAsync()
     {
         if (flight is null || saving || ViewOnly)
@@ -417,12 +437,7 @@ public partial class PortalFlightWorkDialog
 
         requireArrivalForValidation = requireArrivalForValidation && validation.HasErrorsInStep(0);
         validation = new();
-        var needsArrival = requireArrivalForValidation || DepartureChanged() || pendingReturns.Count > 0 ||
-            services.Concat(tasks).Any(row => !row.Deleted && row.HasChanges());
-        var arrival = ReadArrival(validation, needsArrival);
-        var serviceChanges = ReadServices(validation);
-        var taskChanges = ReadTasks(validation);
-        var departure = ReadDeparture(validation, requireDeparture: pendingReturns.Count > 0);
+        var request = ReadNormalWork();
         if (validation.Count > 0)
         {
             FocusFirstInvalidStep();
@@ -433,22 +448,20 @@ public partial class PortalFlightWorkDialog
         int? savingReturn = null;
         try
         {
-            var acknowledged = false;
-            if ((arrival is not null || departure is not null) && flight.CancellationSubmissions.Count > 0)
+            if (request is not null)
             {
-                acknowledged = await DialogService.Confirm(
-                    "This flight has a cancellation report. Save the operational report?",
-                    "Conflicting flight report", new ConfirmOptions { OkButtonText = "Save report", CancelButtonText = "Go back" }) == true;
-                if (!acknowledged)
-                    return;
-            }
+                if ((request.Arrival is not null || request.Departure is not null) && flight.CancellationSubmissions.Count > 0)
+                {
+                    if (await DialogService.Confirm("This flight has a cancellation report. Save the operational report?",
+                        "Conflicting flight report", new ConfirmOptions { OkButtonText = "Save report", CancelButtonText = "Go back" }) != true)
+                        return;
 
-            var request = new PortalWorkBatchRequest(
-                arrival is null ? null : arrival with { AcknowledgeConflictingSubmission = acknowledged },
-                departure is null ? null : departure with { AcknowledgeConflictingSubmission = acknowledged },
-                serviceChanges, taskChanges);
-            if (arrival is not null || departure is not null || serviceChanges.Length > 0 || taskChanges.Length > 0)
-            {
+                    request = request with
+                    {
+                        Arrival = request.Arrival is { } arrival ? arrival with { AcknowledgeConflictingSubmission = true } : null,
+                        Departure = request.Departure is { } departure ? departure with { AcknowledgeConflictingSubmission = true } : null
+                    };
+                }
                 var saved = await Operations.SavePortalFlightWorkAsync(FlightId, request, flight.RowVersion, lifetime.Token);
                 AcceptNormalSave(saved);
             }
@@ -479,6 +492,47 @@ public partial class PortalFlightWorkDialog
         }
     }
 
+    private async Task ChangeApprovalAsync(bool unlock)
+    {
+        if (flight is not { } current || saving || WorkChanged() || WorkFilesLoading() ||
+            !(unlock ? current.CanUnlock : current.CanApprove))
+            return;
+
+        saving = true;
+        changingApproval = true;
+        error = null;
+        validation = new();
+        try
+        {
+            var updated = unlock
+                ? await Operations.UnlockPortalFlightAsync(FlightId, current.RowVersion, lifetime.Token)
+                : await Operations.ApprovePortalFlightAsync(FlightId, current.RowVersion, lifetime.Token);
+
+            AcceptNormalSave(updated);
+            services.RemoveAll(row => row.IsPlanned);
+            if (unlock)
+                lookups = await LoadWorkLookupsAsync(updated);
+            AddPlannedServiceDrafts(updated);
+        }
+        catch (ApiException ex)
+        {
+            error = unlock && flight?.ApprovalStatus == FlightApprovalStatuses.Unlocked
+                ? "The flight was unlocked. Reopen it to load the available reference choices."
+                : ex.ToDisplayMessage(unlock ? "Could not unlock the flight." : "Could not approve the flight.");
+        }
+        catch (JSException)
+        {
+            error = unlock && flight?.ApprovalStatus == FlightApprovalStatuses.Unlocked
+                ? "The flight was unlocked. Reopen it to load the available reference choices."
+                : "The approval change could not be confirmed. Reopen the flight to check its status.";
+        }
+        finally
+        {
+            changingApproval = false;
+            saving = false;
+        }
+    }
+
     private void AcceptNormalSave(PortalFlightOperations saved)
     {
         savedChanges = true;
@@ -498,22 +552,6 @@ public partial class PortalFlightWorkDialog
     {
         step = validation.FirstInvalidStep;
         validationFocusAttempt++;
-    }
-
-    private bool ValidateReturnToRampEntry()
-    {
-        validation = new();
-        requireArrivalForValidation = true;
-        requireDepartureForValidation = true;
-        ReadArrival(validation, requireArrival: true);
-        ReadServices(validation);
-        ReadTasks(validation);
-        ReadDeparture(validation, requireDeparture: true);
-        if (validation.Count == 0)
-            return true;
-
-        FocusFirstInvalidStep();
-        return false;
     }
 
     private async Task OpenReturnToRampAsync(Guid? occurrenceId)
@@ -542,7 +580,7 @@ public partial class PortalFlightWorkDialog
             {
                 [nameof(PortalReturnToRampDialog.FlightId)] = FlightId,
                 [nameof(PortalReturnToRampDialog.OccurrenceId)] = occurrenceId,
-                [nameof(PortalReturnToRampDialog.ViewOnly)] = ViewOnly || WorkChanged(),
+                [nameof(PortalReturnToRampDialog.ViewOnly)] = ViewOnly || !flight.CanEditReturnToRamp(occurrence) || WorkChanged(),
                 [nameof(PortalReturnToRampDialog.AdministratorEntry)] = AdministratorEntry
             },
             PortalWorkDialogLayout.CreateOptions());
@@ -553,9 +591,6 @@ public partial class PortalFlightWorkDialog
     private async Task OpenReturnToRampDraftAsync(Guid? id)
     {
         if (flight is null || !CanDraftReturnToRamp || id is null && !CanAddReturnToRamp)
-            return;
-
-        if (!ValidateReturnToRampEntry())
             return;
 
         var index = pendingReturns.FindIndex(item => item.Id == id);

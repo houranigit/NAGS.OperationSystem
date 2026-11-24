@@ -114,7 +114,7 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         (IsPerLanding || OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType ||
          _assignedEmployees.Any(employee => employee.Employee.StaffMemberId == id));
 
-    public bool CanEditAdHocDetails(Guid userId) => OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
+    public bool CanEditAdHocDetails(Guid userId) => !IsApprovalLocked && OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
         CreatedByUserId == userId && !HasOperationalRecords();
 
     public bool HasOperationalRecords() => _arrivalSubmissions.Count > 0 || _departureSubmissions.Count > 0 ||
@@ -124,6 +124,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
     public Result UpdateAdHocDetails(CustomerSnapshot customer, FlightNumber number, ScheduledTime schedule,
         Guid userId, DateTimeOffset now)
     {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval;
         if (OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType || CreatedByUserId != userId)
             return Error.Forbidden("Only its creator can change AdHoc flight details.", "Operations.AdHoc.DetailsReadOnly");
         if (Customer == customer && FlightNumber == number && Schedule == schedule) return Result.Success();
@@ -139,6 +141,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
 
     public Result ChangeFlightNumber(FlightNumber newNumber, DateTimeOffset now)
     {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval;
         if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType) return AdHocDetailsBoundary();
         var numberCheck = ValidateCustomerFlightNumber(Customer, newNumber);
         if (numberCheck.IsFailure)
@@ -158,6 +162,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         IReadOnlyList<StaffMemberSnapshot>? assignedEmployees,
         DateTimeOffset now)
     {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval;
         if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType) return AdHocDetailsBoundary();
         var check = PerLandingPolicy.ValidatePlannedServices(plannedServices);
         if (check.IsFailure)
@@ -177,6 +183,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
 
     public Result ReplaceAssignedEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
     {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval;
         if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && employees.Count > 0) return AdHocAssignmentError();
         if (IsPerLanding && employees.Count > 0)
             return PerLandingAssignmentError();
@@ -187,6 +195,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
 
     public Result InviteEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
     {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval;
         if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && employees.Count > 0) return AdHocAssignmentError();
         if (IsPerLanding)
             return PerLandingAssignmentError();
@@ -211,6 +221,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         Guid? targetSubmissionId = null,
         bool allowUnlinkedSubmitter = false)
     {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval.Error;
         var staffId = submittedByEmployee?.StaffMemberId;
         if (staffId == Guid.Empty || staffId is null && !allowUnlinkedSubmitter)
             return Error.Validation("Submitting employee is required.", "Operations.CancellationSubmission.SubmittedByEmployeeRequired");
@@ -262,6 +274,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
     /// <summary>Removes only the caller's identified cancellation. Existing cancellation submissions must be loaded.</summary>
     public Result RevertCancellation(Guid? staffMemberId, Guid submissionId, DateTimeOffset now, Guid? userId = null)
     {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval;
         if (staffMemberId == Guid.Empty || submissionId == Guid.Empty || staffMemberId is null && (userId is null || userId == Guid.Empty))
             return Error.Validation("The submitter and cancellation submission are required.", "Operations.CancellationSubmission.IdentityRequired");
         var own = _cancellationSubmissions.SingleOrDefault(item => item.IsOwnedBy(staffMemberId, userId));
@@ -295,6 +309,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         Guid? targetSubmissionId = null,
         bool allowUnlinkedSubmitter = false)
     {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval.Error;
         var staffId = submittedByEmployee?.StaffMemberId;
         if (staffId == Guid.Empty || staffId is null && !allowUnlinkedSubmitter)
             return Error.Validation("Submitting employee is required.", "Operations.ArrivalSubmission.SubmittedByEmployeeRequired");
@@ -348,6 +364,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         Guid? targetSubmissionId = null,
         bool allowUnlinkedSubmitter = false)
     {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval.Error;
         var staffId = submittedByEmployee?.StaffMemberId;
         if (staffId == Guid.Empty || staffId is null && !allowUnlinkedSubmitter)
             return Error.Validation("Submitting employee is required.", "Operations.DepartureSubmission.SubmittedByEmployeeRequired");
@@ -932,7 +950,7 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         UpdatedAtUtc = now.ToUniversalTime();
     }
 
-    /// <summary>Starts an RTR after a recorded flight departure. Load all occurrences and operational records before mutation.</summary>
+    /// <summary>Starts an RTR after approval. Load all occurrences and operational records before mutation.</summary>
     public Result<FlightReturnToRamp> StartReturnToRamp(RtrArrivalDetails? arrivalDetails, Guid userId, DateTimeOffset now)
     {
         var check = ValidateReturnToRampWrite(userId);
@@ -942,6 +960,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
             return Error.Validation("RTR arrival details are required.", "Operations.ReturnToRamp.ArrivalDetailsRequired");
         if (_departureSubmissions.Count == 0)
             return Error.Conflict("A flight departure must be recorded before adding RTR.", "Operations.ReturnToRamp.DepartureRequired");
+        var approval = EnsureApprovalAllowsReturnToRamp(Guid.Empty);
+        if (approval.IsFailure) return approval.Error;
         if (_returnToRamps.Any(item => item.IsOpen))
             return Error.Conflict("Close the open RTR before adding another occurrence.", "Operations.ReturnToRamp.OpenExists");
         if (LastReturnToRampSequence == int.MaxValue)
@@ -951,6 +971,7 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
             now.ToUniversalTime());
         _returnToRamps.Add(record);
         LastReturnToRampSequence = record.Sequence;
+        ApprovalStatus = FlightApprovalStatus.PendingRtr;
         UpdatedAtUtc = now.ToUniversalTime();
         return record;
     }
@@ -1002,6 +1023,9 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         _services.RemoveAll(item => item.ReturnToRampId == returnToRampId);
         _tasks.RemoveAll(item => item.ReturnToRampId == returnToRampId);
         _returnToRamps.Remove(found.Value);
+        if (ApprovalStatus == FlightApprovalStatus.PendingRtr &&
+            _returnToRamps.All(item => item.Sequence <= ApprovedReturnToRampSequence))
+            ApprovalStatus = FlightApprovalStatus.Approved;
         UpdatedAtUtc = now.ToUniversalTime();
         return found.Value;
     }
@@ -1067,15 +1091,20 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         if (check.IsFailure)
             return check.Error;
         var record = _returnToRamps.SingleOrDefault(item => item.Id == returnToRampId);
-        return record is null
-            ? Error.NotFound("RTR record was not found on this flight.", "Operations.ReturnToRamp.NotFound")
-            : record;
+        if (record is null)
+            return Error.NotFound("RTR record was not found on this flight.", "Operations.ReturnToRamp.NotFound");
+        var approval = EnsureApprovalAllowsReturnToRamp(returnToRampId);
+        return approval.IsFailure ? approval.Error : record;
     }
 
-    private Result ValidateReturnToRampScope(Guid? returnToRampId) =>
-        returnToRampId.HasValue && _returnToRamps.All(item => item.Id != returnToRampId.Value)
-            ? Error.NotFound("RTR record was not found on this flight.", "Operations.ReturnToRamp.NotFound")
-            : Result.Success();
+    private Result ValidateReturnToRampScope(Guid? returnToRampId)
+    {
+        if (returnToRampId is not { } id)
+            return EnsureApprovalAllowsEdit();
+        if (_returnToRamps.All(item => item.Id != id))
+            return Error.NotFound("RTR record was not found on this flight.", "Operations.ReturnToRamp.NotFound");
+        return EnsureApprovalAllowsReturnToRamp(id);
+    }
 
     private Result ValidateReturnToRampService(Guid? returnToRampId, TimeWindow? window, IEnumerable<TimeWindow?> employees) =>
         returnToRampId is { } id

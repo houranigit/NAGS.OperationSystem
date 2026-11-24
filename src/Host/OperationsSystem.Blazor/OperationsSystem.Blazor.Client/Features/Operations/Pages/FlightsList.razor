@@ -73,20 +73,31 @@
                         <StatusBadge Label="@(status?.Label ?? flight.Status ?? "—")" Tone="@(status?.Tone ?? "neutral")" Icon="@(status?.Icon)" />
                     </Template>
                 </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FlightListItem" Title="Approval status" Sortable="false" Width="160px">
+                    <Template Context="flight">
+                        @{
+                            var approval = ApprovalBadge(flight.ApprovalStatus);
+                        }
+                        <StatusBadge Label="@approval.Label" Tone="@approval.Tone" Icon="@approval.Icon" />
+                    </Template>
+                </RadzenDataGridColumn>
             </Columns>
             <RowActions Context="flight">
-                @if (CanOpenFlightOperations || Auth.HasPermission(OperationsPermissions.FlightsUpdate))
+                @{
+                    var canEditSchedule = !flight.IsApprovalLocked && Auth.HasPermission(OperationsPermissions.FlightsUpdate);
+                }
+                @if (CanOpenFlightOperations || canEditSchedule)
                 {
                     <RowActionMenu>
                         <ChildContent>
                             <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
-                                       OnClick="@(() => OpenEditAsync(flight.Id))" />
+                                       Visible="@canEditSchedule" OnClick="@(() => OpenEditAsync(flight.Id))" />
                         </ChildContent>
                         <MenuContent>
                             @if (CanOpenFlightOperations)
                             {
                                 <PortalFlightOperationsMenu @key="flight.Id" FlightId="@flight.Id"
-                                    ShowDivider="@Auth.HasPermission(OperationsPermissions.FlightsUpdate)" Changed="@ReloadAsync" />
+                                    ShowDivider="@canEditSchedule" Changed="@ReloadAsync" />
                             }
                         </MenuContent>
                     </RowActionMenu>
@@ -134,8 +145,17 @@
     private IReadOnlyList<OperationTypeFilterOption> operationTypeOptions = [];
     private bool CanOpenFlightOperations => Auth.IsSystemAdministrator
         ? Auth.HasPermission(OperationsPermissions.FlightsView)
-        : Auth.User is { UserType: UserTypes.StationStaff, ExternalReferenceId: not null }
+        : Auth.HasPermission(OperationsPermissions.FlightsApprove)
+          || Auth.User is { UserType: UserTypes.StationStaff, ExternalReferenceId: not null }
           && Auth.HasPermission(OperationsPermissions.FlightsOperate);
+
+    private static (string Label, string Tone, string? Icon) ApprovalBadge(string? status) => status switch
+    {
+        FlightApprovalStatuses.Approved => ("Approved", "success", "lock"),
+        FlightApprovalStatuses.Unlocked => ("Unlocked", "info", "lock_open"),
+        FlightApprovalStatuses.PendingRtr => ("Pending RTR", "warning", "lock"),
+        _ => ("Not Approved", "gray", null)
+    };
 
     private int ActiveFilterCount =>
         (stationFilter.HasValue ? 1 : 0)
