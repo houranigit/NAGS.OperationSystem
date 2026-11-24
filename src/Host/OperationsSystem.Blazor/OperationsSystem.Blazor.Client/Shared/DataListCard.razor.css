@@ -1,6 +1,6 @@
 /* ==========================================================================
    DataListCard — the standard list shell.
-   The card hugs its content: toolbar + grid + pager. The card height grows and
+   The list hugs its content: toolbar + grid + pager. The list grows and
    shrinks with the number of rows on the current page; the page itself scrolls
    when the content is taller than the viewport. The user controls how many rows
    are shown via the pager's "rows per page" selector.
@@ -9,11 +9,6 @@
 .os-list-card {
     display: flex;
     flex-direction: column;
-    padding: 0;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    overflow: visible;
 }
 
 /* --- Toolbar ------------------------------------------------------------- */
@@ -195,11 +190,6 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--os-space-3);
-    padding: var(--os-space-3);
-    border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-sm);
-    background: var(--os-color-surface);
-    box-shadow: var(--os-shadow-sm);
 }
 
 .os-list-filter-panel-inner ::deep .os-filter {
