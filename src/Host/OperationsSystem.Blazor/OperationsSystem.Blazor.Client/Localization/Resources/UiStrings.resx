@@ -781,6 +781,8 @@
   <data name="Flights.StaOn" xml:space="preserve"><value>STA {0}</value></data>
   <data name="Flights.OnGroundFor" xml:space="preserve"><value>On ground {0}</value></data>
   <data name="Flights.OnGroundSince" xml:space="preserve"><value>On ground since {0}</value></data>
+  <data name="Flights.RtrFor" xml:space="preserve"><value>RTR {0}</value></data>
+  <data name="Flights.RtrSince" xml:space="preserve"><value>RTR since {0}</value></data>
   <data name="Flights.TotalOne" xml:space="preserve"><value>{0:N0} flight</value></data>
   <data name="Flights.TotalMany" xml:space="preserve"><value>{0:N0} flights</value></data>
   <data name="Notifications.Title" xml:space="preserve"><value>Notifications</value></data>

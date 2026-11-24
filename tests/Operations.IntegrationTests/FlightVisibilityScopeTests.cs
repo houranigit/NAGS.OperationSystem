@@ -256,6 +256,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         var userId = (await admin.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("id").GetGuid();
         var now = DateTimeOffset.UtcNow;
         var actualArrival = now.AddMinutes(-45);
+        var actualReturn = now.AddMinutes(-15);
         var employee = new StaffMemberSnapshot(Guid.NewGuid(), "Report employee", "REPORT");
         var cancelingEmployee = new StaffMemberSnapshot(Guid.NewGuid(), "Canceling employee", "CANCEL");
         var scenarios = new (string Number, string Status, int MinutesUntilSta)[]
@@ -289,13 +290,20 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
                     userId, now.AddSeconds(1)).IsSuccess.ShouldBeTrue();
             }
             if (status is "Departed" or "ReturnedToRamp")
+            {
                 flight.SubmitDeparture(employee, DepartureDetails.Create(now.AddMinutes(-30), null, employee, null).Value,
                     userId, now).IsSuccess.ShouldBeTrue();
-            if (status == "ReturnedToRamp")
-            {
-                flight.Approve(userId, "Reviewer", now, 1).IsSuccess.ShouldBeTrue();
-                flight.StartReturnToRamp(RtrArrivalDetails.Create(now.AddMinutes(-15), employee, null).Value,
+                flight.Approve(userId, "Reviewer", now, status == "Departed" ? 1 : 2).IsSuccess.ShouldBeTrue();
+                var closedReturn = flight.StartReturnToRamp(
+                    RtrArrivalDetails.Create(now.AddMinutes(-25), employee, null).Value, userId, now).Value;
+                var workWindow = TimeWindow.Create(now.AddMinutes(-24), now.AddMinutes(-21)).Value;
+                flight.AddTask(FlightTaskType.Minor, null, null, workWindow, null, userId, now, closedReturn.Id,
+                    [new(employee, workWindow)]).IsSuccess.ShouldBeTrue();
+                flight.CloseReturnToRamp(closedReturn.Id, RtrDepartureDetails.Create(now.AddMinutes(-20), null, employee, null).Value,
                     userId, now).IsSuccess.ShouldBeTrue();
+                if (status == "ReturnedToRamp")
+                    flight.StartReturnToRamp(RtrArrivalDetails.Create(actualReturn, employee, null).Value,
+                        userId, now).IsSuccess.ShouldBeTrue();
             }
             if (status is "Canceled" or "Conflict")
                 flight.SubmitCancellation(cancelingEmployee, CancellationDetails.Create(now, null).Value,
@@ -316,6 +324,8 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
             .ShouldBe(scenarios.Select(scenario => (scenario.Number, scenario.Status)));
         unfiltered.Items.Single(item => item.Status == "OnGround").ActualArrivalUtc.ShouldBe(actualArrival);
         unfiltered.Items.Single(item => item.Status == "ArrivalNotRecorded").ActualArrivalUtc.ShouldBeNull();
+        unfiltered.Items.Single(item => item.Status == "ReturnedToRamp").ReturnedToRampUtc.ShouldBe(actualReturn);
+        unfiltered.Items.Single(item => item.Status == "Departed").ReturnedToRampUtc.ShouldBeNull();
 
         var filter = $"{path}&status=duesoon,%20ReturnedToRamp,DueSoon&pageSize=1";
         var first = (await admin.GetFromJsonAsync<PagedList<PortalFlightStatus>>($"{filter}&page=1"))!;

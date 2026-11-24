@@ -66,6 +66,8 @@ public static class UiStrings
         public static string StaOn(string date) => string.Format(UiText.Get("Flights.StaOn", "STA {0}"), date);
         public static string OnGroundFor(string duration) => string.Format(UiText.Get("Flights.OnGroundFor", "On ground {0}"), duration);
         public static string OnGroundSince(string date) => string.Format(UiText.Get("Flights.OnGroundSince", "On ground since {0}"), date);
+        public static string RtrFor(string duration) => string.Format(UiText.Get("Flights.RtrFor", "RTR {0}"), duration);
+        public static string RtrSince(string date) => string.Format(UiText.Get("Flights.RtrSince", "RTR since {0}"), date);
         public static string TotalCount(int count) => string.Format(
             count == 1 ? UiText.Get("Flights.TotalOne", "{0:N0} flight") : UiText.Get("Flights.TotalMany", "{0:N0} flights"),
             count);

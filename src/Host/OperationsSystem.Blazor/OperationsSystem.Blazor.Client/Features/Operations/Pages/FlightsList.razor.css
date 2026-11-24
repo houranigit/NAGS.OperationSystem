@@ -104,6 +104,10 @@
     color: var(--os-color-primary-strong);
 }
 
+.os-role-cell-icon {
+    background: var(--os-color-surface);
+}
+
 .ofl-flight-type-badge {
     display: inline-flex;
     align-items: center;
@@ -127,4 +131,8 @@
 
 .ofl-flight-status.os-pill--critical {
     color: var(--os-color-danger-strong);
+}
+
+.ofl-flight-status.os-pill--info {
+    color: var(--os-color-flight-on-ground);
 }

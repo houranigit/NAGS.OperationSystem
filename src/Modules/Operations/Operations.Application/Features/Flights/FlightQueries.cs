@@ -84,6 +84,8 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 ActualArrivalUtc = flight.ArrivalSubmissions.OrderByDescending(arrival => arrival.IsAccepted)
                     .ThenBy(arrival => arrival.CreatedAtUtc).ThenBy(arrival => arrival.Id)
                     .Select(arrival => (DateTimeOffset?)arrival.Details.Ata).FirstOrDefault(),
+                ReturnedToRampUtc = flight.ReturnToRamps.Where(ramp => ramp.DepartureDetails == null)
+                    .Select(ramp => (DateTimeOffset?)ramp.ArrivalDetails.ArrivedAtUtc).FirstOrDefault(),
                 AircraftTypeModel = flight.AircraftType == null ? null : flight.AircraftType.Model,
                 HasArrivalSubmission = hasArrival,
                 HasDepartureSubmission = hasDeparture,
@@ -124,7 +126,8 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             versions.TryGetValue(item.CustomerId, out var version) ? version : CustomerLogoVersions.None,
             item.StationId, item.HasArrivalSubmission, item.HasDepartureSubmission, item.HasCancellationSubmission,
             item.Status.ToString(), item.ApprovalStatus, item.ApprovedByDisplayName, item.ApprovedAtUtc,
-            item.ApprovedReturnToRampSequence, item.ApprovalNumber, item.IsAdHocFlight, item.ActualArrivalUtc)).ToList();
+            item.ApprovedReturnToRampSequence, item.ApprovalNumber, item.IsAdHocFlight, item.ActualArrivalUtc,
+            item.ReturnedToRampUtc)).ToList();
         return paging.ToResult(versionedItems, total);
     }
 }

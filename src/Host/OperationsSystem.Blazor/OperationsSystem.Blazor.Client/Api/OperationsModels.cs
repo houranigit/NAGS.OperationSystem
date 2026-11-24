@@ -21,7 +21,8 @@ public sealed record FlightListItem(
     int ApprovedReturnToRampSequence = 0,
     string? WorkOrderNumber = null,
     bool IsAdHocFlight = false,
-    DateTimeOffset? ActualArrivalUtc = null)
+    DateTimeOffset? ActualArrivalUtc = null,
+    DateTimeOffset? ReturnedToRampUtc = null)
 {
     internal bool IsApprovalLocked => FlightApprovalStatuses.IsLocked(ApprovalStatus);
 }

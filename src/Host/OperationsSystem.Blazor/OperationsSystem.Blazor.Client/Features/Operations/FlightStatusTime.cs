@@ -7,19 +7,38 @@ namespace OperationsSystem.Blazor.Client.Features.Operations;
 internal static class FlightStatusTime
 {
     private static readonly TimeSpan FullDateAge = TimeSpan.FromDays(7);
+    private static readonly TimeSpan DueSoonWindow = TimeSpan.FromMinutes(30);
 
-    public static string? Format(FlightListItem flight, DateTimeOffset now) => flight.Status switch
+    public static (string? Status, string? Text) At(FlightListItem flight, DateTimeOffset now)
     {
-        "OnGround" when flight.ActualArrivalUtc is { } ata && ata <= now =>
-            now - ata >= FullDateAge
-                ? UiStrings.Flights.OnGroundSince(Date(flight, ata))
-                : UiStrings.Flights.OnGroundFor(Elapsed(now - ata)),
-        "ArrivalNotRecorded" when flight.ScheduledArrivalUtc <= now =>
-            AwaitingArrival(flight, now - flight.ScheduledArrivalUtc),
-        "DueSoon" when flight.ScheduledArrivalUtc >= now =>
-            UiStrings.Flights.StaIn($"{Math.Max(1, Math.Ceiling((flight.ScheduledArrivalUtc - now).TotalMinutes))}m"),
-        _ => null
-    };
+        var untilSta = flight.ScheduledArrivalUtc - now;
+        var status = flight.Status is "Scheduled" or "DueSoon" or "ArrivalNotRecorded"
+            ? ScheduleStatus(untilSta)
+            : flight.Status;
+        var text = status switch
+        {
+            "OnGround" when flight.ActualArrivalUtc is { } ata && ata <= now =>
+                now - ata >= FullDateAge
+                    ? UiStrings.Flights.OnGroundSince(Date(flight, ata))
+                    : UiStrings.Flights.OnGroundFor(Elapsed(now - ata)),
+            "ReturnedToRamp" when flight.ReturnedToRampUtc is { } rtr && rtr <= now =>
+                now - rtr >= FullDateAge
+                    ? UiStrings.Flights.RtrSince(Date(flight, rtr))
+                    : UiStrings.Flights.RtrFor(Elapsed(now - rtr)),
+            "ArrivalNotRecorded" => AwaitingArrival(flight, -untilSta),
+            "DueSoon" => UiStrings.Flights.StaIn($"{Math.Ceiling(untilSta.TotalMinutes)}m"),
+            _ => null
+        };
+        return (status, text);
+    }
+
+    private static string ScheduleStatus(TimeSpan untilSta)
+    {
+        if (untilSta <= TimeSpan.Zero)
+            return "ArrivalNotRecorded";
+
+        return untilSta <= DueSoonWindow ? "DueSoon" : "Scheduled";
+    }
 
     private static string AwaitingArrival(FlightListItem flight, TimeSpan elapsed)
     {

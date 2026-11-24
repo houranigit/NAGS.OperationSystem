@@ -1,5 +1,6 @@
 @page "/operations/flights"
 @using OperationsSystem.Blazor.Client.Features.Operations
+@implements IAsyncDisposable
 @inject OperationsApiClient Operations
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
@@ -59,12 +60,13 @@
                 </div>
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" UniqueID="flight-number" Title="Flight #" Width="210px" MinWidth="120px">
+                <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" UniqueID="flight-number" Title="Flight #" MinWidth="120px">
                     <Template Context="flight">
                         @{
                             var type = FlightTypeBadge(flight);
-                            var status = statusOptions.FirstOrDefault(option => option.Value == flight.Status);
-                            var statusText = FlightStatusTime.Format(flight, statusTimeUtc) ?? status?.Label ?? flight.Status ?? "—";
+                            var timedStatus = FlightStatusTime.At(flight, statusTimeUtc);
+                            var status = statusOptions.FirstOrDefault(option => option.Value == timedStatus.Status);
+                            var statusText = timedStatus.Text ?? status?.Label ?? timedStatus.Status ?? "—";
                         }
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
@@ -151,7 +153,9 @@
     private DataListCard<FlightListItem>? list;
     private IReadOnlyList<FlightListItem> items = [];
     private int totalCount;
-    private DateTimeOffset statusTimeUtc;
+    private readonly CancellationTokenSource statusClockCancellation = new();
+    private Task? statusClockTask;
+    private DateTimeOffset statusTimeUtc = DateTimeOffset.UtcNow;
     private long loadRequest;
     private FlightType flightType = FlightType.All;
     private bool isLoading;
@@ -227,6 +231,41 @@
         appliedSearchQuery = SearchQuery;
         searchTerm = SearchQuery ?? string.Empty;
         await ReloadAsync();
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            statusClockTask = UpdateStatusClockAsync(statusClockCancellation.Token);
+
+        return Task.CompletedTask;
+    }
+
+    private async Task UpdateStatusClockAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var now = DateTimeOffset.UtcNow;
+                var toNextMinute = TimeSpan.FromTicks(TimeSpan.TicksPerMinute - now.Ticks % TimeSpan.TicksPerMinute);
+                await Task.Delay(toNextMinute, cancellationToken);
+                statusTimeUtc = DateTimeOffset.UtcNow;
+                if (items.Count > 0)
+                    StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        statusClockCancellation.Cancel();
+        if (statusClockTask is not null)
+            await statusClockTask;
+        statusClockCancellation.Dispose();
     }
 
     private bool CanLoadLookup(string resourceViewPermission) =>
