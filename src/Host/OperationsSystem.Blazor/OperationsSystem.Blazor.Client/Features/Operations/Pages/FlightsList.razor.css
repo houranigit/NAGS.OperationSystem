@@ -1,5 +1,4 @@
 .os-list-page {
-    --ofl-toolbar-control-height: 2rem;
     container: flights-list / inline-size;
 }
 
@@ -18,22 +17,6 @@
     max-width: 100%;
 }
 
-.os-list-page ::deep .os-search .rz-form-field-content {
-    height: var(--ofl-toolbar-control-height);
-    --rz-form-field-start-end-padding-inline: var(--os-space-2);
-}
-
-.os-list-page ::deep .os-search .rz-textbox {
-    height: 100%;
-    min-width: 0;
-    padding: var(--os-space-1) var(--os-space-2);
-}
-
-.os-list-page ::deep .os-filter-toggle {
-    min-height: var(--ofl-toolbar-control-height);
-    padding-inline: var(--os-space-2);
-}
-
 .ofl-flight-type {
     --rz-selectbar-background-color: var(--os-color-surface);
     --rz-selectbar-color: var(--os-color-text);
@@ -45,7 +28,7 @@
 }
 
 .ofl-flight-type ::deep .rz-button {
-    min-height: var(--ofl-toolbar-control-height);
+    min-height: var(--os-list-control-height);
     padding: var(--os-space-1) var(--os-space-2);
     white-space: nowrap;
 }
