@@ -23,6 +23,7 @@
         <DataListCard @ref="list" TItem="ManpowerTypeListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="@UiStrings.ManpowerTypes.SearchPlaceholder"
                       CountLabel="@UiStrings.ManpowerTypes.CountLabel" EmptyText="@UiStrings.ManpowerTypes.Empty">
@@ -31,7 +32,7 @@
                                 Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="ManpowerTypeListItem" Property="Name" Title="@UiStrings.ManpowerTypes.Name">
+                <RadzenDataGridColumn TItem="ManpowerTypeListItem" Property="Name" Title="@UiStrings.ManpowerTypes.Name" MinWidth="120px">
                     <Template Context="item">
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="engineering" /></span>
@@ -39,7 +40,7 @@
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="ManpowerTypeListItem" Property="Description" Title="@UiStrings.ManpowerTypes.ManpowerDescription" Sortable="false">
+                <RadzenDataGridColumn TItem="ManpowerTypeListItem" Property="Description" Title="@UiStrings.ManpowerTypes.ManpowerDescription" Sortable="false" MinWidth="120px">
                     <Template Context="item">
                         @if (string.IsNullOrWhiteSpace(item.Description))
                         {
@@ -51,7 +52,7 @@
                         }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="ManpowerTypeListItem" Title="@UiStrings.ManpowerTypes.Status" Sortable="false" Width="140px">
+                <RadzenDataGridColumn TItem="ManpowerTypeListItem" UniqueID="status" Title="@UiStrings.ManpowerTypes.Status" Sortable="false" Width="140px">
                     <Template Context="item">
                         @if (item.IsActive)
                         {

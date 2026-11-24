@@ -26,6 +26,7 @@
         <DataListCard @ref="list" TItem="UserListItem" Data="@users" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="@UiStrings.Users.SearchPlaceholder"
                       CountLabel="@UiStrings.Users.CountLabel" EmptyText="@UiStrings.Users.Empty">
@@ -38,7 +39,7 @@
                                 Data="@roleOptions" Value="@roleFilter" ValueChanged="@OnRoleFilterChangedAsync" />
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="UserListItem" Property="DisplayName" Title="@UiStrings.Users.DisplayName">
+                <RadzenDataGridColumn TItem="UserListItem" Property="DisplayName" Title="@UiStrings.Users.DisplayName" MinWidth="120px">
                     <Template Context="user">
                         <div class="os-user-cell">
                             <span class="os-user-cell-avatar">@Initials(user.DisplayName)</span>
@@ -49,7 +50,7 @@
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="UserListItem" Title="@UiStrings.Users.Status" Sortable="false" Width="140px">
+                <RadzenDataGridColumn TItem="UserListItem" UniqueID="status" Title="@UiStrings.Users.Status" Sortable="false" Width="140px">
                     <Template Context="user">
                         @if (user.IsLockedOut)
                         {
@@ -61,13 +62,13 @@
                         }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="UserListItem" Title="@UiStrings.Users.UserType" Sortable="false" Width="200px">
+                <RadzenDataGridColumn TItem="UserListItem" UniqueID="user-type" Title="@UiStrings.Users.UserType" Sortable="false" Width="200px">
                     <Template Context="user">
                         @UserTypeLabel(user.UserType)
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="UserListItem" Property="RoleName" Title="@UiStrings.Users.Role" Width="180px" />
-                <RadzenDataGridColumn TItem="UserListItem" Title="@UiStrings.Users.LastLogin" Sortable="false" Width="170px">
+                <RadzenDataGridColumn TItem="UserListItem" UniqueID="last-login" Title="@UiStrings.Users.LastLogin" Sortable="false" Width="170px">
                     <Template Context="user">
                         <LocalDateTime Value="@user.LastLoginAtUtc" Format="g" EmptyText="@UiStrings.Users.Never" />
                     </Template>

@@ -25,6 +25,8 @@
         <DataListCard @ref="list" TItem="FlightListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      PageSizeText="@FlightCountText"
+                      ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="Search flight number, customer, or ID" CountLabel="flights" EmptyText="No flights match your filters."
                       UseCollapsibleFilters="true" ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync">
@@ -43,7 +45,7 @@
                 </div>
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" Title="Flight #">
+                <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" UniqueID="flight-number" Title="Flight #" MinWidth="120px">
                     <Template Context="flight">
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
@@ -60,12 +62,12 @@
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FlightListItem" Property="StationIataCode" Title="Station" Width="120px" />
-                <RadzenDataGridColumn TItem="FlightListItem" Property="OperationTypeName" Title="Operation" Width="120px" />
-                <RadzenDataGridColumn TItem="FlightListItem" Title="Duration" Sortable="false" Width="120px">
+                <RadzenDataGridColumn TItem="FlightListItem" Property="StationIataCode" UniqueID="station" Title="Station" Width="120px" />
+                <RadzenDataGridColumn TItem="FlightListItem" Property="OperationTypeName" UniqueID="operation" Title="Operation" Width="120px" />
+                <RadzenDataGridColumn TItem="FlightListItem" UniqueID="duration" Title="Duration" Sortable="false" Width="120px">
                     <Template Context="flight">@DurationDisplay(flight)</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FlightListItem" Title="Status" Sortable="false" Width="180px">
+                <RadzenDataGridColumn TItem="FlightListItem" UniqueID="status" Title="Status" Sortable="false" Width="180px">
                     <Template Context="flight">
                         @{
                             var status = statusOptions.FirstOrDefault(option => option.Value == flight.Status);
@@ -73,7 +75,7 @@
                         <StatusBadge Label="@(status?.Label ?? flight.Status ?? "—")" Tone="@(status?.Tone ?? "neutral")" Icon="@(status?.Icon)" />
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FlightListItem" Title="Approval status" Sortable="false" Width="160px">
+                <RadzenDataGridColumn TItem="FlightListItem" UniqueID="approval-status" Title="Approval status" Sortable="false" Width="160px">
                     <Template Context="flight">
                         @{
                             var approval = ApprovalBadge(flight.ApprovalStatus);
@@ -81,7 +83,7 @@
                         <StatusBadge Label="@approval.Label" Tone="@approval.Tone" Icon="@approval.Icon" />
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FlightListItem" Title="WO#" Sortable="false" Width="120px">
+                <RadzenDataGridColumn TItem="FlightListItem" UniqueID="work-order" Title="WO#" Sortable="false" Width="120px">
                     <Template Context="flight">
                         @if (flight.WorkOrderNumber is { } workOrderNumber)
                         {
@@ -168,6 +170,8 @@
         FlightApprovalStatuses.PendingRtr => ("Pending RTR", "warning", "lock"),
         _ => ("Not Approved", "gray", null)
     };
+
+    private string FlightCountText => UiStrings.Flights.TotalCount(totalCount);
 
     private int ActiveFilterCount =>
         (stationFilter.HasValue ? 1 : 0)

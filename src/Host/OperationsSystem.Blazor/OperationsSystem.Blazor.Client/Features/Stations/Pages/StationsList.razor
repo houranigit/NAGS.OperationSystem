@@ -23,6 +23,7 @@
         <DataListCard @ref="list" TItem="StationListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="@UiStrings.Stations.SearchPlaceholder"
                       CountLabel="@UiStrings.Stations.CountLabel" EmptyText="@UiStrings.Stations.Empty">
@@ -31,7 +32,7 @@
                                 Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="StationListItem" Property="Name" Title="@UiStrings.Stations.Name">
+                <RadzenDataGridColumn TItem="StationListItem" Property="Name" Title="@UiStrings.Stations.Name" MinWidth="120px">
                     <Template Context="s">
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="flight_takeoff" /></span>
@@ -50,7 +51,7 @@
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="StationListItem" Property="City" Title="@UiStrings.Stations.City" Width="160px" />
                 <RadzenDataGridColumn TItem="StationListItem" Property="CountryName" Title="@UiStrings.Stations.Country" Width="160px" Sortable="false" />
-                <RadzenDataGridColumn TItem="StationListItem" Title="@UiStrings.Stations.Status" Sortable="false" Width="120px">
+                <RadzenDataGridColumn TItem="StationListItem" UniqueID="status" Title="@UiStrings.Stations.Status" Sortable="false" Width="120px">
                     <Template Context="s">
                         @if (s.IsActive)
                         {

@@ -23,6 +23,7 @@
         <DataListCard @ref="list" TItem="LicenseListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="@UiStrings.Licenses.SearchPlaceholder"
                       CountLabel="@UiStrings.Licenses.CountLabel" EmptyText="@UiStrings.Licenses.Empty">
@@ -36,8 +37,8 @@
                         <strong>@item.Code</strong>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="LicenseListItem" Property="Name" Title="@UiStrings.Licenses.Name" />
-                <RadzenDataGridColumn TItem="LicenseListItem" Title="@UiStrings.Licenses.Status" Sortable="false" Width="140px">
+                <RadzenDataGridColumn TItem="LicenseListItem" Property="Name" Title="@UiStrings.Licenses.Name" MinWidth="120px" />
+                <RadzenDataGridColumn TItem="LicenseListItem" UniqueID="status" Title="@UiStrings.Licenses.Status" Sortable="false" Width="140px">
                     <Template Context="item">
                         @if (item.IsActive)
                         {

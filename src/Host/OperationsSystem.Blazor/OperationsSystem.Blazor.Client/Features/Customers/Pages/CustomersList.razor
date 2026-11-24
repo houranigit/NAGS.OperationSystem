@@ -23,6 +23,7 @@
         <DataListCard @ref="list" TItem="CustomerListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="@UiStrings.Customers.SearchPlaceholder"
                       CountLabel="@UiStrings.Customers.CountLabel" EmptyText="@UiStrings.Customers.Empty">
@@ -33,7 +34,7 @@
                                 Data="@countryOptions" Value="@countryFilter" ValueChanged="@OnCountryFilterChangedAsync" />
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="CustomerListItem" Property="Name" Title="@UiStrings.Customers.Name">
+                <RadzenDataGridColumn TItem="CustomerListItem" Property="Name" Title="@UiStrings.Customers.Name" MinWidth="120px">
                     <Template Context="c">
                         <div class="cu-list-cell">
                             @if (CustomerLogoUrl(c) is { } logoUrl)
@@ -66,10 +67,10 @@
                     <Template Context="c">@(string.IsNullOrWhiteSpace(c.IcaoCode) ? UiStrings.Customers.NoIcao : c.IcaoCode)</Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="CustomerListItem" Property="CountryName" Title="@UiStrings.Customers.Country" Width="160px" Sortable="false" />
-                <RadzenDataGridColumn TItem="CustomerListItem" Title="@UiStrings.Customers.Contacts" Sortable="false" Width="110px">
+                <RadzenDataGridColumn TItem="CustomerListItem" UniqueID="contacts" Title="@UiStrings.Customers.Contacts" Sortable="false" Width="110px">
                     <Template Context="c">@c.ContactCount</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="CustomerListItem" Title="@UiStrings.Customers.Status" Sortable="false" Width="120px">
+                <RadzenDataGridColumn TItem="CustomerListItem" UniqueID="status" Title="@UiStrings.Customers.Status" Sortable="false" Width="120px">
                     <Template Context="c">
                         @if (c.IsActive)
                         {

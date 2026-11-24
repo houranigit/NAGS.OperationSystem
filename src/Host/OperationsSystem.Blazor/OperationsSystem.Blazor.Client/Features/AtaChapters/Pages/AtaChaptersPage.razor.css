@@ -1,2 +1,21 @@
-::deep .ata-add { margin-bottom: 1rem; }
+.os-list-page ::deep .rz-tabview,
+.os-list-page ::deep .rz-tabview-panels,
+.os-list-page ::deep .rz-tabview-panel[aria-hidden="false"] {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+.os-list-page > .os-muted,
+.os-list-page ::deep .rz-tabview-nav {
+    flex-shrink: 0;
+}
+
+::deep .ata-add {
+    align-self: flex-start;
+    flex-shrink: 0;
+    margin-bottom: 1rem;
+}
 .ata-category-disabled { display: block; margin-top: .3rem; }

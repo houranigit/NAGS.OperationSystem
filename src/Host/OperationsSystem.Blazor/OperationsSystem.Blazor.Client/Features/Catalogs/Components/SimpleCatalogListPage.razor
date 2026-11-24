@@ -22,13 +22,14 @@
         <DataListCard @ref="list" TItem="SimpleCatalogRow" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="Search by name" CountLabel="@Title.ToLowerInvariant()" EmptyText="@($"No {Title.ToLowerInvariant()} match your filters.")">
             <Filters>
                 <DataListFilter TValue="bool?" Placeholder="All statuses" Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="SimpleCatalogRow" Property="Name" Title="Name">
+                <RadzenDataGridColumn TItem="SimpleCatalogRow" Property="Name" Title="Name" MinWidth="120px">
                     <Template Context="item">
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="@Icon" /></span>
@@ -44,7 +45,7 @@
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="SimpleCatalogRow" Property="Description" Title="Description" Sortable="false">
+                <RadzenDataGridColumn TItem="SimpleCatalogRow" Property="Description" Title="Description" Sortable="false" MinWidth="120px">
                     <Template Context="item">
                         @(string.IsNullOrWhiteSpace(item.Description) ? UiStrings.Common.None : item.Description)
                     </Template>
@@ -57,7 +58,7 @@
                         </Template>
                     </RadzenDataGridColumn>
                 }
-                <RadzenDataGridColumn TItem="SimpleCatalogRow" Title="Status" Sortable="false" Width="140px">
+                <RadzenDataGridColumn TItem="SimpleCatalogRow" UniqueID="status" Title="Status" Sortable="false" Width="140px">
                     <Template Context="item">
                         @if (item.IsActive)
                         {

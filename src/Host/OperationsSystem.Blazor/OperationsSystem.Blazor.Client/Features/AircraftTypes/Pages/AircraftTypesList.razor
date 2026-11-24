@@ -23,13 +23,14 @@
         <DataListCard @ref="list" TItem="AircraftTypeListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="Search by model" CountLabel="aircraft types" EmptyText="No aircraft types match your filters.">
             <Filters>
                 <DataListFilter TValue="bool?" Placeholder="All statuses" Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="AircraftTypeListItem" Property="Model" Title="Model">
+                <RadzenDataGridColumn TItem="AircraftTypeListItem" Property="Model" Title="Model" MinWidth="120px">
                     <Template Context="item">
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
@@ -37,11 +38,11 @@
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="AircraftTypeListItem" Property="Manufacturer" Title="Manufacturer" />
-                <RadzenDataGridColumn TItem="AircraftTypeListItem" Property="Notes" Title="Notes" Sortable="false">
+                <RadzenDataGridColumn TItem="AircraftTypeListItem" Property="Manufacturer" Title="Manufacturer" MinWidth="120px" />
+                <RadzenDataGridColumn TItem="AircraftTypeListItem" Property="Notes" Title="Notes" Sortable="false" MinWidth="120px">
                     <Template Context="item">@(string.IsNullOrWhiteSpace(item.Notes) ? UiStrings.Common.None : item.Notes)</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="AircraftTypeListItem" Title="Status" Sortable="false" Width="140px">
+                <RadzenDataGridColumn TItem="AircraftTypeListItem" UniqueID="status" Title="Status" Sortable="false" Width="140px">
                     <Template Context="item">
                         @if (item.IsActive)
                         {

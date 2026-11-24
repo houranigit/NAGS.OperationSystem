@@ -1,90 +1,94 @@
 @typeparam TItem where TItem : notnull
 @using Radzen
+@inject GridPreferences GridPrefs
+@inject AuthSession Auth
 
 @*
     Reusable list shell for every grid page in the portal.
-    - Fills the available height so the pager is always visible (only the rows scroll).
     - Toolbar: search box (left) + filter slot (left) + result count (right) + extra actions slot.
     - Server-side paging via LoadData/Count.
     - Row click highlights only (single selection); navigation/actions live in the pinned last column.
 *@
 
 <div class="os-list-card">
-    <div class="@ToolbarCssClass">
-        <div class="os-list-toolbar-main">
-            <div class="os-list-toolbar-filters">
-                <span class="os-count-badge" aria-live="polite">
-                    <strong>@Count.ToString("N0")</strong>
-                    <span>@CountLabel</span>
-                </span>
+    @if (ShowToolbar)
+    {
+        <div class="@ToolbarCssClass">
+            <div class="os-list-toolbar-main">
+                <div class="os-list-toolbar-filters">
+                    <span class="os-count-badge" aria-live="polite">
+                        <strong>@Count.ToString("N0")</strong>
+                        <span>@CountLabel</span>
+                    </span>
 
-                @if (ShowSearch)
-                {
-                    <div class="os-search">
-                        <RadzenFormField Variant="Variant.Outlined">
-                            <Start>
-                                <RadzenIcon Icon="search" />
-                            </Start>
-                            <ChildContent>
-                                <RadzenTextBox Value="@SearchValue"
-                                               Change="@OnSearchChangedAsync"
-                                               Placeholder="@(SearchPlaceholder ?? UiStrings.Common.Search)"
-                                               aria-label="@(SearchPlaceholder ?? UiStrings.Common.Search)" />
-                            </ChildContent>
-                            <End>
-                                @if (!string.IsNullOrEmpty(SearchValue))
-                                {
-                                    <button type="button" class="os-search-clear" aria-label="@UiStrings.Common.Cancel" @onclick="ClearSearchAsync">
-                                        <RadzenIcon Icon="close" />
-                                    </button>
-                                }
-                            </End>
-                        </RadzenFormField>
-                    </div>
-                }
-
-                @if (UseCollapsibleFilters && Filters is not null)
-                {
-                    <button type="button" class="@FilterToggleCssClass" aria-expanded="@(filtersExpanded ? "true" : "false")" @onclick="ToggleFilters">
-                        <RadzenIcon Icon="tune" />
-                        <span>@FilterToggleText</span>
-                        @if (ActiveFilterCount > 0)
-                        {
-                            <span class="os-filter-count">@ActiveFilterCount</span>
-                        }
-                        <span class="os-filter-toggle-chevron">
-                            <RadzenIcon Icon="expand_more" />
-                        </span>
-                    </button>
-
-                    @if (OnClearFilters.HasDelegate && ActiveFilterCount > 0)
+                    @if (ShowSearch)
                     {
-                        <button type="button" class="os-clear-filters" @onclick="ClearFiltersAsync">
-                            <RadzenIcon Icon="filter_alt_off" />
-                            <span>@ClearFiltersText</span>
-                        </button>
+                        <div class="os-search">
+                            <RadzenFormField Variant="Variant.Outlined">
+                                <Start>
+                                    <RadzenIcon Icon="search" />
+                                </Start>
+                                <ChildContent>
+                                    <RadzenTextBox Value="@SearchValue"
+                                                   Change="@OnSearchChangedAsync"
+                                                   Placeholder="@(SearchPlaceholder ?? UiStrings.Common.Search)"
+                                                   aria-label="@(SearchPlaceholder ?? UiStrings.Common.Search)" />
+                                </ChildContent>
+                                <End>
+                                    @if (!string.IsNullOrEmpty(SearchValue))
+                                    {
+                                        <button type="button" class="os-search-clear" aria-label="@UiStrings.Common.Cancel" @onclick="ClearSearchAsync">
+                                            <RadzenIcon Icon="close" />
+                                        </button>
+                                    }
+                                </End>
+                            </RadzenFormField>
+                        </div>
                     }
-                }
-                else
-                {
-                    @Filters
-                }
-            </div>
 
-            <div class="os-list-toolbar-meta">
-                @Toolbar
-            </div>
-        </div>
+                    @if (UseCollapsibleFilters && Filters is not null)
+                    {
+                        <button type="button" class="@FilterToggleCssClass" aria-expanded="@(filtersExpanded ? "true" : "false")" @onclick="ToggleFilters">
+                            <RadzenIcon Icon="tune" />
+                            <span>@FilterToggleText</span>
+                            @if (ActiveFilterCount > 0)
+                            {
+                                <span class="os-filter-count">@ActiveFilterCount</span>
+                            }
+                            <span class="os-filter-toggle-chevron">
+                                <RadzenIcon Icon="expand_more" />
+                            </span>
+                        </button>
 
-        @if (UseCollapsibleFilters && Filters is not null)
-        {
-            <div class="@FilterPanelCssClass">
-                <div class="os-list-filter-panel-inner">
-                    @Filters
+                        @if (OnClearFilters.HasDelegate && ActiveFilterCount > 0)
+                        {
+                            <button type="button" class="os-clear-filters" @onclick="ClearFiltersAsync">
+                                <RadzenIcon Icon="filter_alt_off" />
+                                <span>@ClearFiltersText</span>
+                            </button>
+                        }
+                    }
+                    else
+                    {
+                        @Filters
+                    }
+                </div>
+
+                <div class="os-list-toolbar-meta">
+                    @Toolbar
                 </div>
             </div>
-        }
-    </div>
+
+            @if (UseCollapsibleFilters && Filters is not null)
+            {
+                <div class="@FilterPanelCssClass">
+                    <div class="os-list-filter-panel-inner">
+                        @Filters
+                    </div>
+                </div>
+            }
+        </div>
+    }
 
     @if (HasError)
     {
@@ -97,9 +101,13 @@
         <div class="os-list-grid">
             <RadzenDataGrid @ref="grid" TItem="TItem" Data="@Data" Count="@Count" IsLoading="@IsLoading"
                             AllowPaging="true" PageSize="@PageSize" PageSizeChanged="@OnPageSizeChangedAsync"
-                            PageSizeOptions="@PageSizeOptions" PageSizeText="@(PageSizeText ?? UiStrings.Common.ItemsPerPage)"
-                            PagerHorizontalAlign="HorizontalAlign.Left"
-                            PageNumbersCount="5" ShowPagingSummary="true" PagingSummaryFormat="@PagingSummaryFormat"
+                            PageSizeOptions="@PageSizeOptions" PageSizeText="@TotalCountText"
+                            PagerHorizontalAlign="HorizontalAlign.Left" PagerAlwaysVisible="true"
+                            AllowColumnResize="@columnPreferencesReady" AllowColumnReorder="@columnPreferencesReady"
+                            Settings="@columnSettings" SettingsChanged="@GridSettingsChanged"
+                            ColumnResized="@MarkColumnLayoutChanged" ColumnReordered="@MarkColumnLayoutChanged"
+                            ColumnReordering="@KeepFrozenColumnInPlace"
+                            PageNumbersCount="5" ShowPagingSummary="true" PagingSummaryFormat="@(PageSizeOptions.Any() ? PagingSummaryFormat : TotalCountText)"
                             AllowSorting="@AllowSorting" LoadData="@LoadData" EmptyText="@(EmptyText ?? UiStrings.Common.NoData)"
                             SelectionMode="DataGridSelectionMode.Single" @bind-Value="@selection"
                             GridLines="DataGridGridLines.Horizontal">
@@ -107,7 +115,7 @@
                     @Columns
                     @if (ShowActionsColumn && RowActions is not null)
                     {
-                        <RadzenDataGridColumn TItem="TItem" Title="@(ActionsTitle ?? UiStrings.Common.Actions)"
+                        <RadzenDataGridColumn TItem="TItem" UniqueID="actions" Title="@(ActionsTitle ?? UiStrings.Common.Actions)"
                                               Sortable="false" Filterable="false" Resizable="false" Reorderable="false"
                                               Frozen="true" FrozenPosition="FrozenColumnPosition.Right"
                                               Width="@ActionsWidth" TextAlign="TextAlign.Center" HeaderCssClass="os-actions-header">
@@ -127,6 +135,10 @@
 @code {
     private RadzenDataGrid<TItem>? grid;
     private IList<TItem> selection = [];
+    private DataGridSettings? columnSettings;
+    private bool columnPreferencesRequested;
+    private bool columnPreferencesReady;
+    private bool columnLayoutChanged;
 
     /// <summary>Column definitions (RadzenDataGridColumn) for the concrete <typeparamref name="TItem"/>.</summary>
     [Parameter] public RenderFragment? Columns { get; set; }
@@ -136,6 +148,8 @@
 
     /// <summary>Allows a supplied actions template to be hidden without rebuilding the surrounding list markup.</summary>
     [Parameter] public bool ShowActionsColumn { get; set; } = true;
+
+    [Parameter] public bool ShowToolbar { get; set; } = true;
 
     /// <summary>Extra controls rendered on the right of the toolbar, before the count badge.</summary>
     [Parameter] public RenderFragment? Toolbar { get; set; }
@@ -174,8 +188,13 @@
     /// <summary>Page-size choices shown in the pager dropdown.</summary>
     [Parameter] public IEnumerable<int> PageSizeOptions { get; set; } = new[] { 10, 25, 50, 100 };
 
-    /// <summary>Label shown next to the page-size dropdown (defaults to a localized string).</summary>
+    /// <summary>Overrides the localized record total shown in the pager.</summary>
     [Parameter] public string? PageSizeText { get; set; }
+
+    private string TotalCountText => PageSizeText ?? UiStrings.Common.RecordTotal(Count);
+
+    /// <summary>Opts in to resizable, reorderable columns with an account-specific saved layout.</summary>
+    [Parameter] public string? ColumnLayoutKey { get; set; }
 
     [Parameter] public bool AllowSorting { get; set; } = true;
 
@@ -212,10 +231,56 @@
     /// </summary>
     public async Task ReloadAsync()
     {
-        if (grid is not null)
+        if (!HasError && grid is not null)
             await grid.FirstPage(true);
         else
             await LoadData.InvokeAsync(new LoadDataArgs { Skip = 0, Top = PageSize });
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (columnPreferencesRequested || ColumnLayoutKey is not { } key || Auth.User is not { Id: var userId })
+            return;
+
+        columnPreferencesRequested = true;
+        var savedLayout = await GridPrefs.GetColumnLayoutAsync(key, userId);
+
+        if (savedLayout is not null)
+        {
+            // A sort or page change during the read remains in effect.
+            savedLayout.CurrentPage = columnSettings?.CurrentPage;
+            savedLayout.PageSize = columnSettings?.PageSize;
+            foreach (var column in savedLayout.Columns)
+            {
+                var current = columnSettings?.Columns.FirstOrDefault(setting => GridPreferences.ColumnId(setting) == column.UniqueID);
+                column.SortOrder = current?.SortOrder;
+                column.SortIndex = current?.SortIndex;
+            }
+
+            columnSettings = savedLayout;
+        }
+
+        columnPreferencesReady = true;
+        StateHasChanged();
+    }
+
+    private EventCallback<DataGridSettings> GridSettingsChanged => ColumnLayoutKey is null
+        ? default
+        : EventCallback.Factory.Create<DataGridSettings>(this, OnGridSettingsChangedAsync);
+
+    private void MarkColumnLayoutChanged() => columnLayoutChanged = true;
+
+    private static void KeepFrozenColumnInPlace(DataGridColumnReorderingEventArgs<TItem> args) =>
+        args.Cancel = args.ToColumn?.Frozen == true;
+
+    private async Task OnGridSettingsChangedAsync(DataGridSettings settings)
+    {
+        columnSettings = settings;
+        if (!columnLayoutChanged || ColumnLayoutKey is not { } key || Auth.User is not { Id: var userId })
+            return;
+
+        columnLayoutChanged = false;
+        await GridPrefs.SetColumnLayoutAsync(key, userId, settings);
     }
 
     private async Task OnPageSizeChangedAsync(int value)

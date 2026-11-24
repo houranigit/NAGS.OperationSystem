@@ -23,6 +23,7 @@
         <DataListCard @ref="list" TItem="CountryListItem" Data="@countries" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="@UiStrings.Countries.SearchPlaceholder"
                       CountLabel="@UiStrings.Countries.CountLabel" EmptyText="@UiStrings.Countries.Empty">
@@ -31,7 +32,7 @@
                                 Data="@statusOptions" Value="@activeFilter" ValueChanged="@OnStatusFilterChangedAsync" />
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="CountryListItem" Property="Name" Title="@UiStrings.Countries.Name">
+                <RadzenDataGridColumn TItem="CountryListItem" Property="Name" Title="@UiStrings.Countries.Name" MinWidth="120px">
                     <Template Context="country">
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="public" /></span>
@@ -40,7 +41,7 @@
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="CountryListItem" Property="IsoCode" Title="@UiStrings.Countries.IsoCode" Width="140px" />
-                <RadzenDataGridColumn TItem="CountryListItem" Title="@UiStrings.Countries.Status" Sortable="false" Width="140px">
+                <RadzenDataGridColumn TItem="CountryListItem" UniqueID="status" Title="@UiStrings.Countries.Status" Sortable="false" Width="140px">
                     <Template Context="country">
                         @if (country.IsActive)
                         {

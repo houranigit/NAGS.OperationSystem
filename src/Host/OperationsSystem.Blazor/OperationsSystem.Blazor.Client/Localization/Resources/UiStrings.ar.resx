@@ -25,6 +25,8 @@
   <data name="Common.No" xml:space="preserve"><value>لا</value></data>
   <data name="Common.NoData" xml:space="preserve"><value>لا توجد بيانات لعرضها.</value></data>
   <data name="Common.ItemsPerPage" xml:space="preserve"><value>صفوف لكل صفحة</value></data>
+  <data name="Common.RecordTotalOne" xml:space="preserve"><value>عدد السجلات {0:N0}</value></data>
+  <data name="Common.RecordTotalMany" xml:space="preserve"><value>عدد السجلات {0:N0}</value></data>
   <data name="Common.SomethingWentWrong" xml:space="preserve"><value>حدث خطأ ما. يرجى المحاولة مرة أخرى.</value></data>
   <data name="Common.SignOut" xml:space="preserve"><value>تسجيل الخروج</value></data>
   <data name="Common.Refresh" xml:space="preserve"><value>ينعش</value></data>
@@ -768,6 +770,8 @@
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>فشل تغيير بريد تسجيل الدخول</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>تعذر على الهوية بدء التحقق: {0}</value></data>
   <data name="Flights.AwaitingAta" xml:space="preserve"><value>بانتظار ATA</value></data>
+  <data name="Flights.TotalOne" xml:space="preserve"><value>عدد الرحلات {0:N0}</value></data>
+  <data name="Flights.TotalMany" xml:space="preserve"><value>عدد الرحلات {0:N0}</value></data>
   <data name="Notifications.Title" xml:space="preserve"><value>الإشعارات</value></data>
   <data name="Notifications.Description" xml:space="preserve"><value>الدعوات والتذكيرات وتحديثات الرحلات المرسلة إلى حسابك.</value></data>
   <data name="Notifications.BellLabel" xml:space="preserve"><value>فتح الإشعارات</value></data>

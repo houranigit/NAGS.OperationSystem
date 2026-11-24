@@ -23,6 +23,7 @@
         <DataListCard @ref="list" TItem="StaffMemberListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="@UiStrings.StaffMembers.SearchPlaceholder"
                       CountLabel="@UiStrings.StaffMembers.CountLabel" EmptyText="@UiStrings.StaffMembers.Empty">
@@ -38,13 +39,13 @@
                 <RadzenDataGridColumn TItem="StaffMemberListItem" Property="EmployeeId" Title="@UiStrings.StaffMembers.EmployeeId" Width="140px">
                     <Template Context="s"><strong>@s.EmployeeId</strong></Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="FullName" Title="@UiStrings.StaffMembers.FullName">
+                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="FullName" Title="@UiStrings.StaffMembers.FullName" MinWidth="120px">
                     <Template Context="s"><strong>@s.FullName</strong></Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="Email" Title="@UiStrings.StaffMembers.Email" />
+                <RadzenDataGridColumn TItem="StaffMemberListItem" Property="Email" Title="@UiStrings.StaffMembers.Email" MinWidth="120px" />
                 <RadzenDataGridColumn TItem="StaffMemberListItem" Property="StationCode" Title="@UiStrings.StaffMembers.Station" Width="120px" Sortable="false" />
                 <RadzenDataGridColumn TItem="StaffMemberListItem" Property="ManpowerTypeName" Title="@UiStrings.StaffMembers.ManpowerType" Width="180px" Sortable="false" />
-                <RadzenDataGridColumn TItem="StaffMemberListItem" Title="@UiStrings.StaffMembers.Status" Sortable="false" Width="120px">
+                <RadzenDataGridColumn TItem="StaffMemberListItem" UniqueID="status" Title="@UiStrings.StaffMembers.Status" Sortable="false" Width="120px">
                     <Template Context="s">
                         @if (s.IsActive)
                         {

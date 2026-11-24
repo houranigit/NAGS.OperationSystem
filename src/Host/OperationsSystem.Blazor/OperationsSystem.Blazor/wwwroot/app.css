@@ -531,14 +531,20 @@ a {
 }
 
 /* --- List page layout ---------------------------------------------------- */
-/* A standard list screen: a page header followed by a DataListCard. The card
-   hugs its content (toolbar + grid + pager) and grows with the number of rows
-   on the page; the content region scrolls when needed. Row count is controlled
-   by the pager's "rows per page" selector. */
 .os-list-page {
     display: flex;
     flex-direction: column;
     gap: var(--os-space-4);
+}
+
+.os-list-page:has(.os-list-card) {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+.os-list-page:has(.os-list-card) > .os-page-header {
+    flex-shrink: 0;
 }
 
 .os-list-page > .os-page-header {

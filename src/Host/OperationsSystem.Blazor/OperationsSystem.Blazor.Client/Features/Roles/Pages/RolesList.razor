@@ -25,6 +25,7 @@
         <DataListCard @ref="list" TItem="RoleListItem" Data="@roles" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeChanged="@OnPageSizeChangedAsync"
+                      ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="@UiStrings.Roles.SearchPlaceholder"
                       CountLabel="@UiStrings.Roles.CountLabel" EmptyText="@UiStrings.Roles.Empty">
@@ -33,7 +34,7 @@
                                 Data="@UserTypeOptions" Value="@userTypeFilter" ValueChanged="@OnUserTypeFilterChangedAsync" />
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="RoleListItem" Property="Name" Title="@UiStrings.Roles.Name">
+                <RadzenDataGridColumn TItem="RoleListItem" Property="Name" Title="@UiStrings.Roles.Name" MinWidth="120px">
                     <Template Context="role">
                         <div class="os-role-cell">
                             <span class="os-role-cell-icon"><RadzenIcon Icon="shield" /></span>
@@ -50,7 +51,7 @@
                         </div>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="RoleListItem" Property="Description" Title="@UiStrings.Roles.RoleDescription" Sortable="false">
+                <RadzenDataGridColumn TItem="RoleListItem" Property="Description" Title="@UiStrings.Roles.RoleDescription" Sortable="false" MinWidth="120px">
                     <Template Context="role">
                         @if (string.IsNullOrWhiteSpace(role.Description))
                         {

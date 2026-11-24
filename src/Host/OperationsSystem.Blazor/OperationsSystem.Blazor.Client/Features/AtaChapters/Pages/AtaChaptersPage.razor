@@ -20,16 +20,16 @@
                     </AuthorizeView>
                     <DataListCard @ref="chapterList" TItem="AtaChapterModel" Data="@chapters" Count="@chapterCount"
                                   IsLoading="@loadingChapters" HasError="@chapterError" OnRetry="@ReloadChaptersAsync" LoadData="@LoadChaptersAsync"
-                                  PageSize="@chapterPageSize" SearchValue="@chapterSearch" SearchValueChanged="@(v => chapterSearch = v)"
+                                  PageSize="@chapterPageSize" ColumnLayoutKey="ata-chapters" SearchValue="@chapterSearch" SearchValueChanged="@(v => chapterSearch = v)"
                                   OnSearch="@ReloadChaptersAsync" SearchPlaceholder="Search chapter or title" CountLabel="chapters" EmptyText="No ATA chapters found.">
                         <Filters>
                             <DataListFilter TValue="bool?" Placeholder="All statuses" Data="@statuses" Value="@chapterStatus" ValueChanged="@ChapterStatusChangedAsync" />
                         </Filters>
                         <Columns>
                             <RadzenDataGridColumn TItem="AtaChapterModel" Property="Code" Title="Ch." Width="100px" />
-                            <RadzenDataGridColumn TItem="AtaChapterModel" Property="Title" Title="Title" />
-                            <RadzenDataGridColumn TItem="AtaChapterModel" Property="CategoryName" Title="Category" Sortable="false" />
-                            <RadzenDataGridColumn TItem="AtaChapterModel" Title="Status" Sortable="false">
+                            <RadzenDataGridColumn TItem="AtaChapterModel" Property="Title" Title="Title" MinWidth="120px" />
+                            <RadzenDataGridColumn TItem="AtaChapterModel" Property="CategoryName" Title="Category" Sortable="false" MinWidth="120px" />
+                            <RadzenDataGridColumn TItem="AtaChapterModel" UniqueID="status" Title="Status" Sortable="false" MinWidth="120px">
                                 <Template Context="item">
                                     <StatusBadge Label="@(item.IsActive ? "Active" : "Inactive")" Tone="@(item.IsActive ? "success" : "neutral")" />
                                     @if (!item.CategoryIsActive)
@@ -58,14 +58,14 @@
                         </AuthorizeView>
                         <DataListCard @ref="categoryList" TItem="AtaChapterCategoryModel" Data="@categories" Count="@categoryCount"
                                       IsLoading="@loadingCategories" HasError="@categoryError" OnRetry="@ReloadCategoriesAsync" LoadData="@LoadCategoriesAsync"
-                                      PageSize="@categoryPageSize" SearchValue="@categorySearch" SearchValueChanged="@(v => categorySearch = v)"
+                                      PageSize="@categoryPageSize" ColumnLayoutKey="ata-chapter-categories" SearchValue="@categorySearch" SearchValueChanged="@(v => categorySearch = v)"
                                       OnSearch="@ReloadCategoriesAsync" SearchPlaceholder="Search categories" CountLabel="categories" EmptyText="No ATA categories found.">
                             <Filters>
                                 <DataListFilter TValue="bool?" Placeholder="All statuses" Data="@statuses" Value="@categoryStatus" ValueChanged="@CategoryStatusChangedAsync" />
                             </Filters>
                             <Columns>
-                                <RadzenDataGridColumn TItem="AtaChapterCategoryModel" Property="Name" Title="Category" />
-                                <RadzenDataGridColumn TItem="AtaChapterCategoryModel" Title="Status" Sortable="false">
+                                <RadzenDataGridColumn TItem="AtaChapterCategoryModel" Property="Name" Title="Category" MinWidth="120px" />
+                                <RadzenDataGridColumn TItem="AtaChapterCategoryModel" UniqueID="status" Title="Status" Sortable="false" MinWidth="120px">
                                     <Template Context="item">
                                         <StatusBadge Label="@(item.IsActive ? "Active" : "Inactive")" Tone="@(item.IsActive ? "success" : "neutral")" />
                                     </Template>

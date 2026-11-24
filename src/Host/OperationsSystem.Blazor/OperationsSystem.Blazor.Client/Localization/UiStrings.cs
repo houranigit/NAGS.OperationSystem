@@ -32,6 +32,9 @@ public static class UiStrings
         public static string No => UiText.Get("Common.No", "No");
         public static string NoData => UiText.Get("Common.NoData", "No data to display.");
         public static string ItemsPerPage => UiText.Get("Common.ItemsPerPage", "Rows per page");
+        public static string RecordTotal(int count) => string.Format(
+            count == 1 ? UiText.Get("Common.RecordTotalOne", "{0:N0} record") : UiText.Get("Common.RecordTotalMany", "{0:N0} records"),
+            count);
         public static string SomethingWentWrong => UiText.Get("Common.SomethingWentWrong", "Something went wrong. Please try again.");
         public static string SignOut => UiText.Get("Common.SignOut", "Sign out");
         public static string Refresh => UiText.Get("Common.Refresh", "Refresh");
@@ -52,6 +55,9 @@ public static class UiStrings
     public static class Flights
     {
         public static string AwaitingAta => UiText.Get("Flights.AwaitingAta", "Awaiting ATA");
+        public static string TotalCount(int count) => string.Format(
+            count == 1 ? UiText.Get("Flights.TotalOne", "{0:N0} flight") : UiText.Get("Flights.TotalMany", "{0:N0} flights"),
+            count);
     }
 
     public static class Notifications
