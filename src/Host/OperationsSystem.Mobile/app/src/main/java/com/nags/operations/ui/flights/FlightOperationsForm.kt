@@ -1043,66 +1043,74 @@ internal fun FlightOperationsForm(
         CompositionLocalProvider(LocalFlightMediaSession provides mediaSession) {
             val submittedMedia = rememberFlightComposerMedia(workDrafts.services.flatMap { it.attachments } + workDrafts.tasks.flatMap { it.attachments }) { }
             submittedMedia.error?.let { ArrivalFormMessage(it, error = true) }
-            if (serviceErrors.values.any { "rowVersion" in it }) FlightFormValidation(stringResource(R.string.service_validation_version)) { }
-            FlightFormSectionTitle(stringResource(R.string.work_services_count, workDrafts.services.size + deletedServiceCards.size))
-            if (submittedServices.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
-                submittedServices.forEach { service -> androidx.compose.runtime.key(service.id) {
-                    val recorded = flight.services.firstOrNull { it.id == service.id } ?: pendingServices.firstOrNull { it.serviceRecordId == service.id }?.reviewedRecord()
-                    val error = serviceErrors[service.id]?.values?.firstOrNull()?.let { stringResource(it) }
-                    FlightFormValidation(error) {
-                        FlightSubmittedServiceCard(service, serviceMetadata.getValue(service.id), entryZone,
-                            onUpdate = pendingServices.firstOrNull { it.serviceRecordId == service.id && (it.status != "pending" || it.operation == "delete") }?.let { row ->
-                                { openReview(FlightOperationReviewTarget("service", row.serviceRecordId, row.changeId)) }
-                            } ?: if (!saving && !flight.isApprovalLocked && flight.canSaveServices && !flight.hasCancellationSubmission &&
-                                (recorded == null || recorded.canEdit || recorded.canSetEnd || recorded.serviceDeletable())) ({ openWorkUpdate(service = service) }) else null,
-                            attachmentContent = { FlightReadOnlyAttachmentRow(it, submittedMedia) })
-                    }
-                } }
+            val showAddService = !flight.isApprovalLocked && flight.canAddServices != false
+            val serviceCount = workDrafts.services.size + deletedServiceCards.size
+            if (showAddService || serviceCount > 0) {
+                if (serviceErrors.values.any { "rowVersion" in it }) FlightFormValidation(stringResource(R.string.service_validation_version)) { }
+                FlightFormSectionTitle(stringResource(R.string.work_services_count, serviceCount))
+                if (submittedServices.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
+                    submittedServices.forEach { service -> androidx.compose.runtime.key(service.id) {
+                        val recorded = flight.services.firstOrNull { it.id == service.id } ?: pendingServices.firstOrNull { it.serviceRecordId == service.id }?.reviewedRecord()
+                        val error = serviceErrors[service.id]?.values?.firstOrNull()?.let { stringResource(it) }
+                        FlightFormValidation(error) {
+                            FlightSubmittedServiceCard(service, serviceMetadata.getValue(service.id), entryZone,
+                                onUpdate = pendingServices.firstOrNull { it.serviceRecordId == service.id && (it.status != "pending" || it.operation == "delete") }?.let { row ->
+                                    { openReview(FlightOperationReviewTarget("service", row.serviceRecordId, row.changeId)) }
+                                } ?: if (!saving && !flight.isApprovalLocked && flight.canSaveServices && !flight.hasCancellationSubmission &&
+                                    (recorded == null || recorded.canEdit || recorded.canSetEnd || recorded.serviceDeletable())) ({ openWorkUpdate(service = service) }) else null,
+                                attachmentContent = { FlightReadOnlyAttachmentRow(it, submittedMedia) })
+                        }
+                    } }
+                }
+                if (submittedServices.isNotEmpty()) Spacer(Modifier.size(8.dp))
+                FlightServiceSection(workDrafts.services.filterNot { it.id in serviceMetadata }, catalogs, referenceYear, zone,
+                    enabled = servicesEnabled && flight.canAddServices != false,
+                    canEdit = { id -> serviceReviewed.firstOrNull { it.id == id }?.canEdit ?: true },
+                    canSetEnd = { id -> serviceReviewed.firstOrNull { it.id == id }?.canSetEnd ?: true },
+                    canChangeService = { id -> serviceReviewed.firstOrNull { it.id == id }?.serviceSelectionEditable() != false &&
+                        flight.services.firstOrNull { it.id == id }?.serviceSelectionEditable() != false },
+                    canDelete = { id -> serviceReviewed.firstOrNull { it.id == id }?.serviceDeletable() != false &&
+                        flight.services.firstOrNull { it.id == id }?.serviceDeletable() != false },
+                    errors = serviceErrors, defaultEmployee = defaultServiceEmployee(flight, catalogs),
+                    timeBounds = flightWorkTimeBounds(actualArrivalForServices, actualDepartureForServices),
+                    showHeading = false, showAdd = showAddService,
+                    countOffset = submittedServices.size, draftLabels = true,
+                    onChange = { change -> updateWorkDrafts(workDrafts.copy(services = editLocalWorkDrafts(workDrafts.services, serviceMetadata.keys, { it.id }, change))) })
             }
-            if (submittedServices.isNotEmpty()) Spacer(Modifier.size(8.dp))
-            FlightServiceSection(workDrafts.services.filterNot { it.id in serviceMetadata }, catalogs, referenceYear, zone,
-                enabled = servicesEnabled && flight.canAddServices != false,
-                canEdit = { id -> serviceReviewed.firstOrNull { it.id == id }?.canEdit ?: true },
-                canSetEnd = { id -> serviceReviewed.firstOrNull { it.id == id }?.canSetEnd ?: true },
-                canChangeService = { id -> serviceReviewed.firstOrNull { it.id == id }?.serviceSelectionEditable() != false &&
-                    flight.services.firstOrNull { it.id == id }?.serviceSelectionEditable() != false },
-                canDelete = { id -> serviceReviewed.firstOrNull { it.id == id }?.serviceDeletable() != false &&
-                    flight.services.firstOrNull { it.id == id }?.serviceDeletable() != false },
-                errors = serviceErrors, defaultEmployee = defaultServiceEmployee(flight, catalogs),
-                timeBounds = flightWorkTimeBounds(actualArrivalForServices, actualDepartureForServices),
-                showHeading = false, showAdd = !flight.isApprovalLocked && flight.canAddServices != false,
-                countOffset = submittedServices.size, draftLabels = true,
-                onChange = { change -> updateWorkDrafts(workDrafts.copy(services = editLocalWorkDrafts(workDrafts.services, serviceMetadata.keys, { it.id }, change))) })
-            if (taskErrors.values.any { "rowVersion" in it }) FlightFormValidation(stringResource(R.string.task_validation_version)) { }
-            FlightFormSectionTitle(stringResource(R.string.work_tasks_count, workDrafts.tasks.size + deletedTaskCards.size))
-            if (submittedTasks.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
-                submittedTasks.forEachIndexed { index, task -> androidx.compose.runtime.key(task.id) {
-                    val recorded = flight.tasks.firstOrNull { it.id == task.id } ?: pendingTasks.firstOrNull { it.taskRecordId == task.id }?.reviewedRecord()
-                    val error = taskErrors[task.id]?.values?.firstOrNull()?.let { stringResource(it) }
-                    FlightFormValidation(error) {
-                        FlightSubmittedTaskCard(task, index + 1, taskMetadata.getValue(task.id), entryZone,
-                            onUpdate = pendingTasks.firstOrNull { it.taskRecordId == task.id && (it.status != "pending" || it.operation == "delete") }?.let { row ->
-                                { openReview(FlightOperationReviewTarget("task", row.taskRecordId, row.changeId)) }
-                            } ?: if (!saving && !flight.isApprovalLocked && flight.canSaveTasks && !flight.hasCancellationSubmission &&
-                                (recorded == null || recorded.canEdit || recorded.canSetEnd || recorded.canDelete)) ({ openWorkUpdate(task = task) }) else null,
-                            attachmentContent = { FlightReadOnlyAttachmentRow(it, submittedMedia) })
-                    }
-                } }
+            val showAddTask = !flight.isApprovalLocked && flight.canAddTasks != false
+            val taskCount = workDrafts.tasks.size + deletedTaskCards.size
+            if (showAddTask || taskCount > 0) {
+                if (taskErrors.values.any { "rowVersion" in it }) FlightFormValidation(stringResource(R.string.task_validation_version)) { }
+                FlightFormSectionTitle(stringResource(R.string.work_tasks_count, taskCount))
+                if (submittedTasks.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
+                    submittedTasks.forEachIndexed { index, task -> androidx.compose.runtime.key(task.id) {
+                        val recorded = flight.tasks.firstOrNull { it.id == task.id } ?: pendingTasks.firstOrNull { it.taskRecordId == task.id }?.reviewedRecord()
+                        val error = taskErrors[task.id]?.values?.firstOrNull()?.let { stringResource(it) }
+                        FlightFormValidation(error) {
+                            FlightSubmittedTaskCard(task, index + 1, taskMetadata.getValue(task.id), entryZone,
+                                onUpdate = pendingTasks.firstOrNull { it.taskRecordId == task.id && (it.status != "pending" || it.operation == "delete") }?.let { row ->
+                                    { openReview(FlightOperationReviewTarget("task", row.taskRecordId, row.changeId)) }
+                                } ?: if (!saving && !flight.isApprovalLocked && flight.canSaveTasks && !flight.hasCancellationSubmission &&
+                                    (recorded == null || recorded.canEdit || recorded.canSetEnd || recorded.canDelete)) ({ openWorkUpdate(task = task) }) else null,
+                                attachmentContent = { FlightReadOnlyAttachmentRow(it, submittedMedia) })
+                        }
+                    } }
+                }
+                if (submittedTasks.isNotEmpty()) Spacer(Modifier.size(8.dp))
+                FlightTaskSection(workDrafts.tasks.filterNot { it.id in taskMetadata }, catalogs, referenceYear, zone,
+                    enabled = tasksEnabled && flight.canAddTasks != false,
+                    canEdit = { id -> taskReviewed.firstOrNull { it.id == id }?.canEdit ?: true },
+                    canSetEnd = { id -> taskReviewed.firstOrNull { it.id == id }?.canSetEnd ?: true },
+                    canChangeType = { id -> taskReviewed.firstOrNull { it.id == id }?.canChangeType != false &&
+                        flight.tasks.firstOrNull { it.id == id }?.canChangeType != false },
+                    canDelete = { id -> taskReviewed.firstOrNull { it.id == id }?.canDelete != false &&
+                        flight.tasks.firstOrNull { it.id == id }?.canDelete != false },
+                    errors = taskErrors, defaultEmployee = defaultServiceEmployee(flight, catalogs),
+                    timeBounds = flightWorkTimeBounds(actualArrivalForServices, actualDepartureForServices),
+                    showHeading = false, showAdd = showAddTask,
+                    countOffset = submittedTasks.size, draftLabels = true,
+                    onChange = { change -> updateWorkDrafts(workDrafts.copy(tasks = editLocalWorkDrafts(workDrafts.tasks, taskMetadata.keys, { it.id }, change))) })
             }
-            if (submittedTasks.isNotEmpty()) Spacer(Modifier.size(8.dp))
-            FlightTaskSection(workDrafts.tasks.filterNot { it.id in taskMetadata }, catalogs, referenceYear, zone,
-                enabled = tasksEnabled && flight.canAddTasks != false,
-                canEdit = { id -> taskReviewed.firstOrNull { it.id == id }?.canEdit ?: true },
-                canSetEnd = { id -> taskReviewed.firstOrNull { it.id == id }?.canSetEnd ?: true },
-                canChangeType = { id -> taskReviewed.firstOrNull { it.id == id }?.canChangeType != false &&
-                    flight.tasks.firstOrNull { it.id == id }?.canChangeType != false },
-                canDelete = { id -> taskReviewed.firstOrNull { it.id == id }?.canDelete != false &&
-                    flight.tasks.firstOrNull { it.id == id }?.canDelete != false },
-                errors = taskErrors, defaultEmployee = defaultServiceEmployee(flight, catalogs),
-                timeBounds = flightWorkTimeBounds(actualArrivalForServices, actualDepartureForServices),
-                showHeading = false, showAdd = !flight.isApprovalLocked && flight.canAddTasks != false,
-                countOffset = submittedTasks.size, draftLabels = true,
-                onChange = { change -> updateWorkDrafts(workDrafts.copy(tasks = editLocalWorkDrafts(workDrafts.tasks, taskMetadata.keys, { it.id }, change))) })
         }
         Column(Modifier.flightFormNavigationTarget("departure", highlight = true), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (departureNeedsReview && pendingDepartureInput != null) {
