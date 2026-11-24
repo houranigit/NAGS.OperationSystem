@@ -9,7 +9,7 @@
 
 <RequirePermission Permission="@MasterDataPermissions.ToolsView">
     <div class="os-list-page">
-        <PageHeader Title="Tools" Description="Manage tools and their informational equipment rows.">
+        <PageHeader Title="Tools" Section="@UiStrings.Nav.MasterData">
             <Actions>
                 <AuthorizeView Context="create">
                     @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.ToolsCreate))

@@ -23,11 +23,12 @@
     --os-color-primary-contrast: #ffffff;
 
     /* Sidebar */
-    --os-color-sidebar: #f8fafc;
-    --os-color-sidebar-accent: #f1f4f8;
-    --os-color-sidebar-text: #364152;
-    --os-color-sidebar-muted: #778293;
-    --os-color-sidebar-active: linear-gradient(138deg, #ffffff 0%, #f8eaec 100%);
+    --os-color-sidebar: var(--os-color-primary-strong);
+    --os-color-sidebar-text: var(--os-color-primary-contrast);
+    --os-color-sidebar-hover: color-mix(in srgb, var(--os-color-sidebar-text) 7%, transparent);
+    --os-color-sidebar-highlight: color-mix(in srgb, var(--os-color-sidebar-text) 10%, transparent);
+    --os-color-sidebar-line: color-mix(in srgb, var(--os-color-sidebar-text) 16%, transparent);
+    --os-color-sidebar-active: var(--os-color-surface);
     --os-color-sidebar-active-text: var(--os-color-primary-strong);
 
     /* Status */
@@ -86,8 +87,7 @@
     --os-transition: 160ms cubic-bezier(0.4, 0, 0.2, 1);
 
     /* Layout */
-    --os-sidebar-width: 16.5rem;
+    --os-sidebar-width: 15.875rem;
     --os-sidebar-rail: 4.75rem;
-    --os-topbar-height: 4.25rem;
     --os-content-max: 84rem;
 }

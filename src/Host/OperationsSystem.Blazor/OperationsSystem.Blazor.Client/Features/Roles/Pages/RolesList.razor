@@ -10,7 +10,7 @@
 
 <RequirePermission Permission="@IdentityPermissions.RolesView">
     <div class="os-list-page">
-        <PageHeader Title="@UiStrings.Roles.Title" Description="@UiStrings.Roles.Description">
+        <PageHeader Title="@UiStrings.Roles.Title" Section="@UiStrings.Nav.Administration">
             <Actions>
                 <AuthorizeView Context="create">
                     @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.RolesCreate)

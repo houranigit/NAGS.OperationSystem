@@ -6,18 +6,6 @@
     color: var(--os-color-text);
 }
 
-.notification-preferences-back {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--os-space-2);
-    width: fit-content;
-    min-height: 2.75rem;
-    color: var(--os-color-primary-strong);
-    font-size: var(--os-text-sm);
-    font-weight: 600;
-    text-decoration: none;
-}
-
 .notification-preferences-group {
     display: grid;
     gap: var(--os-space-2);

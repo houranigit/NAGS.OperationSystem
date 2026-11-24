@@ -10,7 +10,7 @@
 
 <RequirePermission Permission="@OperationsPermissions.FlightsView">
     <div class="os-list-page">
-        <PageHeader Title="Flights" Description="Scheduled flights within your scope.">
+        <PageHeader Title="Flights" Section="@UiStrings.Nav.Operations">
             <Actions>
                 <AuthorizeView Context="schedule">
                     @if (schedule.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsSchedule))

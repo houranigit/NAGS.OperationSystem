@@ -22,6 +22,29 @@
     else if (item is { } m)
     {
         <div class="mt-workspace">
+            <PageHeader Title="@m.Name" Section="@UiStrings.Nav.MasterData"
+                        ParentTitle="@UiStrings.ManpowerTypes.Title" ParentHref="/master-data/manpower-types" ExistingHeading="true">
+                <Actions>
+                    <div class="mt-hero-actions">
+                        @if (Auth.HasPermission(MasterDataPermissions.ManpowerTypesUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(m))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
+                                <RowAction Text="@UiStrings.ManpowerTypes.Activate" Icon="check_circle"
+                                           Permission="@MasterDataPermissions.ManpowerTypesActivate"
+                                           Visible="@(!m.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="@UiStrings.ManpowerTypes.Deactivate" Icon="cancel" Danger="true"
+                                           Permission="@MasterDataPermissions.ManpowerTypesDeactivate"
+                                           Visible="@m.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </Actions>
+            </PageHeader>
+
             <section class="mt-profile @ProfileClass(m)">
                 <div class="mt-hero">
                     <div class="mt-avatar @AvatarClass(m)">
@@ -50,24 +73,6 @@
                                 <RadzenIcon Icon="content_copy" />
                             </button>
                         </div>
-                    </div>
-
-                    <div class="mt-hero-actions">
-                        @if (Auth.HasPermission(MasterDataPermissions.ManpowerTypesUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                        }
-                        @if (HasMoreActions(m))
-                        {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
-                                <RowAction Text="@UiStrings.ManpowerTypes.Activate" Icon="check_circle"
-                                           Permission="@MasterDataPermissions.ManpowerTypesActivate"
-                                           Visible="@(!m.IsActive)" OnClick="@ActivateAsync" />
-                                <RowAction Text="@UiStrings.ManpowerTypes.Deactivate" Icon="cancel" Danger="true"
-                                           Permission="@MasterDataPermissions.ManpowerTypesDeactivate"
-                                           Visible="@m.IsActive" OnClick="@DeactivateAsync" />
-                            </RowActionMenu>
-                        }
                     </div>
                 </div>
 

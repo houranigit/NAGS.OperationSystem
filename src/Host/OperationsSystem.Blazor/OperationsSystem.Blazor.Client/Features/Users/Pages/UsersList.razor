@@ -10,7 +10,7 @@
 
 <RequirePermission Permission="@IdentityPermissions.UsersView">
     <div class="os-list-page">
-        <PageHeader Title="@UiStrings.Users.Title" Description="@UiStrings.Users.Description">
+        <PageHeader Title="@UiStrings.Users.Title" Section="@UiStrings.Nav.Administration">
             <Actions>
                 <AuthorizeView Context="invite">
                     @if (invite.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, IdentityPermissions.UsersInvite)

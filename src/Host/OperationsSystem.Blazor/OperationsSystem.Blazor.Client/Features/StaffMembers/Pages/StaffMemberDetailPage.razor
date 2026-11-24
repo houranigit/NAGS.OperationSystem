@@ -22,6 +22,33 @@
     else if (item is { } s)
     {
         <div class="sm-workspace">
+            <PageHeader Title="@s.FullName" Section="@UiStrings.Nav.MasterData"
+                        ParentTitle="@UiStrings.StaffMembers.Title" ParentHref="/master-data/staff-members" ExistingHeading="true">
+                <Actions>
+                    <div class="sm-hero-actions">
+                        @if (Auth.HasPermission(MasterDataPermissions.StaffMembersUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.StaffMembers.EditMember" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(s))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
+                                <RowAction Text="@UiStrings.StaffMembers.Activate" Icon="check_circle"
+                                           Permission="@MasterDataPermissions.StaffMembersActivate"
+                                           Visible="@(!s.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="@UiStrings.PortalAccess.GrantAction" Icon="person_add"
+                                           Permission="@MasterDataPermissions.StaffMembersGrantAccess"
+                                           Visible="@CanGrantStaff(s)" OnClick="@OpenGrantAccessAsync" />
+                                <RowAction Separator="true" />
+                                <RowAction Text="@UiStrings.StaffMembers.Deactivate" Icon="cancel" Danger="true"
+                                           Permission="@MasterDataPermissions.StaffMembersDeactivate"
+                                           Visible="@s.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </Actions>
+            </PageHeader>
+
             @* ---- Profile (hero + tabs as one unit) ----------------------- *@
             <section class="sm-profile @ProfileClass(s)">
                 <div class="sm-hero">
@@ -65,28 +92,6 @@
                                 <RadzenIcon Icon="content_copy" />
                             </button>
                         </div>
-                    </div>
-
-                    <div class="sm-hero-actions">
-                        @if (Auth.HasPermission(MasterDataPermissions.StaffMembersUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.StaffMembers.EditMember" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                        }
-                        @if (HasMoreActions(s))
-                        {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
-                                <RowAction Text="@UiStrings.StaffMembers.Activate" Icon="check_circle"
-                                           Permission="@MasterDataPermissions.StaffMembersActivate"
-                                           Visible="@(!s.IsActive)" OnClick="@ActivateAsync" />
-                                <RowAction Text="@UiStrings.PortalAccess.GrantAction" Icon="person_add"
-                                           Permission="@MasterDataPermissions.StaffMembersGrantAccess"
-                                           Visible="@CanGrantStaff(s)" OnClick="@OpenGrantAccessAsync" />
-                                <RowAction Separator="true" />
-                                <RowAction Text="@UiStrings.StaffMembers.Deactivate" Icon="cancel" Danger="true"
-                                           Permission="@MasterDataPermissions.StaffMembersDeactivate"
-                                           Visible="@s.IsActive" OnClick="@DeactivateAsync" />
-                            </RowActionMenu>
-                        }
                     </div>
                 </div>
 

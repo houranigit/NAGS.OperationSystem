@@ -22,6 +22,49 @@
     else if (user is { } u)
     {
         <div class="us-workspace">
+            <PageHeader Title="@u.DisplayName" Section="@UiStrings.Nav.Administration"
+                        ParentTitle="@UiStrings.Users.Title" ParentHref="/users" ExistingHeading="true">
+                <Actions>
+                    <div class="us-hero-actions">
+                        @if (Auth.HasPermission(IdentityPermissions.UsersUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(u))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
+                                <RowAction Text="@UiStrings.Users.ChangeAccess" Icon="manage_accounts"
+                                           Permission="@IdentityPermissions.UsersAssignRole"
+                                           Visible="@(Auth.HasPermission(IdentityPermissions.RolesView)
+                                                      && UserAccessChangePolicy.CanShowAction(Auth.User?.Id, u.Id, u.Status))"
+                                           OnClick="@OpenChangeAccessAsync" />
+                                <RowAction Text="@UiStrings.Users.ResendInvitation" Icon="mail"
+                                           Permission="@IdentityPermissions.UsersInvite"
+                                           Visible="@(u.Status == "Invited")" OnClick="@ResendInvitationAsync" />
+                                <RowAction Text="@UiStrings.Users.Unlock" Icon="lock_open"
+                                           Permission="@IdentityPermissions.UsersUnlock"
+                                           Visible="@u.IsLockedOut" OnClick="@UnlockAsync" />
+                                <RowAction Text="@UiStrings.Users.RestoreAccess" Icon="person_check"
+                                           Permission="@IdentityPermissions.UsersRestoreAccess"
+                                           Visible="@(u.Status == "Suspended")" OnClick="@RestoreAccessAsync" />
+                                <RowAction Text="@UiStrings.Users.ResetMfa" Icon="restart_alt"
+                                           Permission="@IdentityPermissions.UsersResetMfa"
+                                           Visible="@CanResetMfa(u)" OnClick="@ResetMfaAsync" />
+                                <RowAction Separator="true" />
+                                <RowAction Text="@UiStrings.Users.Lock" Icon="lock" Danger="true"
+                                           Permission="@IdentityPermissions.UsersLock"
+                                           Visible="@(!u.IsLockedOut)" OnClick="@LockAsync" />
+                                <RowAction Text="@UiStrings.Users.Suspend" Icon="pause_circle" Danger="true"
+                                           Permission="@IdentityPermissions.UsersSuspend"
+                                           Visible="@(u.Status != "Suspended" && u.Status != "Deactivated")" OnClick="@SuspendAsync" />
+                                <RowAction Text="@UiStrings.Users.Deactivate" Icon="person_off" Danger="true"
+                                           Permission="@IdentityPermissions.UsersDeactivate"
+                                           Visible="@(u.Status != "Deactivated")" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </Actions>
+            </PageHeader>
 
             @* ---- Profile (hero + tabs as one unit) ----------------------- *@
             <section class="us-profile @ProfileClass(u)">
@@ -60,45 +103,6 @@
                                 <RadzenIcon Icon="content_copy" />
                             </button>
                         </div>
-                    </div>
-
-                    <div class="us-hero-actions">
-                        @if (Auth.HasPermission(IdentityPermissions.UsersUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                        }
-                        @if (HasMoreActions(u))
-                        {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
-                                <RowAction Text="@UiStrings.Users.ChangeAccess" Icon="manage_accounts"
-                                           Permission="@IdentityPermissions.UsersAssignRole"
-                                           Visible="@(Auth.HasPermission(IdentityPermissions.RolesView)
-                                                      && UserAccessChangePolicy.CanShowAction(Auth.User?.Id, u.Id, u.Status))"
-                                           OnClick="@OpenChangeAccessAsync" />
-                                <RowAction Text="@UiStrings.Users.ResendInvitation" Icon="mail"
-                                           Permission="@IdentityPermissions.UsersInvite"
-                                           Visible="@(u.Status == "Invited")" OnClick="@ResendInvitationAsync" />
-                                <RowAction Text="@UiStrings.Users.Unlock" Icon="lock_open"
-                                           Permission="@IdentityPermissions.UsersUnlock"
-                                           Visible="@u.IsLockedOut" OnClick="@UnlockAsync" />
-                                <RowAction Text="@UiStrings.Users.RestoreAccess" Icon="person_check"
-                                           Permission="@IdentityPermissions.UsersRestoreAccess"
-                                           Visible="@(u.Status == "Suspended")" OnClick="@RestoreAccessAsync" />
-                                <RowAction Text="@UiStrings.Users.ResetMfa" Icon="restart_alt"
-                                           Permission="@IdentityPermissions.UsersResetMfa"
-                                           Visible="@CanResetMfa(u)" OnClick="@ResetMfaAsync" />
-                                <RowAction Separator="true" />
-                                <RowAction Text="@UiStrings.Users.Lock" Icon="lock" Danger="true"
-                                           Permission="@IdentityPermissions.UsersLock"
-                                           Visible="@(!u.IsLockedOut)" OnClick="@LockAsync" />
-                                <RowAction Text="@UiStrings.Users.Suspend" Icon="pause_circle" Danger="true"
-                                           Permission="@IdentityPermissions.UsersSuspend"
-                                           Visible="@(u.Status != "Suspended" && u.Status != "Deactivated")" OnClick="@SuspendAsync" />
-                                <RowAction Text="@UiStrings.Users.Deactivate" Icon="person_off" Danger="true"
-                                           Permission="@IdentityPermissions.UsersDeactivate"
-                                           Visible="@(u.Status != "Deactivated")" OnClick="@DeactivateAsync" />
-                            </RowActionMenu>
-                        }
                     </div>
                 </div>
 

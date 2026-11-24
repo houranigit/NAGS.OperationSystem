@@ -10,7 +10,7 @@ alwaysApply: false
 - Use **Radzen.Blazor** with the free **default** theme (`RadzenTheme Theme="default"` in `App.razor`). Material3 and other premium themes are paid and must not be used. Brand the default theme by mapping Radzen `--rz-*` variables onto the `--os-*` tokens in `app.css`. Do not add Bootstrap, Tailwind, or another component library.
 - **Design tokens first.** Colors, spacing, radius, and typography live in `wwwroot/tokens.css` as CSS variables (`--os-*`). Never hardcode hex/rgb in `.razor` or `.razor.css` files. Layout shell styles in `MainLayout.razor.css` must use tokens too.
 - **Shared shells, not one-off pages.** Build pages from components under `OperationsSystem.Blazor.Client/Shared/`:
-  - `PageHeader` — title, optional description, actions slot
+  - `PageHeader` — breadcrumb with the current page title, optional section and parent link, and a trailing actions slot
   - `AuthLayout` — centered card for login/activation
   - `LoadingCard` — spinner + message
   - `EmptyState` — icon/title/description for no data
@@ -36,7 +36,7 @@ alwaysApply: false
 ## Example — list page skeleton
 
 ```razor
-<PageHeader Title="@T["users.title"]" Description="@T["users.description"]">
+<PageHeader Title="@T["users.title"]" Section="@UiStrings.Nav.Administration">
     <Actions>
         <RadzenButton Text="@T["users.invite"]" ButtonStyle="ButtonStyle.Primary" Click="@OpenInvite" />
     </Actions>

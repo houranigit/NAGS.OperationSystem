@@ -21,6 +21,27 @@
     else if (item is { } catalog)
     {
         <div class="md-workspace">
+            <PageHeader Title="@catalog.Name" Section="@UiStrings.Nav.MasterData"
+                        ParentTitle="@Title" ParentHref="@($"/master-data/{Route}")" ExistingHeading="true">
+                <Actions>
+                    <div class="md-hero-actions">
+                        @if (Auth.HasPermission(UpdatePermission))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(catalog))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
+                                <RowAction Text="Activate" Icon="check_circle" Permission="@ActivatePermission"
+                                           Visible="@(!catalog.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="Deactivate" Icon="cancel" Danger="true" Permission="@DeactivatePermission"
+                                           Visible="@catalog.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </Actions>
+            </PageHeader>
+
             <section class="md-profile @ProfileClass(catalog)">
                 <div class="md-hero">
                     <div class="md-avatar @AvatarClass(catalog)">
@@ -47,22 +68,6 @@
                                 <RadzenIcon Icon="content_copy" />
                             </button>
                         </div>
-                    </div>
-
-                    <div class="md-hero-actions">
-                        @if (Auth.HasPermission(UpdatePermission))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                        }
-                        @if (HasMoreActions(catalog))
-                        {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
-                                <RowAction Text="Activate" Icon="check_circle" Permission="@ActivatePermission"
-                                           Visible="@(!catalog.IsActive)" OnClick="@ActivateAsync" />
-                                <RowAction Text="Deactivate" Icon="cancel" Danger="true" Permission="@DeactivatePermission"
-                                           Visible="@catalog.IsActive" OnClick="@DeactivateAsync" />
-                            </RowActionMenu>
-                        }
                     </div>
                 </div>
 

@@ -22,6 +22,29 @@
     else if (item is { } l)
     {
         <div class="lc-workspace">
+            <PageHeader Title="@l.Name" Section="@UiStrings.Nav.MasterData"
+                        ParentTitle="@UiStrings.Licenses.Title" ParentHref="/master-data/licenses" ExistingHeading="true">
+                <Actions>
+                    <div class="lc-hero-actions">
+                        @if (Auth.HasPermission(MasterDataPermissions.LicensesUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(l))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
+                                <RowAction Text="@UiStrings.Licenses.Activate" Icon="check_circle"
+                                           Permission="@MasterDataPermissions.LicensesActivate"
+                                           Visible="@(!l.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="@UiStrings.Licenses.Deactivate" Icon="cancel" Danger="true"
+                                           Permission="@MasterDataPermissions.LicensesDeactivate"
+                                           Visible="@l.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </Actions>
+            </PageHeader>
+
             <section class="lc-profile @ProfileClass(l)">
                 <div class="lc-hero">
                     <div class="lc-avatar @AvatarClass(l)">
@@ -54,24 +77,6 @@
                                 <RadzenIcon Icon="content_copy" />
                             </button>
                         </div>
-                    </div>
-
-                    <div class="lc-hero-actions">
-                        @if (Auth.HasPermission(MasterDataPermissions.LicensesUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                        }
-                        @if (HasMoreActions(l))
-                        {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
-                                <RowAction Text="@UiStrings.Licenses.Activate" Icon="check_circle"
-                                           Permission="@MasterDataPermissions.LicensesActivate"
-                                           Visible="@(!l.IsActive)" OnClick="@ActivateAsync" />
-                                <RowAction Text="@UiStrings.Licenses.Deactivate" Icon="cancel" Danger="true"
-                                           Permission="@MasterDataPermissions.LicensesDeactivate"
-                                           Visible="@l.IsActive" OnClick="@DeactivateAsync" />
-                            </RowActionMenu>
-                        }
                     </div>
                 </div>
 

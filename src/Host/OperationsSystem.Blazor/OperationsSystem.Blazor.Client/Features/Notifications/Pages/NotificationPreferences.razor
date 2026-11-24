@@ -5,67 +5,68 @@
 <RequireAuth>
     @if (Auth.User is not null)
     {
-        <main class="notification-preferences" lang="en" dir="ltr">
-            <a class="notification-preferences-back" href="/account"><RadzenIcon Icon="arrow_back" /> My account</a>
-            <PageHeader Title="Notification settings" Description="Choose which notifications you receive on Android and the web portal." />
+        <main class="os-list-page" lang="en" dir="ltr">
+            <PageHeader Title="Notification settings" ParentTitle="@UiStrings.Account.Title" ParentHref="/account" />
 
-            @if (isLoading)
-            {
-                <LoadingCard Message="Loading your notification preferences…" />
-            }
-            else if (preferences is null)
-            {
-                <ErrorState Message="We couldn't load your notification preferences." OnRetry="LoadAsync" />
-            }
-            else
-            {
-                <section class="notification-preferences-group" aria-label="Notifications">
-                    <div class="notification-preferences-rows">
-                        <button type="button" class="notification-preferences-row" role="switch" aria-checked="@(preferences.Enabled ? "true" : "false")"
-                                disabled="@(savingKey is not null)" @onclick='() => SaveAsync("enabled", !preferences.Enabled)'>
-                            <span class="notification-preferences-copy"><strong>Allow notifications</strong><span>Pause or resume notifications for your account.</span></span>
-                            <span class="notification-preferences-switch" aria-hidden="true"></span>
-                        </button>
-                    </div>
-                </section>
-
-                @foreach (var group in Groups)
+            <div class="notification-preferences">
+                @if (isLoading)
                 {
-                    <section @key="group.Title" class="notification-preferences-group" aria-label="@group.Title">
-                        <h2>@group.Title</h2>
+                    <LoadingCard Message="Loading your notification preferences…" />
+                }
+                else if (preferences is null)
+                {
+                    <ErrorState Message="We couldn't load your notification preferences." OnRetry="LoadAsync" />
+                }
+                else
+                {
+                    <section class="notification-preferences-group" aria-label="Notifications">
                         <div class="notification-preferences-rows">
-                            @foreach (var option in group.Options)
-                            {
-                                <button @key="option.Key" type="button" class="notification-preferences-row" role="switch"
-                                        aria-checked="@(option.Value(preferences) ? "true" : "false")"
-                                        disabled="@(savingKey is not null || !preferences.Enabled)"
-                                        @onclick="() => SaveAsync(option.Key, !option.Value(preferences))">
-                                    <span class="notification-preferences-copy"><strong>@option.Title</strong><span>@option.Description</span></span>
-                                    <span class="notification-preferences-switch" aria-hidden="true"></span>
-                                </button>
-                            }
+                            <button type="button" class="notification-preferences-row" role="switch" aria-checked="@(preferences.Enabled ? "true" : "false")"
+                                    disabled="@(savingKey is not null)" @onclick='() => SaveAsync("enabled", !preferences.Enabled)'>
+                                <span class="notification-preferences-copy"><strong>Allow notifications</strong><span>Pause or resume notifications for your account.</span></span>
+                                <span class="notification-preferences-switch" aria-hidden="true"></span>
+                            </button>
                         </div>
                     </section>
-                }
 
-                <div class="notification-preferences-feedback" role="status" aria-live="polite">
-                    @if (savingKey is not null)
+                    @foreach (var group in Groups)
                     {
-                        <span>Saving preference…</span>
+                        <section @key="group.Title" class="notification-preferences-group" aria-label="@group.Title">
+                            <h2>@group.Title</h2>
+                            <div class="notification-preferences-rows">
+                                @foreach (var option in group.Options)
+                                {
+                                    <button @key="option.Key" type="button" class="notification-preferences-row" role="switch"
+                                            aria-checked="@(option.Value(preferences) ? "true" : "false")"
+                                            disabled="@(savingKey is not null || !preferences.Enabled)"
+                                            @onclick="() => SaveAsync(option.Key, !option.Value(preferences))">
+                                        <span class="notification-preferences-copy"><strong>@option.Title</strong><span>@option.Description</span></span>
+                                        <span class="notification-preferences-switch" aria-hidden="true"></span>
+                                    </button>
+                                }
+                            </div>
+                        </section>
                     }
-                    else if (failedChange is not null)
-                    {
-                        <span class="notification-preferences-error">We couldn't confirm this change. Your last loaded preference is still shown.</span>
-                        <button type="button" @onclick="RetrySaveAsync">Try again</button>
-                    }
-                    else if (saved)
-                    {
-                        <span>Preference saved.</span>
-                    }
-                </div>
-                <p class="notification-preferences-note">Changes apply to future notifications across your account. Existing notifications stay in your inbox. Android alerts also depend on your device's notification permission.</p>
-                <p class="notification-preferences-note">Work-order submission emails have a separate <a href="/account">email preference in My account</a>.</p>
-            }
+
+                    <div class="notification-preferences-feedback" role="status" aria-live="polite">
+                        @if (savingKey is not null)
+                        {
+                            <span>Saving preference…</span>
+                        }
+                        else if (failedChange is not null)
+                        {
+                            <span class="notification-preferences-error">We couldn't confirm this change. Your last loaded preference is still shown.</span>
+                            <button type="button" @onclick="RetrySaveAsync">Try again</button>
+                        }
+                        else if (saved)
+                        {
+                            <span>Preference saved.</span>
+                        }
+                    </div>
+                    <p class="notification-preferences-note">Changes apply to future notifications across your account. Existing notifications stay in your inbox. Android alerts also depend on your device's notification permission.</p>
+                    <p class="notification-preferences-note">Work-order submission emails have a separate <a href="/account">email preference in My account</a>.</p>
+                }
+            </div>
         </main>
     }
 </RequireAuth>

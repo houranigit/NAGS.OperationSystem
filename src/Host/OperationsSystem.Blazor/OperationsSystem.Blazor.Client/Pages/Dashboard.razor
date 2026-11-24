@@ -6,6 +6,7 @@
     @if (Auth.User is { } user && CanAccessRootDashboard)
     {
         <main class="os-home-dashboard">
+            <PageHeader Title="@UiStrings.Nav.Home" ShowHome="false" ExistingHeading="true" />
             <section class="os-home-hero">
                 <div class="os-home-hero-copy">
                     <p class="os-home-eyebrow"><RadzenIcon Icon="space_dashboard" />Workspace overview</p>

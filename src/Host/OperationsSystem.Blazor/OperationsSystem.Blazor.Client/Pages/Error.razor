@@ -3,15 +3,19 @@
 
 <PageTitle>Error</PageTitle>
 
-<PageHeader Title="Something went wrong" Description="An error occurred while processing your request." />
+<PageHeader Title="Something went wrong">
+    <Actions>
+        <RadzenButton Text="Back to dashboard" ButtonStyle="ButtonStyle.Primary" Icon="home"
+                      Click="@(() => Navigation.NavigateTo("/"))" />
+    </Actions>
+</PageHeader>
+
+<p class="os-muted">An error occurred while processing your request.</p>
 
 @if (!string.IsNullOrEmpty(requestId))
 {
     <p class="os-muted">Request ID: <code>@requestId</code></p>
 }
-
-<RadzenButton Text="Back to dashboard" ButtonStyle="ButtonStyle.Primary" Icon="home"
-              Click="@(() => Navigation.NavigateTo("/"))" />
 
 @code {
     [Inject] private NavigationManager Navigation { get; set; } = default!;

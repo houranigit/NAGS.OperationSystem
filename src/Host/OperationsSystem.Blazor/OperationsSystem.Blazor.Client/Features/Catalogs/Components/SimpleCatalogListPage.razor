@@ -8,7 +8,7 @@
 
 <RequirePermission Permission="@ViewPermission">
     <div class="os-list-page">
-        <PageHeader Title="@Title" Description="@Description">
+        <PageHeader Title="@Title" Section="@UiStrings.Nav.MasterData">
             <Actions>
                 <AuthorizeView Context="create">
                     @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, CreatePermission))
@@ -102,7 +102,6 @@
     private string? currentSort;
 
     private string Title => SimpleCatalogText.Title(Kind);
-    private string Description => SimpleCatalogText.Description(Kind);
     private string Icon => SimpleCatalogText.Icon(Kind);
     private string Route => SimpleCatalogText.Route(Kind);
     private string ViewPermission => SimpleCatalogText.ViewPermission(Kind);

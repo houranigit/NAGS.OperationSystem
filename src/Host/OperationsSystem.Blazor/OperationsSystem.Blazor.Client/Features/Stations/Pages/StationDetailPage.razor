@@ -22,6 +22,29 @@
     else if (item is { } s)
     {
         <div class="st-workspace">
+            <PageHeader Title="@s.Name" Section="@UiStrings.Nav.MasterData"
+                        ParentTitle="@UiStrings.Stations.Title" ParentHref="/master-data/stations" ExistingHeading="true">
+                <Actions>
+                    <div class="st-hero-actions">
+                        @if (Auth.HasPermission(MasterDataPermissions.StationsUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(s))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
+                                <RowAction Text="@UiStrings.Stations.Activate" Icon="check_circle"
+                                           Permission="@MasterDataPermissions.StationsActivate"
+                                           Visible="@(!s.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="@UiStrings.Stations.Deactivate" Icon="cancel" Danger="true"
+                                           Permission="@MasterDataPermissions.StationsDeactivate"
+                                           Visible="@s.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </Actions>
+            </PageHeader>
+
             @* ---- Profile (hero + tabs as one unit) ----------------------- *@
             <section class="st-profile @ProfileClass(s)">
                 <div class="st-hero">
@@ -58,24 +81,6 @@
                                 <RadzenIcon Icon="content_copy" />
                             </button>
                         </div>
-                    </div>
-
-                    <div class="st-hero-actions">
-                        @if (Auth.HasPermission(MasterDataPermissions.StationsUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                        }
-                        @if (HasMoreActions(s))
-                        {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
-                                <RowAction Text="@UiStrings.Stations.Activate" Icon="check_circle"
-                                           Permission="@MasterDataPermissions.StationsActivate"
-                                           Visible="@(!s.IsActive)" OnClick="@ActivateAsync" />
-                                <RowAction Text="@UiStrings.Stations.Deactivate" Icon="cancel" Danger="true"
-                                           Permission="@MasterDataPermissions.StationsDeactivate"
-                                           Visible="@s.IsActive" OnClick="@DeactivateAsync" />
-                            </RowActionMenu>
-                        }
                     </div>
                 </div>
 

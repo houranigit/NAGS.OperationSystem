@@ -22,6 +22,25 @@
     else if (role is { } r)
     {
         <div class="rl-workspace">
+            <PageHeader Title="@r.Name" Section="@UiStrings.Nav.Administration"
+                        ParentTitle="@UiStrings.Roles.Title" ParentHref="/roles" ExistingHeading="true">
+                <Actions>
+                    <div class="rl-hero-actions">
+                        @if (!r.IsSystem && Auth.HasPermission(IdentityPermissions.RolesUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(r))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
+                                <RowAction Text="@UiStrings.Common.Delete" Icon="delete" Danger="true"
+                                           Permission="@IdentityPermissions.RolesDelete" OnClick="@DeleteAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </Actions>
+            </PageHeader>
+
             @* ---- Profile (hero + tabs as one unit) ----------------------- *@
             <section class="rl-profile @ProfileClass(r)">
                 <div class="rl-hero">
@@ -55,20 +74,6 @@
                                 <RadzenIcon Icon="content_copy" />
                             </button>
                         </div>
-                    </div>
-
-                    <div class="rl-hero-actions">
-                        @if (!r.IsSystem && Auth.HasPermission(IdentityPermissions.RolesUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                        }
-                        @if (HasMoreActions(r))
-                        {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
-                                <RowAction Text="@UiStrings.Common.Delete" Icon="delete" Danger="true"
-                                           Permission="@IdentityPermissions.RolesDelete" OnClick="@DeleteAsync" />
-                            </RowActionMenu>
-                        }
                     </div>
                 </div>
 

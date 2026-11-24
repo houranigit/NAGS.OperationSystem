@@ -1,35 +1,36 @@
 .os-notification-bell {
-    position: relative;
+    display: flex;
 }
 
 .os-notification-bell__trigger {
     position: relative;
+    z-index: 3;
     display: inline-grid;
     place-items: center;
-    width: 2.5rem;
-    height: 2.5rem;
+    width: var(--os-sidebar-control-size);
+    height: var(--os-sidebar-control-size);
     padding: 0;
-    border: 1px solid var(--os-color-border);
+    border: 1px solid transparent;
     border-radius: var(--os-radius-sm);
-    background: var(--os-color-surface);
-    color: var(--os-color-text-muted);
+    background: transparent;
+    color: var(--os-color-sidebar-text);
     cursor: pointer;
-    transition: background var(--os-transition), color var(--os-transition), border-color var(--os-transition), box-shadow var(--os-transition);
+    transition: background var(--os-shell-transition), border-color var(--os-shell-transition);
 }
 
 .os-notification-bell__trigger:hover,
 .os-notification-bell--open .os-notification-bell__trigger {
-    background: var(--os-color-surface-hover);
-    color: var(--os-color-primary);
-    border-color: var(--os-color-primary-soft-border);
+    border-color: var(--os-color-sidebar-line);
+    background: var(--os-color-sidebar-hover);
 }
 
-.os-notification-bell--open .os-notification-bell__trigger {
-    box-shadow: var(--os-ring);
+.os-notification-bell__trigger:focus-visible {
+    outline: 2px solid var(--os-color-sidebar-text);
+    outline-offset: -3px;
 }
 
 .os-notification-bell__trigger ::deep .rz-icon {
-    font-size: 1.3rem;
+    font-size: var(--os-sidebar-icon-size);
 }
 
 .os-notification-bell__badge {
@@ -42,7 +43,7 @@
     min-width: 1.25rem;
     height: 1.25rem;
     padding-inline: 0.28rem;
-    border: 2px solid var(--os-color-surface);
+    border: 2px solid var(--os-color-sidebar);
     border-radius: var(--os-radius-pill);
     background: var(--os-color-danger);
     color: var(--os-color-primary-contrast);
@@ -54,7 +55,8 @@
 .os-notification-bell__backdrop {
     position: fixed;
     inset: 0;
-    z-index: 40;
+    z-index: 2;
+    padding: 0;
     border: 0;
     background: transparent;
     cursor: default;
@@ -62,17 +64,18 @@
 
 .os-notification-bell__panel {
     position: absolute;
-    inset-block-start: calc(100% + 0.65rem);
-    inset-inline-end: 0;
-    z-index: 70;
+    inset-block-end: var(--os-account-panel-bottom);
+    inset-inline-start: var(--os-account-panel-start);
+    z-index: 4;
     display: flex;
     flex-direction: column;
-    width: min(25rem, calc(100vw - 2rem));
-    max-height: min(38rem, calc(100vh - 6rem));
+    width: var(--os-account-panel-width);
+    max-height: var(--os-account-panel-max-height);
     overflow: hidden;
     border: 1px solid var(--os-color-border);
-    border-radius: var(--os-radius-lg);
+    border-radius: var(--os-radius-md);
     background: var(--os-color-surface);
+    color: var(--os-color-text);
     box-shadow: var(--os-shadow-lg);
 }
 
@@ -81,7 +84,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--os-space-3);
-    padding: var(--os-space-4) var(--os-space-5);
+    padding: var(--os-space-2) var(--os-space-3);
     border-bottom: 1px solid var(--os-color-border);
 }
 
@@ -122,7 +125,7 @@
 }
 
 .os-notification-bell__content {
-    min-height: 11rem;
+    min-height: 0;
     overflow-y: auto;
 }
 
@@ -130,9 +133,9 @@
     position: relative;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: var(--os-space-3);
+    gap: var(--os-space-2);
     width: 100%;
-    padding: var(--os-space-4) var(--os-space-5);
+    padding: var(--os-space-2) var(--os-space-3);
     border: 0;
     border-bottom: 1px solid var(--os-color-border);
     background: var(--os-color-surface);
@@ -207,8 +210,8 @@
     align-items: center;
     justify-content: center;
     gap: var(--os-space-2);
-    min-height: 13rem;
-    padding: var(--os-space-6);
+    min-height: 7rem;
+    padding: var(--os-space-3);
     color: var(--os-color-text);
     text-align: center;
 }
@@ -235,7 +238,7 @@
 .os-notification-bell__skeleton {
     display: grid;
     gap: var(--os-space-2);
-    padding: var(--os-space-4) var(--os-space-5);
+    padding: var(--os-space-2) var(--os-space-3);
     border-bottom: 1px solid var(--os-color-border);
 }
 
@@ -255,7 +258,7 @@
 }
 
 .os-notification-bell__footer {
-    padding: var(--os-space-3) var(--os-space-4);
+    padding: var(--os-space-2);
     border-top: 1px solid var(--os-color-border);
     background: var(--os-color-surface-muted);
 }
@@ -285,21 +288,11 @@
     transform: rotate(180deg);
 }
 
-@media (max-width: 640px) {
-    .os-notification-bell__panel {
-        position: fixed;
-        inset-block-start: calc(var(--os-topbar-height) + var(--os-space-2));
-        inset-inline: var(--os-space-3);
-        width: auto;
-        max-height: calc(100dvh - var(--os-topbar-height) - var(--os-space-5));
-    }
-}
-
 .os-notification-bell__open {
     align-self: center;
-    min-width: 60px;
+    min-width: 0;
     height: 30px;
-    padding: 2px 10px;
+    padding: 2px var(--os-space-2);
     border: 0;
     border-radius: 8px;
     background: var(--os-color-primary);

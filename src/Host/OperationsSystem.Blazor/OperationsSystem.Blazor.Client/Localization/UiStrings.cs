@@ -147,6 +147,9 @@ public static class UiStrings
     public static class Nav
     {
         public static string Dashboard => UiText.Get("Nav.Dashboard", "Dashboard");
+        public static string Home => UiText.Get("Nav.Home", "Home");
+        public static string Breadcrumb => UiText.Get("Nav.Breadcrumb", "Breadcrumb");
+        public static string Operations => UiText.Get("Nav.Operations", "Operations");
         public static string Users => UiText.Get("Nav.Users", "Users");
         public static string Roles => UiText.Get("Nav.Roles", "Roles");
         public static string Audit => UiText.Get("Nav.Audit", "Audit log");

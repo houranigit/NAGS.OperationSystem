@@ -22,6 +22,29 @@
     else if (item is { } tool)
     {
         <div class="md-workspace">
+            <PageHeader Title="@tool.Name" Section="@UiStrings.Nav.MasterData"
+                        ParentTitle="@UiStrings.Nav.Tools" ParentHref="/master-data/tools" ExistingHeading="true">
+                <Actions>
+                    <div class="md-hero-actions">
+                        @if (Auth.HasPermission(MasterDataPermissions.ToolsUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(tool))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
+                                <RowAction Text="Activate" Icon="check_circle"
+                                           Permission="@MasterDataPermissions.ToolsActivate"
+                                           Visible="@(!tool.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="Deactivate" Icon="cancel" Danger="true"
+                                           Permission="@MasterDataPermissions.ToolsDeactivate"
+                                           Visible="@tool.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </Actions>
+            </PageHeader>
+
             <section class="md-profile @ProfileClass(tool)">
                 <div class="md-hero">
                     <div class="md-avatar @AvatarClass(tool)">
@@ -47,24 +70,6 @@
                                 <RadzenIcon Icon="content_copy" />
                             </button>
                         </div>
-                    </div>
-
-                    <div class="md-hero-actions">
-                        @if (Auth.HasPermission(MasterDataPermissions.ToolsUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                        }
-                        @if (HasMoreActions(tool))
-                        {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
-                                <RowAction Text="Activate" Icon="check_circle"
-                                           Permission="@MasterDataPermissions.ToolsActivate"
-                                           Visible="@(!tool.IsActive)" OnClick="@ActivateAsync" />
-                                <RowAction Text="Deactivate" Icon="cancel" Danger="true"
-                                           Permission="@MasterDataPermissions.ToolsDeactivate"
-                                           Visible="@tool.IsActive" OnClick="@DeactivateAsync" />
-                            </RowActionMenu>
-                        }
                     </div>
                 </div>
 

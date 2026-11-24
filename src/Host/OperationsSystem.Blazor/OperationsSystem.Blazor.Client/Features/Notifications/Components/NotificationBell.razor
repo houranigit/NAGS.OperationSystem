@@ -6,10 +6,10 @@
 @inject NotificationService Toasts
 @inject NotificationTargetAvailability Targets
 
-<div class="os-notification-bell @(isOpen ? "os-notification-bell--open" : null)">
+<div class="os-notification-bell @(IsOpen ? "os-notification-bell--open" : null)" @onkeydown="OnKeyDownAsync">
     <button type="button" class="os-notification-bell__trigger" title="Notifications"
-            aria-label="Open notifications" aria-haspopup="true" aria-expanded="@isOpen"
-            @onclick="ToggleAsync">
+            aria-label="Open notifications" aria-haspopup="true" aria-expanded="@(IsOpen ? "true" : "false")"
+            @ref="trigger" @onclick="ToggleAsync">
         <RadzenIcon Icon="notifications_none" />
         @if (Center.UnreadCount > 0)
         {
@@ -19,11 +19,11 @@
         }
     </button>
 
-    @if (isOpen)
+    @if (IsOpen)
     {
-        <button type="button" class="os-notification-bell__backdrop" aria-label="@UiStrings.Common.Close" @onclick="Close"></button>
-        <section class="os-notification-bell__panel" aria-label="Recent notifications" lang="en" dir="ltr">
-            <header class="os-notification-bell__header">
+        <button type="button" class="os-notification-bell__backdrop" tabindex="-1" aria-label="@UiStrings.Common.Close" @onclick="Close"></button>
+        <section class="os-notification-bell__panel" aria-label="Recent notifications" lang="en">
+            <header class="os-notification-bell__header" dir="ltr">
                 <div>
                     <strong>Notifications</strong>
                     @if (Center.UnreadCount > 0)
@@ -33,7 +33,7 @@
                 </div>
             </header>
 
-            <div class="os-notification-bell__content">
+            <div class="os-notification-bell__content" dir="ltr">
                 @if (Center.IsLoading || !UserTimeZone.IsInitialized)
                 {
                     @for (var index = 0; index < 3; index++)
@@ -80,7 +80,7 @@
                 }
             </div>
 
-            <footer class="os-notification-bell__footer">
+            <footer class="os-notification-bell__footer" dir="ltr">
                 <button type="button" @onclick="ViewAll">
                     <span>View all notifications</span>
                     <RadzenIcon Icon="arrow_forward" />
@@ -91,7 +91,10 @@
 </div>
 
 @code {
-    private bool isOpen;
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+
+    private ElementReference trigger;
     private bool disposed;
     private readonly CancellationTokenSource lifetimeCts = new();
 
@@ -101,15 +104,25 @@
 
     private async Task ToggleAsync()
     {
-        isOpen = !isOpen;
-        if (isOpen)
+        var open = !IsOpen;
+        await IsOpenChanged.InvokeAsync(open);
+        if (open)
         {
             await Center.RefreshAsync(lifetimeCts.Token);
             await Targets.CheckAsync(Center.Recent, lifetimeCts.Token);
         }
     }
 
-    private void Close() => isOpen = false;
+    private Task Close() => IsOpenChanged.InvokeAsync(false);
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape" && IsOpen)
+        {
+            await Close();
+            await trigger.FocusAsync(preventScroll: true);
+        }
+    }
 
     private async Task RefreshAsync()
     {
@@ -139,13 +152,13 @@
 
         if (disposed)
             return;
-        isOpen = false;
+        await Close();
         Navigation.NavigateTo(NotificationPresentation.DeepLink(notification) ?? NotificationPresentation.InboxLink(notification));
     }
 
-    private void ViewAll()
+    private async Task ViewAll()
     {
-        isOpen = false;
+        await Close();
         Navigation.NavigateTo("/notifications");
     }
 
@@ -156,7 +169,7 @@
             await InvokeAsync(async () =>
             {
                 if (disposed) return;
-                if (isOpen) await Targets.CheckAsync(Center.Recent, lifetimeCts.Token);
+                if (IsOpen) await Targets.CheckAsync(Center.Recent, lifetimeCts.Token);
                 StateHasChanged();
             });
         }

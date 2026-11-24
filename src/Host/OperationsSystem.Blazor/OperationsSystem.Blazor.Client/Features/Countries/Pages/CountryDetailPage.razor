@@ -22,6 +22,29 @@
     else if (country is { } c)
     {
         <div class="cn-workspace">
+            <PageHeader Title="@c.Name" Section="@UiStrings.Nav.MasterData"
+                        ParentTitle="@UiStrings.Countries.Title" ParentHref="/master-data/countries" ExistingHeading="true">
+                <Actions>
+                    <div class="cn-hero-actions">
+                        @if (Auth.HasPermission(MasterDataPermissions.CountriesUpdate))
+                        {
+                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
+                        }
+                        @if (HasMoreActions(c))
+                        {
+                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
+                                <RowAction Text="@UiStrings.Countries.Activate" Icon="check_circle"
+                                           Permission="@MasterDataPermissions.CountriesActivate"
+                                           Visible="@(!c.IsActive)" OnClick="@ActivateAsync" />
+                                <RowAction Text="@UiStrings.Countries.Deactivate" Icon="cancel" Danger="true"
+                                           Permission="@MasterDataPermissions.CountriesDeactivate"
+                                           Visible="@c.IsActive" OnClick="@DeactivateAsync" />
+                            </RowActionMenu>
+                        }
+                    </div>
+                </Actions>
+            </PageHeader>
+
             @* ---- Profile (hero + tabs as one unit) ----------------------- *@
             <section class="cn-profile @ProfileClass(c)">
                 <div class="cn-hero">
@@ -55,24 +78,6 @@
                                 <RadzenIcon Icon="content_copy" />
                             </button>
                         </div>
-                    </div>
-
-                    <div class="cn-hero-actions">
-                        @if (Auth.HasPermission(MasterDataPermissions.CountriesUpdate))
-                        {
-                            <RadzenButton Text="@UiStrings.Common.Edit" Icon="edit" ButtonStyle="ButtonStyle.Primary" Click="@OpenEditAsync" />
-                        }
-                        @if (HasMoreActions(c))
-                        {
-                            <RowActionMenu Label="@UiStrings.Common.MoreActions" ShowLabel="true">
-                                <RowAction Text="@UiStrings.Countries.Activate" Icon="check_circle"
-                                           Permission="@MasterDataPermissions.CountriesActivate"
-                                           Visible="@(!c.IsActive)" OnClick="@ActivateAsync" />
-                                <RowAction Text="@UiStrings.Countries.Deactivate" Icon="cancel" Danger="true"
-                                           Permission="@MasterDataPermissions.CountriesDeactivate"
-                                           Visible="@c.IsActive" OnClick="@DeactivateAsync" />
-                            </RowActionMenu>
-                        }
                     </div>
                 </div>
 

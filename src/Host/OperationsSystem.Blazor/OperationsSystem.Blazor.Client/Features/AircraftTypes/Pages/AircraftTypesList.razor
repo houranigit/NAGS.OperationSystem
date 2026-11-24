@@ -9,7 +9,7 @@
 
 <RequirePermission Permission="@MasterDataPermissions.AircraftTypesView">
     <div class="os-list-page">
-        <PageHeader Title="Aircraft types" Description="Manage aircraft manufacturer and model reference data.">
+        <PageHeader Title="Aircraft types" Section="@UiStrings.Nav.MasterData">
             <Actions>
                 <AuthorizeView Context="create">
                     @if (create.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.AircraftTypesCreate))

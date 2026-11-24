@@ -4,7 +4,6 @@
     overflow: hidden;
 }
 
-.os-notifications-page ::deep .os-page-title { font-size: 1.375rem; line-height: 1.3; }
 .os-notifications-page ::deep .os-page-header { padding-block-end: var(--os-space-3); border-block-end: 1px solid var(--os-color-border); }
 
 .os-notifications-scroll {

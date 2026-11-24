@@ -1,15 +1,36 @@
-<div class="os-page-header">
-    <div>
-        @if (!string.IsNullOrWhiteSpace(Eyebrow))
-        {
-            <p class="os-eyebrow">@Eyebrow</p>
-        }
-        <h1 class="os-page-title">@Title</h1>
-        @if (!string.IsNullOrWhiteSpace(Description))
-        {
-            <p class="os-muted">@Description</p>
-        }
-    </div>
+@inject AuthSession Auth
+@inject LocaleState Locale
+
+<div class="os-page-header" dir="@Locale.Direction">
+    <nav class="os-page-breadcrumb" aria-label="@UiStrings.Nav.Breadcrumb" lang="@Locale.Language">
+        <ol>
+            @if (ShowHome && Auth.User is not null && !Auth.IsViewerOnly)
+            {
+                <li><a href="/">@UiStrings.Nav.Home</a></li>
+                <li class="os-breadcrumb-separator" aria-hidden="true">/</li>
+            }
+            @if (!string.IsNullOrWhiteSpace(Section))
+            {
+                <li>@Section</li>
+                <li class="os-breadcrumb-separator" aria-hidden="true">/</li>
+            }
+            @if (!string.IsNullOrWhiteSpace(ParentTitle) && !string.IsNullOrWhiteSpace(ParentHref))
+            {
+                <li><a href="@ParentHref">@ParentTitle</a></li>
+                <li class="os-breadcrumb-separator" aria-hidden="true">/</li>
+            }
+            <li class="os-breadcrumb-current" aria-current="page">
+                @if (ExistingHeading)
+                {
+                    @Title
+                }
+                else
+                {
+                    <h1>@Title</h1>
+                }
+            </li>
+        </ol>
+    </nav>
     @if (Actions is not null)
     {
         <div class="os-page-header-actions">
@@ -19,8 +40,11 @@
 </div>
 
 @code {
-    [Parameter] public string Title { get; set; } = string.Empty;
-    [Parameter] public string? Description { get; set; }
-    [Parameter] public string? Eyebrow { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Section { get; set; }
+    [Parameter] public string? ParentTitle { get; set; }
+    [Parameter] public string? ParentHref { get; set; }
+    [Parameter] public bool ShowHome { get; set; } = true;
+    [Parameter] public bool ExistingHeading { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
 }

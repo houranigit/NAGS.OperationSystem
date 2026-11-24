@@ -14,16 +14,15 @@
 <RadzenChartTooltip />
 <RadzenContextMenu />
 
-<div class="os-shell @(navOpen ? "os-shell--nav-open" : null) @(railCollapsed ? "os-shell--rail" : null) @(profileOpen ? "os-shell--profile-open" : null) @(!ShowSidebar ? "os-shell--sidebarless" : null)" @onclick="CloseProfile">
-    @if (profileOpen)
-    {
-        <div class="os-profile-backdrop" @onclick="CloseProfile"></div>
-    }
+<RadzenMediaQuery Query="(max-width: 700px)" Change="SetCompactLayout" />
+
+<div class="os-shell @(SidebarCollapsed ? "os-shell--rail" : null) @(compactSidebarExpanded ? "os-shell--nav-open" : null) @(!ShowSidebar ? "os-shell--sidebarless" : null)"
+     @onclick="CloseShellMenus" @onkeydown="OnShellKeyDownAsync">
     @if (ShowSidebar)
     {
-        <div class="os-scrim" @onclick="CloseNav"></div>
+        <button type="button" class="os-scrim" tabindex="-1" aria-label="@UiStrings.Common.Close" @onclick="CloseDrawerAsync"></button>
 
-        <aside class="os-sidebar" aria-label="Primary navigation">
+        <aside class="os-sidebar" @onclick:stopPropagation="true">
         <div class="os-brand">
             <span class="os-brand-mark">
                 <img src="/branding/portal-icon.png" alt="@UiStrings.App.Name" width="28" height="28" />
@@ -34,10 +33,18 @@
             </span>
         </div>
 
-        <nav class="os-nav">
+        <div class="os-sidebar-divider">
+            <button type="button" class="os-icon-btn os-rail-toggle" aria-label="@UiStrings.Nav.ToggleMenu"
+                    aria-controls="os-primary-nav" aria-expanded="@(!SidebarCollapsed ? "true" : "false")"
+                    @ref="sidebarToggle" @onclick="ToggleSidebar">
+                <RadzenIcon Icon="@(SidebarCollapsed ? "chevron_right" : "chevron_left")" />
+            </button>
+        </div>
+
+        <nav class="os-nav" id="os-primary-nav" aria-label="Primary navigation">
             @if (CanShowDashboardNavigation)
             {
-                <NavLink href="/" Match="NavLinkMatch.All" class="os-nav-link os-nav-link--root" title="@UiStrings.Nav.Dashboard" @onclick="CloseNav">
+                <NavLink href="/" Match="NavLinkMatch.All" class="os-nav-link os-nav-link--root" title="@UiStrings.Nav.Dashboard" aria-label="@UiStrings.Nav.Dashboard" @onclick="CloseNav">
                     <RadzenIcon Icon="dashboard" />
                     <span>@UiStrings.Nav.Dashboard</span>
                 </NavLink>
@@ -53,15 +60,19 @@
                 }
                 @if (canAdministration)
                 {
-                    <div class="@NavGroupClass(NavGroupAdministration, administrationActive)">
-                        <button type="button" class="os-nav-parent" title="@UiStrings.Nav.Administration"
+                    <div class="@NavGroupClass(NavGroupAdministration, administrationActive)"
+                         @onpointerenter="args => OpenNavFlyout(NavGroupAdministration, args)"
+                         @onpointerleave="args => LeaveNavFlyout(NavGroupAdministration, args)"
+                         @onkeydown="args => OnNavGroupKeyDownAsync(NavGroupAdministration, administrationTrigger, args)">
+                        <button type="button" class="os-nav-parent" title="@UiStrings.Nav.Administration" aria-label="@UiStrings.Nav.Administration" @ref="administrationTrigger"
                                 aria-expanded="@(IsNavGroupExpanded(NavGroupAdministration) ? "true" : "false")" aria-controls="os-nav-administration"
                                 @onclick="() => ToggleNavGroup(NavGroupAdministration)">
                             <RadzenIcon Icon="admin_panel_settings" />
                             <span>@UiStrings.Nav.Administration</span>
                             <RadzenIcon Icon="expand_more" class="os-nav-parent-chevron" />
                         </button>
-                        <div id="os-nav-administration" class="os-nav-children">
+                        <span class="os-nav-flyout-bridge" aria-hidden="true"></span>
+                        <div id="os-nav-administration" class="os-nav-children" @onfocusin="() => RetainNavFlyout(NavGroupAdministration)">
                             <span class="os-nav-flyout-title">@UiStrings.Nav.Administration</span>
                             @if (canUsers)
                             {
@@ -97,15 +108,19 @@
                 }
                 @if (canOperations)
                 {
-                    <div class="@NavGroupClass(NavGroupOperations, operationsActive)">
-                        <button type="button" class="os-nav-parent" title="Operations"
+                    <div class="@NavGroupClass(NavGroupOperations, operationsActive)"
+                         @onpointerenter="args => OpenNavFlyout(NavGroupOperations, args)"
+                         @onpointerleave="args => LeaveNavFlyout(NavGroupOperations, args)"
+                         @onkeydown="args => OnNavGroupKeyDownAsync(NavGroupOperations, operationsTrigger, args)">
+                        <button type="button" class="os-nav-parent" title="Operations" aria-label="Operations" @ref="operationsTrigger"
                                 aria-expanded="@(IsNavGroupExpanded(NavGroupOperations) ? "true" : "false")" aria-controls="os-nav-operations"
                                 @onclick="() => ToggleNavGroup(NavGroupOperations)">
                             <RadzenIcon Icon="route" />
                             <span>Operations</span>
                             <RadzenIcon Icon="expand_more" class="os-nav-parent-chevron" />
                         </button>
-                        <div id="os-nav-operations" class="os-nav-children">
+                        <span class="os-nav-flyout-bridge" aria-hidden="true"></span>
+                        <div id="os-nav-operations" class="os-nav-children" @onfocusin="() => RetainNavFlyout(NavGroupOperations)">
                             <span class="os-nav-flyout-title">Operations</span>
                             @if (canOpsFlights)
                             {
@@ -139,15 +154,19 @@
                 }
                 @if (canMasterData)
                 {
-                    <div class="@NavGroupClass(NavGroupMasterData, masterDataActive)">
-                        <button type="button" class="os-nav-parent" title="@UiStrings.Nav.MasterData"
+                    <div class="@NavGroupClass(NavGroupMasterData, masterDataActive)"
+                         @onpointerenter="args => OpenNavFlyout(NavGroupMasterData, args)"
+                         @onpointerleave="args => LeaveNavFlyout(NavGroupMasterData, args)"
+                         @onkeydown="args => OnNavGroupKeyDownAsync(NavGroupMasterData, masterDataTrigger, args)">
+                        <button type="button" class="os-nav-parent" title="@UiStrings.Nav.MasterData" aria-label="@UiStrings.Nav.MasterData" @ref="masterDataTrigger"
                                 aria-expanded="@(IsNavGroupExpanded(NavGroupMasterData) ? "true" : "false")" aria-controls="os-nav-master-data"
                                 @onclick="() => ToggleNavGroup(NavGroupMasterData)">
                             <RadzenIcon Icon="apps" />
                             <span>@UiStrings.Nav.MasterData</span>
                             <RadzenIcon Icon="expand_more" class="os-nav-parent-chevron" />
                         </button>
-                        <div id="os-nav-master-data" class="os-nav-children">
+                        <span class="os-nav-flyout-bridge" aria-hidden="true"></span>
+                        <div id="os-nav-master-data" class="os-nav-children" @onfocusin="() => RetainNavFlyout(NavGroupMasterData)">
                             <span class="os-nav-flyout-title">@UiStrings.Nav.MasterData</span>
                             @if (canCountries)
                             {
@@ -246,93 +265,25 @@
 
         </nav>
 
-        <div class="os-sidebar-foot">
-            <span class="os-version-tag">@UiStrings.App.Version</span>
-        </div>
+        @if (Auth.User is { } sidebarUser)
+        {
+            @AccountControls(sidebarUser)
+        }
         </aside>
     }
 
     <div class="os-main">
-        <header class="os-topbar">
-            <div class="os-topbar-lead">
-                @if (ShowSidebar)
-                {
-                    <button type="button" class="os-icon-btn os-rail-toggle" aria-label="@UiStrings.Nav.ToggleMenu"
-                            aria-expanded="@(!railCollapsed ? "true" : "false")" @onclick="ToggleRail">
-                        <RadzenIcon Icon="menu" />
-                    </button>
-                    <button type="button" class="os-icon-btn os-nav-toggle" aria-label="@UiStrings.Nav.ToggleMenu" @onclick="ToggleNav">
-                        <RadzenIcon Icon="menu" />
-                    </button>
-                }
-                <span class="os-topbar-title">@UiStrings.App.Portal</span>
-            </div>
-
-            <div class="os-topbar-actions">
-                @if (Auth.User is not null)
-                {
-                    <NotificationBell />
-                }
-
-                @if (Auth.User is { } current)
-                {
-                    <div class="os-profile @(profileOpen ? "os-profile--open" : null)" @onclick:stopPropagation="true" @onkeydown="OnProfileKeyDown">
-                        <button type="button" class="os-user-chip" @onclick="ToggleProfile"
-                                aria-haspopup="true" aria-expanded="@profileOpen">
-                            <span class="os-avatar">@Initials(current.DisplayName)</span>
-                            <span class="os-user-meta">
-                                <strong>@current.DisplayName</strong>
-                                <small class="os-muted">@current.RoleName</small>
-                            </span>
-                            <RadzenIcon Icon="expand_more" class="os-profile-chev" />
-                        </button>
-
-                        @if (profileOpen)
-                        {
-                        <div class="os-profile-panel">
-                            <div class="os-profile-identity">
-                                <span class="os-avatar os-avatar--lg">@Initials(current.DisplayName)</span>
-                                <div class="os-profile-identity-text">
-                                    <strong>@current.DisplayName</strong>
-                                    <small class="os-muted">@current.Email</small>
-                                </div>
-                            </div>
-                            <div class="os-profile-menu">
-                                <a href="/manual" target="_blank" rel="noopener noreferrer" data-enhance-nav="false"
-                                   class="os-profile-item" @onclick="CloseProfile">
-                                    <RadzenIcon Icon="menu_book" />
-                                    <span>@UiStrings.Nav.UserManual</span>
-                                </a>
-                                <a href="/manual/download" download data-enhance-nav="false"
-                                   class="os-profile-item" @onclick="CloseProfile">
-                                    <RadzenIcon Icon="download" />
-                                    <span>@UiStrings.Nav.DownloadUserManual</span>
-                                </a>
-                                <button type="button" class="os-profile-item" @onclick="GoToAccountAsync">
-                                    <RadzenIcon Icon="account_circle" />
-                                    <span>@UiStrings.Account.Title</span>
-                                </button>
-                                <a href="/account/notifications" class="os-profile-item" @onclick="CloseProfile">
-                                    <RadzenIcon Icon="notifications_none" />
-                                    <span>Notification settings</span>
-                                </a>
-                                <button type="button" class="os-profile-item os-profile-item--danger" @onclick="LogoutAsync">
-                                    <RadzenIcon Icon="logout" />
-                                    <span>@UiStrings.Common.SignOut</span>
-                                </button>
-                            </div>
-                        </div>
-                        }
-                    </div>
-                }
-            </div>
-        </header>
-
-        <section class="os-content">
+        <section class="os-content" inert="@(ShowSidebar && compactSidebarExpanded)">
             <div class="os-content-inner" @key="Locale.Language">
                 @Body
             </div>
         </section>
+        @if (!ShowSidebar && Auth.User is { } viewer)
+        {
+            <div class="os-fallback-account">
+                @AccountControls(viewer)
+            </div>
+        }
     </div>
 </div>
 
@@ -347,16 +298,78 @@
     private const string NavGroupOperations = "operations";
     private const string NavGroupMasterData = "master-data";
 
-    private bool navOpen;
+    private bool compactLayout;
+    private bool compactSidebarExpanded;
     private bool railCollapsed;
     private bool profileOpen;
+    private bool notificationsOpen;
     private Guid? notificationUserId;
-    private readonly HashSet<string> expandedNavGroups = new(StringComparer.Ordinal);
+    private string? expandedNavGroup;
+    private string? hoveredNavGroup;
+
+    private ElementReference sidebarToggle;
+    private ElementReference administrationTrigger;
+    private ElementReference operationsTrigger;
+    private ElementReference masterDataTrigger;
+    private ElementReference profileTrigger;
+
+    private bool SidebarCollapsed => compactLayout ? !compactSidebarExpanded : railCollapsed;
+    private string? OpenNavGroup => hoveredNavGroup ?? expandedNavGroup;
 
     private bool ShowSidebar => Auth.User is not { } user
         || PortalNavigationPolicy.ShouldShowSidebar(user.UserType, user.Permissions);
     private bool CanShowDashboardNavigation =>
         !Auth.IsViewerOnly;
+
+    private RenderFragment<AuthenticatedUser> AccountControls => current => @<footer class="os-sidebar-foot"
+        @onclick:stopPropagation="true" @onkeydown:stopPropagation="true" @onkeydown="OnAccountKeyDownAsync">
+        <div class="os-account-actions">
+            <button type="button" class="os-icon-btn os-user-chip" title="@current.DisplayName"
+                    aria-label="@UiStrings.Account.Profile" aria-haspopup="true" aria-expanded="@(profileOpen ? "true" : "false")"
+                    @ref="profileTrigger" @onclick="ToggleProfile">
+                <span class="os-avatar" aria-hidden="true">@Initials(current.DisplayName)</span>
+            </button>
+            <NotificationBell IsOpen="notificationsOpen" IsOpenChanged="SetNotificationsOpen" />
+            <button type="button" class="os-icon-btn os-sign-out" title="@UiStrings.Common.SignOut"
+                    aria-label="@UiStrings.Common.SignOut" @onclick="LogoutAsync">
+                <RadzenIcon Icon="logout" />
+            </button>
+        </div>
+        @if (profileOpen)
+        {
+            <button type="button" class="os-profile-backdrop" tabindex="-1"
+                    aria-label="@UiStrings.Common.Close" @onclick="CloseAccountMenus"></button>
+            <div class="os-profile-panel">
+                <div class="os-profile-identity">
+                    <div class="os-profile-identity-text">
+                        <strong>@current.DisplayName</strong>
+                        <small class="os-muted">@current.Email</small>
+                        <small class="os-muted">@current.RoleName</small>
+                    </div>
+                </div>
+                <div class="os-profile-menu">
+                    <button type="button" class="os-profile-item" @onclick="GoToAccount">
+                        <RadzenIcon Icon="account_circle" />
+                        <span>@UiStrings.Account.Title</span>
+                    </button>
+                    <a href="/account/notifications" class="os-profile-item" @onclick="CloseAccountMenus">
+                        <RadzenIcon Icon="notifications_none" />
+                        <span>Notification settings</span>
+                    </a>
+                    <a href="/manual" target="_blank" rel="noopener noreferrer" data-enhance-nav="false"
+                       class="os-profile-item" @onclick="CloseAccountMenus">
+                        <RadzenIcon Icon="menu_book" />
+                        <span>@UiStrings.Nav.UserManual</span>
+                    </a>
+                    <a href="/manual/download" download data-enhance-nav="false"
+                       class="os-profile-item" @onclick="CloseAccountMenus">
+                        <RadzenIcon Icon="download" />
+                        <span>@UiStrings.Nav.DownloadUserManual</span>
+                    </a>
+                </div>
+            </div>
+        }
+    </footer>;
 
     protected override async Task OnInitializedAsync()
     {
@@ -372,31 +385,97 @@
         await SyncNotificationsForAuthAsync();
     }
 
-    private void ToggleNav() => navOpen = !navOpen;
-
-    private void CloseNav() => navOpen = false;
-
-    private void ToggleRail()
+    private void SetCompactLayout(bool matches)
     {
-        railCollapsed = !railCollapsed;
+        if (compactLayout == matches)
+            return;
 
-        if (!railCollapsed)
-            ExpandActiveNavGroup();
+        compactLayout = matches;
+        compactSidebarExpanded = false;
+        CloseAccountMenus();
+        ExpandActiveNavGroup();
+    }
+
+    private void ToggleSidebar()
+    {
+        if (compactLayout)
+            compactSidebarExpanded = !compactSidebarExpanded;
+        else
+            railCollapsed = !railCollapsed;
+
+        CloseAccountMenus();
+        ExpandActiveNavGroup();
+    }
+
+    private void CloseNav()
+    {
+        compactSidebarExpanded = false;
+        CloseShellMenus();
+    }
+
+    private async Task CloseDrawerAsync()
+    {
+        CloseNav();
+        await sidebarToggle.FocusAsync(preventScroll: true);
+    }
+
+    private async Task OnShellKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key != "Escape")
+            return;
+
+        if (compactSidebarExpanded)
+            await CloseDrawerAsync();
+        else if (SidebarCollapsed)
+            CloseNavGroups();
     }
 
     private void ToggleNavGroup(string group)
     {
-        if (expandedNavGroups.Contains(group))
-        {
-            expandedNavGroups.Remove(group);
-            return;
-        }
-
-        expandedNavGroups.Clear();
-        expandedNavGroups.Add(group);
+        expandedNavGroup = expandedNavGroup == group ? null : group;
+        hoveredNavGroup = null;
     }
 
-    private bool IsNavGroupExpanded(string group) => expandedNavGroups.Contains(group);
+    private void OpenNavFlyout(string group, PointerEventArgs args)
+    {
+        if (!SidebarCollapsed || args.PointerType != "mouse" || OpenNavGroup == group)
+            return;
+
+        expandedNavGroup = null;
+        hoveredNavGroup = group;
+    }
+
+    private void LeaveNavFlyout(string group, PointerEventArgs args)
+    {
+        if (args.PointerType == "mouse" && hoveredNavGroup == group)
+            hoveredNavGroup = null;
+    }
+
+    private void RetainNavFlyout(string group)
+    {
+        if (hoveredNavGroup != group)
+            return;
+
+        expandedNavGroup = group;
+        hoveredNavGroup = null;
+    }
+
+    private async Task OnNavGroupKeyDownAsync(string group, ElementReference trigger, KeyboardEventArgs args)
+    {
+        if (args.Key != "Escape" || !SidebarCollapsed || !IsNavGroupExpanded(group))
+            return;
+
+        CloseNavGroups();
+        await trigger.FocusAsync(preventScroll: true);
+    }
+
+    private void CloseNavGroups()
+    {
+        expandedNavGroup = null;
+        hoveredNavGroup = null;
+    }
+
+    private bool IsNavGroupExpanded(string group) => group == OpenNavGroup;
 
     private string NavGroupClass(string group, bool isActive)
     {
@@ -438,12 +517,8 @@
 
     private void ExpandActiveNavGroup()
     {
-        var activeGroup = CurrentActiveNavGroup();
-
-        expandedNavGroups.Clear();
-
-        if (activeGroup is not null)
-            expandedNavGroups.Add(activeGroup);
+        hoveredNavGroup = null;
+        expandedNavGroup = SidebarCollapsed ? null : CurrentActiveNavGroup();
     }
 
     private string? CurrentActiveNavGroup()
@@ -460,26 +535,56 @@
         return null;
     }
 
-    private void ToggleProfile() => profileOpen = !profileOpen;
-
-    private void CloseProfile() => profileOpen = false;
-
-    private void OnProfileKeyDown(KeyboardEventArgs args)
+    private void ToggleProfile()
     {
-        if (args.Key == "Escape")
-            CloseProfile();
+        profileOpen = !profileOpen;
+        notificationsOpen = false;
+        if (SidebarCollapsed)
+            CloseNavGroups();
     }
 
-    private async Task GoToAccountAsync()
+    private void SetNotificationsOpen(bool open)
+    {
+        notificationsOpen = open;
+        if (open)
+        {
+            profileOpen = false;
+            if (SidebarCollapsed)
+                CloseNavGroups();
+        }
+    }
+
+    private void CloseAccountMenus()
     {
         profileOpen = false;
+        notificationsOpen = false;
+    }
+
+    private void CloseShellMenus()
+    {
+        CloseAccountMenus();
+        if (SidebarCollapsed)
+            CloseNavGroups();
+    }
+
+    private async Task OnAccountKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape" && profileOpen)
+        {
+            CloseAccountMenus();
+            await profileTrigger.FocusAsync(preventScroll: true);
+        }
+    }
+
+    private void GoToAccount()
+    {
+        CloseNav();
         Navigation.NavigateTo("/account");
-        await Task.CompletedTask;
     }
 
     private async Task LogoutAsync()
     {
-        profileOpen = false;
+        CloseNav();
         await Auth.LogoutAsync();
         Navigation.NavigateTo("/login", replace: true);
     }
@@ -538,6 +643,7 @@
         {
             await InvokeAsync(() =>
             {
+                CloseNav();
                 ExpandActiveNavGroup();
                 RedirectToMfaEnrollmentIfNeeded();
                 RedirectViewerFromUnavailableRoot();

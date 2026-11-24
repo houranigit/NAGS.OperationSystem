@@ -90,6 +90,9 @@
   <data name="Auth.BrandPointSessions" xml:space="preserve"><value>Live session and device management</value></data>
   <data name="Auth.Copyright" xml:space="preserve"><value>© 2026 Operations System. All rights reserved.</value></data>
   <data name="Nav.Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="Nav.Home" xml:space="preserve"><value>Home</value></data>
+  <data name="Nav.Breadcrumb" xml:space="preserve"><value>Breadcrumb</value></data>
+  <data name="Nav.Operations" xml:space="preserve"><value>Operations</value></data>
   <data name="Nav.Users" xml:space="preserve"><value>Users</value></data>
   <data name="Nav.Roles" xml:space="preserve"><value>Roles</value></data>
   <data name="Nav.Audit" xml:space="preserve"><value>Audit log</value></data>
