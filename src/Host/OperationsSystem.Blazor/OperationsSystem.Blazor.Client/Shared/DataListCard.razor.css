@@ -227,9 +227,10 @@
 /* --- Count badge --------------------------------------------------------- */
 .os-count-badge {
     display: inline-flex;
-    align-items: baseline;
+    align-items: center;
+    height: var(--os-list-control-height);
     gap: 0.35rem;
-    padding: 0.35rem 0.8rem;
+    padding-inline: 0.8rem;
     border-radius: var(--os-radius-pill);
     background: var(--os-color-surface-muted);
     border: 1px solid var(--os-color-border);
