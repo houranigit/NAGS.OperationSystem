@@ -51,7 +51,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nags.operations.R
-import com.nags.operations.ui.theme.BrandRed
+import com.nags.operations.ui.theme.isDark
 
 /** Five icon-only destinations; AdHoc creation belongs to the header. */
 @Composable
@@ -97,7 +97,8 @@ internal fun MainBottomNavigation(
             modifier = Modifier.height(dockHeight)
                 .dropShadow(dockShape, Shadow(radius = 8.dp, color = Color.Black.copy(alpha = 0.10f),
                     offset = DpOffset(0.dp, (-2).dp)))
-                .shadow(4.dp, dockShape, clip = false).clip(dockShape).background(colors.surface)
+                .shadow(4.dp, dockShape, clip = false).clip(dockShape)
+                .background(if (colors.isDark) colors.surfaceContainerHigh else colors.surface)
                 .selectableGroup().padding(horizontal = sidePadding)
                 .drawBehind {
                     val itemWidthPx = size.width / icons.size
@@ -105,7 +106,7 @@ internal fun MainBottomNavigation(
                     val center = if (layoutDirection == LayoutDirection.Rtl) size.width - logicalCenter else logicalCenter
                     val selectionHeightPx = 40.dp.toPx()
                     val selectionWidthPx = selectionWidth.toPx()
-                    drawRoundRect(color = BrandRed,
+                    drawRoundRect(color = colors.primary,
                         topLeft = Offset(center - selectionWidthPx / 2f, (size.height - selectionHeightPx) / 2f),
                         size = Size(selectionWidthPx, selectionHeightPx),
                         cornerRadius = CornerRadius(selectionHeightPx / 2f))
@@ -114,7 +115,7 @@ internal fun MainBottomNavigation(
         ) {
             icons.forEachIndexed { index, icon ->
                 val selected = selectedPage == index
-                val foreground = if (selected) Color.White else colors.onSurfaceVariant
+                val foreground = if (selected) colors.onPrimary else colors.onSurfaceVariant
                 Box(
                     modifier = Modifier.width(itemWidth).fillMaxHeight()
                         .selectable(selected = selected, role = Role.Tab, onClick = { onSelectPage(index) })
@@ -124,7 +125,10 @@ internal fun MainBottomNavigation(
                     if (index == 4) {
                         BadgedBox(modifier = Modifier.clearAndSetSemantics {}, badge = {
                             if (unreadNotifications > 0) {
-                                Badge(containerColor = colors.primary, contentColor = colors.onPrimary) {
+                                Badge(
+                                    containerColor = if (selected && colors.isDark) colors.onPrimary else colors.primary,
+                                    contentColor = if (selected && colors.isDark) colors.primary else colors.onPrimary,
+                                ) {
                                     Text(if (unreadNotifications > 99) "99+" else unreadNotifications.toString(),
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp))
                                 }

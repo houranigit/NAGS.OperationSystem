@@ -67,6 +67,7 @@ import com.nags.operations.ui.components.FlightCard
 import com.nags.operations.ui.components.InlineNotice
 import com.nags.operations.ui.components.InlineNoticeKind
 import com.nags.operations.ui.theme.LoadingIndicatorGray
+import com.nags.operations.ui.theme.isDark
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -126,8 +127,9 @@ private fun SharedFlightsFeed(viewModel: SharedFlightsViewModel, bottomContentPa
         }.distinctUntilChanged().collect { if (it != null) viewModel.loadMore() }
     }
     val refresh = rememberPullToRefreshState()
+    val colors = MaterialTheme.colorScheme
     PullToRefreshBox(isRefreshing = state.refreshing, state = refresh, onRefresh = { viewModel.refresh() },
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface),
+        modifier = Modifier.fillMaxSize().background(if (colors.isDark) colors.background else colors.surface),
         indicator = {
             PullToRefreshDefaults.Indicator(isRefreshing = state.refreshing, state = refresh,
                 modifier = Modifier.align(Alignment.TopCenter), color = LoadingIndicatorGray)
@@ -136,13 +138,13 @@ private fun SharedFlightsFeed(viewModel: SharedFlightsViewModel, bottomContentPa
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 8.dp, end = 16.dp, top = 6.dp, bottom = bottomContentPadding),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (state.fromCache || !state.online) item(key = "cached") {
+            if (!state.online || state.fromCache && !state.loading && !state.refreshing) item(key = "cached") {
                 InlineNotice(stringResource(R.string.flight_shares_cached), kind = InlineNoticeKind.Info)
             }
             state.error?.let { error -> item(key = "error") {
                 InlineNotice(error, kind = InlineNoticeKind.Error, onRetry = { viewModel.refresh() })
             } }
-            if (state.loading && state.items.isEmpty()) items(3, key = { "loading:$it" }) {
+            if (state.loading && !state.loaded && state.items.isEmpty()) items(3, key = { "loading:$it" }) {
                 FlightShareSkeleton()
             }
             else if (state.loaded && state.items.isEmpty()) item(key = "empty") {
@@ -183,6 +185,8 @@ private fun FlightShareEntry(post: FlightSharePost, now: Instant, onClick: () ->
     }
     val emphasized = if (post.isStationWide) listOf("@" + (post.stationName?.takeIf { it.isNotBlank() } ?: post.flight.stationIataCode).trim().replace(Regex("\\s+"), "_"))
         else listOfNotNull(post.recipients.firstOrNull()?.fullName, (post.recipients.size - 1).takeIf { it > 0 }?.toString())
+    val colors = MaterialTheme.colorScheme
+    val stationMentionColor = if (colors.isDark) colors.tertiary else Color(0xFF2979D5)
     val audienceText = buildAnnotatedString {
         append(audience)
         if (!post.isStationWide && post.recipients.size > 1) {
@@ -193,7 +197,7 @@ private fun FlightShareEntry(post: FlightSharePost, now: Instant, onClick: () ->
         emphasized.forEach { token ->
             val start = audience.indexOf(token)
             if (start >= 0) addStyle(SpanStyle(fontWeight = FontWeight.Bold,
-                color = if (post.isStationWide) Color(0xFF2979D5) else Color.Unspecified), start, start + token.length)
+                color = if (post.isStationWide) stationMentionColor else Color.Unspecified), start, start + token.length)
         }
     }
     val statusStripe = flightStatusColors(post.flight.cardReportStatus(now = now)).stripe

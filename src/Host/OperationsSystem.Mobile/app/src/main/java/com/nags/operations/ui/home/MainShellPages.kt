@@ -35,9 +35,11 @@ internal fun AdHocFlightShell(graph: com.nags.operations.AppGraph, factory: com.
             if (flightId != null) {
                 flight = graph.adHocFlights.recoveryFlight(id) ?: graph.flightsRepository.flight(id)
             } else {
-                if (graph.networkMonitor.isOnline.value) try { graph.adHocFlights.refreshContext() }
+                if (graph.networkMonitor.isOnline.value && graph.adHocFlights.cachedContext()?.canCreate != true) {
+                    try { graph.adHocFlights.refreshContext() }
                     catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                     catch (failure: Exception) { if (graph.adHocFlights.cachedContext() == null) throw failure }
+                }
                 val at = java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
                 flight = graph.adHocFlights.newFlight(id, com.nags.operations.data.AdHocFlightInput("", "", at.toString(), at.plusSeconds(3600).toString()))
             }

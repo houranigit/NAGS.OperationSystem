@@ -90,6 +90,10 @@ internal static class FlightEndpoints
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
+        mobile.MapPost("/details/batch", async (MobileFlightDetailsBatchRequest request, ISender sender, CancellationToken ct) =>
+            (await sender.Send(new GetMobileFlightDetailsBatchQuery(request.FlightIds ?? []), ct)).ToOk())
+            .RequirePermission(OperationsPermissions.Flights.View);
+
         mobile.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {
             var result = await sender.Send(new GetMobileFlightByIdQuery(id), ct);

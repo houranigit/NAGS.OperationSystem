@@ -197,6 +197,7 @@
     </plurals>
     <string name="catalog_station_staff">موظفو المحطة</string>
     <string name="flights_cached_list">يتم عرض الرحلات المحفوظة. أعد الاتصال للتحقق من التغييرات.</string>
+    <string name="flights_cached_list_online">يتم عرض الرحلات المحفوظة.</string>
     <string name="flights_cached_detail">تفاصيل محفوظة من آخر قراءة ناجحة.</string>
     <string name="flights_offline_hint">غير متصل. تتوفر الرحلات المحفوظة؛ تتطلب دعوة الموظفين اتصالاً.</string>
     <string name="flights_invite_online_required">اتصل لتحميل تفاصيل الرحلة الحالية ودعوة الموظفين.</string>

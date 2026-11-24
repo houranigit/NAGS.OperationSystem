@@ -133,6 +133,7 @@ import androidx.core.view.WindowCompat
 import com.nags.operations.R
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.ui.components.CustomerLogo
+import com.nags.operations.ui.theme.isDark
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.coroutineScope
@@ -142,7 +143,9 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-internal val FlightFormGround = Color(0xFFF2F2F7)
+internal val FlightFormGround: Color
+    @Composable
+    get() = if (MaterialTheme.colorScheme.isDark) MaterialTheme.colorScheme.background else Color(0xFFF2F2F7)
 internal val FlightFormGreen = Color(0xFF34C759)
 internal val LocalFlightFormCompact = staticCompositionLocalOf { false }
 
@@ -178,6 +181,8 @@ internal fun FlightRecordingFormScaffold(
     headerTitle: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
+    val ground = FlightFormGround
     Dialog(onDismissRequest = onRequestClose,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val view = LocalView.current
@@ -188,7 +193,7 @@ internal fun FlightRecordingFormScaffold(
             window?.setWindowAnimations(R.style.Animation_OperationsFlightForm)
             window?.setDimAmount(0.28f)
             window?.let {
-                WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars = true
+                WindowCompat.getInsetsController(it, view).isAppearanceLightStatusBars = !colors.isDark
             }
         }
         val focus = LocalFocusManager.current
@@ -261,7 +266,7 @@ internal fun FlightRecordingFormScaffold(
                             keyboard?.hide()
                         }
                     }
-                }, color = FlightFormGround, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
+                }, color = ground, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
                 Box(Modifier.fillMaxSize().imePadding().semantics { paneTitle = title }) {
                     Column(Modifier.fillMaxSize().onGloballyPositioned { viewportTop = it.positionInWindow().y }
                         .drawWithContent {
@@ -269,7 +274,7 @@ internal fun FlightRecordingFormScaffold(
                                 backdrop.record { this@drawWithContent.drawContent() }
                                 drawLayer(backdrop)
                             } else drawContent()
-                        }.background(FlightFormGround)
+                        }.background(ground)
                         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
                         .verticalScroll(scroll), horizontalAlignment = Alignment.CenterHorizontally) {
                         Column(Modifier.widthIn(max = 600.dp).fillMaxWidth()
@@ -292,8 +297,8 @@ internal fun FlightRecordingFormScaffold(
                         // The material intercepts touches to fields obscured underneath it.
                         Box(Modifier.matchParentSize().pointerInput(Unit) {}.drawBehind {
                             val materialProgress = (scroll.value / 24.dp.toPx()).coerceIn(0f, 1f)
-                            val tint = if (supportsBlur) Color.White.copy(alpha = 0.55f * materialProgress)
-                                else FlightFormGround.copy(alpha = 0.96f * materialProgress)
+                            val tint = if (supportsBlur) colors.surface.copy(alpha = 0.55f * materialProgress)
+                                else ground.copy(alpha = 0.96f * materialProgress)
                             val edge = (1f - 10.dp.toPx() / size.height.coerceAtLeast(1f)).coerceIn(0f, 1f)
                             drawRect(Brush.verticalGradient(0f to tint, edge to tint, 1f to Color.Transparent))
                         })
@@ -325,15 +330,20 @@ internal fun FlightRecordingFormScaffold(
 @Composable
 private fun FlightFormHeaderButton(icon: ImageVector, description: String, enabled: Boolean = true,
     active: Boolean = false, loading: Boolean = false, onClick: () -> Unit) {
-    val face = if (active) FlightFormGreen
-        else MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 0.05f else 0.08f)
+    val colors = MaterialTheme.colorScheme
+    val face = when {
+        active -> FlightFormGreen
+        colors.isDark -> if (enabled) colors.surfaceContainerHighest else colors.surfaceContainer
+        else -> colors.onSurface.copy(alpha = if (enabled) 0.05f else 0.08f)
+    }
     IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) {
         Box(Modifier.size(34.dp)
             .shadow(1.5.dp, CircleShape, ambientColor = Color.Black.copy(alpha = 0.08f), spotColor = Color.Black.copy(alpha = 0.1f))
             .background(face, CircleShape),
             contentAlignment = Alignment.Center) {
             Icon(icon, description, Modifier.size(20.dp).flightFormRotating(loading),
-                tint = if (active) Color.White else MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.35f))
+                tint = if (active) (if (colors.isDark) Color(0xFF08240F) else Color.White)
+                    else colors.onSurface.copy(alpha = if (enabled) 1f else 0.35f))
         }
     }
 }
@@ -343,7 +353,7 @@ private fun FlightFormHeaderButton(icon: ImageVector, description: String, enabl
 private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (String) -> Flow<ByteArray?>,
     progressStatus: FlightProgressStatus, onTitlePositioned: (Float, Int) -> Unit, details: @Composable () -> Unit) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Surface(Modifier.fillMaxWidth(), color = Color.White, shape = RoundedCornerShape(28.dp)) {
+        Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(28.dp)) {
             Column(Modifier.padding(16.dp)) {
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val density = LocalDensity.current
@@ -355,7 +365,9 @@ private fun FlightRecordingIdentity(flight: FlightDetail, loadCustomerLogo: (Str
                     val stackSchedule = maxWidth < 76.dp + 210.dp * density.fontScale
                     val logo: @Composable () -> Unit = {
                         CustomerLogo(flight.customerId, loadCustomerLogo,
-                            Modifier.size(logoSize).border(1.dp, Color(0xFFD1D1D6), RoundedCornerShape(10.dp)).padding(5.dp))
+                            Modifier.size(logoSize).border(1.dp,
+                                if (MaterialTheme.colorScheme.isDark) MaterialTheme.colorScheme.outlineVariant else Color(0xFFD1D1D6),
+                                RoundedCornerShape(10.dp)).padding(5.dp))
                     }
                     val number: @Composable (Modifier) -> Unit = { modifier ->
                         // The aircraft caption shares the date's third line and the logo's bottom edge.

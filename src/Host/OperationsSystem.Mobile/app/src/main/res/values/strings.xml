@@ -221,6 +221,7 @@
         <item quantity="other">%d rows cached</item>
     </plurals>
     <string name="flights_cached_list">Showing saved flights. Reconnect to check for changes.</string>
+    <string name="flights_cached_list_online">Showing saved flights.</string>
     <string name="flights_cached_detail">Saved details from the last successful read.</string>
     <string name="flights_offline_hint">Offline. Saved flights are available; invitations require a connection.</string>
     <string name="flights_invite_online_required">Connect to load current flight details and invite employees.</string>

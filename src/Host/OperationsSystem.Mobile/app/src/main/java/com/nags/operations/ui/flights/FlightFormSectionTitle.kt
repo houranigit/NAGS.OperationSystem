@@ -6,6 +6,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.nags.operations.ui.theme.isDark
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -19,5 +20,6 @@ internal fun FlightFormSectionTitle(title: String, modifier: Modifier = Modifier
         style = MaterialTheme.typography.titleSmall.copy(
             fontSize = if (LocalFlightFormCompact.current) 12.sp else 15.sp,
             lineHeight = if (LocalFlightFormCompact.current) 16.sp else 20.sp),
-        fontWeight = FontWeight.Bold, color = Color(0xFF85858A))
+        fontWeight = FontWeight.Bold, color = if (MaterialTheme.colorScheme.isDark)
+            MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF85858A))
 }

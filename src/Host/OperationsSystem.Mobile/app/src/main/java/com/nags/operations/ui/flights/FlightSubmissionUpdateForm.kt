@@ -60,7 +60,6 @@ import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
 import com.nags.operations.data.userMessage
 import com.nags.operations.data.validationErrors
 import com.nags.operations.data.requiresArrivalRemarks
-import com.nags.operations.ui.theme.AccentBlue
 import com.nags.operations.ui.util.operationLocalTime
 import com.nags.operations.ui.util.stationTimeZone
 import java.util.Base64
@@ -105,7 +104,7 @@ internal fun FlightSubmissionNote(name: String, submittedAt: String, zone: ZoneI
     val prefix = stringResource(if (savedLocally) R.string.flight_actuals_saved_locally else R.string.flight_submission_note_prefix)
     val on = stringResource(R.string.flight_submission_note_on)
     val update = updateLabel ?: stringResource(R.string.flight_submission_update)
-    val updateColor = if (needsReview) MaterialTheme.colorScheme.error else AccentBlue
+    val updateColor = if (needsReview) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
     Text(buildAnnotatedString {
         append(prefix)
         if (!savedLocally) withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(name) }

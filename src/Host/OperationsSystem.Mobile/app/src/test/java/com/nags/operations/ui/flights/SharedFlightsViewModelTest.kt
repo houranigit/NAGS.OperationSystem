@@ -18,6 +18,21 @@ class SharedFlightsViewModelTest {
     private val at = Instant.parse("2026-11-16T12:00:00Z")
     @After fun close() = scope.cancel()
 
+    @Test fun firstPageShowsCachedPostsBeforeNetworkRefreshCompletes() {
+        val live = CompletableDeferred<FlightSharePage>()
+        val vm = model(fetch = { _, _, _, _ -> live.await() },
+            cached = { _, _, _, _ -> page("saved").copy(fromCache = true) })
+
+        vm.refresh(false)
+        assertTrue(vm.state.value.loaded)
+        assertTrue(vm.state.value.fromCache)
+        assertEquals(listOf("saved"), vm.state.value.items.map { it.id })
+
+        live.complete(page("fresh"))
+        assertFalse(vm.state.value.fromCache)
+        assertEquals(listOf("fresh"), vm.state.value.items.map { it.id })
+    }
+
     @Test fun repeatedSharesOfTheSameFlightKeepSeparatePostIdentitiesAcrossPages() {
         val requests = mutableListOf<Int>()
         val vm = model(fetch = { _, _, number, _ ->
@@ -144,7 +159,10 @@ class SharedFlightsViewModelTest {
         val cacheStarted = CompletableDeferred<Unit>()
         var reads = 0
         val vm = model(fetch = { _, _, _, _ -> if (++reads == 1) page("initial") else network.await() },
-            cached = { _, _, _, _ -> cacheStarted.complete(Unit); local.await() }, changes = changes)
+            cached = { _, _, _, _ -> if (reads == 0) null else {
+                cacheStarted.complete(Unit)
+                local.await()
+            } }, changes = changes)
         vm.refresh()
         vm.refresh()
         changes.emit(Unit)

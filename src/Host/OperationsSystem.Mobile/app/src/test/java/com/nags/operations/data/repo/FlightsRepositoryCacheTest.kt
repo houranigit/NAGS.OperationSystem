@@ -7,6 +7,7 @@ import com.nags.operations.data.ApiException
 import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.FlightCategory
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.data.FlightDetailsBatch
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.FlightPage
 import com.nags.operations.data.db.dao.FlightCacheDao
@@ -30,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -77,7 +79,9 @@ class FlightsRepositoryCacheTest {
         unmaterializedAdHoc: suspend (String) -> Boolean = { false },
         reconcileAdHoc: suspend (Set<String>, Boolean, Set<String>) -> Unit = { _, _, _ -> },
         onPreparationFailure: (Exception) -> Unit = {},
-        additionalCachedFlight: suspend (String) -> FlightDetail? = { null }) = FlightsRepository(
+        additionalCachedFlight: suspend (String) -> FlightDetail? = { null },
+        fetchFlightBatch: (suspend (List<String>) -> FlightDetailsBatch?)? = null,
+    ) = FlightsRepository(
         fetchFlights = { page, size, search, category ->
             categoryReads += category
             pageLoader(page, size, search).let { result ->
@@ -90,6 +94,7 @@ class FlightsRepositoryCacheTest {
             }
         },
         fetchFlight = { detailLoader(it) },
+        fetchFlightBatch = fetchFlightBatch,
         fetchInvitationOptions = { invitationReads++; emptyList() },
         sendInvitation = { _, _, _ -> invitationWrites++ },
         logoStore = logoStore, prepareOffline = { prepareOffline(it) },
@@ -1240,6 +1245,162 @@ class FlightsRepositoryCacheTest {
         online = false
         assertEquals("ack-version", repository.flight("one").rowVersion)
         assertNull(repository.syncStatus.first().error)
+    }
+
+    @Test fun preparationReadsAheadWithBoundedRequestsWhileMediaGatesOfflineReadiness() = runBlocking {
+        withTimeout(5_000) {
+            val ids = (1..5).map { "flight-$it" }
+            serverItems = ids.map { item(it) }
+            val requested = Channel<String>(Channel.UNLIMITED)
+            val responses = ids.associateWith { CompletableDeferred<FlightDetail>() }
+            val mediaStarted = CompletableDeferred<Unit>()
+            val mediaFinished = CompletableDeferred<Unit>()
+            val prepared = mutableListOf<String>()
+            detailLoader = { id -> requested.send(id); responses.getValue(id).await() }
+            prepareOffline = { detail ->
+                prepared += detail.id
+                if (detail.id == ids.first()) {
+                    mediaStarted.complete(Unit)
+                    mediaFinished.await()
+                }
+            }
+            val repository = repository()
+            val sync = launch { repository.refreshCache() }
+
+            assertEquals(ids.take(3), List(3) { requested.receive() })
+            assertTrue(requested.tryReceive().isFailure)
+            responses.getValue(ids.first()).complete(detail(ids.first()))
+            mediaStarted.await()
+            assertEquals(ids[3], requested.receive())
+            assertTrue(requested.tryReceive().isFailure)
+            assertEquals(listOf(ids.first()), prepared)
+            assertNull(repository.syncStatus.first().lastSuccessUtc)
+
+            responses.forEach { (id, response) -> response.complete(detail(id)) }
+            mediaFinished.complete(Unit)
+            sync.join()
+            assertEquals(ids, prepared)
+            assertNotNull(repository.syncStatus.first().lastSuccessUtc)
+            online = false
+            for (id in ids) assertTrue(repository.flight(id).fromCache)
+        }
+    }
+
+    @Test fun largeRegisterUsesBoundedBatchReadsAndKeepsEveryEligibleDetailOffline() = runBlocking {
+        val ids = (1..154).map { "flight-$it" }
+        val deniedId = ids[23]
+        serverItems = ids.map { item(it) }
+        val batches = mutableListOf<List<String>>()
+        val prepared = mutableListOf<String>()
+        prepareOffline = { prepared += it.id }
+        val repository = repository(fetchFlightBatch = { batch ->
+            batches += batch
+            FlightDetailsBatch(batch.filterNot { it == deniedId }.map { detail(it) }, batch.filter { it == deniedId })
+        })
+
+        repository.refreshCache()
+
+        assertEquals(ids.chunked(20), batches)
+        assertTrue(detailReads.isEmpty())
+        assertEquals(ids.filterNot { it == deniedId }, prepared)
+        assertEquals(153, repository.syncStatus.first().itemCount)
+        assertNull(repository.syncStatus.first().error)
+        online = false
+        assertTrue(repository.flight(ids.last()).fromCache)
+        assertNull(repository.cachedFlight(deniedId))
+    }
+
+    @Test fun malformedBatchLeavesThePreviousOfflineCacheAndSuccessTimeIntact() = runBlocking {
+        var malformed = false
+        val repository = repository(fetchFlightBatch = { batch ->
+            if (malformed) FlightDetailsBatch(listOf(detail(batch.first())), listOf(batch.first()))
+            else FlightDetailsBatch(batch.map { detail(it) }, emptyList())
+        })
+        repository.refreshCache()
+        val successfulAt = repository.syncStatus.first().lastSuccessUtc
+        malformed = true
+        clock = "2026-11-04T10:01:00Z"
+        repository.refreshCache()
+
+        val status = repository.syncStatus.first()
+        assertNotNull(successfulAt)
+        assertEquals(successfulAt, status.lastSuccessUtc)
+        assertNotNull(status.error)
+        assertTrue(detailReads.isEmpty())
+        online = false
+        assertTrue(repository.flight("one").fromCache)
+        assertTrue(repository.flight("two").fromCache)
+    }
+
+    @Test fun missingBatchRouteFallsBackToIndividualDetailReadsForTheWholeRegister() = runBlocking {
+        val ids = (1..24).map { "flight-$it" }
+        serverItems = ids.map { item(it) }
+        val batches = mutableListOf<List<String>>()
+        val repository = repository(fetchFlightBatch = { ids -> batches += ids; null })
+        repository.refreshCache()
+
+        assertEquals(listOf(ids.take(20)), batches)
+        assertEquals(ids, detailReads)
+        assertEquals(24, repository.syncStatus.first().itemCount)
+        assertNull(repository.syncStatus.first().error)
+    }
+
+    @Test fun olderPreparationDenialCannotRevokeANewerConfirmedUnchangedDetail() = runBlocking {
+        withTimeout(5_000) {
+            serverItems = listOf(item("one"))
+            val repository = repository()
+            val unchanged = detail("one")
+            detailLoader = { unchanged }
+            repository.refreshCache()
+            val originalSuccess = repository.syncStatus.first().lastSuccessUtc
+            val oldRequestStarted = CompletableDeferred<Unit>()
+            val oldResponse = CompletableDeferred<FlightDetail>()
+            var firstRead = true
+            detailLoader = {
+                if (firstRead) {
+                    firstRead = false
+                    oldRequestStarted.complete(Unit)
+                    oldResponse.await()
+                } else unchanged
+            }
+            clock = "2026-11-04T10:01:00Z"
+            val sync = launch { repository.refreshCache() }
+            oldRequestStarted.await()
+            assertEquals(unchanged, repository.flight("one"))
+            oldResponse.completeExceptionally(ApiException(403, "Old denial"))
+            sync.join()
+
+            val status = repository.syncStatus.first()
+            assertNotEquals(originalSuccess, status.lastSuccessUtc)
+            assertNull(status.error)
+            online = false
+            assertEquals(unchanged.copy(fromCache = true), repository.flight("one"))
+        }
+    }
+
+    @Test fun newerPreparationDenialReportsAccessLossToAnOlderInteractiveRead() = runBlocking {
+        withTimeout(5_000) {
+            serverItems = listOf(item("one"))
+            val repository = repository()
+            repository.refreshCache()
+            val started = CompletableDeferred<Unit>()
+            val response = CompletableDeferred<FlightDetail>()
+            var firstRead = true
+            detailLoader = {
+                if (!firstRead) throw ApiException(404, "Flight access was removed")
+                firstRead = false
+                started.complete(Unit)
+                response.await()
+            }
+            val pending = async { runCatching { repository.flight("one") } }
+            started.await()
+            repository.refreshCache()
+            response.complete(detail("one"))
+
+            val error = pending.await().exceptionOrNull() as? ApiException
+            assertEquals(404, error?.statusCode)
+            assertNull(repository.cachedFlight("one"))
+        }
     }
 
     @Test fun olderDetailSuccessOrDenialCannotUndoAnArrivalCorrectionWithUnchangedBadgeFlags() = runBlocking {

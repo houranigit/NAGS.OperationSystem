@@ -45,6 +45,11 @@
     <string name="sync_hub_sync_now">مزامنة الآن</string>
     <string name="sync_hub_updated">تم التحديث %1$s</string>
     <string name="sync_hub_last_success">آخر مزامنة ناجحة: %1$s</string>
+    <string name="sync_hub_last_duration">استغرقت آخر مزامنة ناجحة %1$s</string>
+    <string name="sync_hub_duration_seconds">%1$d ث</string>
+    <string name="sync_hub_duration_minutes">%1$d د %2$d ث</string>
+    <string name="sync_hub_flights_preparing">جارٍ تجهيز الرحلات للاستخدام دون اتصال…</string>
+    <string name="sync_hub_flights_incomplete">لم يكتمل آخر تحديث للرحلات. أعد المزامنة عند الاتصال.</string>
     <plurals name="sync_hub_waiting"><item quantity="zero">%d أقسام بانتظار الإرسال</item><item quantity="one">%d قسم بانتظار الإرسال</item><item quantity="two">%d قسمان بانتظار الإرسال</item><item quantity="few">%d أقسام بانتظار الإرسال</item><item quantity="many">%d قسمًا بانتظار الإرسال</item><item quantity="other">%d قسم بانتظار الإرسال</item></plurals>
     <plurals name="sync_hub_review"><item quantity="zero">%d أقسام تحتاج إلى مراجعة</item><item quantity="one">%d قسم يحتاج إلى مراجعة</item><item quantity="two">%d قسمان يحتاجان إلى مراجعة</item><item quantity="few">%d أقسام تحتاج إلى مراجعة</item><item quantity="many">%d قسمًا تحتاج إلى مراجعة</item><item quantity="other">%d قسم يحتاج إلى مراجعة</item></plurals>
     <string name="sync_hub_other_flights">رحلات المحطة الأخرى</string>

@@ -18,7 +18,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -40,6 +39,7 @@ import com.nags.operations.ui.components.InlineNotice
 import com.nags.operations.ui.components.InlineNoticeKind
 import com.nags.operations.ui.flights.FlightFormGround
 import com.nags.operations.ui.theme.LoadingIndicatorGray
+import com.nags.operations.ui.theme.isDark
 
 @Composable
 fun NotificationSettingsScreen(viewModel: NotificationSettingsViewModel, onBack: () -> Unit) {
@@ -51,8 +51,7 @@ fun NotificationSettingsScreen(viewModel: NotificationSettingsViewModel, onBack:
         viewModel.refresh()
         onPauseOrDispose { }
     }
-    val ground = if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) FlightFormGround
-        else MaterialTheme.colorScheme.background
+    val ground = FlightFormGround
     val busyMessage = stringResource(if (state.savingKey != null) R.string.notification_settings_saving
         else R.string.notification_settings_loading)
     Scaffold(containerColor = ground,
@@ -153,22 +152,28 @@ private fun SettingsDivider() {
 
 @Composable
 private fun NotificationSwitchRow(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val switchColors = if (colors.isDark) SwitchDefaults.colors(
+        checkedTrackColor = Color(0xFF81C995),
+        checkedThumbColor = Color(0xFF08240F),
+        uncheckedTrackColor = colors.surfaceContainerHighest,
+        uncheckedThumbColor = colors.onSurfaceVariant,
+    ) else SwitchDefaults.colors(
+        checkedTrackColor = Color(0xFF248A3D), checkedThumbColor = Color.White,
+        checkedBorderColor = Color.Transparent,
+        uncheckedTrackColor = LoadingIndicatorGray, uncheckedThumbColor = Color.White,
+        uncheckedBorderColor = Color.Transparent,
+        disabledCheckedTrackColor = LoadingIndicatorGray, disabledCheckedThumbColor = Color.White,
+        disabledCheckedBorderColor = Color.Transparent,
+        disabledUncheckedTrackColor = LoadingIndicatorGray, disabledUncheckedThumbColor = Color.White,
+        disabledUncheckedBorderColor = Color.Transparent,
+    )
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
         .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
         .padding(horizontal = 14.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(label, Modifier.weight(1f), style = settingsLabelStyle(), fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.5f))
-        Switch(checked = checked, onCheckedChange = null, enabled = enabled,
-            colors = SwitchDefaults.colors(
-                checkedTrackColor = Color(0xFF248A3D), checkedThumbColor = Color.White,
-                checkedBorderColor = Color.Transparent,
-                uncheckedTrackColor = LoadingIndicatorGray, uncheckedThumbColor = Color.White,
-                uncheckedBorderColor = Color.Transparent,
-                disabledCheckedTrackColor = LoadingIndicatorGray, disabledCheckedThumbColor = Color.White,
-                disabledCheckedBorderColor = Color.Transparent,
-                disabledUncheckedTrackColor = LoadingIndicatorGray, disabledUncheckedThumbColor = Color.White,
-                disabledUncheckedBorderColor = Color.Transparent,
-            ))
+            color = colors.onSurface.copy(alpha = if (enabled) 1f else 0.5f))
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled, colors = switchColors)
     }
 }

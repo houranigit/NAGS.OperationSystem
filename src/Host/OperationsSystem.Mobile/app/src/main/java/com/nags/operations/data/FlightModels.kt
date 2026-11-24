@@ -3,6 +3,9 @@ package com.nags.operations.data
 import java.time.ZoneId
 import kotlinx.serialization.Serializable
 
+@Serializable
+internal data class FlightDetailsBatch(val items: List<FlightDetail>, val missingFlightIds: List<String>)
+
 /** The mobile feed is restricted by station, membership and operational visibility. */
 @Serializable
 data class FlightPage(

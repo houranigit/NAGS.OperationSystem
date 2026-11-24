@@ -45,7 +45,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -72,6 +71,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import com.nags.operations.R
+import com.nags.operations.ui.theme.isDark
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -116,8 +116,8 @@ internal fun FlightDetailsSheetFrame(
             }
         }
     }
-    val isLight = MaterialTheme.colorScheme.surface.luminance() > 0.5f
-    val ground = if (isLight) FlightFormGround else MaterialTheme.colorScheme.background
+    val isLight = !MaterialTheme.colorScheme.isDark
+    val ground = FlightFormGround
     val headerHeight = if (trailingHeaderAction != null) maxOf(48.dp, trailingHeaderActionHeight) else 48.dp
     val detailsTitle = stringResource(R.string.flights_details)
     val expanded = sheetState.targetValue == SheetValue.Expanded

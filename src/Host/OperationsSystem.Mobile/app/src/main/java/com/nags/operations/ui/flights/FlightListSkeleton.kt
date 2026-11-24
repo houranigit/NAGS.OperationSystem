@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import com.nags.operations.ui.theme.isDark
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -55,8 +56,11 @@ internal fun FlightCardSkeleton(modifier: Modifier = Modifier) {
         animationSpec = infiniteRepeatable(tween(1300, easing = LinearEasing), RepeatMode.Restart),
         label = "Flight skeleton shimmer")
     val wave = with(LocalDensity.current) { 360.dp.toPx() }
+    val colors = MaterialTheme.colorScheme
+    val base = if (colors.isDark) colors.surfaceContainerHigh else Color(0xFFE6E9ED)
+    val highlight = if (colors.isDark) colors.surfaceContainerHighest else Color(0xFFF3F5F7)
     val brush = Brush.linearGradient(
-        colors = listOf(Color(0xFFE6E9ED), Color(0xFFF3F5F7), Color(0xFFE6E9ED)),
+        colors = listOf(base, highlight, base),
         start = Offset((progress * 2f - 1f) * wave, 0f),
         end = Offset(progress * 2f * wave, wave),
     )

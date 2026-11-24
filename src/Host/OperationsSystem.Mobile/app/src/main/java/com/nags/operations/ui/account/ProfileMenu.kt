@@ -37,6 +37,7 @@ import com.nags.operations.R
 import com.nags.operations.ui.components.AppProfileAvatar
 import com.nags.operations.ui.theme.AppThemeMode
 import com.nags.operations.ui.theme.LocalAppAppearance
+import com.nags.operations.ui.theme.isDark
 
 @Composable
 internal fun ProfileMenuContent(displayName: String?, onClose: () -> Unit, onProfile: () -> Unit,
@@ -90,16 +91,19 @@ internal fun ProfileMenuRow(icon: ImageVector, title: String, modifier: Modifier
 @Composable
 internal fun ProfileAppearanceSelector(modifier: Modifier = Modifier) {
     val appearance = LocalAppAppearance.current
+    val colors = MaterialTheme.colorScheme
+    val selectedBackground = if (colors.isDark) colors.surfaceContainerHighest else colors.surface
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.profile_appearance), Modifier.padding(horizontal = 12.dp),
             style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)
+            .background(if (colors.isDark) colors.surfaceDim else colors.surfaceVariant, RoundedCornerShape(12.dp))
             .padding(3.dp).selectableGroup()) {
             AppThemeMode.entries.forEach { mode ->
                 val selected = appearance.mode == mode
                 Box(Modifier.weight(1f).fillMaxHeight().heightIn(min = 48.dp)
-                    .background(if (selected) MaterialTheme.colorScheme.surface else androidx.compose.ui.graphics.Color.Transparent,
+                    .background(if (selected) selectedBackground else androidx.compose.ui.graphics.Color.Transparent,
                         RoundedCornerShape(9.dp))
                     .selectable(selected, role = Role.RadioButton, onClick = { appearance.onChange(mode) })
                     .padding(horizontal = 4.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {

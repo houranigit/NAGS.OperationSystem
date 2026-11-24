@@ -534,6 +534,7 @@ private fun SyncRowCard(row: SyncRowState) {
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(when {
                 error -> Icons.Default.ErrorOutline
+                row.isPreparing -> Icons.Default.Sync
                 row.lastSyncedAt != null -> Icons.Default.CheckCircle
                 else -> Icons.Default.CloudOff
             }, null, Modifier.size(18.dp), tint = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -542,6 +543,7 @@ private fun SyncRowCard(row: SyncRowState) {
                     fontWeight = FontWeight.SemiBold)
                 Text(when {
                     error -> stringResource(R.string.sync_hub_attention)
+                    row.isPreparing -> stringResource(R.string.sync_hub_flights_preparing)
                     row.lastSyncedAt == null -> stringResource(R.string.sync_center_never)
                     else -> stringResource(R.string.sync_hub_updated, formatClock(row.lastSyncedAt))
                 }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -558,10 +560,15 @@ private fun SyncRowCard(row: SyncRowState) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(stringResource(R.string.sync_hub_last_success, formatLastSync(row)), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            row.lastDurationMs?.let { Text(stringResource(R.string.sync_center_duration_ms, it),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            if (error) InlineNotice(if (row.permissionDenied) stringResource(R.string.catalog_sync_denied)
-                else row.lastError ?: stringResource(R.string.catalog_sync_failed), kind = InlineNoticeKind.Error)
+            row.lastDurationMs?.let { duration ->
+                Text(stringResource(R.string.sync_hub_last_duration, syncDuration(duration)),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (error) InlineNotice(when {
+                row.permissionDenied -> stringResource(R.string.catalog_sync_denied)
+                row.target == SyncTarget.Flights -> stringResource(R.string.sync_hub_flights_incomplete)
+                else -> row.lastError ?: stringResource(R.string.catalog_sync_failed)
+            }, kind = InlineNoticeKind.Error)
         }
     }
 }
@@ -583,6 +590,13 @@ private fun formatClock(timestamp: Long): String {
 private fun formatLastSync(row: SyncRowState): String {
     val timestamp = row.lastSyncedAt ?: return stringResource(R.string.sync_center_never)
     return "${formatClock(timestamp)} · ${humanizeAge(row.ageMs ?: 0L)}"
+}
+
+@Composable
+private fun syncDuration(ms: Long): String = when {
+    ms < 1_000L -> stringResource(R.string.sync_center_duration_ms, ms)
+    ms < 60_000L -> stringResource(R.string.sync_hub_duration_seconds, ms / 1_000L)
+    else -> stringResource(R.string.sync_hub_duration_minutes, ms / 60_000L, ms / 1_000L % 60L)
 }
 
 @Composable

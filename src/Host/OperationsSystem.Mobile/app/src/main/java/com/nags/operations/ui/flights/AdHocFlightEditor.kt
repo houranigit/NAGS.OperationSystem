@@ -92,14 +92,20 @@ internal fun AdHocFlightEditor(viewModel: FlightsViewModel, initialFlight: Fligh
     val requestedInWindow = isWithinFlightPlanningWindow(input.scheduledArrivalUtc, input.scheduledDepartureUtc, java.time.Instant.now())
     val hasOperationalIntent = arrivals.any { it.flightId == initialFlight.id } || services.any { it.flightId == initialFlight.id } ||
         tasks.any { it.flightId == initialFlight.id } || departures.any { it.flightId == initialFlight.id }
-    val scopeValid = context?.stationId == initialFlight.stationId && initialFlight.isInFlightWindow(java.time.Instant.now())
+    val scopeValid = context?.stationId == initialFlight.stationId && initialFlight.isInFlightWindow(java.time.Instant.now()) &&
+        (initialFlight.rowVersion != LOCAL_ADHOC_VERSION || context?.canCreate == true)
     val editable = initialFlight.canEditFlightDetails && !hasOperationalIntent && scopeValid
-    val flight = initialFlight.copy(customerId = customerId, customerName = customer?.name ?: initialFlight.customerName,
+    val editorFlight = context?.takeIf { initialFlight.rowVersion == LOCAL_ADHOC_VERSION && it.stationId == initialFlight.stationId }
+        ?.let { station -> initialFlight.copy(currentStaffMemberId = station.currentStaffMemberId,
+            canSaveArrival = station.canSaveArrival, canSaveDeparture = station.canSaveDeparture,
+            canSaveServices = station.canSaveServices, canSaveTasks = station.canSaveTasks, allowedServiceIds = station.allowedServiceIds) }
+        ?: initialFlight
+    val flight = editorFlight.copy(customerId = customerId, customerName = customer?.name ?: initialFlight.customerName,
         customerIataCode = customer?.iataCode ?: initialFlight.customerIataCode, flightNumber = flightNumber,
         scheduledArrivalUtc = input.scheduledArrivalUtc.ifBlank { initialFlight.scheduledArrivalUtc },
         scheduledDepartureUtc = input.scheduledDepartureUtc.ifBlank { initialFlight.scheduledDepartureUtc },
-        canSaveArrival = initialFlight.canSaveArrival && scopeValid, canSaveDeparture = initialFlight.canSaveDeparture && scopeValid,
-        canSaveServices = initialFlight.canSaveServices && scopeValid, canSaveTasks = initialFlight.canSaveTasks && scopeValid,
+        canSaveArrival = editorFlight.canSaveArrival && scopeValid, canSaveDeparture = editorFlight.canSaveDeparture && scopeValid,
+        canSaveServices = editorFlight.canSaveServices && scopeValid, canSaveTasks = editorFlight.canSaveTasks && scopeValid,
         canEditFlightDetails = editable)
     val stationValidation = stringResource(R.string.adhoc_verify_station)
     val windowValidation = stringResource(R.string.adhoc_window_error)
@@ -129,7 +135,7 @@ internal fun AdHocFlightEditor(viewModel: FlightsViewModel, initialFlight: Fligh
         onReviewServices = { viewModel.reviewFlightInput(flight.id) }, onReviewTasks = { viewModel.reviewFlightInput(flight.id) },
         loadServiceAttachment = viewModel::serviceAttachment, loadPendingServiceAttachment = viewModel::pendingServiceAttachment,
         loadTaskAttachment = viewModel::taskAttachment, loadPendingTaskAttachment = viewModel::pendingTaskAttachment,
-        onSaveBatch = { saveSections -> repository.save(initialFlight.copy(customerName = flight.customerName,
+        onSaveBatch = { saveSections -> repository.save(editorFlight.copy(customerName = flight.customerName,
             customerIataCode = flight.customerIataCode, canEditFlightDetails = editable), input, saveSections) },
         onSaveReviewed = viewModel::saveReviewed, onDiscardReviewed = { viewModel.discardReviewed(flight.id, it) },
         initialNavigationKey = initialNavigationKey,

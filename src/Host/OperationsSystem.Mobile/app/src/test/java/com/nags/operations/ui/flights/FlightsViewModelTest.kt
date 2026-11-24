@@ -47,6 +47,128 @@ class FlightsViewModelTest {
     }
 
     @Test
+    fun cachedListAndDetailAreUsableWhileOnlineReadsAreWaiting() {
+        val liveList = CompletableDeferred<FlightPage>()
+        val liveDetail = CompletableDeferred<FlightDetail>()
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        var listReads = 0
+        var detailReads = 0
+        val vm = model(list = { _, _, _ -> listReads++; liveList.await() }, readDetail = { detailReads++; liveDetail.await() },
+            changes = changes, cacheStatus = flowOf(FlightSyncStatus(lastSuccessUtc = "2026-11-03T11:00:00Z")),
+            cachedList = { _, _, _, _ -> page("one").copy(fromCache = true) },
+            cachedDetail = { detail(it).copy(canSaveServices = true) })
+
+        vm.refreshSilently()
+        assertEquals(listOf("one"), vm.state.value.items.map { it.id })
+        assertTrue(vm.state.value.isUsingCachedList)
+        assertFalse(vm.state.value.isLoading)
+        assertFalse(vm.state.value.showRefreshIndicator)
+
+        vm.openFlight("one")
+        assertTrue(vm.state.value.detail!!.fromCache)
+        assertTrue(vm.state.value.detail!!.canSaveServices)
+        assertTrue(vm.state.value.isLoadingDetail)
+
+        assertTrue(changes.tryEmit(Unit))
+        assertEquals(1, listReads)
+        assertEquals(1, detailReads)
+
+        liveList.complete(page("one"))
+        liveDetail.complete(detail("one").copy(rowVersion = "v2"))
+        assertFalse(vm.state.value.isUsingCachedList)
+        assertFalse(vm.state.value.detail!!.fromCache)
+        assertEquals("v2", vm.state.value.detail!!.rowVersion)
+        assertFalse(vm.state.value.isLoadingDetail)
+    }
+
+    @Test
+    fun profileRevocationClearsTheVisiblePreviewAndCompletesSuspendingCacheEviction() {
+        val profile = CompletableDeferred<AuthenticatedUser>()
+        val allowEviction = CompletableDeferred<Unit>()
+        var evicted = false
+        val vm = model(profile = { profile.await() }, cachedDetail = { detail(it) },
+            clearCache = { allowEviction.await(); evicted = true })
+
+        vm.openFlight("one")
+        assertTrue(vm.state.value.detail!!.fromCache)
+        profile.complete(AuthenticatedUser("user", "staff@example.test", "Staff", "StationStaff", permissions = emptyList()))
+        assertNull(vm.state.value.detail)
+        assertTrue(vm.state.value.permissionDenied)
+
+        allowEviction.complete(Unit)
+        assertTrue(evicted)
+    }
+
+    @Test
+    fun cachedDetailRemainsOnTransientRefreshFailureAndIsClearedOnDenial() {
+        for (status in listOf(403, 404)) {
+            val retry = CompletableDeferred<FlightDetail>()
+            var reads = 0
+            val vm = model(readDetail = { if (++reads == 1) throw IOException("Connection lost") else retry.await() },
+                cachedDetail = { detail(it) })
+
+            vm.openFlight("one")
+            assertTrue(vm.state.value.detail!!.fromCache)
+            assertNotNull(vm.state.value.detailError)
+
+            vm.openFlight("one")
+            retry.completeExceptionally(ApiException(status, "Flight unavailable"))
+            assertNull(vm.state.value.detail)
+            assertNull(vm.state.value.selectedFlightId)
+            assertEquals("one", vm.state.value.lastUnavailableFlightId)
+        }
+    }
+
+    @Test
+    fun reconnectRefreshesVisibleCachedFlightsAndRestoresLiveInvitationEligibility() {
+        val connected = MutableStateFlow(false)
+        var listReads = 0
+        var detailReads = 0
+        val vm = model(online = connected, permissions = listOf("operations.flights.view", "operations.flights.invite"),
+            list = { _, _, _ -> listReads++; page("one") }, readDetail = { detailReads++; detail(it) },
+            cachedList = { _, _, _, _ -> page("one").copy(fromCache = true) }, cachedDetail = { detail(it) })
+
+        vm.refreshSilently()
+        vm.openFlight("one")
+        assertEquals(0, listReads)
+        assertEquals(0, detailReads)
+        assertTrue(vm.state.value.isUsingCachedList)
+        assertTrue(vm.state.value.detail!!.fromCache)
+
+        connected.value = true
+        assertEquals(1, listReads)
+        assertEquals(1, detailReads)
+        assertFalse(vm.state.value.isUsingCachedList)
+        assertFalse(vm.state.value.detail!!.fromCache)
+        assertTrue(vm.state.value.canInviteEmployees)
+    }
+
+    @Test
+    fun completedCacheUpdateRefreshesListAndOpenDetailWithoutAnotherLiveRead() {
+        val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val synced = flowOf(FlightSyncStatus(lastSuccessUtc = "2026-11-03T11:00:00Z"))
+        var prepared = false
+        var listReads = 0
+        var detailReads = 0
+        val vm = model(changes = changes, cacheStatus = synced, list = { _, _, _ ->
+            listReads++
+            page("one").copy(stationId = "station", asOfUtc = "2026-11-03T10:58:00Z")
+        }, readDetail = { detailReads++; detail(it) }, cachedList = { _, _, _, _ ->
+            if (!prepared) null else page("new").copy(stationId = "station", asOfUtc = "2026-11-03T11:00:00Z", fromCache = true)
+        }, cachedDetail = { if (!prepared) null else detail(it).copy(rowVersion = "v2", fromCache = true) })
+
+        vm.refreshSilently()
+        vm.openFlight("one")
+        prepared = true
+        assertTrue(changes.tryEmit(Unit))
+
+        assertEquals(listOf("new"), vm.state.value.items.map { it.id })
+        assertEquals("v2", vm.state.value.detail!!.rowVersion)
+        assertEquals(1, listReads)
+        assertEquals(1, detailReads)
+    }
+
+    @Test
     fun searchAndLoadMoreUseTheServerPageAndKeepTheQuery() {
         val requests = mutableListOf<Pair<Int, String?>>()
         val vm = model(list = { number, _, search ->
@@ -1336,6 +1458,8 @@ class FlightsViewModelTest {
         pruneCache: suspend () -> Unit = {},
         searchDebounce: suspend () -> Unit = { delay(300) },
         discovery: Boolean = false,
+        cachedList: suspend (FlightCategory, Int, Int, String?) -> FlightPage? = { _, _, _, _ -> null },
+        cachedDetail: suspend (String) -> FlightDetail? = { null },
     ) = FlightsViewModel(
         fetchProfile = profile ?: { AuthenticatedUser("user", "staff@example.test", "Staff", "StationStaff", permissions = permissions) },
         fetchFlights = categoryList ?: { _, number, size, search -> list(number, size, search) },
@@ -1344,6 +1468,7 @@ class FlightsViewModelTest {
         cacheChanges = changes, cacheStatus = cacheStatus, clearCachedFlights = clearCache,
         now = now, waitForExpiryCheck = expiryWait, pruneCachedFlights = pruneCache,
         waitForSearchDebounce = searchDebounce, isDiscoveryFeed = discovery,
+        readCachedPage = cachedList, readCachedFlight = cachedDetail,
     )
 
     @Test fun offlineClockDoesNotExpireOverdueUnresolvedRowsOrTheirDetails() {

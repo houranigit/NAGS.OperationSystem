@@ -24,13 +24,11 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,10 +53,10 @@ import com.nags.operations.ui.components.NagsLogo
 import com.nags.operations.ui.theme.BrandRed
 import com.nags.operations.ui.theme.BrandRedDark
 import com.nags.operations.ui.theme.BrandRedLight
+import com.nags.operations.ui.theme.isDark
 
 /**
- * NAGS-branded sign-in screen. Shows the portal logo on a brand-red gradient
- * header, enters home when the current decrypted access token becomes available, and
+ * NAGS-branded sign-in screen. Enters home when the current decrypted access token becomes available, and
  * surfaces server errors as a soft inline banner instead of raw HTTP text.
  */
 @Composable
@@ -78,9 +76,10 @@ fun LoginScreen(
         if (canResumeSession) currentOnLoggedIn()
     }
 
-    val brandGradient = Brush.verticalGradient(
-        colors = listOf(BrandRedDark, BrandRed, BrandRedLight),
-    )
+    val colors = MaterialTheme.colorScheme
+    val brandBackground = if (colors.isDark) Modifier.background(colors.surface)
+        else Modifier.background(Brush.verticalGradient(listOf(BrandRedDark, BrandRed, BrandRedLight)))
+    val brandInk = if (colors.isDark) colors.onSurface else Color.White
 
     Column(
         modifier = Modifier
@@ -92,7 +91,7 @@ fun LoginScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(brandGradient),
+                .then(brandBackground),
         ) {
             Column(
                 modifier = Modifier
@@ -106,7 +105,7 @@ fun LoginScreen(
                     modifier = Modifier
                         .height(96.dp)
                         .background(
-                            color = Color.White.copy(alpha = 0.16f),
+                            color = if (colors.isDark) colors.surfaceContainerHighest else Color.White.copy(alpha = 0.16f),
                             shape = RoundedCornerShape(28.dp),
                         )
                         .padding(horizontal = 22.dp, vertical = 12.dp),
@@ -114,7 +113,7 @@ fun LoginScreen(
                 ) {
                     NagsLogo(
                         modifier = Modifier.height(72.dp),
-                        tint = Color.White,
+                        tint = if (colors.isDark) colors.primary else Color.White,
                     )
                 }
                 Spacer(Modifier.height(4.dp))
@@ -122,12 +121,12 @@ fun LoginScreen(
                     "NAGS Operations",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = brandInk,
                 )
                 Text(
                     "Ground support, in your pocket.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = if (colors.isDark) colors.onSurfaceVariant else Color.White.copy(alpha = 0.85f),
                 )
             }
         }
@@ -162,11 +161,6 @@ fun LoginScreen(
                     keyboardType = KeyboardType.Email,
                     imeAction = ImeAction.Next,
                 ),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = BrandRed,
-                    cursorColor = BrandRed,
-                    focusedLabelColor = BrandRed,
-                ),
             )
 
             OutlinedTextField(
@@ -192,11 +186,6 @@ fun LoginScreen(
                 ),
                 visualTransformation = if (passwordVisible) VisualTransformation.None
                 else PasswordVisualTransformation(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = BrandRed,
-                    cursorColor = BrandRed,
-                    focusedLabelColor = BrandRed,
-                ),
             )
 
             // Two-step MFA: the server answered the first step with a challenge — collect the
@@ -213,11 +202,6 @@ fun LoginScreen(
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.NumberPassword,
                         imeAction = ImeAction.Done,
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = BrandRed,
-                        cursorColor = BrandRed,
-                        focusedLabelColor = BrandRed,
                     ),
                 )
             }
@@ -241,10 +225,6 @@ fun LoginScreen(
                     .fillMaxWidth()
                     .height(54.dp),
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = BrandRed,
-                    contentColor = Color.White,
-                ),
             ) {
                 if (state.isLoading) {
                     CircularProgressIndicator(

@@ -7,6 +7,7 @@ import com.nags.operations.data.ApiException
 import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.FlightCategory
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.data.FlightDetailsBatch
 import com.nags.operations.data.FlightDepartureSaved
 import com.nags.operations.data.departureEditable
 import com.nags.operations.data.FlightListItem
@@ -30,6 +31,7 @@ import java.io.IOException
 import java.time.Instant
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -39,7 +41,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -80,9 +81,10 @@ class FlightsRepository internal constructor(
     private val recordAdditionalAcknowledged: suspend (FlightDetail) -> Unit = {},
     private val prepareAdditionalOffline: suspend () -> Unit = {},
     private val confirmAdditionalStation: suspend (String) -> Unit = {},
-    private val revokeAdditional: suspend (String, String?) -> Unit = { _, _ -> },
+    private val revokeAdditional: suspend (String, String?, (suspend () -> Unit)?) -> Unit = { _, _, revoke -> revoke?.invoke() },
     private val additionalLogoFlights: suspend () -> List<FlightListItem> = { emptyList() },
     private val onPreparationFailure: (Exception) -> Unit = {},
+    private val fetchFlightBatch: (suspend (List<String>) -> FlightDetailsBatch?)? = null,
 ) {
     constructor(api: OperationsApi, db: CatalogDatabase, tokenStore: TokenStore, online: StateFlow<Boolean>, logoStore: CustomerLogoStore? = null,
         prepareOffline: suspend (FlightDetail) -> Unit = {},
@@ -95,10 +97,12 @@ class FlightsRepository internal constructor(
         beginAdditionalDetailRead: suspend (String) -> Long = { 0L },
         recordAdditionalFetched: suspend (FlightDetail, Long) -> FlightDetail = { detail, _ -> detail },
         recordAdditionalAcknowledged: suspend (FlightDetail) -> Unit = {}, prepareAdditionalOffline: suspend () -> Unit = {},
-        confirmAdditionalStation: suspend (String) -> Unit = {}, revokeAdditional: suspend (String, String?) -> Unit = { _, _ -> },
+        confirmAdditionalStation: suspend (String) -> Unit = {},
+        revokeAdditional: suspend (String, String?, (suspend () -> Unit)?) -> Unit = { _, _, revoke -> revoke?.invoke() },
         additionalLogoFlights: suspend () -> List<FlightListItem> = { emptyList() }) : this(
         fetchFlights = api::flights,
         fetchFlight = api::flight,
+        fetchFlightBatch = api::flightDetailsBatch,
         fetchInvitationOptions = api::invitationOptions,
         sendInvitation = api::invite,
         logoStore = logoStore,
@@ -117,13 +121,10 @@ class FlightsRepository internal constructor(
             }
         },
         dao = db.flightCacheDao(),
-        ownerFlow = combine(tokenStore.accessTokenFlow, tokenStore.sessionSubjectFlow) { token, subject ->
-            if (token.isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, subject)
+        ownerFlow = tokenStore.cacheSessionSubjectFlow.map { subject ->
+            sharedCatalogOwnerKey(HttpClientFactory.baseUrl, subject)
         }.distinctUntilChanged(),
-        currentOwner = {
-            if (tokenStore.getAccessToken().isNullOrBlank()) null
-            else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
-        },
+        currentOwner = { sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getCacheSessionSubject()) },
         isOnline = { online.value },
     )
 
@@ -170,6 +171,12 @@ class FlightsRepository internal constructor(
 
     suspend fun flights(category: FlightCategory, page: Int = 1, pageSize: Int = 20, search: String? = null): FlightPage =
         flightsPage(category, page, pageSize, search)
+
+    internal suspend fun cachedFlights(category: FlightCategory, page: Int, pageSize: Int, search: String?): FlightPage? =
+        withContext(Dispatchers.Default) {
+            val session = captureSession() ?: return@withContext null
+            cachedPageOrNull(session, category, page, pageSize, search)?.takeIf { isCurrent(session) }
+        }
 
     private suspend fun flightsPage(category: FlightCategory?, page: Int, pageSize: Int, search: String?): FlightPage {
         val session = requireSession()
@@ -247,16 +254,28 @@ class FlightsRepository internal constructor(
             return detail
         } catch (error: CancellationException) { throw error }
         catch (error: Exception) {
-            val currentRead = mutationMutex.withLock {
+            val (currentRead, accessRevoked) = mutationMutex.withLock {
                 ensureCurrent(session)
                 val key = detailKey(session, id)
                 val confirmed = confirmedDetailEpochs[key] ?: 0L
                 val accessFailure = error is ApiException && error.statusCode in listOf(401, 403, 404)
-                if (accessFailure) !(confirmed > read && positiveDetailEpochs[key] == confirmed) else confirmed <= read
+                val superseded = confirmed > read
+                val positive = positiveDetailEpochs[key] == confirmed
+                val stillCurrent = !superseded || accessFailure && !positive
+                stillCurrent to (superseded && !positive)
             }
-            if (!currentRead) return retainedDetail(session, id)
-                ?: throw IOException("A newer flight read or saved update replaced this response.", error)
-            handleAccessError(session, error, id)
+            if (!currentRead) {
+                val retained = retainedDetail(session, id)
+                if (retained != null) return retained
+                if (accessRevoked) throw ApiException(404, "This flight is no longer available.")
+                throw IOException("A newer flight read or saved update replaced this response.", error)
+            }
+            if (error is ApiException && (error.statusCode == 403 || error.statusCode == 404)) {
+                if (!revokeFlightAccess(session, id, invalidatePending = true, expectedEpoch = read)) {
+                    return retainedDetail(session, id)
+                        ?: throw IOException("A newer flight read or saved update replaced this response.", error)
+                }
+            } else handleAccessError(session, error)
             if (!error.isTransient()) throw error
             return retainedDetail(session, id) ?: throw error
         }
@@ -321,6 +340,15 @@ class FlightsRepository internal constructor(
     /** Cache-only current evidence for mutually exclusive local submissions; never starts an HTTP read. */
     suspend fun cachedFlight(id: String): FlightDetail? = captureSession()?.let { session ->
         cachedDetailOrNull(session, id) ?: localAdHocFlights().firstOrNull { it.id == id } ?: additionalCachedFlight(id)
+    }
+
+    internal suspend fun cachedFlightForDisplay(id: String): FlightDetail? = withContext(Dispatchers.Default) {
+        val session = captureSession() ?: return@withContext null
+        val saved = cachedDetailOrNull(session, id)
+        // Match the offline editor: durable AdHoc intent takes priority over its server snapshot.
+        val detail = if (saved != null && !saved.isAdHocFlight) saved else
+            localAdHocFlights().firstOrNull { it.id == id } ?: saved ?: additionalCachedFlight(id)
+        detail?.takeIf { isCurrent(session) }
     }
 
     /** Read-only local-save evidence: caller may already own Room, so never acquire cache mutation/prune locks. */
@@ -588,7 +616,7 @@ class FlightsRepository internal constructor(
             val (downloaded, acceptedLogoRead) = readCompleteList(session, revision, logoRead)
             logoRead = acceptedLogoRead
             val downloadedScope = checkNotNull(downloaded.scope)
-            val items = downloaded.items.filter { it.isInFlightWindow(Instant.parse(now())) }.toMutableList()
+            val items = downloaded.items.filter { it.isInFlightWindow(Instant.parse(now())) }
             val visibleIds = items.mapTo(mutableSetOf()) { it.id }
             mutationMutex.withLock {
                 ensureCompatibleScope(session, revision, downloadedScope)
@@ -598,32 +626,41 @@ class FlightsRepository internal constructor(
             }
             val details = mutableListOf<FlightDetailCacheEntity>()
             val detailReadEpochs = mutableMapOf<String, Long>()
-            // Downloads stay sequential to bound media memory to the existing per-file limit.
-            for (item in items.toList()) {
-                val detailEpoch = mutationMutex.withLock {
-                    ensureCurrent(session)
-                    ensurePreparedContentUnchanged(contentAtStart)
-                    val key = detailKey(session, item.id)
-                    ((detailEpochs[key] ?: 0L) + 1).also { detailEpochs[key] = it }
-                }
+            visibleIds.prepareFlightDetails(
+                beforeRead = { id ->
+                    mutationMutex.withLock {
+                        ensureCurrent(session)
+                        ensurePreparedContentUnchanged(contentAtStart)
+                        val key = detailKey(session, id)
+                        ((detailEpochs[key] ?: 0L) + 1).also { detailEpochs[key] = it }
+                    }
+                },
+                read = fetchFlight,
+                readBatch = fetchFlightBatch,
+            ) { id, detailEpoch, response ->
                 val detail = try {
-                    fetchFlight(item.id).also { detail ->
-                        if (detail.id != item.id || detail.stationId != downloadedScope.stationId ||
+                    response.getOrThrow().also { detail ->
+                        if (detail.id != id || detail.stationId != downloadedScope.stationId ||
                             !detail.isInFlightWindow(Instant.parse(now())))
                             throw ApiException(404, "This flight is outside your current flight window.")
                     }
                 } catch (error: ApiException) {
-                    mutationMutex.withLock { ensureCurrent(session); ensurePreparedContentUnchanged(contentAtStart) }
                     if (error.statusCode != 403 && error.statusCode != 404) throw error
-                    handleAccessError(session, error, item.id, invalidatePending = false)
-                    items.removeAll { candidate -> candidate.id == item.id }
-                    continue
+                    val revoked = revokeFlightAccess(session, id, invalidatePending = false, expectedEpoch = detailEpoch,
+                        expectedContentRevision = contentAtStart, expectedStation = downloadedScope.stationId)
+                    if (!revoked) throw PreparationChangedException()
+                    return@prepareFlightDetails
                 }
-                ensureCurrent(session)
+                val retainedForPreparation = mutationMutex.withLock {
+                    ensureCurrent(session)
+                    ensurePreparedContentUnchanged(contentAtStart)
+                    id !in deniedDuringRefresh
+                }
+                if (!retainedForPreparation) return@prepareFlightDetails
                 prepareOffline(detail)
                 ensureCurrent(session)
-                details += FlightDetailCacheEntity(session.owner, item.id, json.encodeToString(detail))
-                detailReadEpochs[item.id] = detailEpoch
+                details += FlightDetailCacheEntity(session.owner, id, json.encodeToString(detail))
+                detailReadEpochs[id] = detailEpoch
             }
             prepareAdditionalOffline()
             val retained = mutationMutex.withLock {
@@ -776,10 +813,26 @@ class FlightsRepository internal constructor(
         return false
     }
 
-    /** A denied Discovery detail revokes the same flight without restoring it from an older full-sync manifest. */
-    suspend fun recordExternalAccessLoss(id: String, status: Int) {
-        val session = captureSession() ?: return
-        handleAccessError(session, ApiException(status, "This flight is no longer available."), id, invalidatePending = false)
+    internal suspend fun beginExternalDetailRead(scope: FlightExternalScopeRead?, id: String): FlightExternalDetailRead {
+        val observed = checkNotNull(scope) { "Your flight session changed. Reload the page." }
+        val session = FlightCacheSession(observed.owner, observed.generation)
+        return mutationMutex.withLock {
+            ensureCurrent(session)
+            val key = detailKey(session, id)
+            val epoch = (detailEpochs[key] ?: 0L) + 1
+            detailEpochs[key] = epoch
+            FlightExternalDetailRead(observed.owner, observed.generation, id, epoch)
+        }
+    }
+
+    /** Apply a Discovery denial with the same per-flight guard and lock ordering as ordinary detail reads. */
+    internal suspend fun recordExternalAccessLoss(read: FlightExternalDetailRead?, station: String, revoke: suspend () -> Unit) {
+        val observed = checkNotNull(read) { "Your flight session changed. Reload the page." }
+        val session = FlightCacheSession(observed.owner, observed.generation)
+        if (!revokeFlightAccess(session, observed.flightId, invalidatePending = false,
+                expectedEpoch = observed.epoch, expectedStation = station, revoke = revoke)) {
+            throw PreparationChangedException()
+        }
     }
 
     /** Cache-only station proof for a v13 offline Save; safe inside the existing Room transaction. */
@@ -935,20 +988,13 @@ class FlightsRepository internal constructor(
     private fun emptySnapshot(owner: String, scope: FlightScope? = null): FlightSnapshotEntity =
         FlightSnapshotEntity(owner, payloadJson = json.encodeToString(ScopedFlightSnapshot(CACHE_SCOPE_VERSION, scope)))
 
-    private suspend fun handleAccessError(
-        session: FlightCacheSession,
-        error: Exception,
-        flightId: String? = null,
-        invalidatePending: Boolean = true,
-    ): Boolean {
+    private suspend fun handleAccessError(session: FlightCacheSession, error: Exception): Boolean {
         if (error !is ApiException) return false
-        if ((error.statusCode == 401 || error.statusCode == 403 || error.statusCode == 404 && flightId != null) &&
-            generation == session.generation) {
+        if ((error.statusCode == 401 || error.statusCode == 403) && generation == session.generation) {
             val owner = currentOwner()
             if (owner == session.owner || owner == null && error.statusCode == 401) {
-                val revokedId = if (error.statusCode == 401) null else flightId
-                revokeAdHoc(session.owner, revokedId)
-                revokeAdditional(session.owner, revokedId)
+                revokeAdHoc(session.owner, null)
+                revokeAdditional(session.owner, null, null)
             }
         }
         if (error.statusCode == 401) {
@@ -966,7 +1012,7 @@ class FlightsRepository internal constructor(
             if (changed) _cacheChanges.tryEmit(Unit)
             return true
         }
-        if (error.statusCode == 403 && flightId == null) {
+        if (error.statusCode == 403) {
             val changed = mutationMutex.withLock {
                 if (!isCurrent(session)) return@withLock false
                 generation++
@@ -981,33 +1027,46 @@ class FlightsRepository internal constructor(
             if (changed) _cacheChanges.tryEmit(Unit)
             return true
         }
-        if (flightId != null && (error.statusCode == 403 || error.statusCode == 404)) {
-            val changed = mutationMutex.withLock {
-                if (!isCurrent(session)) return@withLock false
-                if (invalidatePending) generation++
-                invalidateDetailReadLocked(session, flightId)
-                if (_isSyncing.value) deniedDuringRefresh += flightId
-                val previous = dao.snapshot(session.owner) ?: emptySnapshot(session.owner)
-                val payload = decodeSnapshot(previous) ?: ScopedFlightSnapshot(CACHE_SCOPE_VERSION)
-                val originalDetails = dao.details(session.owner)
-                val retained = payload.items.filter { it.id != flightId }
-                val retainedDetails = originalDetails.filter { it.flightId != flightId }
-                val hadCache = retained.size != payload.items.size || retainedDetails.size != originalDetails.size
-                if (hadCache) {
-                    dao.replace(previous.copy(payloadJson = json.encodeToString(payload.copy(items = retained)), itemCount = retained.size), retainedDetails)
-                    listRevision++
-                    if (previous.lastSuccessUtc != null && invalidatePending) {
-                        val stillVisible = retained.mapNotNull { it.customerId }.toSet()
-                        val lostCustomers = payload.items.filter { it.id == flightId }.mapNotNull { it.customerId }.toSet() - stillVisible
-                        logoStore?.revokeCustomers(lostCustomers)
-                    }
-                }
-                hadCache
-            }
-            if (changed) _cacheChanges.tryEmit(Unit)
-            return true
-        }
         return false
+    }
+
+    private suspend fun revokeFlightAccess(
+        session: FlightCacheSession,
+        flightId: String,
+        invalidatePending: Boolean,
+        expectedEpoch: Long? = null,
+        expectedContentRevision: Long? = null,
+        expectedStation: String? = null,
+        revoke: (suspend () -> Unit)? = null,
+    ): Boolean = mutationMutex.withLock {
+        if (!isCurrent(session)) return@withLock false
+        if (expectedContentRevision != null) ensurePreparedContentUnchanged(expectedContentRevision)
+        val key = detailKey(session, flightId)
+        val confirmed = confirmedDetailEpochs[key] ?: 0L
+        if (expectedEpoch != null && confirmed > expectedEpoch && positiveDetailEpochs[key] == confirmed)
+            return@withLock false
+        val previous = dao.snapshot(session.owner) ?: emptySnapshot(session.owner)
+        val payload = decodeSnapshot(previous) ?: ScopedFlightSnapshot(CACHE_SCOPE_VERSION)
+        if (expectedStation != null && payload.scope?.stationId != expectedStation) return@withLock false
+        revokeAdditional(session.owner, flightId, revoke)
+        revokeAdHoc(session.owner, flightId)
+        if (invalidatePending) generation++
+        invalidateDetailReadLocked(session, flightId)
+        if (_isSyncing.value) deniedDuringRefresh += flightId
+        val originalDetails = dao.details(session.owner)
+        val retained = payload.items.filter { it.id != flightId }
+        val retainedDetails = originalDetails.filter { it.flightId != flightId }
+        if (retained.size != payload.items.size || retainedDetails.size != originalDetails.size) {
+            dao.replace(previous.copy(payloadJson = json.encodeToString(payload.copy(items = retained)), itemCount = retained.size), retainedDetails)
+            listRevision++
+            if (previous.lastSuccessUtc != null && invalidatePending) {
+                val stillVisible = retained.mapNotNull { it.customerId }.toSet()
+                val lostCustomers = payload.items.filter { it.id == flightId }.mapNotNull { it.customerId }.toSet() - stillVisible
+                logoStore?.revokeCustomers(lostCustomers)
+            }
+            _cacheChanges.tryEmit(Unit)
+        }
+        true
     }
 
     private fun requireOnlineInvitations() {
@@ -1094,3 +1153,5 @@ private fun List<com.nags.operations.data.FlightCancellationSubmission>.latestCa
 
 /** Opaque read stamp; only repository-created stamps can confirm a newer station. */
 data class FlightExternalScopeRead internal constructor(internal val owner: String, internal val generation: Long, internal val revision: Long)
+
+internal data class FlightExternalDetailRead(val owner: String, val generation: Long, val flightId: String, val epoch: Long)

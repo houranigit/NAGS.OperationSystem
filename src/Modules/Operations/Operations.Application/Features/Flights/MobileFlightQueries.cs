@@ -125,6 +125,49 @@ public sealed class GetMobileFlightByIdQueryHandler(IOperationsDbContext db, IMo
     }
 }
 
+public sealed record GetMobileFlightDetailsBatchQuery(IReadOnlyList<Guid> FlightIds) : IQuery<MobileFlightDetailsBatchDto>;
+
+public sealed class GetMobileFlightDetailsBatchQueryHandler(IOperationsDbContext db, IMobileFlightScope scope,
+    IMasterDataReader masterData, IUserContext user, IUserDisplayNameReader userNames)
+    : IQueryHandler<GetMobileFlightDetailsBatchQuery, MobileFlightDetailsBatchDto>
+{
+    private const int MaximumFlightIds = 20;
+
+    public async Task<Result<MobileFlightDetailsBatchDto>> Handle(GetMobileFlightDetailsBatchQuery request,
+        CancellationToken cancellationToken)
+    {
+        if (request.FlightIds.Count is 0 or > MaximumFlightIds || request.FlightIds.Contains(Guid.Empty) ||
+            request.FlightIds.Distinct().Count() != request.FlightIds.Count)
+            return Error.Validation($"Supply between 1 and {MaximumFlightIds} distinct flight IDs.",
+                "Operations.Mobile.InvalidFlightDetailsBatch");
+
+        var resolved = await scope.ResolveAsync(cancellationToken);
+        if (resolved.IsFailure)
+            return resolved.Error;
+
+        var actor = resolved.Value;
+        var ids = request.FlightIds.ToArray();
+        var scoped = MobileFlightQuery.ApplyReadScope(db.Flights.AsNoTracking(), actor);
+        var flights = await FlightServiceWrites.Load(scoped.Where(flight => ids.Contains(flight.Id)))
+            .ToListAsync(cancellationToken);
+        if (flights.Count == 0)
+            return new MobileFlightDetailsBatchDto([], ids);
+
+        var station = await masterData.GetStationAsync(actor.StationId, cancellationToken);
+        if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
+            return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
+
+        var canOperate = user.HasPermission(OperationsPermissions.Flights.Operate);
+        var allowed = await new MasterDataResolver(masterData).AllowedServiceIdsForStaffAsync(
+            actor.StaffMemberId, actor.StationId, cancellationToken);
+        var names = await FlightWorkAttribution.NamesAsync(userNames, flights.SelectMany(FlightWorkAttribution.UserIds), cancellationToken);
+        var allowedIds = allowed.IsSuccess ? allowed.Value : [];
+        var items = flights.Select(flight => FlightDetails.MapOperational(
+            flight, station.TimeZoneId, actor, canOperate, allowedIds, names, portalOnly: false)).ToArray();
+        return new MobileFlightDetailsBatchDto(items, ids.Except(items.Select(item => item.Id)).ToArray());
+    }
+}
+
 public sealed record GetMobileFlightCustomerLogoQuery(Guid CustomerId, string? ExpectedVersion = null)
     : IQuery<CustomerLogoReadContent>;
 

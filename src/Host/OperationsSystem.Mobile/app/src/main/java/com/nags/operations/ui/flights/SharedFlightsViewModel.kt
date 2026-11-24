@@ -46,7 +46,7 @@ internal class SharedFlightsViewModel(
     private val fetch: suspend (FlightShareDirection, String, Int, Int) -> FlightSharePage,
     private val cached: suspend (FlightShareDirection, String, Int, Int) -> FlightSharePage?,
     changes: Flow<Unit> = emptyFlow(),
-    online: StateFlow<Boolean> = MutableStateFlow(true),
+    private val online: StateFlow<Boolean> = MutableStateFlow(true),
     scope: CoroutineScope? = null,
     private val now: () -> Instant = { Instant.now() },
     private val scopeCurrent: suspend (String, String?) -> Boolean = { _, _ -> true },
@@ -89,6 +89,19 @@ internal class SharedFlightsViewModel(
             error = null, moreError = null) }
         request = work.launch {
             try {
+                if (number == 1 && !_state.value.loaded) {
+                    val saved = try {
+                        cached(FlightShareDirection.All, "", number, PAGE_SIZE)
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { null }
+                    currentCoroutineContext().ensureActive()
+                    if (stamp != revision) return@launch
+                    if (saved != null && !_state.value.loaded) {
+                        val checking = online.value
+                        accept(saved, append = false, keepPage = checking)
+                        if (!checking) return@launch
+                    }
+                }
                 val result = fetch(FlightShareDirection.All, "", number, PAGE_SIZE)
                 currentCoroutineContext().ensureActive()
                 if (stamp != revision) return@launch

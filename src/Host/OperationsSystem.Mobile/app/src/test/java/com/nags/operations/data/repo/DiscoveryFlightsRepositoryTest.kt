@@ -11,6 +11,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.Assert.*
 import org.junit.Test
@@ -489,6 +490,29 @@ class DiscoveryFlightsRepositoryTest {
         assertTrue(f.dao.interactions(f.firstOwner).single().acknowledged)
     }
 
+    @Test fun olderIndexDetailAndDenialCannotReplaceANewerConfirmedLiveDetail() = runBlocking {
+        withTimeout(5_000) {
+            for (deny in listOf(false, true)) {
+                val f = Fixture()
+                f.fetch = { _, _, number, size -> f.page(emptyList(), number, size) }
+                f.offlineFetch = { number, size -> f.page(listOf(f.row("one")), number, size) }
+                val repo = f.repository()
+                val started = CompletableDeferred<Unit>()
+                val response = CompletableDeferred<FlightDetail>()
+                f.readDetail = { started.complete(Unit); response.await() }
+                val sync = async { runCatching { repo.refreshKnownAndPrepare() } }
+                started.await()
+                val fresh = f.detail("one").copy(customerName = "Fresh details")
+                repo.recordFetched(fresh, repo.detailRevision("one"))
+                if (deny) response.completeExceptionally(ApiException(403, "Old denial"))
+                else response.complete(f.detail("one"))
+
+                assertTrue(sync.await().isFailure)
+                assertEquals(fresh.copy(fromCache = true), repo.cachedFlight("one"))
+            }
+        }
+    }
+
     @Test fun offlineIndexCoverageReportsCachedCountAndErrorsWithoutClaimingMediaReadiness() = runBlocking {
         val f = Fixture()
         f.fetch = { _, _, number, size -> f.page(emptyList(), number, size) }
@@ -528,6 +552,25 @@ class DiscoveryFlightsRepositoryTest {
         val lookupsMs = (System.nanoTime() - lookupStarted) / 1_000_000L
         assertTrue(f.dao.interactions(f.firstOwner).isEmpty())
         println("OFFLINE_SEARCH_STRESS flights=2500 fullManifestReads=${f.dao.fullQueryReads} prepareMs=$syncMs warmLookups=500 lookupMs=$lookupsMs")
+    }
+
+    @Test fun preparationUsesBatchForPreviouslyUnopenedOfflineSearchMembers() = runBlocking {
+        val f = Fixture()
+        val ids = (1..25).map { "index-$it" }
+        val batches = mutableListOf<List<String>>()
+        f.fetch = { _, _, number, size -> f.page(emptyList(), number, size) }
+        f.offlineFetch = { number, size -> f.page(ids.map(f::row), number, size) }
+        f.readDetail = { throw AssertionError("Discovery should use the batch detail route") }
+        f.batchFetch = { ids -> batches += ids; FlightDetailsBatch(ids.map(f::detail), emptyList()) }
+        val repo = f.repository()
+
+        repo.refreshKnownAndPrepare()
+
+        assertEquals(ids.chunked(20), batches)
+        assertEquals(ids, f.prepared)
+        f.online = false
+        assertEquals(25L, repo.page(FlightDiscoverySource.Search, "SV123").totalCount)
+        assertTrue(repo.cachedFlight(ids.last())!!.fromCache)
     }
 
     @Test fun oldOverdueFlightsRemainSearchableAndReadableFromPreparedOfflineMembership() = runBlocking {
@@ -580,6 +623,7 @@ class DiscoveryFlightsRepositoryTest {
         val prepared = mutableListOf<String>()
         var fetch: suspend (FlightDiscoverySource, String, Int, Int) -> FlightPage = { _, _, number, size -> page(listOf(row("one")), number, size) }
         var readDetail: suspend (String) -> FlightDetail = { detail(it) }
+        var batchFetch: (suspend (List<String>) -> FlightDetailsBatch?)? = null
         var prepare: suspend (FlightDetail) -> Unit = {}
         var offlineFetch: (suspend (Int, Int) -> FlightPage)? = null
         fun row(id: String) = FlightListItem(id, "SV123", customerName = "Airline", stationIataCode = "AAA",
@@ -605,7 +649,8 @@ class DiscoveryFlightsRepositoryTest {
         fun repository() = DiscoveryFlightsRepository(dao, owner, { owner.value }, { online },
             { source, query, number, size -> fetch(source, query, number, size) }, { readDetail(it) },
             { prepared += it.id; prepare(it) }, { transaction(it) }, localStationAuthority = { it == trustedStation },
-            hasPendingWork = { pending }, now = { time }, fetchOfflinePage = offlineFetch?.let { { page, size -> checkNotNull(offlineFetch).invoke(page, size) } })
+            hasPendingWork = { pending }, now = { time }, fetchOfflinePage = offlineFetch?.let { { page, size -> checkNotNull(offlineFetch).invoke(page, size) } },
+            fetchDetailBatch = batchFetch)
     }
 }
 

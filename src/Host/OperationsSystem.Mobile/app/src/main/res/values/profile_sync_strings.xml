@@ -45,6 +45,11 @@
     <string name="sync_hub_sync_now">Sync now</string>
     <string name="sync_hub_updated">Updated %1$s</string>
     <string name="sync_hub_last_success">Last successful sync: %1$s</string>
+    <string name="sync_hub_last_duration">Last successful sync took %1$s</string>
+    <string name="sync_hub_duration_seconds">%1$d sec</string>
+    <string name="sync_hub_duration_minutes">%1$d min %2$d sec</string>
+    <string name="sync_hub_flights_preparing">Preparing flights for offline use…</string>
+    <string name="sync_hub_flights_incomplete">The last flight refresh did not finish. Sync again when connected.</string>
     <plurals name="sync_hub_waiting"><item quantity="one">%d section waiting</item><item quantity="other">%d sections waiting</item></plurals>
     <plurals name="sync_hub_review"><item quantity="one">%d section needs review</item><item quantity="other">%d sections need review</item></plurals>
     <string name="sync_hub_other_flights">Other station flights</string>

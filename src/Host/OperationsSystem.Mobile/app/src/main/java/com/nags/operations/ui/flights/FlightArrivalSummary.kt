@@ -42,6 +42,7 @@ internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId
             val stackColumns = maxWidth < 260.dp * LocalDensity.current.fontScale
             val labelStyle = MaterialTheme.typography.labelSmall
             val captionStyle = labelStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val valueColor = MaterialTheme.colorScheme.onSurface
             val valueStyle = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp, lineHeight = 22.sp,
                 fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum")
             val aircraft: @Composable (Modifier) -> Unit = { modifier ->
@@ -54,7 +55,7 @@ internal fun FlightArrivalSummary(arrival: FlightArrivalSubmission, zone: ZoneId
                     Text(buildAnnotatedString {
                         append(packageLabel)
                         append(" ")
-                        withStyle(SpanStyle(color = Color.Black)) { append(reference) }
+                        withStyle(SpanStyle(color = valueColor)) { append(reference) }
                     }, style = captionStyle)
                 }
             }

@@ -111,13 +111,15 @@ import com.nags.operations.ui.components.InlineErrorBanner
 import com.nags.operations.ui.components.InitialsAvatarStack
 import com.nags.operations.ui.theme.AccentBlue
 import com.nags.operations.ui.theme.AccentRed
+import com.nags.operations.ui.theme.isDark
 import com.nags.operations.ui.util.formatFlightDateRangeForDisplay
 import com.nags.operations.ui.util.stationTimeZone
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
 import kotlinx.coroutines.flow.Flow
 
-private val DetailFill = Color(0xFFF5F7FA)
-private val DetailEdge = Color(0xFFE7EBF0)
+@Composable
+private fun detailFill() = if (MaterialTheme.colorScheme.isDark) MaterialTheme.colorScheme.surfaceContainerHighest
+    else Color(0xFFF5F7FA)
 
 @Composable
 internal fun FlightDetailsSheet(
@@ -210,7 +212,7 @@ internal fun FlightDetailsSheet(
                         state.detailError != null && state.detail == null -> ErrorState(message = state.detailError, onRetry = onRetry)
                         state.detail != null -> {
                             val flight = state.detail
-                            if (flight.fromCache) {
+                            if (flight.fromCache && (!state.isOnline || !state.isLoadingDetail)) {
                                 InlineNotice(stringResource(R.string.flights_cached_detail))
                             }
                             FlightSheetGroup {
@@ -335,7 +337,8 @@ private fun FlightRecordingActions(
                         expanded && action == FlightRecordingAction.Share -> AccentBlue
                         else -> null
                     }
-                    val containerColor = accent ?: DetailFill
+                    val fill = detailFill()
+                    val containerColor = accent ?: fill
                     val contentColor = if (accent != null) Color.White else MaterialTheme.colorScheme.onSurface
                     val accessibleLabel = stringResource(when (action) {
                         FlightRecordingAction.Cancel -> R.string.flights_cancel_flight
@@ -385,7 +388,7 @@ private fun FlightRecordingActions(
                         Box(Modifier.width(faceWidth).height(faceHeight)
                             .align(if (centerFaceVertically) Alignment.CenterEnd else Alignment.TopEnd)
                             .offset(y = if (centerFaceVertically) 0.dp else 2.dp)
-                            .background(if (loading) DetailFill else containerColor, CircleShape), contentAlignment = Alignment.Center) {
+                            .background(if (loading) fill else containerColor, CircleShape), contentAlignment = Alignment.Center) {
                             if (!loading) Row(Modifier.padding(horizontal = 8.dp).clearAndSetSemantics { },
                                 verticalAlignment = Alignment.CenterVertically) {
                                 Icon(icon, null, Modifier.size(metrics.iconSize), tint = contentColor)
@@ -527,7 +530,8 @@ private fun FlightScheduleTimes(flight: FlightDetail, labelStyle: TextStyle, tim
 
 @Composable
 private fun DetailDivider(modifier: Modifier = Modifier) {
-    HorizontalDivider(modifier, color = DetailEdge)
+    HorizontalDivider(modifier, color = if (MaterialTheme.colorScheme.isDark)
+        MaterialTheme.colorScheme.outlineVariant else Color(0xFFE7EBF0))
 }
 
 @Composable
@@ -630,7 +634,7 @@ private fun FlightDetailsSkeleton(showPeople: Boolean, metrics: FlightActionMetr
                     SkeletonBlock(Modifier.size(20.dp))
                     SkeletonBlock(Modifier.weight(1f).height(16.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
-                        repeat(3) { Box(Modifier.size(28.dp).background(DetailFill, CircleShape)) }
+                        repeat(3) { Box(Modifier.size(28.dp).background(detailFill(), CircleShape)) }
                     }
                 }
             }
@@ -640,5 +644,5 @@ private fun FlightDetailsSkeleton(showPeople: Boolean, metrics: FlightActionMetr
 
 @Composable
 private fun SkeletonBlock(modifier: Modifier) {
-    Box(modifier.background(DetailFill, RoundedCornerShape(6.dp)))
+    Box(modifier.background(detailFill(), RoundedCornerShape(6.dp)))
 }

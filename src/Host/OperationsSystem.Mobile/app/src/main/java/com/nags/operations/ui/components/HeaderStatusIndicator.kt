@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PriorityHigh
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.nags.operations.ui.home.MainHeaderSyncStatus
 import com.nags.operations.ui.theme.AccentRed
+import com.nags.operations.ui.theme.isDark
 
 /** Decorative companion to the header's readable connection and sync status. */
 @Composable
@@ -32,7 +34,9 @@ internal fun HeaderStatusIndicator(
     isOnline: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val orange = Color(0xFFAD6800)
+    val colors = MaterialTheme.colorScheme
+    val orange = if (colors.isDark) Color(0xFFFFB96C) else Color(0xFFAD6800)
+    val green = if (colors.isDark) Color(0xFF81C995) else Color(0xFF248A3D)
     Box(modifier.size(12.dp), contentAlignment = Alignment.Center) {
         when (status) {
             MainHeaderSyncStatus.Syncing -> {
@@ -50,13 +54,13 @@ internal fun HeaderStatusIndicator(
                     modifier = rotationModifier.fillMaxSize())
             }
             MainHeaderSyncStatus.NeedsReview, MainHeaderSyncStatus.SyncError ->
-                Icon(Icons.Default.PriorityHigh, contentDescription = null, tint = AccentRed,
+                Icon(Icons.Default.PriorityHigh, contentDescription = null, tint = if (colors.isDark) colors.error else AccentRed,
                     modifier = Modifier.fillMaxSize())
             else -> {
                 val color = when (status) {
                     MainHeaderSyncStatus.Pending -> orange
                     MainHeaderSyncStatus.Loading -> Color(0xFF808080)
-                    else -> if (isOnline) Color(0xFF248A3D) else Color(0xFF808080)
+                    else -> if (isOnline) green else Color(0xFF808080)
                 }
                 Box(Modifier.size(7.dp).background(color, CircleShape))
             }

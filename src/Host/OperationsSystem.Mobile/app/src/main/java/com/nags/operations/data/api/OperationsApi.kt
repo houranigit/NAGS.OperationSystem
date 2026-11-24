@@ -4,6 +4,7 @@ import com.nags.operations.data.ApiException
 import com.nags.operations.data.AssignedEmployee
 import com.nags.operations.data.FlightCategory
 import com.nags.operations.data.FlightDetail
+import com.nags.operations.data.FlightDetailsBatch
 import com.nags.operations.data.FlightPage
 import com.nags.operations.data.InviteEmployeesRequest
 import com.nags.operations.data.TokenStore
@@ -40,12 +41,16 @@ import io.ktor.utils.io.readBuffer
 import kotlinx.io.readByteArray
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.serialization.Serializable
 
 /** Station- and time-bounded mobile flight reads and add-only staff invitations. */
 class OperationsApi internal constructor(private val client: HttpClient) {
+    @Volatile private var batchRouteUnavailableAt: Long? = null
+
     suspend fun saveReturnToRamp(flightId: String, occurrenceId: String,
         input: com.nags.operations.data.SaveFlightReturnToRampRequest, rowVersion: String): FlightDetail =
         client.put(HttpClientFactory.url("api/v1/operations/flights/${UUID.fromString(flightId)}/returns-to-ramp/${UUID.fromString(occurrenceId)}")) {
@@ -103,6 +108,21 @@ class OperationsApi internal constructor(private val client: HttpClient) {
 
     suspend fun flight(id: String): FlightDetail =
         client.get(HttpClientFactory.url("api/v1/operations/flights/mobile/$id")).bodyOrThrow()
+
+    /** Older servers can still prepare flights using the individual detail route. */
+    internal suspend fun flightDetailsBatch(ids: List<String>): FlightDetailsBatch? {
+        val missedAt = batchRouteUnavailableAt
+        if (missedAt != null && System.nanoTime() - missedAt < TimeUnit.MINUTES.toNanos(5)) return null
+        val response = client.post(HttpClientFactory.url("api/v1/operations/flights/mobile/details/batch")) {
+            contentType(ContentType.Application.Json)
+            setBody(FlightDetailsBatchRequest(ids))
+        }
+        if (response.status == HttpStatusCode.NotFound || response.status == HttpStatusCode.MethodNotAllowed) {
+            batchRouteUnavailableAt = System.nanoTime()
+            return null
+        }
+        return response.bodyOrThrow<FlightDetailsBatch>()
+    }
 
     suspend fun invitationOptions(id: String): List<AssignedEmployee> =
         client.get(HttpClientFactory.url("api/v1/operations/flights/mobile/$id/invitation-options")).bodyOrThrow()
@@ -205,3 +225,6 @@ class OperationsApi internal constructor(private val client: HttpClient) {
         const val MAX_LOGO_BYTES = 2 * 1024 * 1024
     }
 }
+
+@Serializable
+private data class FlightDetailsBatchRequest(val flightIds: List<String>)

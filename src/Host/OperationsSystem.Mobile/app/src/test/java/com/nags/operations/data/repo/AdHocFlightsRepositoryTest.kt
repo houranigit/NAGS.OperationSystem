@@ -16,6 +16,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AdHocFlightsRepositoryTest {
+    @Test fun openingScratchFlightUsesCachedContextDuringAnOnlineRefresh() = runBlocking {
+        val f = Fixture()
+        val repo = f.repository()
+        repo.refreshContext()
+        val response = CompletableDeferred<AdHocFlightContext>()
+        f.contextHandler = { response.await() }
+        val refreshing = launch(start = CoroutineStart.UNDISPATCHED) { repo.refreshContext() }
+
+        val editor = async(start = CoroutineStart.UNDISPATCHED) { repo.newFlight(f.id, f.input) }
+        assertTrue(editor.isCompleted)
+        assertEquals(f.station, editor.await().stationId)
+        assertNull(repo.row(f.id))
+
+        response.complete(f.context)
+        refreshing.join()
+    }
+
     @Test fun offlineCreationAndDependentWorkSurviveRepositoryRecreationAndWaitForCreationAcknowledgment() = runBlocking {
         val f = Fixture()
         val repo = f.repository()

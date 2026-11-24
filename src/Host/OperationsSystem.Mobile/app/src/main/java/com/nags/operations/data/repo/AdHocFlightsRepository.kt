@@ -79,10 +79,18 @@ class AdHocFlightsRepository(
         }
     }
 
-    suspend fun newFlight(id: String, input: AdHocFlightInput): FlightDetail = gate.withLock {
-        val context = checkNotNull(cachedContext()) { "Connect and synchronize AdHoc station information first." }
+    suspend fun newFlight(id: String, input: AdHocFlightInput): FlightDetail {
+        val owner = checkNotNull(currentOwner()) { "Sign in to create an AdHoc flight." }
+        val observed = generation
+        val user = currentUser()
+        val displayName = currentDisplayName()
+        val context = checkNotNull(decodeContext(dao.context(owner))) { "Connect and synchronize AdHoc station information first." }
         check(context.canCreate) { "AdHoc creation is not permitted." }
-        FlightDetail(id, input.flightNumber, input.customerId, customerName = "", stationId = context.stationId,
+        // This only builds an editor model. Saving still owns the operations gate and revalidates scope.
+        check(currentOwner() == owner && observed == generation) {
+            "AdHoc station information changed. Reload the page."
+        }
+        return FlightDetail(id, input.flightNumber, input.customerId, customerName = "", stationId = context.stationId,
             stationIata = context.stationIata, stationName = context.stationName, operationTypeId = ADHOC_OPERATION_TYPE_ID,
             operationTypeName = "AdHoc", scheduledArrivalUtc = input.scheduledArrivalUtc,
             scheduledDepartureUtc = input.scheduledDepartureUtc, isPerLanding = false, createdAtUtc = now(),
@@ -90,7 +98,7 @@ class AdHocFlightsRepository(
             currentStaffMemberId = context.currentStaffMemberId, canSaveArrival = context.canSaveArrival,
             canSaveDeparture = context.canSaveDeparture, canSaveServices = context.canSaveServices,
             canSaveTasks = context.canSaveTasks, allowedServiceIds = context.allowedServiceIds,
-            isAdHocFlight = true, createdByUserId = currentUser(), createdByDisplayName = currentDisplayName(), canEditFlightDetails = true)
+            isAdHocFlight = true, createdByUserId = user, createdByDisplayName = displayName, canEditFlightDetails = true)
     }
 
     suspend fun row(id: String): AdHocFlightPendingEntity? = currentOwner()?.let { owner -> dao.rows(owner).firstOrNull { it.flightId == id } }

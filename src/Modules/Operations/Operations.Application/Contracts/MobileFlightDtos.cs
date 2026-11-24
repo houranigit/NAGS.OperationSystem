@@ -34,6 +34,10 @@ public sealed record MobileFlightListItemDto(
     DateTimeOffset? LatestReturnToRampDepartureAtUtc = null,
     int VisibilityPolicyVersion = 1);
 
+public sealed record MobileFlightDetailsBatchRequest(IReadOnlyList<Guid>? FlightIds);
+
+public sealed record MobileFlightDetailsBatchDto(IReadOnlyList<FlightDetailDto> Items, IReadOnlyList<Guid> MissingFlightIds);
+
 /// <summary>A station-scoped page: WindowStartUtc is the terminal-record cutoff and WindowEndUtc the pending-arrival lookahead.</summary>
 public sealed record MobileFlightPageDto(
     IReadOnlyList<MobileFlightListItemDto> Items,

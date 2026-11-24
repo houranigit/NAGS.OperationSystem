@@ -229,8 +229,12 @@ fun FlightsScreen(
             onExternalPendingHandled()
         }
     }
-    val cacheNotice = if (state.isUsingCachedList || !state.isOnline)
-        stringResource(if (state.isUsingCachedList) R.string.flights_cached_list else R.string.flights_offline_hint) else null
+    val cacheNotice = when {
+        !state.isOnline && state.isUsingCachedList -> stringResource(R.string.flights_cached_list)
+        !state.isOnline -> stringResource(R.string.flights_offline_hint)
+        state.isUsingCachedList && !state.isRefreshing -> stringResource(R.string.flights_cached_list_online)
+        else -> null
+    }
     var cacheNoticeDismissed by rememberSaveable(cacheNotice, state.stationId) { mutableStateOf(false) }
     val cacheNoticeVisible = cacheNotice != null && !cacheNoticeDismissed
     val listTopPadding = if (cacheNoticeVisible) 0.dp else 16.dp

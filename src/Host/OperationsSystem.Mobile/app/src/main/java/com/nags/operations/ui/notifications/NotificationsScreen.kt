@@ -109,6 +109,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.nags.operations.R
 import com.nags.operations.ui.flights.FlightFormGround
+import com.nags.operations.ui.theme.isDark
 import com.nags.operations.data.notifications.NotificationDto
 import com.nags.operations.data.notifications.NotificationOpenRequest
 import com.nags.operations.data.notifications.notificationAppearance
@@ -135,8 +136,8 @@ private fun notificationSecondaryInk() = if (MaterialTheme.colorScheme.surface.l
     MaterialTheme.colorScheme.onSurfaceVariant else NotificationSecondaryInk
 
 @Composable
-private fun notificationGround() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
-    MaterialTheme.colorScheme.background else FlightFormGround
+private fun notificationDeleteTextColor() = if (MaterialTheme.colorScheme.isDark)
+    MaterialTheme.colorScheme.error else NotificationDeleteRed
 
 @Composable
 private fun notificationUnreadFill() = if (MaterialTheme.colorScheme.surface.luminance() < 0.5f)
@@ -191,11 +192,11 @@ fun NotificationsScreen(
                         scrolledContainerColor = MaterialTheme.colorScheme.surface,
                         titleContentColor = notificationInk(),
                         navigationIconContentColor = notificationInk(),
-                        actionIconContentColor = NotificationDeleteRed,
+                        actionIconContentColor = notificationDeleteTextColor(),
                     ),
                 )
             },
-            containerColor = notificationGround(),
+            containerColor = FlightFormGround,
             contentWindowInsets = if (embedded) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
@@ -216,7 +217,7 @@ fun NotificationsScreen(
                 text = { Text(stringResource(R.string.notifications_clear_confirm_body)) },
                 confirmButton = {
                     TextButton(onClick = { confirmClear = false; viewModel.archiveAll() },
-                        colors = ButtonDefaults.textButtonColors(contentColor = NotificationDeleteRed)) {
+                        colors = ButtonDefaults.textButtonColors(contentColor = notificationDeleteTextColor())) {
                         Text(stringResource(R.string.notifications_clear_confirm_action))
                     }
                 },
@@ -236,7 +237,7 @@ private fun NotificationDeleteAllButton(
     enabled: Boolean = true,
 ) {
     TextButton(onClick = onClick, enabled = enabled, modifier = modifier,
-        colors = ButtonDefaults.textButtonColors(contentColor = NotificationDeleteRed)) {
+        colors = ButtonDefaults.textButtonColors(contentColor = notificationDeleteTextColor())) {
         Text(text, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold,
             maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
     }
@@ -428,7 +429,7 @@ private fun NotificationCard(notification: NotificationDto, now: Instant, isNew:
         }
         val offset = swipe.requireOffset()
         val busy = deleteRequested || archiving
-        Box(Modifier.matchParentSize().background(notificationGround()), contentAlignment = Alignment.CenterEnd) {
+        Box(Modifier.matchParentSize().background(FlightFormGround), contentAlignment = Alignment.CenterEnd) {
             if (offset < -1f) Box(Modifier.width(80.dp), contentAlignment = Alignment.Center) {
                 Button(onClick = requestDelete, enabled = !busy,
                     modifier = Modifier.width(64.dp).height(34.dp), shape = RoundedCornerShape(10.dp),

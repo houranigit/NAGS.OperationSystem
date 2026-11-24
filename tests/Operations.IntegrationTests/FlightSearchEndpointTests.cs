@@ -16,6 +16,53 @@ namespace Operations.IntegrationTests;
 public sealed partial class FlightVisibilityScopeTests
 {
     [Fact]
+    public async Task Batched_mobile_details_match_individual_reads_and_keep_station_and_visibility_boundaries()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var staff = await CreateStaffLoginAsync(admin, refs, ["operations.flights.view", "operations.flights.operate"]);
+        using var client = staff.Client;
+        using var anonymous = factory.CreateClient();
+        var path = $"{Base}/flights/mobile/details/batch";
+        var assigned = await ScheduleFlightAsync(admin, refs.StationId, refs, "8871", [staff.StaffId]);
+        var unassigned = await ScheduleFlightAsync(admin, refs.StationId, refs, "8872");
+        var now = DateTimeOffset.UtcNow;
+        Flight Seed(string number, Guid station, int hours) => Flight.ScheduleNew(
+            new(refs.CustomerId, null, "Batch customer"), new(station, "TST", "Batch station"),
+            new(refs.OperationTypeId, "Operation"), FlightNumber.Create(number).Value,
+            ScheduledTime.Create(now.AddHours(hours), now.AddHours(hours + 1)).Value,
+            null, [new(refs.ServiceId, "Service")], [], Guid.NewGuid(), now).Value;
+        var otherStation = Seed("8873", Guid.NewGuid(), 0);
+        var tooEarly = Seed("8874", refs.StationId, 13);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            db.Flights.AddRange(otherStation, tooEarly);
+            await db.SaveChangesAsync();
+        }
+
+        var unknown = Guid.NewGuid();
+        var request = new MobileFlightDetailsBatchRequest([assigned, otherStation.Id, tooEarly.Id, unassigned, unknown]);
+        using var denied = await admin.PostAsJsonAsync(path, request);
+        denied.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        using var unauthorized = await anonymous.PostAsJsonAsync(path, request);
+        unauthorized.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        using var tooMany = await client.PostAsJsonAsync(path,
+            new MobileFlightDetailsBatchRequest(Enumerable.Range(0, 21).Select(_ => Guid.NewGuid()).ToArray()));
+        tooMany.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var response = await client.PostAsJsonAsync(path, request);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var batch = (await response.Content.ReadFromJsonAsync<MobileFlightDetailsBatchDto>())!;
+        batch.MissingFlightIds.ShouldBe([otherStation.Id, tooEarly.Id, unknown], ignoreOrder: true);
+        batch.Items.Select(item => item.Id).ShouldBe([assigned, unassigned], ignoreOrder: true);
+        foreach (var detail in batch.Items)
+        {
+            var individual = await OperationsBatchDetailAsync(client, detail.Id);
+            JsonSerializer.Serialize(detail).ShouldBe(JsonSerializer.Serialize(individual));
+        }
+    }
+
+    [Fact]
     public async Task Offline_search_index_pages_never_searched_unassigned_flights_without_granting_assignment_or_history()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync(); var refs = await SetupMasterDataAsync(admin);

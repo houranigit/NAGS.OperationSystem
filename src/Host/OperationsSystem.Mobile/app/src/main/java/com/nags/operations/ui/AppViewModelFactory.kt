@@ -51,5 +51,8 @@ class AppViewModelFactory(private val graph: AppGraph) : ViewModelProvider.Facto
         sourcePage = if (source == null) null else { page, size, query ->
             graph.discoveryFlights.page(source, query.orEmpty(), page, size)
         },
+        sourceCachedPage = if (source == null) null else { page, size, query ->
+            graph.discoveryFlights.cachedPage(source, query.orEmpty(), page, size)
+        },
     )
 }

@@ -61,6 +61,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
@@ -90,13 +91,16 @@ class AppGraph private constructor(context: Context) {
     private val logoOwners = combine(tokenStore.accessTokenFlow, tokenStore.sessionSubjectFlow) { token, subject ->
         if (token.isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, subject)
     }.distinctUntilChanged()
+    private val flightCacheOwners = tokenStore.cacheSessionSubjectFlow.map { subject ->
+        sharedCatalogOwnerKey(HttpClientFactory.baseUrl, subject)
+    }.distinctUntilChanged()
+
+    private suspend fun flightCacheOwner() = sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getCacheSessionSubject())
+
     private val customerLogos = CustomerLogoStore(
         root = File(context.noBackupFilesDir, "customer-logos"), fetch = operationsApi::customerLogo,
-        ownerFlow = logoOwners,
-        currentOwner = {
-            if (tokenStore.getAccessToken().isNullOrBlank()) null
-            else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
-        },
+        ownerFlow = flightCacheOwners,
+        currentOwner = ::flightCacheOwner,
         online = networkMonitor.isOnline, scope = appScope,
     )
     val flightsRepository = FlightsRepository(operationsApi, catalogDatabase, tokenStore, networkMonitor.isOnline, customerLogos,
@@ -110,7 +114,11 @@ class AppGraph private constructor(context: Context) {
         recordAdditionalFetched = { detail, revision -> discoveryFlights.recordFetched(detail, revision).also { sharedFlightsRepository.recordAcknowledged(it) } },
         recordAdditionalAcknowledged = { discoveryFlights.recordAcknowledged(it); sharedFlightsRepository.recordAcknowledged(it) },
         prepareAdditionalOffline = { discoveryFlights.refreshKnownAndPrepare(); sharedFlightsRepository.refreshAll() },
-        confirmAdditionalStation = { discoveryFlights.confirmStation(it); sharedFlightsRepository.confirmStation(it) }, revokeAdditional = { owner, id -> discoveryFlights.revokeForOwner(owner, id); sharedFlightsRepository.revokeForOwner(owner, id) },
+        confirmAdditionalStation = { discoveryFlights.confirmStation(it); sharedFlightsRepository.confirmStation(it) },
+        revokeAdditional = { owner, id, revokeDiscovery ->
+            if (revokeDiscovery == null) discoveryFlights.revokeForOwner(owner, id) else revokeDiscovery()
+            sharedFlightsRepository.revokeForOwner(owner, id)
+        },
         additionalLogoFlights = { discoveryFlights.logoFlights() })
     private val flightOperationsSyncMutex = FlightOperationsGate()
     private val flightSubmissionGate = Mutex()
@@ -149,10 +157,7 @@ class AppGraph private constructor(context: Context) {
     )
     val serviceAttachmentPreviews = ServiceAttachmentPreviews(
         directory = File(appContext.filesDir, "flight-service-attachment-previews"),
-        currentOwner = {
-            if (tokenStore.getAccessToken().isNullOrBlank()) null
-            else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
-        },
+        currentOwner = ::flightCacheOwner,
         online = { networkMonitor.isOnline.value }, fetch = operationsApi::serviceAttachment,
     )
     val flightServices: FlightServicesRepository = FlightServicesRepository(
@@ -202,10 +207,7 @@ class AppGraph private constructor(context: Context) {
     )
     val taskAttachmentPreviews = TaskAttachmentPreviews(
         directory = File(appContext.filesDir, "flight-task-attachment-previews"),
-        currentOwner = {
-            if (tokenStore.getAccessToken().isNullOrBlank()) null
-            else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
-        },
+        currentOwner = ::flightCacheOwner,
         online = { networkMonitor.isOnline.value }, fetch = operationsApi::taskAttachment,
     )
     val flightTasks: FlightTasksRepository = FlightTasksRepository(
@@ -339,7 +341,7 @@ class AppGraph private constructor(context: Context) {
     }
     private val returnToRampSignaturePreviews by lazy {
         DepartureSignaturePreviews(File(appContext.noBackupFilesDir, "flight-rtr-signature-previews"),
-            currentOwner = { if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject()) },
+            currentOwner = ::flightCacheOwner,
             online = { networkMonitor.isOnline.value }, fetch = operationsApi::returnToRampSignature,
             pendingBytes = { _, _ -> null })
     }
@@ -382,10 +384,7 @@ class AppGraph private constructor(context: Context) {
     )
     val departureSignaturePreviews = DepartureSignaturePreviews(
         directory = File(appContext.noBackupFilesDir, "departure-signature-previews"),
-        currentOwner = {
-            if (tokenStore.getAccessToken().isNullOrBlank()) null
-            else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
-        },
+        currentOwner = ::flightCacheOwner,
         online = { networkMonitor.isOnline.value }, fetch = operationsApi::departureSignature,
         pendingBytes = { id, changeId -> flightDepartures.signaturePreview(id, changeId) },
     )
@@ -467,13 +466,15 @@ class AppGraph private constructor(context: Context) {
 
     val discoveryFlights: com.nags.operations.data.repo.DiscoveryFlightsRepository by lazy {
         val api = com.nags.operations.data.api.DiscoveryFlightsApi(httpClient)
-        com.nags.operations.data.repo.DiscoveryFlightsRepository(catalogDatabase.flightDiscoveryDao(), logoOwners,
-            currentOwner = { if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject()) },
+        com.nags.operations.data.repo.DiscoveryFlightsRepository(catalogDatabase.flightDiscoveryDao(), flightCacheOwners,
+            currentOwner = ::flightCacheOwner,
             online = { networkMonitor.isOnline.value }, fetchPage = api::page, fetchDetail = operationsApi::flight, fetchOfflinePage = api::offlinePage,
+            fetchDetailBatch = operationsApi::flightDetailsBatch,
             prepareOffline = ::prepareFlightOffline, transaction = { work -> catalogDatabase.withTransaction { work() } },
             beginScopeRead = flightsRepository::beginExternalScopeRead, confirmScopeRead = flightsRepository::confirmExternalPage,
             localStationAuthority = { station -> flightsRepository.trustedCachedStation() == station || adHocFlights.cachedContext()?.stationId == station },
             hasPendingWork = { id -> id in pendingFlightOperationIds() }, isUnmaterializedLocalFlight = { adHocFlights.isUnmaterialized(it) },
+            beginFlightDetailRead = flightsRepository::beginExternalDetailRead,
             onFlightAccessLost = flightsRepository::recordExternalAccessLoss,
             beginLogoRead = customerLogos::beginMetadataRead,
             reconcileLogos = { items, read -> customerLogos.reconcileFlights(items.mapNotNull { item -> item.customerId?.let { it to item.customerLogoVersion } }.toMap(), read, complete = false) },
@@ -492,8 +493,7 @@ class AppGraph private constructor(context: Context) {
     }
 
     private suspend fun pendingFlightOperationIds(): Set<String> {
-        val owner = if (tokenStore.getAccessToken().isNullOrBlank()) null else sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getSessionSubject())
-        if (owner == null) return emptySet()
+        val owner = flightCacheOwner() ?: return emptySet()
         return (catalogDatabase.flightArrivalDao().rows(owner).map { it.flightId } + catalogDatabase.flightDepartureDao().rows(owner).map { it.flightId } +
             catalogDatabase.flightServiceDao().rows(owner).map { it.flightId } + catalogDatabase.flightTaskDao().rows(owner).map { it.flightId } +
             catalogDatabase.flightReturnToRampDao().rows(owner).map { it.flightId } + catalogDatabase.flightCancellationDao().rows(owner).map { it.flightId } + catalogDatabase.adHocFlightDao().rows(owner)
@@ -708,10 +708,16 @@ class AppGraph private constructor(context: Context) {
 
     /** Persist replaceable remote media separately from the durable upload queues. */
     private suspend fun prepareFlightOffline(flight: FlightDetail) {
-        for (service in flight.services + flight.returnToRamps.flatMap { it.services }) serviceAttachmentPreviews.prefetch(flight.id, service.id, service.attachments)
-        for (task in flight.tasks + flight.returnToRamps.flatMap { it.tasks }) taskAttachmentPreviews.prefetch(flight.id, task.id, task.attachments)
-        departureSignaturePreviews.prefetch(flight)
-        returnToRampSignaturePreviews.prefetch(flight.asReturnToRampSignatureFlight())
+        for (service in flight.services + flight.returnToRamps.flatMap { it.services }) {
+            if (service.attachments.isNotEmpty()) serviceAttachmentPreviews.prefetch(flight.id, service.id, service.attachments)
+        }
+        for (task in flight.tasks + flight.returnToRamps.flatMap { it.tasks }) {
+            if (task.attachments.isNotEmpty()) taskAttachmentPreviews.prefetch(flight.id, task.id, task.attachments)
+        }
+        if (flight.departureSubmissions.any { it.hasSignature }) departureSignaturePreviews.prefetch(flight)
+        if (flight.returnToRamps.any { it.departedAtUtc != null && it.hasSignature }) {
+            returnToRampSignaturePreviews.prefetch(flight.asReturnToRampSignatureFlight())
+        }
     }
 
     suspend fun loadServiceAttachment(flightId: String, serviceId: String, attachmentId: String, uploadedAtUtc: String): String? =

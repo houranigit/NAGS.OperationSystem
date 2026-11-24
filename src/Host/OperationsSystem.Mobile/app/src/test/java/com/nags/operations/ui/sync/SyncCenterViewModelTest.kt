@@ -94,6 +94,47 @@ class SyncCenterViewModelTest {
     }
 
     @Test
+    fun activeFlightPreparationKeepsLastSuccessVisibleWithoutReportingFailureUntilItEnds() {
+        val success = "2026-11-03T19:59:00Z"
+        val syncing = MutableStateFlow(true)
+        val preparing = MutableStateFlow(true)
+        val flights = MutableStateFlow(FlightSyncStatus(itemCount = 154, lastSuccessUtc = success,
+            lastDurationMs = 73_287L, error = "Offline preparation is incomplete."))
+        val catalogs = MutableStateFlow(SharedCatalog.entries.map { CatalogSyncStatus(it, lastSuccessUtc = success) })
+        val search = FlightSyncStatus(lastSuccessUtc = success)
+        val model = SyncCenterViewModel(catalogs, syncing, MutableStateFlow(true),
+            MutableStateFlow(RealtimeChannelState.Disconnected), MutableStateFlow(null), {}, scope, { now },
+            flightStatuses = flights, flightPreparing = preparing)
+        val observation = scope.launch { model.rows.collect { } }
+
+        val active = model.rows.value.first()
+        assertTrue(active.isPreparing)
+        assertNull(active.lastError)
+        assertEquals(154, active.rowCount)
+        assertEquals(73_287L, active.lastDurationMs)
+        assertEquals(60_000L, active.ageMs)
+        assertFalse(offlineDataPrepared(model.rows.value, search))
+
+        preparing.value = false
+        assertFalse(model.rows.value.first().isPreparing)
+        assertEquals(flights.value.error, model.rows.value.first().lastError)
+        assertFalse(offlineDataPrepared(model.rows.value, search))
+
+        flights.value = flights.value.copy(error = null)
+        assertTrue(offlineDataPrepared(model.rows.value, search))
+        observation.cancel()
+    }
+
+    @Test
+    fun flightAccessDenialStaysVisibleWhileARecheckRuns() {
+        val denied = mobileSyncRows(emptyList(), FlightSyncStatus(permissionDenied = true, error = "Denied"),
+            now, flightPreparing = true).first()
+        assertTrue(denied.permissionDenied)
+        assertEquals("Denied", denied.lastError)
+        assertFalse(denied.isPreparing)
+    }
+
+    @Test
     fun failedOrDeniedSearchRefreshCannotReuseAnOldSnapshotToClaimPrepared() {
         val success = "2026-11-03T19:59:00Z"
         val rows = mobileSyncRows(SharedCatalog.entries.map { CatalogSyncStatus(it, lastSuccessUtc = success) },

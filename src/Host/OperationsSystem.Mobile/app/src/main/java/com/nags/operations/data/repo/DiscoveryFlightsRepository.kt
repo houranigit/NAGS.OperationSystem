@@ -39,13 +39,15 @@ class DiscoveryFlightsRepository internal constructor(
     private val localStationAuthority: suspend (String) -> Boolean = { false },
     private val hasPendingWork: suspend (String) -> Boolean = { false },
     private val isUnmaterializedLocalFlight: suspend (String) -> Boolean = { false },
-    private val onFlightAccessLost: suspend (String, Int) -> Unit = { _, _ -> },
+    private val beginFlightDetailRead: suspend (FlightExternalScopeRead?, String) -> FlightExternalDetailRead? = { _, _ -> null },
+    private val onFlightAccessLost: suspend (FlightExternalDetailRead?, String, suspend () -> Unit) -> Unit = { _, _, revoke -> revoke() },
     private val beginLogoRead: suspend () -> LogoMetadataRead? = { null },
     private val reconcileLogos: suspend (List<FlightListItem>, LogoMetadataRead?) -> Unit = { _, _ -> },
     private val prepareLogos: suspend (Set<String>) -> Unit = {},
     private val now: () -> String = { Instant.now().toString() },
     private val json: Json = HttpClientFactory.json,
     private val fetchOfflinePage: (suspend (Int, Int) -> FlightPage)? = null,
+    private val fetchDetailBatch: (suspend (List<String>) -> FlightDetailsBatch?)? = null,
 ) {
     private val syncGate = Mutex()
     private val readGate = Any()
@@ -55,6 +57,8 @@ class DiscoveryFlightsRepository internal constructor(
     private val epochs = mutableMapOf<String, Long>()
     private val staging = mutableMapOf<String, StagedPages>()
     private val deniedFlightVersions = mutableMapOf<String, Long>()
+    private val confirmedLiveReads = mutableMapOf<String, Long>()
+    private var liveReadSequence = 0L
     private val manifestGate = Any()
     private val manifests = object : LinkedHashMap<String, ManifestDecode>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ManifestDecode>) = size > 64
@@ -88,6 +92,13 @@ class DiscoveryFlightsRepository internal constructor(
 
     suspend fun page(source: FlightDiscoverySource, query: String = "", page: Int = 1, pageSize: Int = 20): FlightPage =
         withContext(Dispatchers.Default) { page(Feed.from(source), query, page, pageSize) }
+
+    internal suspend fun cachedPage(source: FlightDiscoverySource, query: String, page: Int, pageSize: Int): FlightPage? =
+        withContext(Dispatchers.Default) {
+            val owner = currentOwner() ?: return@withContext null
+            val feed = Feed.from(source)
+            cachedPageOrNull(owner, feed, normalize(feed, query), page.coerceAtLeast(1), pageSize.coerceIn(1, SYNC_PAGE_SIZE))
+        }
 
     private suspend fun page(source: Feed, query: String, page: Int, pageSize: Int): FlightPage {
         val owner = checkNotNull(currentOwner()) { "Sign in to view flights." }
@@ -136,18 +147,22 @@ class DiscoveryFlightsRepository internal constructor(
                 reconcileLogos(snapshot.items, read.logos)
                 prepareLogos(snapshot.items.mapNotNull { it.customerId }.toSet())
                 val preparedMembership = if (source == Feed.OfflineSearch) snapshot.items.mapTo(mutableSetOf()) { it.id } else null
-                for (item in snapshot.items) {
-                    ensureReadScope(read, snapshot.scope.stationId)
-                    if (seen.add(item.id)) prepareKnownFlight(read, item.id, snapshot.scope.stationId, deniedFlights, prepared,
-                        preparedMembership)
-                }
+                val station = snapshot.scope.stationId
+                val ids = snapshot.items.map { it.id }.filter(seen::add)
+                prepareKnownFlights(read, ids, station, deniedFlights, prepared, preparedMembership)
                 // Retained own intent is a separate source even before the server History index includes it.
-                if (source == Feed.History && term.isEmpty()) for (detail in localDetails(owner, includePendingHidden = true)) {
-                    if (!seen.add(detail.id)) continue
-                    if (isUnmaterializedLocalFlight(detail.id)) { prepareOffline(detail); prepared[detail.id] = json.encodeToString(detail) }
-                    else prepareKnownFlight(read, detail.id, snapshot.scope.stationId, deniedFlights, prepared)
+                if (source == Feed.History && term.isEmpty()) {
+                    val materializedIds = mutableListOf<String>()
+                    for (detail in localDetails(owner, includePendingHidden = true)) {
+                        if (!seen.add(detail.id)) continue
+                        if (isUnmaterializedLocalFlight(detail.id)) {
+                            prepareOffline(detail)
+                            prepared[detail.id] = json.encodeToString(detail)
+                        } else materializedIds += detail.id
+                    }
+                    prepareKnownFlights(read, materializedIds, station, deniedFlights, prepared)
                 }
-                ensureReadScope(read, snapshot.scope.stationId)
+                ensureReadScope(read, station)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 if (read.owner != currentOwner() || read.generation != generation) throw error
@@ -174,41 +189,94 @@ class DiscoveryFlightsRepository internal constructor(
         }
     }
 
-    private suspend fun prepareKnownFlight(read: Read, id: String, station: String, denied: MutableSet<String>, prepared: MutableMap<String, String>, preparedMembership: Set<String>? = null) {
-        if (preparedMembership != null && !authorizedForPreparation(read.owner, id, read, preparedMembership)) return
-        val version = detailRevision(id)
-        val detail = try { fetchDetail(id) }
-        catch (error: ApiException) {
-            ensureReadScope(read, station)
-            if (error.statusCode != 403 && error.statusCode != 404) throw error
-            denied += id; revoke(id); onFlightAccessLost(id, error.statusCode); return
+    private suspend fun prepareKnownFlights(
+        read: Read,
+        ids: List<String>,
+        station: String,
+        denied: MutableSet<String>,
+        prepared: MutableMap<String, String>,
+        preparedMembership: Set<String>? = null,
+    ) {
+        ids.prepareFlightDetails(
+            beforeRead = { id ->
+                ensureReadScope(read, station)
+                if (preparedMembership != null && !authorizedForPreparation(read.owner, id, read, preparedMembership)) null
+                else {
+                    val external = beginFlightDetailRead(read.external, id)
+                    val revision = detailRevision(read.owner, id)
+                    val liveRead = synchronized(readGate) { confirmedLiveReads["${read.owner}/$id"] ?: 0L }
+                    DetailPreparationRead(revision, liveRead, external)
+                }
+            },
+            read = fetchDetail,
+            readBatch = fetchDetailBatch,
+        ) { id, detailRead, response ->
+            prepareKnownFlight(read, id, station, denied, prepared, preparedMembership, detailRead, response)
         }
+    }
+
+    private suspend fun prepareKnownFlight(
+        read: Read,
+        id: String,
+        station: String,
+        denied: MutableSet<String>,
+        prepared: MutableMap<String, String>,
+        preparedMembership: Set<String>?,
+        detailRead: DetailPreparationRead,
+        response: Result<FlightDetail>,
+    ) {
         ensureReadScope(read, station)
-        if (detail.id != id || detail.stationId != station || !detail.isInFlightWindow(Instant.parse(now()))) {
-            denied += id; revoke(id); onFlightAccessLost(id, 404); return
-        }
         if (preparedMembership != null && !authorizedForPreparation(read.owner, id, read, preparedMembership)) return
-        val resolved = try { resolveFetched(detail, version, persist = false, preparationRead = read.takeIf { preparedMembership != null }, preparedMembership = preparedMembership) }
+        val detail = try { response.getOrThrow() }
         catch (error: ApiException) {
-            ensureReadScope(read, station)
             if (error.statusCode != 403 && error.statusCode != 404) throw error
-            denied += id; revoke(id); onFlightAccessLost(id, error.statusCode); return
+            revokePreparedFlight(read, detailRead, id, station)
+            denied += id
+            return
+        }
+        if (detail.id != id || detail.stationId != station || !detail.isInFlightWindow(Instant.parse(now()))) {
+            revokePreparedFlight(read, detailRead, id, station)
+            denied += id
+            return
+        }
+        val resolved = try {
+            resolveFetched(detail, detailRead.revision, persist = false, preparationRead = read.takeIf { preparedMembership != null },
+                preparedMembership = preparedMembership)
+        }
+        catch (error: ApiException) {
+            // This denial came from our revision guard. A newer decision already owns the cache.
+            throw IOException("The flight changed during offline preparation. Retry synchronization.", error)
         }
         ensureReadScope(read, station)
         try { prepareOffline(resolved.detail) }
         catch (error: ApiException) {
-            ensureReadScope(read, station)
             if (error.statusCode != 403 && error.statusCode != 404) throw error
-            denied += id; revoke(id); onFlightAccessLost(id, error.statusCode); return
+            revokePreparedFlight(read, detailRead, id, station)
+            denied += id
+            return
         }
-        keepPrepared(read, resolved, preparedMembership)
-        prepared[id] = json.encodeToString(resolved.detail)
+        val raw = json.encodeToString(resolved.detail)
+        keepPrepared(read, resolved, preparedMembership, detailRead.liveRead, raw)
+        prepared[id] = raw
         ensureReadScope(read, station)
     }
 
-    suspend fun detailRevision(id: String): Long = currentOwner()?.let { owner ->
+    private suspend fun revokePreparedFlight(read: Read, detailRead: DetailPreparationRead, id: String, station: String) {
+        onFlightAccessLost(detailRead.external, station) {
+            transaction {
+                ensureReadScope(read, station)
+                val liveRead = synchronized(readGate) { confirmedLiveReads["${read.owner}/$id"] ?: 0L }
+                if (detailRevision(read.owner, id) != detailRead.revision || liveRead > detailRead.liveRead)
+                    throw IOException("The flight changed during offline preparation. Retry synchronization.")
+                revokeFlightLocked(read.owner, id)
+            }
+        }
+    }
+
+    suspend fun detailRevision(id: String): Long = currentOwner()?.let { detailRevision(it, id) } ?: 0L
+
+    private suspend fun detailRevision(owner: String, id: String): Long =
         maxOf(dao.detail(owner, id)?.revision ?: 0L, synchronized(readGate) { deniedFlightVersions["$owner/$id"] ?: 0L })
-    } ?: 0L
 
     /** Live details are retained only under current complete membership or an actual local-save source. */
     suspend fun recordFetched(detail: FlightDetail, expectedRevision: Long): FlightDetail = resolveFetched(detail, expectedRevision, persist = true).detail
@@ -231,27 +299,40 @@ class DiscoveryFlightsRepository internal constructor(
                 accepted = ResolvedDetail(detail, revision, restoreLocal)
                 if (persist) {
                     if (restoreLocal) dao.putInteraction(checkNotNull(retained).copy(payloadJson = json.encodeToString(detail), viewRevoked = false))
-                    synchronized(readGate) { deniedFlightVersions.remove("$owner/${detail.id}") }
                     dao.putDetail(FlightDiscoveryDetailEntity(owner, detail.id, json.encodeToString(detail), revision))
+                    synchronized(readGate) {
+                        deniedFlightVersions.remove("$owner/${detail.id}")
+                        confirmedLiveReads["$owner/${detail.id}"] = ++liveReadSequence
+                    }
                 }
             }
         }
         return accepted
     }
 
-    private suspend fun keepPrepared(read: Read, resolved: ResolvedDetail, preparedMembership: Set<String>? = null) {
+    private suspend fun keepPrepared(
+        read: Read,
+        resolved: ResolvedDetail,
+        preparedMembership: Set<String>?,
+        expectedLiveRead: Long,
+        raw: String,
+    ) {
         transaction {
             ensureReadScope(read, resolved.detail.stationId)
             if (!eligible(read.owner, resolved.detail)) return@transaction
-            val revision = maxOf(dao.detail(read.owner, resolved.detail.id)?.revision ?: 0L,
-                synchronized(readGate) { deniedFlightVersions["${read.owner}/${resolved.detail.id}"] ?: 0L })
-            if (revision != resolved.revision) throw IOException("The flight changed while preparing its media. Retry synchronization.")
+            val existing = dao.detail(read.owner, resolved.detail.id)
+            val key = "${read.owner}/${resolved.detail.id}"
+            val (denied, liveRead) = synchronized(readGate) { deniedFlightVersions[key] to (confirmedLiveReads[key] ?: 0L) }
+            val revision = maxOf(existing?.revision ?: 0L, denied ?: 0L)
+            if (revision != resolved.revision || liveRead > expectedLiveRead && existing?.payloadJson != raw)
+                throw IOException("The flight changed while preparing its media. Retry synchronization.")
             if (resolved.restoreLocal) dao.interaction(read.owner, resolved.detail.id)?.let {
-                dao.putInteraction(it.copy(payloadJson = json.encodeToString(resolved.detail), viewRevoked = false))
+                dao.putInteraction(it.copy(payloadJson = raw, viewRevoked = false))
             }
             if (!authorizedForPreparation(read.owner, resolved.detail.id, read.takeIf { preparedMembership != null }, preparedMembership)) return@transaction
-            synchronized(readGate) { deniedFlightVersions.remove("${read.owner}/${resolved.detail.id}") }
-            dao.putDetail(FlightDiscoveryDetailEntity(read.owner, resolved.detail.id, json.encodeToString(resolved.detail), revision))
+            synchronized(readGate) { deniedFlightVersions.remove(key) }
+            if (existing?.payloadJson != raw || existing.revision != revision)
+                dao.putDetail(FlightDiscoveryDetailEntity(read.owner, resolved.detail.id, raw, revision))
         }
     }
 
@@ -377,21 +458,28 @@ class DiscoveryFlightsRepository internal constructor(
                 generation++
                 dao.deleteQueries(owner); dao.deleteDetails(owner); dao.deleteStation(owner)
                 for (row in dao.interactions(owner)) dao.putInteraction(row.copy(viewRevoked = true))
-            } else {
-                val revokedVersion = maxOf(acknowledgmentRevision, dao.detail(owner, id)?.revision ?: 0L) + 1
-                acknowledgmentRevision = revokedVersion
-                synchronized(readGate) { deniedFlightVersions["$owner/$id"] = revokedVersion }
-                for (row in dao.queries(owner)) decode(row)?.let { snapshot ->
-                    if (snapshot.items.any { it.id == id }) dao.putQuery(row.copy(payloadJson = json.encodeToString(snapshot.copy(items = snapshot.items.filterNot { it.id == id }))))
-                }
-                dao.deleteDetail(owner, id)
-                dao.interaction(owner, id)?.let { dao.putInteraction(it.copy(viewRevoked = true)) }
-            }
+            } else revokeFlightLocked(owner, id)
         }
     }
+
+    /** Caller owns the Room transaction covering the captured revision check and membership removal. */
+    private suspend fun revokeFlightLocked(owner: String, id: String) {
+        val revokedVersion = maxOf(acknowledgmentRevision, dao.detail(owner, id)?.revision ?: 0L) + 1
+        acknowledgmentRevision = revokedVersion
+        synchronized(readGate) {
+            deniedFlightVersions["$owner/$id"] = revokedVersion
+            confirmedLiveReads.remove("$owner/$id")
+        }
+        for (row in dao.queries(owner)) decode(row)?.let { snapshot ->
+            if (snapshot.items.any { it.id == id }) dao.putQuery(row.copy(payloadJson = json.encodeToString(snapshot.copy(items = snapshot.items.filterNot { it.id == id }))))
+        }
+        dao.deleteDetail(owner, id)
+        dao.interaction(owner, id)?.let { dao.putInteraction(it.copy(viewRevoked = true)) }
+    }
+
     suspend fun clear() {
         generation++; stationRevision++; acknowledgmentRevision = 0L
-        synchronized(readGate) { epochs.clear(); staging.clear(); deniedFlightVersions.clear() }
+        synchronized(readGate) { epochs.clear(); staging.clear(); deniedFlightVersions.clear(); confirmedLiveReads.clear() }
         synchronized(manifestGate) { manifests.clear() }
         transaction { dao.clearQueries(); dao.clearDetails(); dao.clearStations(); dao.clearInteractions() }
     }
@@ -671,6 +759,7 @@ class DiscoveryFlightsRepository internal constructor(
         synchronized(readGate) { epochs[read.key] == read.epoch }
     private suspend fun ensureCurrent(read: Read) { check(isCurrent(read)) { "The flight query or account changed. Reload the page." } }
     private data class ResolvedDetail(val detail: FlightDetail, val revision: Long, val restoreLocal: Boolean = false)
+    private data class DetailPreparationRead(val revision: Long, val liveRead: Long, val external: FlightExternalDetailRead?)
     private data class Read(val owner: String, val source: Feed, val term: String, val key: String,
         val generation: Long, val stationRevision: Long, val epoch: Long, val acknowledgments: Long, val external: FlightExternalScopeRead?, val logos: LogoMetadataRead?)
     private data class StagedPages(val total: Long, val scope: FlightScope, val pages: MutableMap<Int, FlightPage> = sortedMapOf()) {

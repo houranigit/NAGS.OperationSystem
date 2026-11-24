@@ -43,6 +43,7 @@ class SyncCenterViewModel internal constructor(
     private val adHoc: com.nags.operations.data.repo.AdHocFlightsRepository? = null,
     offlineSearchStatuses: Flow<FlightSyncStatus> = flowOf(FlightSyncStatus()),
     private val returnsToRamp: com.nags.operations.data.repo.FlightReturnsToRampRepository? = null,
+    flightPreparing: Flow<Boolean> = flowOf(false),
 ) : ViewModel() {
     constructor(
         catalogs: SharedCatalogsRepository,
@@ -74,6 +75,7 @@ class SyncCenterViewModel internal constructor(
         services = serviceRepository,
         tasks = taskRepository, adHoc = adHocRepository, offlineSearchStatuses = offlineSearchStatuses,
         returnsToRamp = returnToRampRepository,
+        flightPreparing = flights.isSyncing,
     )
 
     private val scope = coroutineScope ?: viewModelScope
@@ -87,7 +89,7 @@ class SyncCenterViewModel internal constructor(
     // This reports searchable membership, not fully downloaded media readiness.
     val offlineSearchStatus = offlineSearchStatuses.stateIn(scope, SharingStarted.WhileSubscribed(5_000L), FlightSyncStatus())
 
-    val rows: StateFlow<List<SyncRowState>> = combine(statuses, flightStatuses, nowTick, ::mobileSyncRows)
+    val rows: StateFlow<List<SyncRowState>> = combine(statuses, flightStatuses, nowTick, flightPreparing, ::mobileSyncRows)
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000L), mobileSyncRows(emptyList(), FlightSyncStatus(), clock()))
 
     val pendingAdHoc = (adHoc?.pending ?: flowOf(emptyList()))
@@ -182,12 +184,13 @@ data class SyncRowState(
     val lastError: String?,
     val ageMs: Long?,
     val permissionDenied: Boolean,
+    val isPreparing: Boolean = false,
 )
 
 /** Old cache metadata alone cannot establish search coverage; the global flight row still gates media. */
 internal fun offlineDataPrepared(rows: List<SyncRowState>, offlineSearch: FlightSyncStatus): Boolean =
     offlineSearch.lastSuccessUtc != null && offlineSearch.error == null && !offlineSearch.permissionDenied &&
-        rows.isNotEmpty() && rows.all { it.lastSyncedAt != null && it.lastError == null && !it.permissionDenied }
+        rows.isNotEmpty() && rows.all { it.lastSyncedAt != null && it.lastError == null && !it.permissionDenied && !it.isPreparing }
 
 /** Preserve the reference catalog order after the basic Flights card. */
 private val catalogDisplayOrder = listOf(
@@ -220,18 +223,22 @@ internal fun catalogSyncRows(statuses: List<CatalogSyncStatus>, now: Long): List
     }
 }
 
-internal fun mobileSyncRows(statuses: List<CatalogSyncStatus>, flights: FlightSyncStatus, now: Long): List<SyncRowState> {
+internal fun mobileSyncRows(statuses: List<CatalogSyncStatus>, flights: FlightSyncStatus, now: Long,
+    flightPreparing: Boolean = false): List<SyncRowState> {
     val syncedAt = flights.lastSuccessUtc?.let { value ->
         runCatching { parseOffsetDateTime(value).toInstant().toEpochMilli() }.getOrNull()
     }
+    // An active attempt writes an interruption marker before touching offline data.
+    val preparing = flightPreparing && !flights.permissionDenied
     val flightRow = SyncRowState(
         target = SyncTarget.Flights,
         rowCount = flights.itemCount,
         lastSyncedAt = syncedAt,
         lastDurationMs = flights.lastDurationMs,
-        lastError = flights.error,
+        lastError = flights.error.takeUnless { preparing },
         ageMs = syncedAt?.let { (now - it).coerceAtLeast(0L) },
         permissionDenied = flights.permissionDenied,
+        isPreparing = preparing,
     )
     return listOf(flightRow) + catalogSyncRows(statuses, now)
 }

@@ -1,6 +1,7 @@
 package com.nags.operations.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -9,11 +10,16 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.Base64
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 private val Context.dataStore by preferencesDataStore("auth")
 
@@ -40,6 +46,7 @@ class TokenStore internal constructor(
     private val employeeIdKey = stringPreferencesKey("employee_id")
     private val stationCodeKey = stringPreferencesKey("station_code")
     private val sessionSubjectKey = stringPreferencesKey("session_subject")
+    private val cacheCredential = CacheCredentialValidation(protector)
 
     // Keystore reads can block on hardware/Binder; collectors may run on the UI thread.
     val accessTokenFlow: Flow<String?> = context.dataStore.data.map { prefs ->
@@ -48,6 +55,7 @@ class TokenStore internal constructor(
     val userIdFlow: Flow<String?> = context.dataStore.data.map { it[userIdKey] }
     val displayNameFlow: Flow<String?> = context.dataStore.data.map { it[displayNameKey] }
     val sessionSubjectFlow: Flow<String?> = context.dataStore.data.map { it[sessionSubjectKey] }
+    internal val cacheSessionSubjectFlow: Flow<String?> = context.dataStore.data.map(::cacheSessionSubject)
 
     suspend fun getAccessToken(): String? = context.dataStore.data
         .map { prefs -> prefs[accessKey]?.let(::unprotectOrNull) }
@@ -62,6 +70,12 @@ class TokenStore internal constructor(
     suspend fun getEmployeeId(): String? = context.dataStore.data.map { it[employeeIdKey] }.first()
     suspend fun getStationCode(): String? = context.dataStore.data.map { it[stationCodeKey] }.first()
     suspend fun getSessionSubject(): String? = context.dataStore.data.map { it[sessionSubjectKey] }.first()
+
+    /** Read the cache owner and its access credential together from the same persisted snapshot. */
+    internal suspend fun getCacheSessionSubject(): String? = cacheSessionSubject(context.dataStore.data.first())
+
+    private suspend fun cacheSessionSubject(prefs: Preferences): String? =
+        cacheCredential.subject(prefs[accessKey], prefs[sessionSubjectKey])
 
     /**
      * Migrates tokens written by pre-Keystore builds and records the JWT owner used to protect
@@ -185,6 +199,7 @@ class TokenStore internal constructor(
             listOf(accessKey, refreshKey, accessExpiryKey, refreshExpiryKey)
                 .forEach { prefs.remove(it) }
         }
+        cacheCredential.clear()
     }
 
     /** Removes credentials and the remembered owner. Use only after owner-scoped data is wiped. */
@@ -195,9 +210,61 @@ class TokenStore internal constructor(
                 userIdKey, displayNameKey, emailKey, employeeIdKey, stationCodeKey, sessionSubjectKey,
             ).forEach { prefs.remove(it) }
         }
+        cacheCredential.clear()
     }
 
-    private fun unprotectOrNull(raw: String): String? = runCatching { protector.unprotect(raw) }.getOrNull()
+    private fun unprotectOrNull(raw: String): String? =
+        runCatching { protector.unprotect(raw) }.onFailure { cacheCredential.invalidate(raw) }.getOrNull()
+}
+
+/** Cache ownership checks can reuse a recent successful Keystore read of the same ciphertext. */
+internal class CacheCredentialValidation(
+    private val protector: TokenProtector,
+    private val monotonicNanos: () -> Long = System::nanoTime,
+) {
+    private val validated = AtomicReference<ValidatedCredential?>(null)
+    private val verification = Mutex()
+
+    suspend fun subject(persistedAccess: String?, subject: String?): String? {
+        if (persistedAccess.isNullOrBlank() || subject.isNullOrBlank()) return null
+        if (matches(validated.get(), persistedAccess, subject)) return subject
+
+        return verification.withLock {
+            val previous = validated.get()
+            if (matches(previous, persistedAccess, subject)) return@withLock subject
+            val approved = withContext(Dispatchers.IO) {
+                runCatching { protector.unprotect(persistedAccess).isNotBlank() }.getOrDefault(false)
+            }
+            if (!approved) {
+                invalidate(persistedAccess)
+                return@withLock null
+            }
+            // Migration can read old plaintext tokens, but only encrypted access values are memoized.
+            if (protector.isProtected(persistedAccess)) {
+                validated.compareAndSet(previous, ValidatedCredential(persistedAccess, subject, monotonicNanos()))
+            }
+            subject
+        }
+    }
+
+    fun invalidate(persistedAccess: String) {
+        val current = validated.get()
+        if (current?.ciphertext == persistedAccess) validated.compareAndSet(current, null)
+    }
+
+    fun clear() {
+        validated.set(null)
+    }
+
+    private fun matches(validation: ValidatedCredential?, persistedAccess: String, subject: String): Boolean =
+        validation != null && validation.ciphertext == persistedAccess && validation.subject == subject &&
+            monotonicNanos() - validation.checkedAt < VALIDATION_WINDOW
+
+    private data class ValidatedCredential(val ciphertext: String, val subject: String, val checkedAt: Long)
+
+    private companion object {
+        val VALIDATION_WINDOW = TimeUnit.SECONDS.toNanos(30)
+    }
 }
 
 internal object JwtSubject {

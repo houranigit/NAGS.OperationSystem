@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nags.operations.R
+import com.nags.operations.ui.theme.isDark
 
 @Composable
 internal fun FlightProgressBadge(status: FlightProgressStatus, modifier: Modifier = Modifier) {
@@ -43,14 +44,20 @@ internal fun FlightProgressBadge(status: FlightProgressStatus, modifier: Modifie
         FlightProgressStatus.DeparturePendingSync -> R.string.flight_progress_departure_pending
         FlightProgressStatus.DepartureNeedsReview -> R.string.flight_progress_departure_review
     })
+    val colors = MaterialTheme.colorScheme
     val (background, foreground) = when (status) {
-        FlightProgressStatus.Draft -> Color(0xFFF1F3F5) to Color(0xFF4B5563)
-        FlightProgressStatus.ArrivalSubmitted -> Color(0xFFE8F2FF) to Color(0xFF155EAB)
-        FlightProgressStatus.DepartureSubmitted -> Color(0xFFE8F5EC) to Color(0xFF176A3A)
+        FlightProgressStatus.Draft ->
+            if (colors.isDark) colors.surfaceContainerHighest to colors.onSurfaceVariant else Color(0xFFF1F3F5) to Color(0xFF4B5563)
+        FlightProgressStatus.ArrivalSubmitted ->
+            if (colors.isDark) colors.tertiaryContainer to colors.onTertiaryContainer else Color(0xFFE8F2FF) to Color(0xFF155EAB)
+        FlightProgressStatus.DepartureSubmitted ->
+            if (colors.isDark) Color(0xFF233C2D) to Color(0xFFA3DFB7) else Color(0xFFE8F5EC) to Color(0xFF176A3A)
         FlightProgressStatus.ArrivalPendingSync, FlightProgressStatus.DeparturePendingSync,
-        FlightProgressStatus.CancellationPendingSync, FlightProgressStatus.CancellationRevertPending -> Color(0xFFFFF3D6) to Color(0xFF8B4B00)
+        FlightProgressStatus.CancellationPendingSync, FlightProgressStatus.CancellationRevertPending ->
+            if (colors.isDark) Color(0xFF49361D) to Color(0xFFFFD18E) else Color(0xFFFFF3D6) to Color(0xFF8B4B00)
         FlightProgressStatus.ArrivalNeedsReview, FlightProgressStatus.DepartureNeedsReview,
-        FlightProgressStatus.CancellationNeedsReview, FlightProgressStatus.CancellationSubmitted -> Color(0xFFFDEDEB) to Color(0xFFA12622)
+        FlightProgressStatus.CancellationNeedsReview, FlightProgressStatus.CancellationSubmitted ->
+            if (colors.isDark) colors.errorContainer to colors.onErrorContainer else Color(0xFFFDEDEB) to Color(0xFFA12622)
     }
     Surface(modifier, shape = RoundedCornerShape(50), color = background, contentColor = foreground) {
         Text(label, Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
