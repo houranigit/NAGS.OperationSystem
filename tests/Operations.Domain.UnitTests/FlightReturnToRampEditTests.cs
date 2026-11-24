@@ -102,7 +102,7 @@ public sealed class FlightReturnToRampEditTests
         flight.SubmitDeparture(_staff, DepartureDetails.Create(Now.AddMinutes(-10), null, _staff, null).Value, _actor, Now).IsSuccess.ShouldBeTrue();
     }
 
-    private void Approve(Flight flight) => flight.Approve(_actor, "Reviewer", Now).IsSuccess.ShouldBeTrue();
+    private void Approve(Flight flight) => flight.Approve(_actor, "Reviewer", Now, 1).IsSuccess.ShouldBeTrue();
     private RtrArrivalDetails Arrival() => RtrArrivalDetails.Create(Now, _staff, null).Value;
     private ReturnToRampServiceInput Service() => new(Guid.NewGuid(), TestData.Service(), null, TimeWindow.Create(Now, null).Value, null,
         [new FlightServicePerformerInput(_staff, TimeWindow.Create(Now, null).Value, Guid.NewGuid())]);

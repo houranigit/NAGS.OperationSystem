@@ -17,13 +17,15 @@ public sealed class FlightApprovalTests
         var reviewer = Guid.NewGuid();
         flight.ApprovalStatus.ShouldBe(FlightApprovalStatus.NotApproved);
 
-        flight.Approve(reviewer, "  Flight reviewer  ", Now.ToOffset(TimeSpan.FromHours(3))).IsSuccess.ShouldBeTrue();
+        flight.Approve(reviewer, "  Flight reviewer  ", Now.ToOffset(TimeSpan.FromHours(3)), 1).IsSuccess.ShouldBeTrue();
 
         flight.ApprovalStatus.ShouldBe(FlightApprovalStatus.Approved);
         flight.ApprovedAtUtc.ShouldBe(Now);
         flight.ApprovedAtUtc!.Value.Offset.ShouldBe(TimeSpan.Zero);
         flight.ApprovedByUserId.ShouldBe(reviewer);
         flight.ApprovedByDisplayName.ShouldBe("Flight reviewer");
+        flight.ApprovalSequence.ShouldBe(1);
+        flight.ApprovalNumber.ShouldBe("RUH-0001");
         flight.ChangeFlightNumber(TestData.FlightNo("SV1021"), Now).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
         flight.ReplaceAssignedEmployees([], Now).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
         flight.SubmitArrival(_staff, Arrival(Now), _actor, Now).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
@@ -33,8 +35,13 @@ public sealed class FlightApprovalTests
 
         flight.ApprovalStatus.ShouldBe(FlightApprovalStatus.Unlocked);
         flight.IsApprovalLocked.ShouldBeFalse();
+        flight.ApprovalSequence.ShouldBeNull();
+        flight.ApprovalNumber.ShouldBeNull();
         flight.ChangeFlightNumber(TestData.FlightNo("SV1021"), Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
         flight.ApprovedByUserId.ShouldBe(reviewer);
+
+        flight.Approve(reviewer, "Flight reviewer", Now.AddMinutes(3), 10_000).IsSuccess.ShouldBeTrue();
+        flight.ApprovalNumber.ShouldBe("RUH-10000");
     }
 
     [Theory]
@@ -48,9 +55,10 @@ public sealed class FlightApprovalTests
         var window = TimeWindow.Create(Now, endMinute is { } end ? Now.AddMinutes(end) : null).Value;
         flight.AddService(TestData.Service(), null, window, null, _actor, Now).IsSuccess.ShouldBeTrue();
 
-        flight.Approve(_actor, "Reviewer", Now).Error.Code.ShouldBe(code);
+        flight.Approve(_actor, "Reviewer", Now, 1).Error.Code.ShouldBe(code);
         flight.ApprovalStatus.ShouldBe(FlightApprovalStatus.NotApproved);
         flight.ApprovedAtUtc.ShouldBeNull();
+        flight.ApprovalNumber.ShouldBeNull();
     }
 
     [Fact]
@@ -60,7 +68,7 @@ public sealed class FlightApprovalTests
         flight.SubmitArrival(_staff, Arrival(Now), _actor, Now).IsSuccess.ShouldBeTrue();
         flight.SubmitDeparture(_staff, Departure(Now), _actor, Now).IsSuccess.ShouldBeTrue();
 
-        flight.Approve(_actor, "Reviewer", Now).Error.Code.ShouldBe("Operations.FlightApproval.ActualTimesInvalid");
+        flight.Approve(_actor, "Reviewer", Now, 1).Error.Code.ShouldBe("Operations.FlightApproval.ActualTimesInvalid");
     }
 
     [Fact]
@@ -69,7 +77,7 @@ public sealed class FlightApprovalTests
         var flight = Schedule();
         var submission = flight.SubmitCancellation(_staff, CancellationDetails.Create(Now, "Canceled").Value, _actor, Now).Value;
 
-        flight.Approve(_actor, "Reviewer", Now).IsSuccess.ShouldBeTrue();
+        flight.Approve(_actor, "Reviewer", Now, 1).IsSuccess.ShouldBeTrue();
         flight.RevertCancellation(_staff.StaffMemberId, submission.Id, Now, _actor).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
         flight.StartReturnToRamp(RtrArrival(Now), _actor, Now).IsFailure.ShouldBeTrue();
 
@@ -81,9 +89,11 @@ public sealed class FlightApprovalTests
     public void PendingReturnToRampAllowsMoreClosedOccurrencesAndOnlyLocksPreviouslyApprovedWork()
     {
         var flight = DepartedFlight();
-        flight.Approve(_actor, "Reviewer", Now).IsSuccess.ShouldBeTrue();
+        flight.Approve(_actor, "Reviewer", Now, 1).IsSuccess.ShouldBeTrue();
         var first = CompleteReturnToRamp(flight, Now.AddHours(2));
-        flight.Approve(_actor, "Reviewer", Now.AddHours(3)).IsSuccess.ShouldBeTrue();
+        flight.Approve(_actor, "Reviewer", Now.AddHours(3), 2).IsSuccess.ShouldBeTrue();
+        flight.ApprovalSequence.ShouldBe(1);
+        flight.ApprovalNumber.ShouldBe("RUH-0001");
 
         var second = CompleteReturnToRamp(flight, Now.AddHours(4));
         var thirdArrival = Now.AddHours(5);
@@ -96,10 +106,10 @@ public sealed class FlightApprovalTests
         flight.EnsureApprovalAllowsReturnToRamp(second.Id).IsSuccess.ShouldBeTrue();
         flight.EnsureApprovalAllowsReturnToRamp(third.Id).IsSuccess.ShouldBeTrue();
         flight.Unlock(Now).Error.Code.ShouldBe("Operations.FlightApproval.UnlockNotAllowed");
-        flight.Approve(_actor, "Reviewer", Now).Error.Code.ShouldBe("Operations.FlightApproval.ReturnToRampTimesInvalid");
+        flight.Approve(_actor, "Reviewer", Now, 1).Error.Code.ShouldBe("Operations.FlightApproval.ReturnToRampTimesInvalid");
 
         FinishReturnToRamp(flight, third, thirdArrival);
-        flight.Approve(_actor, "Reviewer", Now.AddHours(6)).IsSuccess.ShouldBeTrue();
+        flight.Approve(_actor, "Reviewer", Now.AddHours(6), 1).IsSuccess.ShouldBeTrue();
         flight.ApprovedReturnToRampSequence.ShouldBe(third.Sequence);
         flight.EnsureApprovalAllowsReturnToRamp(second.Id).IsFailure.ShouldBeTrue();
         flight.EnsureApprovalAllowsReturnToRamp(third.Id).IsFailure.ShouldBeTrue();

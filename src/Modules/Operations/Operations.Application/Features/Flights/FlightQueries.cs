@@ -68,6 +68,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 flight.ApprovedByDisplayName,
                 flight.ApprovedAtUtc,
                 flight.ApprovedReturnToRampSequence,
+                flight.ApprovalNumber,
                 Status = hasCancellation && (hasArrival || hasDeparture || flight.ReturnToRamps.Any()) ? FlightReportStatus.Conflict
                     : hasCancellation ? FlightReportStatus.Canceled
                     : flight.ReturnToRamps.Any(ramp => ramp.DepartureDetails == null) ? FlightReportStatus.ReturnedToRamp
@@ -99,7 +100,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             versions.TryGetValue(item.CustomerId, out var version) ? version : CustomerLogoVersions.None,
             item.StationId, item.HasArrivalSubmission, item.HasDepartureSubmission, item.HasCancellationSubmission,
             item.Status.ToString(), item.ApprovalStatus, item.ApprovedByDisplayName, item.ApprovedAtUtc,
-            item.ApprovedReturnToRampSequence)).ToList();
+            item.ApprovedReturnToRampSequence, item.ApprovalNumber)).ToList();
         return paging.ToResult(versionedItems, total);
     }
 }
@@ -245,7 +246,8 @@ internal static class FlightDetails
             canSaveReturnsToRamp, flight.LastReturnToRampSequence, canShare,
             flight.ApprovalStatus, flight.ApprovedByDisplayName, flight.ApprovedAtUtc, flight.ApprovedReturnToRampSequence,
             canReview && flight.ApprovalStatus != FlightApprovalStatus.Approved,
-            canReview && flight.ApprovalStatus == FlightApprovalStatus.Approved);
+            canReview && flight.ApprovalStatus == FlightApprovalStatus.Approved,
+            flight.ApprovalNumber);
     }
 }
 

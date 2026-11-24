@@ -40,7 +40,13 @@ public sealed class SetFlightApprovalCommandHandler(IOperationsDbContext db, Por
             if (names.GetValueOrDefault(reviewerId) is not { Length: > 0 } reviewerName)
                 return Error.Failure("The reviewer name could not be loaded. Please try again.", "Operations.Flight.ReviewerUnavailable");
 
-            change = flight.Approve(reviewerId, reviewerName, now);
+            Result<int> sequence = flight.ApprovalSequence is { } currentSequence
+                ? Result.Success(currentSequence)
+                : await FindAvailableSequenceAsync(flight.Station.StationId, cancellationToken);
+            if (sequence.IsFailure)
+                return sequence.Error;
+
+            change = flight.Approve(reviewerId, reviewerName, now, sequence.Value);
         }
         else
         {
@@ -62,5 +68,27 @@ public sealed class SetFlightApprovalCommandHandler(IOperationsDbContext db, Por
 
         FlightServiceWrites.Notify(mobileSync, clock);
         return Result.Success();
+    }
+
+    private async Task<Result<int>> FindAvailableSequenceAsync(Guid stationId, CancellationToken cancellationToken)
+    {
+        var used = await db.Flights.AsNoTracking()
+            .Where(flight => flight.Station.StationId == stationId && flight.ApprovalSequence != null)
+            .Select(flight => flight.ApprovalSequence!.Value)
+            .OrderBy(sequence => sequence)
+            .ToListAsync(cancellationToken);
+
+        var next = 1;
+        foreach (var sequence in used)
+        {
+            if (sequence != next)
+                break;
+            if (next == int.MaxValue)
+                return Error.Conflict("The station has no available work order numbers.", "Operations.WorkOrderNumber.SequenceExhausted");
+
+            next++;
+        }
+
+        return next;
     }
 }

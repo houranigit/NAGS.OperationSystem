@@ -39,7 +39,8 @@ public sealed record FlightListItemDto(
     FlightApprovalStatus ApprovalStatus = FlightApprovalStatus.NotApproved,
     string? ApprovedByDisplayName = null,
     DateTimeOffset? ApprovedAtUtc = null,
-    int ApprovedReturnToRampSequence = 0);
+    int ApprovedReturnToRampSequence = 0,
+    string? WorkOrderNumber = null);
 
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId)
@@ -106,4 +107,5 @@ public sealed record FlightDetailDto(
     DateTimeOffset? ApprovedAtUtc = null,
     int ApprovedReturnToRampSequence = 0,
     bool CanApprove = false,
-    bool CanUnlock = false);
+    bool CanUnlock = false,
+    string? WorkOrderNumber = null);

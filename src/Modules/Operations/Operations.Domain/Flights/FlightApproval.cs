@@ -20,11 +20,13 @@ public sealed partial class Flight
     public string? ApprovedByDisplayName { get; private set; }
     public DateTimeOffset? ApprovedAtUtc { get; private set; }
     public int ApprovedReturnToRampSequence { get; private set; }
+    public int? ApprovalSequence { get; private set; }
+    public string? ApprovalNumber { get; private set; }
 
     public bool IsApprovalLocked => ApprovalStatus is FlightApprovalStatus.Approved or FlightApprovalStatus.PendingRtr;
 
     /// <summary>Load all submissions, work records, and RTRs before approving the complete flight.</summary>
-    public Result Approve(Guid approvedByUserId, string? approvedByDisplayName, DateTimeOffset now)
+    public Result Approve(Guid approvedByUserId, string? approvedByDisplayName, DateTimeOffset now, int approvalSequence)
     {
         if (ApprovalStatus == FlightApprovalStatus.Approved)
             return Error.Conflict("This flight is already approved.", "Operations.FlightApproval.AlreadyApproved");
@@ -36,6 +38,16 @@ public sealed partial class Flight
         var validation = ValidateApproval();
         if (validation.IsFailure)
             return validation;
+
+        if (ApprovalNumber is null)
+        {
+            var number = WorkOrderNumber.Format(Station.IataCode, approvalSequence);
+            if (number.IsFailure)
+                return number.Error;
+
+            ApprovalSequence = approvalSequence;
+            ApprovalNumber = number.Value;
+        }
 
         ApprovalStatus = FlightApprovalStatus.Approved;
         ApprovedByUserId = approvedByUserId;
@@ -52,6 +64,8 @@ public sealed partial class Flight
             return Error.Conflict("Only an approved flight can be unlocked.", "Operations.FlightApproval.UnlockNotAllowed");
 
         ApprovalStatus = FlightApprovalStatus.Unlocked;
+        ApprovalSequence = null;
+        ApprovalNumber = null;
         UpdatedAtUtc = now.ToUniversalTime();
         return Result.Success();
     }

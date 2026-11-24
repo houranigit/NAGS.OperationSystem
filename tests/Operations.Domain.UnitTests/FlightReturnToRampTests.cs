@@ -273,7 +273,7 @@ public sealed class FlightReturnToRampTests
         var flight = DepartedFlight(approve: false);
         var user = Guid.NewGuid();
         var (normalService, normalTask) = AddNormalWork(flight, user);
-        flight.Approve(user, "Reviewer", TestData.Now).IsSuccess.ShouldBeTrue();
+        flight.Approve(user, "Reviewer", TestData.Now, 1).IsSuccess.ShouldBeTrue();
         var first = Start(flight);
         var firstService = AddCompletedService(flight, first);
         var firstTask = AddCompletedTask(flight, first);
@@ -560,7 +560,7 @@ public sealed class FlightReturnToRampTests
         var normalDetails = DepartureDetails.Create(TestData.Now.AddHours(1), sharedSignature, TestData.Staff(), null).Value;
         RecordArrival(flight);
         flight.SubmitDeparture(TestData.Staff(), normalDetails, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
-        flight.Approve(Guid.NewGuid(), "Reviewer", TestData.Now).IsSuccess.ShouldBeTrue();
+        flight.Approve(Guid.NewGuid(), "Reviewer", TestData.Now, 1).IsSuccess.ShouldBeTrue();
         var flightSignature = flight.DepartureSubmissions.Single().Details.CustomerSignature;
         var first = Start(flight);
         AddCompletedService(flight, first);
@@ -618,7 +618,7 @@ public sealed class FlightReturnToRampTests
         var flight = DepartedFlight(approve: false);
         var actor = Guid.NewGuid();
         var (normalService, normalTask) = AddNormalWork(flight, actor);
-        flight.Approve(actor, "Reviewer", TestData.Now).IsSuccess.ShouldBeTrue();
+        flight.Approve(actor, "Reviewer", TestData.Now, 1).IsSuccess.ShouldBeTrue();
         var first = Start(flight);
         var firstService = AddCompletedService(flight, first);
         var firstTask = AddCompletedTask(flight, first);
@@ -678,7 +678,7 @@ public sealed class FlightReturnToRampTests
         RecordArrival(flight);
         flight.SubmitDeparture(TestData.Staff(), details, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
         if (approve)
-            flight.Approve(Guid.NewGuid(), "Reviewer", TestData.Now).IsSuccess.ShouldBeTrue();
+            flight.Approve(Guid.NewGuid(), "Reviewer", TestData.Now, 1).IsSuccess.ShouldBeTrue();
         return flight;
     }
 

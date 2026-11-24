@@ -38,6 +38,7 @@ public sealed partial class FlightVisibilityScopeTests
         initial.CanUnlock.ShouldBeFalse();
         initial.CanSaveArrival.ShouldBeFalse();
         initial.ApprovedAtUtc.ShouldBeNull();
+        initial.WorkOrderNumber.ShouldBeNull();
 
         using var forbidden = await WritePortalOperationsAsync(flightOperator, id, HttpMethod.Put, "approval", null, initial.RowVersion);
         forbidden.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -64,6 +65,7 @@ public sealed partial class FlightVisibilityScopeTests
         corrected.StatusCode.ShouldBe(HttpStatusCode.OK);
         var ready = (await corrected.Content.ReadFromJsonAsync<FlightDetailDto>())!;
         var approved = await ApprovePortalFlightAsync(reviewer, id, ready.RowVersion);
+        approved.WorkOrderNumber.ShouldBe($"{approved.StationIata}-0001");
         approved.CanApprove.ShouldBeFalse();
         approved.CanUnlock.ShouldBeTrue();
         approved.ApprovedByDisplayName.ShouldBe(reviewerName);
@@ -71,6 +73,7 @@ public sealed partial class FlightVisibilityScopeTests
         approved.RowVersion.ShouldNotBe(ready.RowVersion);
 
         var operatorDetail = await PortalOperationsDetailAsync(flightOperator, id);
+        operatorDetail.WorkOrderNumber.ShouldBe(approved.WorkOrderNumber);
         operatorDetail.CanSaveArrival.ShouldBeFalse();
         operatorDetail.CanSaveDeparture.ShouldBeFalse();
         operatorDetail.CanSaveServices.ShouldBeFalse();
@@ -87,6 +90,7 @@ public sealed partial class FlightVisibilityScopeTests
         unlock.StatusCode.ShouldBe(HttpStatusCode.OK);
         var unlocked = (await unlock.Content.ReadFromJsonAsync<FlightDetailDto>())!;
         unlocked.ApprovalStatus.ShouldBe(FlightApprovalStatus.Unlocked);
+        unlocked.WorkOrderNumber.ShouldBeNull();
         unlocked.CanApprove.ShouldBeTrue();
         using var update = await WritePortalOperationsAsync(flightOperator, id, HttpMethod.Put, "batch", change, unlocked.RowVersion);
         update.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -260,6 +264,7 @@ public sealed partial class FlightVisibilityScopeTests
         rtrResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         var pendingRtr = (await rtrResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!;
         pendingRtr.ApprovalStatus.ShouldBe(FlightApprovalStatus.PendingRtr);
+        pendingRtr.WorkOrderNumber.ShouldBe(approved.WorkOrderNumber);
         var rtr = pendingRtr.ReturnToRamps!.ShouldHaveSingleItem();
         rtr.Id.ShouldBe(rtrId);
         rtr.CreatedByUserId.ShouldBe(administratorId);
@@ -279,10 +284,12 @@ public sealed partial class FlightVisibilityScopeTests
         secondRtr.StatusCode.ShouldBe(HttpStatusCode.OK);
         var twoPendingReturns = (await secondRtr.Content.ReadFromJsonAsync<FlightDetailDto>())!;
         twoPendingReturns.ApprovalStatus.ShouldBe(FlightApprovalStatus.PendingRtr);
+        twoPendingReturns.WorkOrderNumber.ShouldBe(approved.WorkOrderNumber);
         twoPendingReturns.ReturnToRamps!.Select(item => item.Id).ShouldBe([rtrId, secondRtrId]);
         twoPendingReturns.ReturnToRamps!.ShouldAllBe(item => item.CanEdit);
 
         var reapproved = await ApprovePortalFlightAsync(admin, id, twoPendingReturns.RowVersion);
+        reapproved.WorkOrderNumber.ShouldBe(approved.WorkOrderNumber);
         reapproved.ApprovedReturnToRampSequence.ShouldBe(2);
         reapproved.ReturnToRamps!.ShouldAllBe(item => !item.CanEdit);
         await AssertPortalOperationsConflictAsync(
@@ -345,6 +352,7 @@ public sealed partial class FlightVisibilityScopeTests
         (await PortalOperationsDetailAsync(admin, id)).CancellationSubmissions!.ShouldHaveSingleItem().ShouldBe(targetedResult.Submission);
 
         var approved = await ApprovePortalFlightAsync(otherAdmin, id, targetedResult.RowVersion);
+        approved.WorkOrderNumber.ShouldBe($"{approved.StationIata}-0001");
         approved.CancellationSubmissions!.ShouldHaveSingleItem().Id.ShouldBe(submission.Id);
         approved.CanSaveCancellation.ShouldBeFalse();
         approved.CanSaveReturnsToRamp.ShouldBeFalse();
@@ -358,6 +366,7 @@ public sealed partial class FlightVisibilityScopeTests
         unlock.StatusCode.ShouldBe(HttpStatusCode.OK);
         var unlocked = (await unlock.Content.ReadFromJsonAsync<FlightDetailDto>())!;
         unlocked.ApprovalStatus.ShouldBe(FlightApprovalStatus.Unlocked);
+        unlocked.WorkOrderNumber.ShouldBeNull();
 
         using var staffSave = await WritePortalOperationsAsync(staffClient, id, HttpMethod.Put, "cancellation",
             input with { Remarks = "Separate staff cancellation" }, unlocked.RowVersion);

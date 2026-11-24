@@ -271,7 +271,7 @@ public sealed class FlightReturnToRampSaveTests
                 [new(employee, TimeWindow.Create(start, null).Value, null, taskPerson)], [], [], [], Owner, Now).IsSuccess.ShouldBeTrue();
             flight.SaveTask(taskId, (FlightTaskType)0, null, null, TimeWindow.Create(start, end).Value, "Normal task",
                 [new(employee, TimeWindow.Create(start, end).Value, null, taskPerson)], [], [], [], Other, Now).IsSuccess.ShouldBeTrue();
-            flight.Approve(Other, "Colleague", Now).IsSuccess.ShouldBeTrue();
+            flight.Approve(Other, "Colleague", Now, 1).IsSuccess.ShouldBeTrue();
             await Db.SaveChangesAsync(); Db.ChangeTracker.Clear();
         }
         public async Task ChangeVersion()
@@ -290,7 +290,7 @@ public sealed class FlightReturnToRampSaveTests
             if (departure)
             {
                 flight.SubmitDeparture(owner, DepartureDetails.Create(Now.AddMinutes(-10), null, owner, null).Value, f.Owner, Now).IsSuccess.ShouldBeTrue();
-                if (approve) flight.Approve(f.Owner, "Original", Now).IsSuccess.ShouldBeTrue();
+                if (approve) flight.Approve(f.Owner, "Original", Now, 1).IsSuccess.ShouldBeTrue();
             }
             f.Db.Flights.Add(flight); f.Db.Entry(flight).Property(x => x.RowVersion).CurrentValue = Version.ToArray(); await f.Db.SaveChangesAsync(); f.FlightId = flight.Id; f.Db.ChangeTracker.Clear(); return f;
         }

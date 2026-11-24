@@ -1,6 +1,7 @@
 <div class="portal-operations-editor">
     @if (ShowSteps)
     {
+        @HeaderContent
         <div class="portal-editor-body" @ref="validationContainer">
             <ol class="portal-stepper" aria-label="Flight operation steps">
                 @for (var i = 0; i < StepLabels.Count; i++)
@@ -50,6 +51,7 @@
     [Parameter] public bool Busy { get; set; }
     [Parameter] public int ValidationAttempt { get; set; }
     [Parameter] public EventCallback<int> StepChanged { get; set; }
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
     [Parameter] public RenderFragment? StatusContent { get; set; }
     [Parameter] public RenderFragment? StepContent { get; set; }
     [Parameter] public RenderFragment? FooterContent { get; set; }

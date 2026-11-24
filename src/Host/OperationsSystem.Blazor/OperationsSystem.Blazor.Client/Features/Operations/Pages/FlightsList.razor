@@ -81,6 +81,18 @@
                         <StatusBadge Label="@approval.Label" Tone="@approval.Tone" Icon="@approval.Icon" />
                     </Template>
                 </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FlightListItem" Title="WO#" Sortable="false" Width="120px">
+                    <Template Context="flight">
+                        @if (flight.WorkOrderNumber is { } workOrderNumber)
+                        {
+                            <strong>@workOrderNumber</strong>
+                        }
+                        else
+                        {
+                            <text>—</text>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
             </Columns>
             <RowActions Context="flight">
                 @{

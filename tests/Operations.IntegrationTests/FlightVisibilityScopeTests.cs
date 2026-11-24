@@ -285,7 +285,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
                     userId, now).IsSuccess.ShouldBeTrue();
             if (status == "ReturnedToRamp")
             {
-                flight.Approve(userId, "Reviewer", now).IsSuccess.ShouldBeTrue();
+                flight.Approve(userId, "Reviewer", now, 1).IsSuccess.ShouldBeTrue();
                 flight.StartReturnToRamp(RtrArrivalDetails.Create(now.AddMinutes(-15), employee, null).Value,
                     userId, now).IsSuccess.ShouldBeTrue();
             }

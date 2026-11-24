@@ -18,7 +18,8 @@ public sealed record FlightListItem(
     string ApprovalStatus = FlightApprovalStatuses.NotApproved,
     string? ApprovedByDisplayName = null,
     DateTimeOffset? ApprovedAtUtc = null,
-    int ApprovedReturnToRampSequence = 0)
+    int ApprovedReturnToRampSequence = 0,
+    string? WorkOrderNumber = null)
 {
     internal bool IsApprovalLocked => FlightApprovalStatuses.IsLocked(ApprovalStatus);
 }

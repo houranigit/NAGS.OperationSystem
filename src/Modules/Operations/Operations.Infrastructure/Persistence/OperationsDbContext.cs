@@ -35,6 +35,10 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         {
             throw new DbUpdateConcurrencyException("Another work interaction changed this flight. Reload and retry.", error);
         }
+        catch (DbUpdateException error) when (IsApprovalSequenceCollision(error))
+        {
+            throw new DbUpdateConcurrencyException("Another approval claimed this work order number. Reload and retry.", error);
+        }
     }
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
@@ -45,6 +49,10 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         {
             throw new DbUpdateConcurrencyException("Another work interaction changed this flight. Reload and retry.", error);
         }
+        catch (DbUpdateException error) when (IsApprovalSequenceCollision(error))
+        {
+            throw new DbUpdateConcurrencyException("Another approval claimed this work order number. Reload and retry.", error);
+        }
     }
 
     private static bool IsActivityInsertCollision(DbUpdateException error) =>
@@ -52,6 +60,10 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
         error.Entries.Any(entry => entry.Entity is FlightUserActivity && entry.State == EntityState.Added) &&
         error.InnerException is SqlException sql && sql.Errors.Cast<SqlError>().Any(detail =>
             detail.Number is 2601 or 2627 && detail.Message.Contains($"{Schema}.flight_user_activities", StringComparison.Ordinal));
+
+    private static bool IsApprovalSequenceCollision(DbUpdateException error) =>
+        error.InnerException is SqlException sql && sql.Errors.Cast<SqlError>().Any(detail =>
+            detail.Number is 2601 or 2627 && detail.Message.Contains("'UX_flights_StationId_ApprovalSequence'", StringComparison.Ordinal));
 
     private void EnsureSubmissionConcurrencyChecks()
     {

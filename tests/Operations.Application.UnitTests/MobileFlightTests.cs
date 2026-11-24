@@ -274,7 +274,7 @@ public sealed class MobileFlightTests
                 Guid.NewGuid(), Now).IsSuccess.ShouldBeTrue();
         if (scenario.EndsWith("rtr", StringComparison.Ordinal))
         {
-            flight.Approve(UserId, "Assigned staff", Now).IsSuccess.ShouldBeTrue();
+            flight.Approve(UserId, "Assigned staff", Now, 1).IsSuccess.ShouldBeTrue();
             var occurrence = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddHours(-60), employee, null).Value, UserId, Now).Value;
             if (scenario == "closed-rtr")
             {
@@ -456,7 +456,7 @@ public sealed class MobileFlightTests
             initialPerformers: [new(employee, normalWindow)]).IsSuccess.ShouldBeTrue();
         flight.AddTask(FlightTaskType.Minor, null, null, normalWindow, null, UserId, Now,
             initialPerformers: [new(employee, normalWindow)]).IsSuccess.ShouldBeTrue();
-        flight.Approve(UserId, "Assigned staff", Now).IsSuccess.ShouldBeTrue();
+        flight.Approve(UserId, "Assigned staff", Now, 1).IsSuccess.ShouldBeTrue();
 
         var first = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddMinutes(10), employee, null).Value,
             UserId, Now).Value;

@@ -16,6 +16,7 @@ public sealed class FlightConfiguration : IEntityTypeConfiguration<Flight>
         builder.Property(f => f.AdHocCreationFingerprint).HasMaxLength(64);
         builder.Property(f => f.RowVersion).IsRowVersion();
         builder.Property(f => f.ApprovalStatus);
+        builder.Property(f => f.ApprovalNumber).HasMaxLength(20);
         builder.Property(f => f.ApprovedByDisplayName).HasMaxLength(Flight.MaxApproverDisplayNameLength);
         builder.Ignore(f => f.IsApprovalLocked);
 

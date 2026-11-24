@@ -52,7 +52,7 @@ public sealed partial class FlightVisibilityScopeTests
                     userId, now).IsSuccess.ShouldBeTrue();
             if (kind.StartsWith("rtr"))
             {
-                flight.Approve(userId, "Reviewer", now).IsSuccess.ShouldBeTrue();
+                flight.Approve(userId, "Reviewer", now, seeded.Count + 1).IsSuccess.ShouldBeTrue();
                 var occurrence = flight.StartReturnToRamp(RtrArrivalDetails.Create(now.AddHours(-30), employee, null).Value, userId, now).Value;
                 if (kind != "rtr-open")
                 {

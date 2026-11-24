@@ -2,6 +2,14 @@
 
 <PortalWorkDialogLayout StepLabels="@StepLabels" CurrentStep="@step" ShowSteps="@(!loading && flight is not null)"
                         IsGuidedEntry="@IsGuidedEntry" Busy="@saving" StepChanged="@ChangeStep" ValidationAttempt="@validationFocusAttempt">
+    <HeaderContent>
+        @if (flight?.WorkOrderNumber is { } workOrderNumber)
+        {
+            <header>
+                <p class="portal-work-note">WO# <strong>@workOrderNumber</strong></p>
+            </header>
+        }
+    </HeaderContent>
     <StatusContent>
         @if (loading)
         {

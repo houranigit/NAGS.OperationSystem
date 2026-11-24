@@ -342,7 +342,7 @@ public sealed class FlightActualServiceBoundsTests
             }
             else if (work == Work.Rtr)
             {
-                flight.Approve(userId, "Reviewer", Now).IsSuccess.ShouldBeTrue();
+                flight.Approve(userId, "Reviewer", Now, 1).IsSuccess.ShouldBeTrue();
                 var occurrence = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddHours(2), employee, null).Value, userId, Now).Value;
                 flight.AddService(new ServiceSnapshot(inner.ServiceId, "Service"), null,
                     TimeWindow.Create(Now.AddMinutes(135), null).Value, null, userId, Now, occurrence.Id,

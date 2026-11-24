@@ -84,6 +84,13 @@ namespace Operations.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<string>("ApprovalNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("ApprovalSequence")
+                        .HasColumnType("int");
+
                     b.Property<int>("ApprovalStatus")
                         .HasColumnType("int");
 

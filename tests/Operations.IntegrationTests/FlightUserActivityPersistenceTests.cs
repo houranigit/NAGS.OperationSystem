@@ -45,7 +45,7 @@ public sealed class FlightUserActivityPersistenceTests(FlightUserActivityPersist
         var task = flight.AddTask(FlightTaskType.Major, null, null, taskWindow, "Original", author, Now.AddHours(-3),
             initialPerformers: [new(receiving, taskWindow)]).Value;
         flight.UpdateTask(task.Id, task.TaskType, null, null, taskWindow, "Latest", taskEditor, Now.AddHours(-2)).IsSuccess.ShouldBeTrue();
-        flight.Approve(author, "Reviewer", Now.AddMinutes(-100)).IsSuccess.ShouldBeTrue();
+        flight.Approve(author, "Reviewer", Now.AddMinutes(-100), 1).IsSuccess.ShouldBeTrue();
         var rtr = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddHours(6), receiving, null).Value, rtrCreator, Now.AddMinutes(-90)).Value;
         var returnWindow = TimeWindow.Create(Now.AddHours(6), Now.AddMinutes(390)).Value;
         flight.AddService(new(Guid.NewGuid(), "RTR service"), null, returnWindow, null, rtrCreator, Now.AddMinutes(-90), rtr.Id,
