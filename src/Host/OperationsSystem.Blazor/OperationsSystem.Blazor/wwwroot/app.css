@@ -532,6 +532,7 @@ a {
 
 /* --- List page layout ---------------------------------------------------- */
 .os-list-page {
+    --os-list-control-height: 2rem;
     display: flex;
     flex-direction: column;
     gap: var(--os-space-4);
@@ -549,6 +550,12 @@ a {
 
 .os-list-page > .os-page-header {
     margin-bottom: 0;
+}
+
+.os-list-page > .os-page-header .os-page-header-actions :is(.rz-button, button) {
+    height: var(--os-list-control-height);
+    min-height: var(--os-list-control-height);
+    padding-block: 0;
 }
 
 /* --- MasterData detail profile layout ----------------------------------- */
