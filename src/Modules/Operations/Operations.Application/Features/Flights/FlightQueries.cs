@@ -13,6 +13,14 @@ using Operations.Domain.Flights;
 
 namespace Operations.Application.Features.Flights;
 
+public enum FlightListType
+{
+    All,
+    Scheduled,
+    PerLanding,
+    AdHoc
+}
+
 public sealed record GetFlightsQuery(
     int Page = 1,
     int PageSize = 20,
@@ -23,7 +31,8 @@ public sealed record GetFlightsQuery(
     DateTimeOffset? FromUtc = null,
     DateTimeOffset? ToUtc = null,
     string? Sort = null,
-    IReadOnlyList<FlightReportStatus>? Statuses = null) : IQuery<PagedResult<FlightListItemDto>>;
+    IReadOnlyList<FlightReportStatus>? Statuses = null,
+    FlightListType FlightType = FlightListType.All) : IQuery<PagedResult<FlightListItemDto>>;
 
 public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsScope scope, ICustomerLogoReader logos,
     IMasterDataReader masterData, TimeProvider? timeProvider = null)
@@ -39,6 +48,17 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
         var flights = FlightListQuery.ApplyScopeAndFilters(db.Flights.AsNoTracking(), scopeResult.Value,
             new FlightListFilter(request.Search, request.StationId, request.CustomerId,
                 request.OperationTypeId, request.FromUtc, request.ToUtc));
+        flights = request.FlightType switch
+        {
+            FlightListType.Scheduled => flights.Where(flight =>
+                flight.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
+                !flight.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)),
+            FlightListType.PerLanding => flights.Where(flight =>
+                flight.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
+                flight.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)),
+            FlightListType.AdHoc => flights.Where(flight => flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType),
+            _ => flights
+        };
         var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
         var dueSoonBy = now.AddMinutes(30);
         // Keep the report precedence and STA thresholds in sync with Android's FlightCardReportStatus.

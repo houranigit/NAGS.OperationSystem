@@ -225,7 +225,7 @@ All flight routes are under `/api/v1/operations/flights`:
 
 | Method | Route | Behavior |
 |---|---|---|
-| GET | `/` | Filtered, sorted, paged flight register |
+| GET | `/` | Filtered, sorted, paged flight register with optional `flightType` (`All`, `Scheduled`, `PerLanding`, or `AdHoc`) |
 | GET | `/{id}` | Flight planning details, arrival/departure/cancellation submissions, and rowversion |
 | GET | `/{id}/operations` | Portal work and cancellation editor details within the register scope |
 | PUT | `/{id}/operations/approval` | Validate and approve the flight, including pending RTRs, with `If-Match` |

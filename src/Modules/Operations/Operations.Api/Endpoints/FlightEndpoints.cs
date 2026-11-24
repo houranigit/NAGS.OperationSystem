@@ -284,14 +284,20 @@ internal static class FlightEndpoints
         flights.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, Guid? stationId = null, Guid? customerId = null,
             Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null,
-            string? status = null) =>
+            string? status = null, string? flightType = null) =>
         {
             var statuses = ParseStatuses(status);
             if (statuses is null)
                 return ApiResults.Problem(Error.Validation("One or more flight statuses are invalid.", "Operations.Flight.StatusInvalid"));
 
+            var type = FlightListType.All;
+            if (!string.IsNullOrWhiteSpace(flightType) &&
+                (!Enum.TryParse(flightType, ignoreCase: true, out type) ||
+                 !string.Equals(Enum.GetName(type), flightType.Trim(), StringComparison.OrdinalIgnoreCase)))
+                return ApiResults.Problem(Error.Validation("Choose All, Scheduled, PerLanding, or AdHoc.", "Operations.Flight.TypeInvalid"));
+
             var result = await sender.Send(new GetFlightsQuery(
-                page, pageSize, search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses), ct);
+                page, pageSize, search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, type), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 

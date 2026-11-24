@@ -2,6 +2,54 @@
     container: flights-list / inline-size;
 }
 
+.os-list-page ::deep .os-list-toolbar--collapsible .os-list-toolbar-main,
+.os-list-page ::deep .os-list-toolbar--collapsible .os-list-toolbar-filters {
+    flex-wrap: wrap;
+}
+
+.os-list-page ::deep .os-list-toolbar--collapsible .os-list-toolbar-filters {
+    flex-basis: 28rem;
+}
+
+.os-list-page ::deep .os-list-toolbar-meta {
+    justify-content: flex-end;
+    margin-inline-start: auto;
+    max-width: 100%;
+}
+
+.ofl-flight-type {
+    --rz-selectbar-background-color: var(--os-color-surface);
+    --rz-selectbar-color: var(--os-color-text);
+    --rz-selectbar-border: 1px solid var(--os-color-border);
+    --rz-selectbar-selected-background-color: var(--os-color-primary);
+    --rz-selectbar-selected-color: var(--os-color-primary-contrast);
+    --rz-selectbar-selected-border: 1px solid var(--os-color-primary);
+    --rz-selectbar-border-radius: var(--os-radius-sm);
+}
+
+.ofl-flight-type ::deep .rz-button {
+    min-height: 2rem;
+    padding: var(--os-space-1) var(--os-space-2);
+    white-space: nowrap;
+}
+
+@container flights-list (width < 18rem) {
+    .ofl-flight-type {
+        width: 100%;
+    }
+
+    .ofl-flight-type ::deep .rz-selectbar-horizontal {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--os-space-1);
+    }
+
+    .ofl-flight-type ::deep .rz-selectbar-horizontal .rz-button {
+        margin-inline-start: 0;
+        border-radius: var(--os-radius-sm);
+    }
+}
+
 .ofl-filters {
     display: grid;
     grid-template-columns: minmax(0, 1fr);

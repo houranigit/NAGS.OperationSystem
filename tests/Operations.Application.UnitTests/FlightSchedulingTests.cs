@@ -208,6 +208,44 @@ public sealed class FlightSchedulingTests
     }
 
     [Theory]
+    [InlineData(FlightListType.All)]
+    [InlineData(FlightListType.Scheduled)]
+    [InlineData(FlightListType.PerLanding)]
+    [InlineData(FlightListType.AdHoc)]
+    public async Task FlightRegister_AppliesTypeWithinPortalScopeBeforePaging(FlightListType type)
+    {
+        await using var db = NewDb();
+        var stationId = Guid.NewGuid();
+        var adHocTypeId = WellKnownMasterDataIds.AdHocOperationType;
+        var scheduled = NewFlight(stationId, [], arrivalDay: 1);
+        var perLanding = NewFlight(stationId, [], perLanding: true, arrivalDay: 2);
+        var adHoc = NewFlight(stationId, [], arrivalDay: 3, operationTypeId: adHocTypeId);
+        var adHocWithPerLandingService = NewFlight(stationId, [], perLanding: true, arrivalDay: 4, operationTypeId: adHocTypeId);
+        db.Flights.AddRange(scheduled, perLanding, adHoc, adHocWithPerLandingService,
+            NewFlight(Guid.NewGuid(), [], arrivalDay: 1, operationTypeId: adHocTypeId));
+        await db.SaveChangesAsync();
+
+        Flight[] expected = type switch
+        {
+            FlightListType.Scheduled => [scheduled],
+            FlightListType.PerLanding => [perLanding],
+            FlightListType.AdHoc => [adHoc, adHocWithPerLandingService],
+            _ => [scheduled, perLanding, adHoc, adHocWithPerLandingService]
+        };
+        var scope = new StaticScope(new OperationsScopeContext(UserType.StationStaff, stationId, Guid.NewGuid(), CanViewStationWide: true));
+        var handler = new GetFlightsQueryHandler(db, scope, NoopCustomerLogoReader.Instance, new SchedulingMasterDataReader());
+        for (var page = 1; page <= expected.Length; page++)
+        {
+            var result = await handler.Handle(new GetFlightsQuery(Page: page, PageSize: 1,
+                Sort: "scheduledArrivalUtc:asc", FlightType: type), CancellationToken.None);
+
+            result.IsSuccess.ShouldBeTrue();
+            result.Value.TotalCount.ShouldBe(expected.LongLength);
+            result.Value.Items.ShouldHaveSingleItem().Id.ShouldBe(expected[page - 1].Id);
+        }
+    }
+
+    [Theory]
     [MemberData(nameof(ValidFlightNumbers))]
     public async Task BatchSchedule_NormalizesTheFullNumberDeduplicatesDatesAndPreservesOvernightLocalTimes(string? customerCode, string flightNumber, string expectedNumber)
     {
@@ -603,9 +641,11 @@ public sealed class FlightSchedulingTests
         flight.AssignedEmployees.ShouldBeEmpty();
     }
 
-    private static Flight NewFlight(Guid stationId, IReadOnlyList<StaffMemberSnapshot> staff, bool perLanding = false, string stationIata = "RUH", int arrivalDay = 1, AircraftTypeSnapshot? aircraftType = null, string? customerCode = "SV") =>
+    private static Flight NewFlight(Guid stationId, IReadOnlyList<StaffMemberSnapshot> staff, bool perLanding = false,
+        string stationIata = "RUH", int arrivalDay = 1, AircraftTypeSnapshot? aircraftType = null, string? customerCode = "SV",
+        Guid? operationTypeId = null) =>
         Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), customerCode, "Saudia"),
-            new StationSnapshot(stationId, stationIata, "Station"), new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
+            new StationSnapshot(stationId, stationIata, "Station"), new OperationTypeSnapshot(operationTypeId ?? Guid.NewGuid(), "Transit"),
             FlightNumber.Create("123", customerCode).Value, ScheduledTime.Create(new DateTimeOffset(2026, 7, arrivalDay, 9, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, arrivalDay, 10, 0, 0, TimeSpan.Zero)).Value,
             aircraftType, [new ServiceSnapshot(perLanding ? WellKnownMasterDataIds.AircraftPerLandingService : Guid.NewGuid(), "Service")],
             staff, Guid.NewGuid(), DateTimeOffset.UtcNow).Value;

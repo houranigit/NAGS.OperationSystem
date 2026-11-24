@@ -54,6 +54,11 @@ public static class UiStrings
 
     public static class Flights
     {
+        public static string FlightType => UiText.Get("Flights.FlightType", "Flight type");
+        public static string TypeAll => UiText.Get("Flights.TypeAll", "All");
+        public static string TypeScheduled => UiText.Get("Flights.TypeScheduled", "Scheduled");
+        public static string TypePerLanding => UiText.Get("Flights.TypePerLanding", "Per Landing");
+        public static string TypeAdHoc => UiText.Get("Flights.TypeAdHoc", "Ad Hoc");
         public static string AwaitingAta => UiText.Get("Flights.AwaitingAta", "Awaiting ATA");
         public static string TotalCount(int count) => string.Format(
             count == 1 ? UiText.Get("Flights.TotalOne", "{0:N0} flight") : UiText.Get("Flights.TotalMany", "{0:N0} flights"),

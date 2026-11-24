@@ -30,6 +30,19 @@
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="Search flight number, customer, or ID" CountLabel="flights" EmptyText="No flights match your filters."
                       UseCollapsibleFilters="true" ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync">
+            <Toolbar>
+                <div class="ofl-flight-type">
+                    <RadzenSelectBar TValue="FlightType" Value="@flightType" ValueChanged="@OnFlightTypeChangedAsync"
+                                     AriaLabel="@UiStrings.Flights.FlightType">
+                        <Items>
+                            <RadzenSelectBarItem Value="@FlightType.All" Text="@UiStrings.Flights.TypeAll" />
+                            <RadzenSelectBarItem Value="@FlightType.Scheduled" Text="@UiStrings.Flights.TypeScheduled" />
+                            <RadzenSelectBarItem Value="@FlightType.PerLanding" Text="@UiStrings.Flights.TypePerLanding" />
+                            <RadzenSelectBarItem Value="@FlightType.AdHoc" Text="@UiStrings.Flights.TypeAdHoc" />
+                        </Items>
+                    </RadzenSelectBar>
+                </div>
+            </Toolbar>
             <Filters>
                 <div class="ofl-filters">
                     <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
@@ -138,9 +151,13 @@
         new("Conflict", "Conflict", "critical", "warning_amber")
     ];
 
+    private enum FlightType { All, Scheduled, PerLanding, AdHoc }
+
     private DataListCard<FlightListItem>? list;
     private IReadOnlyList<FlightListItem> items = [];
     private int totalCount;
+    private long loadRequest;
+    private FlightType flightType = FlightType.All;
     private bool isLoading;
     private bool loadError;
     private string searchTerm = string.Empty;
@@ -320,6 +337,15 @@
         await ReloadAsync();
     }
 
+    private async Task OnFlightTypeChangedAsync(FlightType value)
+    {
+        if (flightType == value)
+            return;
+
+        flightType = value;
+        await ReloadAsync();
+    }
+
     private async Task LoadDataAsync(LoadDataArgs args)
     {
         currentPageSize = args.Top ?? currentPageSize;
@@ -339,6 +365,7 @@
 
     private async Task FetchAsync()
     {
+        var request = ++loadRequest;
         isLoading = true;
         loadError = false;
         StateHasChanged();
@@ -347,18 +374,26 @@
         {
             var result = await Operations.GetFlightsAsync(currentPage, currentPageSize,
                 string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, stationFilter, customerFilter, operationTypeFilter,
-                DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort, statuses: statusFilters);
+                DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort, statuses: statusFilters,
+                flightType: flightType == FlightType.All ? null : flightType.ToString());
+            if (request != loadRequest)
+                return;
+
             items = result.Items;
             totalCount = (int)result.TotalCount;
         }
         catch (ApiException)
         {
-            loadError = true;
+            if (request == loadRequest)
+                loadError = true;
         }
         finally
         {
-            isLoading = false;
-            StateHasChanged();
+            if (request == loadRequest)
+            {
+                isLoading = false;
+                StateHasChanged();
+            }
         }
     }
 

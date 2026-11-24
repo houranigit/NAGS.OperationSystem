@@ -769,6 +769,11 @@
   <data name="PortalAccess.PendingLoginEmailDetail" xml:space="preserve"><value>بانتظار تأكيد {0} قبل تغيير بريد تسجيل الدخول المرتبط.</value></data>
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>فشل تغيير بريد تسجيل الدخول</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>تعذر على الهوية بدء التحقق: {0}</value></data>
+  <data name="Flights.FlightType" xml:space="preserve"><value>نوع الرحلة</value></data>
+  <data name="Flights.TypeAll" xml:space="preserve"><value>الكل</value></data>
+  <data name="Flights.TypeScheduled" xml:space="preserve"><value>المجدولة</value></data>
+  <data name="Flights.TypePerLanding" xml:space="preserve"><value>لكل هبوط</value></data>
+  <data name="Flights.TypeAdHoc" xml:space="preserve"><value>Ad Hoc</value></data>
   <data name="Flights.AwaitingAta" xml:space="preserve"><value>بانتظار ATA</value></data>
   <data name="Flights.TotalOne" xml:space="preserve"><value>عدد الرحلات {0:N0}</value></data>
   <data name="Flights.TotalMany" xml:space="preserve"><value>عدد الرحلات {0:N0}</value></data>
