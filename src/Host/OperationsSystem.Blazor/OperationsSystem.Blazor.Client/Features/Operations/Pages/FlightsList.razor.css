@@ -1,23 +1,47 @@
-.ofl-date-range {
-    display: inline-flex;
+.os-list-page {
+    container: flights-list / inline-size;
+}
+
+.ofl-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     align-items: center;
-    gap: var(--os-space-2);
-    flex: 0 1 19rem;
-    min-width: min(100%, 23.5rem);
-}
-
-.ofl-date-filter {
-    flex: 1 1 9rem;
-    width: 9.25rem;
-    min-width: 0;
-}
-
-.ofl-date-range ::deep .rz-datepicker {
+    gap: var(--os-space-3);
     width: 100%;
 }
 
-.ofl-date-range ::deep input {
+.ofl-filters ::deep > .os-filter,
+.ofl-filters ::deep > .ofl-date-filter {
+    width: 100%;
+    min-width: 0;
+}
+
+.ofl-filters ::deep .ofl-date-filter input {
     min-height: 2.5rem;
+}
+
+@container flights-list (width < 18rem) {
+    .os-list-page ::deep .os-list-card:has(.os-list-filter-panel.is-expanded) .os-list-grid {
+        min-height: 16rem;
+    }
+}
+
+@container flights-list (min-width: 18rem) {
+    .ofl-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@container flights-list (min-width: 32rem) {
+    .ofl-filters {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@container flights-list (min-width: 64rem) {
+    .ofl-filters {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
 }
 
 .os-list-page ::deep .ofl-schedule-bulk-button {
@@ -53,15 +77,4 @@
     border-radius: 50%;
     background: currentColor;
     flex: 0 0 auto;
-}
-
-@media (max-width: 720px) {
-    .ofl-date-range {
-        flex-wrap: wrap;
-        width: 100%;
-    }
-
-    .ofl-date-filter {
-        flex: 1 1 10rem;
-    }
 }

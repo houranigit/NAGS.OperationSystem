@@ -31,11 +31,11 @@
                       SearchPlaceholder="Search flight number, customer, or ID" CountLabel="flights" EmptyText="No flights match your filters."
                       UseCollapsibleFilters="true" ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync">
             <Filters>
-                <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
-                <DataListFilter TValue="Guid?" Placeholder="All customers" Data="@customerOptions" Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync" AllowFiltering="true" />
-                <DataListFilter TValue="IEnumerable<string>" Placeholder="All statuses" Data="@statusOptions" Value="@statusFilters" ValueChanged="@OnStatusFilterChangedAsync" Multiple="true" Chips="true" />
-                <DataListFilter TValue="Guid?" Placeholder="All operations" Data="@operationTypeOptions" Value="@operationTypeFilter" ValueChanged="@OnOperationTypeFilterChangedAsync" />
-                <div class="ofl-date-range">
+                <div class="ofl-filters">
+                    <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
+                    <DataListFilter TValue="Guid?" Placeholder="All customers" Data="@customerOptions" Value="@customerFilter" ValueChanged="@OnCustomerFilterChangedAsync" AllowFiltering="true" />
+                    <DataListFilter TValue="IEnumerable<string>" Placeholder="All statuses" Data="@statusOptions" Value="@statusFilters" ValueChanged="@OnStatusFilterChangedAsync" Multiple="true" Chips="true" />
+                    <DataListFilter TValue="Guid?" Placeholder="All operations" Data="@operationTypeOptions" Value="@operationTypeFilter" ValueChanged="@OnOperationTypeFilterChangedAsync" />
                     <RadzenDatePicker Disabled="@(stationFilter is null)" TValue="DateTime?" Value="@fromFilter" Change="@OnFromFilterChangedAsync"
                                       DateFormat="yyyy-MM-dd" ShowTime="false" AllowClear="true"
                                       Placeholder="From date" class="ofl-date-filter" />

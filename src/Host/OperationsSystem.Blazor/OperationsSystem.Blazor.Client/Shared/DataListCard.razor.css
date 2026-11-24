@@ -198,12 +198,6 @@
     gap: var(--os-space-3);
 }
 
-.os-list-filter-panel-inner ::deep .os-filter {
-    flex: 1 1 10.5rem;
-    min-width: 10.5rem;
-    max-width: 11.25rem;
-}
-
 .os-clear-filters {
     border: 1px solid transparent;
     background: transparent;
