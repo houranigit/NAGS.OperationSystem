@@ -454,7 +454,7 @@ public sealed class FlightSchedulingTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task RecordedCancellationLocksTheScheduleButAllowsRosterReplacement(bool approve)
+    public async Task RecordedCancellationLocksTheScheduleAndApprovalLocksTheRoster(bool approve)
     {
         await using var db = NewDb();
         var reader = new SchedulingMasterDataReader();
@@ -486,10 +486,16 @@ public sealed class FlightSchedulingTests
 
         var assigned = await new AssignEmployeesCommandHandler(db, AdminScope(), resolver, new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
             .Handle(new(flight.Id, [], flight.RowVersion), CancellationToken.None);
-        assigned.IsSuccess.ShouldBeTrue();
+        if (approve)
+            assigned.Error.Code.ShouldBe("Operations.FlightApproval.Locked");
+        else
+            assigned.IsSuccess.ShouldBeTrue();
         db.ChangeTracker.Clear();
         var saved = (await details.Handle(new(flight.Id), CancellationToken.None)).Value;
-        saved.AssignedEmployees.ShouldBeEmpty();
+        if (approve)
+            saved.AssignedEmployees.ShouldHaveSingleItem().StaffMemberId.ShouldBe(employee.StaffMemberId);
+        else
+            saved.AssignedEmployees.ShouldBeEmpty();
         saved.ScheduledArrivalUtc.ShouldBe(flight.Schedule.Sta);
         saved.ScheduledDepartureUtc.ShouldBe(flight.Schedule.Std);
         saved.FlightNumber.ShouldBe(flight.FlightNumber.Value);

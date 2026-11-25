@@ -524,6 +524,10 @@ public sealed class AssignEmployeesCommandHandler(
         if (accessCheck.IsFailure)
             return accessCheck.Error;
 
+        var approval = flight.EnsureApprovalAllowsEdit();
+        if (approval.IsFailure)
+            return approval.Error;
+
         if (flight.IsPerLanding)
             return PerLandingAssignmentGuard.Error();
 

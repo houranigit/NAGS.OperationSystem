@@ -192,6 +192,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
 
     public Result ReplaceAssignedEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
     {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval;
         if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && employees.Count > 0) return AdHocAssignmentError();
         if (IsPerLanding && employees.Count > 0)
             return PerLandingAssignmentError();

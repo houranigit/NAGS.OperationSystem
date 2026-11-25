@@ -311,8 +311,11 @@
     font: inherit;
     font-size: var(--os-text-sm);
     font-weight: 700;
-    cursor: pointer;
     transition: background var(--os-transition), border-color var(--os-transition), color var(--os-transition);
+}
+
+button.opf-chip:not(:disabled) {
+    cursor: pointer;
 }
 
 .opf-chip ::deep .rz-icon {
@@ -335,7 +338,7 @@
     font-weight: 700;
 }
 
-.opf-chip:hover {
+button.opf-chip:not(:disabled):hover {
     background: var(--os-color-surface-hover);
     color: var(--os-color-text);
 }

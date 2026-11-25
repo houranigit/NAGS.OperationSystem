@@ -67,7 +67,8 @@ public sealed record FlightDetail(
     string RowVersion,
     string StationTimeZoneId,
     bool IsAdHocFlight = false,
-    bool CanEditSchedule = false);
+    bool CanEditSchedule = false,
+    string ApprovalStatus = FlightApprovalStatuses.NotApproved);
 
 public sealed record ScheduleFlightRequestModel(
     Guid CustomerId,

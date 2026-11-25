@@ -14,16 +14,6 @@
         {
             @WizardStepper()
 
-            @if (ScheduleReadOnly)
-            {
-                <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock" Title="Schedule details are read-only">
-                    @if (CanEditRoster)
-                    {
-                        <p>You can update assigned staff on the Staff step.</p>
-                    }
-                </DismissibleDialogMessage>
-            }
-
             <div class="opf-wizard-body">
                 @(step switch
                 {
@@ -113,13 +103,15 @@
     ];
 
     private bool IsBulkCreate => BulkMode && FlightId is null;
-    private bool ScheduleReadOnly => original?.CanEditSchedule == false;
+    private bool ApprovalLocked => FlightApprovalStatuses.IsLocked(original?.ApprovalStatus);
+    private bool ScheduleReadOnly => ApprovalLocked || original?.CanEditSchedule == false;
     private bool CanAssignStaff => Auth.HasPermission(OperationsPermissions.FlightsAssign) && original?.IsAdHocFlight != true;
-    private bool CanEditRoster => CanAssignStaff && !IsPerLandingSelected;
+    private bool CanEditRoster => !ApprovalLocked && CanAssignStaff && !IsPerLandingSelected;
+    private bool ShowStaffStep => CanAssignStaff || ApprovalLocked && original?.AssignedEmployees.Count > 0;
     private bool CanSubmit => FlightId is null || original is not null && (!ScheduleReadOnly || CanEditRoster);
     private bool HasRosterChanges => original is not null &&
         !model.AssignedStaffMemberIds.SetEquals(original.AssignedEmployees.Select(member => member.StaffMemberId));
-    private int LastStep => (IsBulkCreate ? 3 : 2) - (CanAssignStaff ? 0 : 1);
+    private int LastStep => (IsBulkCreate ? 3 : 2) - (ShowStaffStep ? 0 : 1);
     private string SubmitButtonText => FlightId is null
         ? (IsBulkCreate ? "Schedule flights" : "Schedule flight")
         : "Save changes";
@@ -356,7 +348,32 @@
 
     private RenderFragment StaffStep() => @<section class="opf-step-content">
         <div class="os-operation-section-title"><RadzenIcon Icon="groups" /><span>Assigned staff</span></div>
-        @if (IsPerLandingSelected)
+        @if (ApprovalLocked && original is { } saved)
+        {
+            @if (saved.AssignedEmployees.Count == 0)
+            {
+                <div class="opf-empty-row">
+                    <RadzenIcon Icon="groups" aria-hidden="true" />
+                    <span>No staff assigned.</span>
+                </div>
+            }
+            else
+            {
+                <div class="opf-selection-panel opf-selection-panel-scroll">
+                    <div class="opf-chip-list opf-chip-list-staff">
+                        @foreach (var member in saved.AssignedEmployees)
+                        {
+                            <span @key="member.StaffMemberId" class="opf-chip opf-chip-selected">
+                                <RadzenIcon Icon="person" aria-hidden="true" />
+                                <span>@member.FullName</span>
+                                <small>@member.EmployeeId</small>
+                            </span>
+                        }
+                    </div>
+                </div>
+            }
+        }
+        else if (IsPerLandingSelected)
         {
             <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="Per landing flight">
                 <p>This flight is per landing and does not need staff assignment because all station staff can reach the flight.</p>
@@ -484,7 +501,7 @@
         try
         {
             original = FlightId is { } id ? await Operations.GetFlightAsync(id) : null;
-            if (original is { CanEditSchedule: false } saved)
+            if (ScheduleReadOnly && original is { } saved)
             {
                 customers = [new(saved.CustomerId, saved.CustomerIataCode, saved.CustomerName)];
                 stations = [new(saved.StationId, saved.StationIata, saved.StationName, saved.StationTimeZoneId)];

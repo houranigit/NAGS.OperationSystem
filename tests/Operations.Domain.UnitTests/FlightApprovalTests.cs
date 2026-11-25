@@ -11,7 +11,7 @@ public sealed class FlightApprovalTests
     private static readonly DateTimeOffset Now = TestData.Now;
 
     [Fact]
-    public void ApprovalLocksOperationalWorkWhileTheRosterCanStillBeChanged()
+    public void ApprovalLocksOperationalWorkAndTheRoster()
     {
         var flight = DepartedFlight();
         var reviewer = Guid.NewGuid();
@@ -28,8 +28,8 @@ public sealed class FlightApprovalTests
         flight.ApprovalNumber.ShouldBe("RUH-0001");
         flight.ChangeFlightNumber(TestData.FlightNo("SV1021"), Now).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
         var assignee = TestData.Staff();
-        flight.ReplaceAssignedEmployees([assignee], Now).IsSuccess.ShouldBeTrue();
-        flight.AssignedEmployees.ShouldHaveSingleItem().Employee.ShouldBe(assignee);
+        flight.ReplaceAssignedEmployees([assignee], Now).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
+        flight.AssignedEmployees.ShouldHaveSingleItem().Employee.ShouldBe(_staff);
         flight.ApprovalStatus.ShouldBe(FlightApprovalStatus.Approved);
         flight.ApprovalNumber.ShouldBe("RUH-0001");
         flight.SubmitArrival(_staff, Arrival(Now), _actor, Now).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
@@ -41,6 +41,8 @@ public sealed class FlightApprovalTests
         flight.IsApprovalLocked.ShouldBeFalse();
         flight.ApprovalSequence.ShouldBeNull();
         flight.ApprovalNumber.ShouldBeNull();
+        flight.ReplaceAssignedEmployees([assignee], Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
+        flight.AssignedEmployees.ShouldHaveSingleItem().Employee.ShouldBe(assignee);
         flight.ChangeFlightNumber(TestData.FlightNo("SV1021"), Now.AddMinutes(2)).Error.Code.ShouldBe("Operations.Flight.ScheduleReadOnly");
         flight.ApprovedByUserId.ShouldBe(reviewer);
 
@@ -105,6 +107,8 @@ public sealed class FlightApprovalTests
 
         flight.ApprovalStatus.ShouldBe(FlightApprovalStatus.PendingRtr);
         flight.IsApprovalLocked.ShouldBeTrue();
+        flight.ReplaceAssignedEmployees([], Now).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
+        flight.AssignedEmployees.ShouldHaveSingleItem().Employee.ShouldBe(_staff);
         flight.ApprovedReturnToRampSequence.ShouldBe(first.Sequence);
         flight.UpdateReturnToRampArrival(first.Id, RtrArrival(Now.AddHours(2)), _actor, Now).Error.Code.ShouldBe("Operations.FlightApproval.ReturnToRampLocked");
         flight.EnsureApprovalAllowsReturnToRamp(second.Id).IsSuccess.ShouldBeTrue();
