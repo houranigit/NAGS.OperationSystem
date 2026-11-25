@@ -1163,6 +1163,11 @@ namespace Operations.Infrastructure.Persistence.Migrations
                                 .HasColumnType("nvarchar(max)")
                                 .HasColumnName("Remarks");
 
+                            b1.Property<int>("Type")
+                                .HasColumnType("int")
+                                .HasDefaultValue(0)
+                                .HasColumnName("CancellationType");
+
                             b1.HasKey("FlightCancellationSubmissionId");
 
                             b1.ToTable("flight_cancellation_submissions", "operations");

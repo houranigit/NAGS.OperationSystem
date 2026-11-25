@@ -33,15 +33,30 @@
             {
                 <div>Submitted by <strong>@report.SubmitterName</strong></div>
             }
-            <div class="pcf-date">
-                <PortalOperationDateField Label="@($"Cancellation date and time ({currentFlight.StationTimeZoneId})")"
+            <div class="pcf-field-row">
+                <PortalOperationDateField Label="Cancellation Date"
                                           Time="@time" Required="@CanSave" Disabled="@(!CanSave || isSaving)" />
+                <div class="pcf-type os-operation-field">
+                    <span class="os-operation-label">Cancellation type</span>
+                    <RadzenSelectBar TValue="PortalCancellationType" @bind-Value="cancellationType"
+                                     @bind-Value:after="ClearRemarksError" AriaLabel="Cancellation type" Disabled="@(!CanSave || isSaving)">
+                        <Items>
+                            <RadzenSelectBarItem Value="@PortalCancellationType.Unplanned" Text="Unplanned" />
+                            <RadzenSelectBarItem Value="@PortalCancellationType.Planned" Text="Planned" />
+                        </Items>
+                    </RadzenSelectBar>
+                </div>
             </div>
-            <div>
-                <RadzenLabel Component="portalCancellationRemarks" Text="@(CanSave ? "Remarks (optional)" : "Remarks")" />
-                <RadzenTextArea Name="portalCancellationRemarks" @bind-Value="remarks" Immediate="true" Rows="4"
-                                Disabled="@(!CanSave || isSaving)" class="pcf-control" />
-            </div>
+            <PortalOperationFormField Label="@(CanSave && !RequiresRemarks ? "Remarks (optional)" : "Remarks")"
+                                      Required="@(CanSave && RequiresRemarks)">
+                <RadzenTextArea Name="portalCancellationRemarks" @bind-Value="remarks" @bind-Value:after="ClearRemarksError"
+                                Immediate="true" Rows="4" Placeholder="@(CanSave && RequiresRemarks ? PlannedRemarksPlaceholder : null)"
+                                Disabled="@(!CanSave || isSaving)" class="pcf-control"
+                                aria-required="@(CanSave && RequiresRemarks ? "true" : null)"
+                                aria-invalid="@(showRemarksError ? "true" : null)"
+                                aria-describedby="@(showRemarksError ? PortalFlightValidation.ErrorId(RemarksField) : null)" />
+                <PortalFieldError Field="@RemarksField" Message="@(showRemarksError ? "Enter remarks for a planned cancellation." : null)" />
+            </PortalOperationFormField>
         </section>
     }
 
@@ -89,18 +104,23 @@
     [Parameter] public bool ViewOrder { get; set; }
     [Parameter] public PortalFlightWorkDialog.ApprovalAction ReviewAction { get; set; }
 
+    private const string RemarksField = "cancellation-remarks";
+    private const string PlannedRemarksPlaceholder = "Name:\nEmail:";
     private PortalFlightOperations? flight;
     private PortalFlightCancellation? submission;
     private IReadOnlyList<PortalFlightCancellation> reports = [];
     private StationTimeZone zone = default!;
     private PortalOperationTime? canceledAt;
+    private PortalCancellationType cancellationType;
     private string? remarks;
+    private bool showRemarksError;
     private string? errorMessage;
     private bool isLoading = true;
     private bool isSaving;
     private bool isDeletingOrder;
 
     private bool IsApprovalReview => ReviewAction != PortalFlightWorkDialog.ApprovalAction.None;
+    private bool RequiresRemarks => cancellationType == PortalCancellationType.Planned;
     private bool IsUnlockReview => ReviewAction == PortalFlightWorkDialog.ApprovalAction.Unlock;
     private bool CanChangeApproval => ReviewAction switch
     {
@@ -171,7 +191,15 @@
     {
         submission = report;
         canceledAt = new PortalOperationTime(zone, report?.CanceledAtUtc ?? DateTimeOffset.UtcNow);
+        cancellationType = report?.CancellationType ?? PortalCancellationType.Unplanned;
         remarks = report?.Remarks;
+        showRemarksError = false;
+    }
+
+    private void ClearRemarksError()
+    {
+        if (!RequiresRemarks || !string.IsNullOrWhiteSpace(remarks))
+            showRemarksError = false;
     }
 
     private async Task SelectReportAsync(Guid? id)
@@ -179,7 +207,7 @@
         if (isSaving || id == submission?.Id || reports.FirstOrDefault(item => item.Id == id) is not { } report)
             return;
 
-        if (CanSave && (canceledAt?.HasChanged == true || remarks != submission?.Remarks) &&
+        if (CanSave && (canceledAt?.HasChanged == true || remarks != submission?.Remarks || cancellationType != submission?.CancellationType) &&
             await Dialogs.Confirm("Discard the unsaved changes?", "Discard changes",
                 new ConfirmOptions { OkButtonText = "Discard", CancelButtonText = "Keep editing" }) != true)
             return;
@@ -255,12 +283,15 @@
             return;
 
         errorMessage = null;
+        showRemarksError = RequiresRemarks && string.IsNullOrWhiteSpace(remarks);
         var errors = new List<string>();
         if (canceledAt.Read("Cancellation date and time", errors, required: true) is not { } utc)
         {
             errorMessage = errors.FirstOrDefault() ?? "Enter the cancellation date and time.";
             return;
         }
+        if (showRemarksError)
+            return;
 
         isSaving = true;
         try
@@ -273,7 +304,7 @@
                 "Confirm cancellation report", new ConfirmOptions { OkButtonText = "Continue", CancelButtonText = "Back" }) != true)
                 return;
 
-            var request = new PortalFlightCancellationRequest(utc, remarks, hasOpposingReports);
+            var request = new PortalFlightCancellationRequest(utc, remarks, hasOpposingReports, cancellationType);
             if (AdministratorEntry && submission is { } report)
                 await Operations.UpdatePortalCancellationAsync(FlightId, report.Id, request, details.RowVersion);
             else

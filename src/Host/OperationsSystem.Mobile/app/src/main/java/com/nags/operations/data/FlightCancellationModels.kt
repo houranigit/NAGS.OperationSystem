@@ -1,8 +1,13 @@
 package com.nags.operations.data
 
 import com.nags.operations.data.db.entities.FlightCancellationPendingEntity
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+
+@Serializable
+enum class CancellationType { Unplanned, Planned }
 
 @Serializable
 data class FlightCancellationSubmission(
@@ -13,13 +18,17 @@ data class FlightCancellationSubmission(
     val isAccepted: Boolean,
     val createdAtUtc: String,
     val updatedAtUtc: String? = null,
+    val cancellationType: CancellationType = CancellationType.Unplanned,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class SaveFlightCancellationRequest(
     val canceledAtUtc: String,
     val remarks: String? = null,
     val acknowledgeConflictingSubmission: Boolean = false,
+    // A queued request from before cancellation types must replay without changing the saved type.
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val cancellationType: CancellationType? = null,
 ) {
     fun normalized() = copy(remarks = remarks?.trim()?.takeIf(String::isNotEmpty))
     fun withoutAcknowledgement() = copy(acknowledgeConflictingSubmission = false)

@@ -44,7 +44,7 @@ public sealed record PlannedServiceModel(Guid ServiceId, string Name, bool IsAir
 public sealed record AssignedEmployeeModel(Guid StaffMemberId, string FullName, string EmployeeId);
 
 public sealed record PortalFlightCancellationRequest(DateTimeOffset CanceledAtUtc, string? Remarks,
-    bool AcknowledgeConflictingSubmission = false);
+    bool AcknowledgeConflictingSubmission = false, PortalCancellationType CancellationType = PortalCancellationType.Unplanned);
 
 public sealed record FlightDetail(
     Guid Id,

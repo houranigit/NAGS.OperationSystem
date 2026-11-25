@@ -326,6 +326,55 @@ public sealed partial class FlightVisibilityScopeTests
     }
 
     [Fact]
+    public async Task Portal_cancellation_type_validates_remarks_and_preserves_planned_type_on_legacy_corrections()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var id = await ScheduleFlightAsync(admin, refs.StationId, refs, "8724");
+        var initial = await PortalOperationsDetailAsync(admin, id);
+        var canceledAtUtc = DateTimeOffset.UtcNow;
+
+        using var created = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "cancellation",
+            new { canceledAtUtc, remarks = "Initial remarks" }, initial.RowVersion);
+        created.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var unplanned = (await created.Content.ReadFromJsonAsync<FlightCancellationSavedDto>())!;
+        unplanned.Submission.CancellationType.ShouldBe(CancellationType.Unplanned);
+        var route = $"cancellation/{unplanned.Submission.Id}";
+
+        using var invalid = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, route,
+            new { canceledAtUtc, remarks = " \t ", cancellationType = "Planned" }, unplanned.RowVersion);
+        invalid.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await invalid.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.CancellationDetails.RemarksRequired");
+
+        using var changed = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, route,
+            new { canceledAtUtc, remarks = "Initial remarks", cancellationType = "Planned" }, unplanned.RowVersion);
+        changed.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var planned = (await changed.Content.ReadFromJsonAsync<FlightCancellationSavedDto>())!;
+        planned.Submission.CancellationType.ShouldBe(CancellationType.Planned);
+        planned.Submission.Id.ShouldBe(unplanned.Submission.Id);
+        planned.RowVersion.ShouldNotBe(unplanned.RowVersion);
+
+        using var legacyRetry = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, route,
+            new { canceledAtUtc, remarks = "Initial remarks" }, unplanned.RowVersion);
+        legacyRetry.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await legacyRetry.Content.ReadFromJsonAsync<FlightCancellationSavedDto>()).ShouldBe(planned);
+
+        using var legacyCorrection = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, route,
+            new { canceledAtUtc, remarks = "Updated remarks" }, planned.RowVersion);
+        legacyCorrection.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var corrected = (await legacyCorrection.Content.ReadFromJsonAsync<FlightCancellationSavedDto>())!;
+        corrected.Submission.CancellationType.ShouldBe(CancellationType.Planned);
+
+        using var legacyBlank = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, route,
+            new { canceledAtUtc, remarks = (string?)null }, corrected.RowVersion);
+        legacyBlank.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await legacyBlank.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.CancellationDetails.RemarksRequired");
+        (await PortalOperationsDetailAsync(admin, id)).CancellationSubmissions!.ShouldHaveSingleItem().ShouldBe(corrected.Submission);
+    }
+
+    [Fact]
     public async Task Portal_administrator_cancellation_keeps_account_attribution_and_exact_undo()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();

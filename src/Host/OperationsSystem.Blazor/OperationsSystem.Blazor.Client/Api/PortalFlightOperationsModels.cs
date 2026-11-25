@@ -4,6 +4,9 @@ namespace OperationsSystem.Blazor.Client.Api;
 
 internal enum PortalFlightOrderKind { WorkOrder, CancellationOrder }
 
+[JsonConverter(typeof(JsonStringEnumConverter<PortalCancellationType>))]
+public enum PortalCancellationType { Unplanned, Planned }
+
 public sealed record PortalFlightOperations(
     Guid Id, string FlightNumber, Guid CustomerId, string? CustomerIataCode, string CustomerName,
     Guid StationId, string StationIata, string OperationTypeName, Guid? AircraftTypeId, string? AircraftTypeModel,
@@ -44,7 +47,8 @@ public sealed record PortalFlightDeparture(Guid Id, PortalStaffSnapshot? Submitt
 
 public sealed record PortalFlightCancellation(Guid Id, PortalStaffSnapshot? SubmittedByEmployee, DateTimeOffset CanceledAtUtc,
     string? Remarks, bool IsAccepted, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc,
-    Guid? CreatedByUserId = null, string? CreatedByDisplayName = null)
+    Guid? CreatedByUserId = null, string? CreatedByDisplayName = null,
+    PortalCancellationType CancellationType = PortalCancellationType.Unplanned)
 {
     internal string SubmitterName => SubmittedByEmployee?.FullName ?? CreatedByDisplayName ?? "Unknown submitter";
 

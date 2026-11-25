@@ -73,7 +73,8 @@ public sealed class SaveFlightCancellationCommandHandler(
         if (actor is not null && existing is null && FlightSearchPolicy.IsUnassignedRegular(flight, actor.StaffMemberId))
             return Error.Forbidden("Cancellation is read-only on this unassigned flight.", "Operations.Search.CancellationReadOnly");
         var input = request.Cancellation;
-        var details = CancellationDetails.Create(input.CanceledAtUtc, input.Remarks);
+        var type = input.CancellationType ?? existing?.Details.Type ?? CancellationType.Unplanned;
+        var details = CancellationDetails.Create(input.CanceledAtUtc, input.Remarks, type);
         if (details.IsFailure) return details.Error;
         var names = existing is { SubmittedByEmployee: null } || administrator && existing is null
             ? await FlightWorkAttribution.NamesAsync(userNames, [existing?.CreatedByUserId ?? access.UserId], cancellationToken)

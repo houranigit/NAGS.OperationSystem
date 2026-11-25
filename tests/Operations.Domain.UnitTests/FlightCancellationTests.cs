@@ -26,7 +26,35 @@ public sealed class FlightCancellationTests
         details.CanceledAtUtc.ShouldBe(TestData.Now);
         details.CanceledAtUtc.Offset.ShouldBe(TimeSpan.Zero);
         details.Remarks.ShouldBe(expectedRemarks);
+        details.Type.ShouldBe(CancellationType.Unplanned);
         details.ShouldBe(CancellationDetails.Create(TestData.Now, expectedRemarks).Value);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(" \t\n")]
+    public void CancellationDetails_PlannedRequiresRemarks(string? remarks)
+    {
+        var result = CancellationDetails.Create(TestData.Now, remarks, CancellationType.Planned);
+
+        result.Error.Code.ShouldBe("Operations.CancellationDetails.RemarksRequired");
+    }
+
+    [Fact]
+    public void SubmitCancellation_ChangingOnlyTheCancellationTypeUpdatesTheExistingSubmission()
+    {
+        var flight = ScheduleFlight();
+        var employee = TestData.Staff();
+        var userId = Guid.NewGuid();
+        var original = flight.SubmitCancellation(employee, Cancellation("Customer request"), userId, TestData.Now).Value;
+        var planned = CancellationDetails.Create(original.Details.CanceledAtUtc, " Customer request ", CancellationType.Planned).Value;
+
+        var updated = flight.SubmitCancellation(employee, planned, userId, TestData.Now.AddMinutes(1)).Value;
+
+        updated.ShouldBeSameAs(original);
+        updated.Details.Type.ShouldBe(CancellationType.Planned);
+        updated.Details.Remarks.ShouldBe("Customer request");
+        updated.UpdatedAtUtc.ShouldBe(TestData.Now.AddMinutes(1));
     }
 
     [Fact]

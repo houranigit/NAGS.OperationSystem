@@ -96,8 +96,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.nags.operations.R
+import com.nags.operations.data.CancellationType
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
+import com.nags.operations.data.SaveFlightCancellationRequest
+import com.nags.operations.data.db.entities.FlightCancellationPendingEntity
+import com.nags.operations.data.ownCancellation
 import com.nags.operations.ui.components.CustomerLogo
 import com.nags.operations.ui.components.FlightAircraftOperationRow
 import com.nags.operations.ui.components.FlightReportBadge
@@ -117,6 +121,7 @@ import com.nags.operations.ui.util.formatFlightDateRangeForDisplay
 import com.nags.operations.ui.util.stationTimeZone
 import com.nags.operations.ui.util.formatIsoTimeForDisplay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.json.Json
 
 @Composable
 private fun detailFill() = if (MaterialTheme.colorScheme.isDark) MaterialTheme.colorScheme.surfaceContainerHighest
@@ -129,6 +134,7 @@ internal fun FlightDetailsSheet(
     reportStatus: FlightCardReportStatus,
     listItem: FlightListItem?,
     workItems: List<FlightSheetWorkItem>,
+    pendingCancellation: FlightCancellationPendingEntity?,
     showCancellation: Boolean,
     showOperations: Boolean,
     showShare: Boolean = false,
@@ -232,6 +238,7 @@ internal fun FlightDetailsSheet(
                                     }
                                 }
                             }
+                            FlightSheetCancellationTypes(flight, pendingCancellation)
                             FlightSheetWork(flight.id, workItems, stationTimeZone(flight.stationTimeZoneId))
                             FlightSheetReturnsToRamp(flight)
                             if (!flight.isPerLanding && !flight.isAdHocFlight) FlightSheetGroup {
@@ -411,6 +418,33 @@ private fun FlightRecordingActions(
 private fun FlightSheetGroup(content: @Composable ColumnScope.() -> Unit) {
     Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.padding(12.dp), content = content)
+    }
+}
+
+@Composable
+private fun FlightSheetCancellationTypes(flight: FlightDetail, pending: FlightCancellationPendingEntity?) {
+    val pendingInput = remember(pending?.inputJson) {
+        pending?.inputJson?.let { runCatching { Json.decodeFromString<SaveFlightCancellationRequest>(it) }.getOrNull() }
+    }
+    val ownReport = flight.ownCancellation()
+    val youLabel = stringResource(R.string.flight_actuals_you)
+    val reports = buildList {
+        flight.cancellationSubmissions.filterNot { pendingInput != null && it.id == ownReport?.id }.forEach {
+            add(it.submittedByEmployee.fullName to it.cancellationType)
+        }
+        if (pendingInput != null) add(youLabel to
+            (pendingInput.cancellationType ?: ownReport?.cancellationType ?: CancellationType.Unplanned))
+    }
+    if (reports.isEmpty()) return
+
+    FlightSheetGroup {
+        Text(stringResource(R.string.cancellation_type), style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        reports.forEach { (submitter, type) ->
+            val typeLabel = stringResource(type.labelResource)
+            Text(if (reports.size == 1 || submitter.isBlank()) typeLabel else "$submitter · $typeLabel",
+                Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 

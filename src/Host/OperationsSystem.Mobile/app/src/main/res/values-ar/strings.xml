@@ -220,9 +220,15 @@
     <string name="operations_signature_hint">وقّع هنا</string>
     <string name="cancellation_title">إلغاء الرحلة</string>
     <string name="cancellation_save">حفظ بيانات الإلغاء</string>
-    <string name="cancellation_time">وقت الإلغاء</string>
+    <string name="cancellation_time">تاريخ الإلغاء</string>
     <string name="cancellation_choose_time">تعديل وقت الإلغاء</string>
+    <string name="cancellation_type">نوع الإلغاء</string>
+    <string name="cancellation_unplanned">غير مخطط</string>
+    <string name="cancellation_planned">مخطط</string>
     <string name="cancellation_remarks">ملاحظات الإلغاء</string>
+    <string name="cancellation_remarks_required_label">الملاحظات *</string>
+    <string name="cancellation_remarks_required">أدخل ملاحظات للإلغاء المخطط.</string>
+    <string name="cancellation_remarks_placeholder">الاسم:\nالبريد الإلكتروني:</string>
     <string name="cancellation_discard_title">تجاهل بيانات الإلغاء؟</string>
     <string name="work_services_count">الخدمات (%1$d)</string>
     <string name="work_services">الخدمات</string>

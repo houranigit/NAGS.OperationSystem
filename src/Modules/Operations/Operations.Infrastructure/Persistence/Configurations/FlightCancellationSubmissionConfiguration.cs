@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Operations.Domain.Flights;
+using Operations.Domain.ValueObjects;
 
 namespace Operations.Infrastructure.Persistence.Configurations;
 
@@ -28,6 +29,8 @@ public sealed class FlightCancellationSubmissionConfiguration : IEntityTypeConfi
         {
             details.Property(d => d.CanceledAtUtc).HasColumnName("CanceledAtUtc").IsRequired();
             details.Property(d => d.Remarks).HasColumnName("Remarks");
+            details.Property(d => d.Type).HasColumnName("CancellationType")
+                .HasDefaultValue(CancellationType.Unplanned).ValueGeneratedNever().IsRequired();
         });
         builder.Navigation(c => c.Details).IsRequired();
 

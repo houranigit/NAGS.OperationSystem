@@ -385,6 +385,7 @@ fun FlightsScreen(
             now = sheetNow,
         ) ?: FlightCardReportStatus.Scheduled
         FlightDetailsSheet(state = state, actuals = actuals, reportStatus = sheetReportStatus, listItem = sheetListItem, workItems = sheetWork,
+            pendingCancellation = pendingCancellation,
             showCancellation = !ownsWork && !ownsCancellation && state.detail?.cancellationEditable() == true,
             showOperations = !ownsCancellation || state.detail?.isApprovalLocked == true,
             showShare = onPublishShare != null && state.detail?.canShowShareAction(ownsCancellation) == true,

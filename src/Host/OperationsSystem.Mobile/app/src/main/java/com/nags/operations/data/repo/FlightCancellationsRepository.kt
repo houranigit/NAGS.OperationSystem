@@ -1,6 +1,7 @@
 package com.nags.operations.data.repo
 
 import com.nags.operations.data.ApiException
+import com.nags.operations.data.CancellationType
 import com.nags.operations.data.FlightCancellationReverted
 import com.nags.operations.data.FlightCancellationSaved
 import com.nags.operations.data.FlightDetail
@@ -67,7 +68,7 @@ class FlightCancellationsRepository(
         }
         check(flight.isInFlightWindow(now())) { "This flight is outside your current flight window." }
         val normalized = input.normalized()
-        validate(normalized, flight.rowVersion)
+        validate(normalized, flight.rowVersion, flight.ownCancellation()?.cancellationType)
         val otherWork = flight.arrivalSubmissions.any { !it.submittedByEmployee.staffMemberId.equals(flight.currentStaffMemberId, true) } ||
             flight.departureSubmissions.any { !it.submittedByEmployee.staffMemberId.equals(flight.currentStaffMemberId, true) }
         check(!otherWork || normalized.acknowledgeConflictingSubmission) {
@@ -233,11 +234,14 @@ class FlightCancellationsRepository(
     suspend fun clear() = gate.withLock { localWrites.withLock { generation++; dao.clear() } }
 
     private fun validVersion(version: String): Boolean = runCatching { Base64.getDecoder().decode(version).size == 8 }.getOrDefault(false)
-    private fun validate(input: SaveFlightCancellationRequest, version: String) {
+    private fun validate(input: SaveFlightCancellationRequest, version: String, savedType: CancellationType? = null) {
         check(validVersion(version)) { "Reload the flight before saving cancellation." }
         val canceled = runCatching { OffsetDateTime.parse(input.canceledAtUtc) }.getOrNull()
         check(canceled != null && canceled.year in 1..9999 && canceled.toInstant() != Instant.parse("0001-01-01T00:00:00Z")) {
             "Cancellation time is required."
+        }
+        check((input.cancellationType ?: savedType) != CancellationType.Planned || !input.remarks.isNullOrBlank()) {
+            "Enter remarks for a planned cancellation."
         }
     }
 }

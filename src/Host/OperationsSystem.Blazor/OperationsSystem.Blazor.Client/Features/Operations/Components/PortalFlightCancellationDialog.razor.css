@@ -47,6 +47,35 @@
     width: min(100%, 21rem);
 }
 
+.pcf-field-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+    gap: var(--os-space-4);
+}
+
+.pcf-field-row ::deep .portal-operation-date {
+    display: flex;
+    margin-block-end: 0;
+}
+
+.pcf-type {
+    --rz-selectbar-background-color: var(--os-color-surface);
+    --rz-selectbar-color: var(--os-color-text);
+    --rz-selectbar-border: 1px solid var(--os-color-border);
+    --rz-selectbar-selected-background-color: var(--os-color-primary);
+    --rz-selectbar-selected-color: var(--os-color-primary-contrast);
+    --rz-selectbar-selected-border: 1px solid var(--os-color-primary);
+    --rz-selectbar-border-radius: var(--os-radius-sm);
+}
+
+.pcf-type ::deep .rz-selectbar-horizontal {
+    display: flex;
+}
+
+.pcf-type ::deep .rz-button {
+    flex: 1 1 0;
+}
+
 .pcf-actions,
 .pcf-actions-end {
     display: flex;

@@ -54,11 +54,13 @@ class FlightCancellationsRepositoryTest {
         { _, _ -> acceptedReverts++ }, { scheduleCount++ }, Json, work, submissionGate, { at })
 
     @Test fun offlineSaveSurvivesRestartAndAcknowledgesOnlyAfterConnectionReturns() = runBlocking {
-        repository().save(flight, input.copy(acknowledgeConflictingSubmission = true))
+        repository().save(flight, input.copy(acknowledgeConflictingSubmission = true, cancellationType = CancellationType.Planned))
         val stored = dao.rows(owner.value!!).single()
         assertEquals("save", stored.operation)
-        assertEquals("notes", Json.decodeFromString<SaveFlightCancellationRequest>(stored.inputJson!!).remarks)
-        assertTrue(Json.decodeFromString<SaveFlightCancellationRequest>(stored.inputJson).acknowledgeConflictingSubmission)
+        val queued = Json.decodeFromString<SaveFlightCancellationRequest>(stored.inputJson!!)
+        assertEquals("notes", queued.remarks)
+        assertTrue(queued.acknowledgeConflictingSubmission)
+        assertEquals(CancellationType.Planned, queued.cancellationType)
         val restarted = repository()
         assertEquals(stored, restarted.changes.first().single())
         assertTrue(restarted.syncPending())
@@ -66,7 +68,48 @@ class FlightCancellationsRepositoryTest {
         online = true
         assertFalse(restarted.syncPending())
         assertEquals(1, sent.size)
+        assertEquals(CancellationType.Planned, sent.single().first.cancellationType)
         assertEquals(1, accepted)
+        assertFalse(restarted.hasSavedInput(flight.id))
+    }
+
+    @Test fun plannedCancellationRequiresRemarksBeforeQueuingButUnplannedAcceptsEmptyRemarks() = runBlocking {
+        val repo = repository()
+        val planned = input.copy(remarks = " \n ", cancellationType = CancellationType.Planned)
+        assertTrue(runCatching { repo.save(flight, planned) }.isFailure)
+        assertFalse(repo.hasSavedInput(flight.id))
+
+        val savedPlanned = flight.copy(cancellationSubmissions = listOf(submitted.copy(cancellationType = CancellationType.Planned)))
+        assertTrue(runCatching { repo.save(savedPlanned, planned.copy(cancellationType = null)) }.isFailure)
+        assertFalse(repo.hasSavedInput(flight.id))
+
+        repo.save(flight, planned.copy(cancellationType = CancellationType.Unplanned))
+        val queued = Json.decodeFromString<SaveFlightCancellationRequest>(dao.rows(owner.value!!).single().inputJson!!)
+        assertEquals(CancellationType.Unplanned, queued.cancellationType)
+        assertNull(queued.remarks)
+    }
+
+    @Test fun replayKeepsALegacyAttemptOmittedBeforeSendingTheNewDesiredType() = runBlocking {
+        val firstRepository = repository()
+        firstRepository.save(flight, input)
+        online = true
+        send = { _, value, version -> sent += value to version; throw IOException("lost response") }
+        assertTrue(firstRepository.syncPending())
+
+        val restarted = repository()
+        restarted.save(flight, input.copy(cancellationType = CancellationType.Planned))
+        val stored = dao.rows(owner.value!!).single()
+        assertFalse(stored.attemptInputJson!!.contains("cancellationType"))
+        assertTrue(stored.inputJson!!.contains("\"cancellationType\":\"Planned\""))
+        send = { _, value, version ->
+            sent += value to version
+            FlightCancellationSaved(submitted.copy(cancellationType = value.cancellationType ?: CancellationType.Unplanned), "AAAAAAAAAAI=")
+        }
+        assertFalse(restarted.syncPending())
+        assertEquals(sent[0], sent[1])
+        assertEquals(CancellationType.Planned, sent[2].first.cancellationType)
+        assertEquals("AAAAAAAAAAI=", sent[2].second)
+        assertFalse(Json { encodeDefaults = true }.encodeToString(sent[1].first).contains("cancellationType"))
         assertFalse(restarted.hasSavedInput(flight.id))
     }
 

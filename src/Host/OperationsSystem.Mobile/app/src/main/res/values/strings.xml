@@ -244,9 +244,15 @@
     <string name="operations_signature_hint">Sign here</string>
     <string name="cancellation_title">Flight cancellation</string>
     <string name="cancellation_save">Save cancellation</string>
-    <string name="cancellation_time">Canceled at</string>
+    <string name="cancellation_time">Cancellation Date</string>
     <string name="cancellation_choose_time">Edit cancellation time</string>
+    <string name="cancellation_type">Cancellation type</string>
+    <string name="cancellation_unplanned">Unplanned</string>
+    <string name="cancellation_planned">Planned</string>
     <string name="cancellation_remarks">Cancellation remarks</string>
+    <string name="cancellation_remarks_required_label">Remarks *</string>
+    <string name="cancellation_remarks_required">Enter remarks for a planned cancellation.</string>
+    <string name="cancellation_remarks_placeholder">Name:\nEmail:</string>
     <string name="cancellation_discard_title">Discard cancellation details?</string>
     <string name="work_services_count">Services (%1$d)</string>
     <string name="work_services">Services</string>

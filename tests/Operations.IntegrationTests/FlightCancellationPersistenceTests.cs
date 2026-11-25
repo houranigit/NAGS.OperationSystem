@@ -14,6 +14,7 @@ public sealed class FlightCancellationPersistenceTests(FlightCancellationPersist
 {
     private const string DepartureBaseline = "20261108183853_Operations_FlightDepartureSubmissions";
     private const string CancellationMigration = "20261108190121_Operations_FlightCancellationSubmissions";
+    private const string CancellationTypeBaseline = "20261124152318_Operations_FlightWorkOrderNumbers";
     private static readonly DateTimeOffset Now = new(2026, 11, 8, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -73,6 +74,37 @@ public sealed class FlightCancellationPersistenceTests(FlightCancellationPersist
         departure.CreatedAtUtc.ShouldBe(flight.DepartureSubmissions.Single().CreatedAtUtc);
         departure.IsAccepted.ShouldBeTrue();
         reloaded.CancellationSubmissions.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Cancellation_type_migration_backfills_unplanned_without_changing_existing_submissions()
+    {
+        await using var db = fixture.CreateContext();
+        await db.Database.MigrateAsync(CancellationTypeBaseline);
+        var employee = Employee("Submitting engineer", "E100");
+        var flight = ScheduleFlight(employee);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+
+        var submissionId = Guid.NewGuid();
+        var creatorId = Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO [operations].[flight_cancellation_submissions]
+                ([Id], [FlightId], [IsAccepted], [CreatedByUserId], [CreatedAtUtc], [CanceledAtUtc],
+                 [SubmittedByStaffMemberId], [SubmittedByStaffFullName], [SubmittedByStaffEmployeeId])
+            VALUES ({submissionId}, {flight.Id}, {true}, {creatorId}, {Now}, {Now},
+                    {employee.StaffMemberId}, {employee.FullName}, {employee.EmployeeId})
+            """);
+        db.ChangeTracker.Clear();
+
+        await db.Database.MigrateAsync();
+
+        var persisted = (await LoadFlightAsync(db, flight.Id)).CancellationSubmissions.ShouldHaveSingleItem();
+        persisted.Id.ShouldBe(submissionId);
+        persisted.CreatedByUserId.ShouldBe(creatorId);
+        persisted.SubmittedByEmployee.ShouldBe(employee);
+        persisted.IsAccepted.ShouldBeTrue();
+        persisted.Details.ShouldBe(CancellationDetails.Create(Now, null, CancellationType.Unplanned).Value);
     }
 
     [Fact]
