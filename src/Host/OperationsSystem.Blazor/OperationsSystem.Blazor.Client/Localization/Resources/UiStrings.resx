@@ -803,8 +803,9 @@
   <data name="ReturnsToRamp.Open" xml:space="preserve"><value>Open</value></data>
   <data name="ReturnsToRamp.Closed" xml:space="preserve"><value>Closed</value></data>
   <data name="ReturnsToRamp.Draft" xml:space="preserve"><value>Draft</value></data>
-  <data name="ReturnsToRamp.ArrivedAt" xml:space="preserve"><value>Arrival</value></data>
+  <data name="ReturnsToRamp.Returned" xml:space="preserve"><value>Returned</value></data>
   <data name="ReturnsToRamp.DepartedAt" xml:space="preserve"><value>Departure</value></data>
+  <data name="ReturnsToRamp.AwaitingDeparture" xml:space="preserve"><value>Awaiting departure</value></data>
   <data name="ReturnsToRamp.ReceivedBy" xml:space="preserve"><value>Received by</value></data>
   <data name="ReturnsToRamp.HandledBy" xml:space="preserve"><value>Handled by</value></data>
   <data name="ReturnsToRamp.CustomerSignature" xml:space="preserve"><value>Customer signature</value></data>

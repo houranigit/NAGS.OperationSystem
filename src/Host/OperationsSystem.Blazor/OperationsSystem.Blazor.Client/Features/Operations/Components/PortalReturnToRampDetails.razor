@@ -23,54 +23,79 @@
                     <span>@UiStrings.ReturnsToRamp.Details</span>
                 </h3>
             </div>
-            <dl class="portal-rtr-detail-list">
-                <div>
-                    <dt>@UiStrings.ReturnsToRamp.ArrivedAt</dt>
-                    <dd><time datetime="@occurrence.ArrivedAtUtc.ToString("O")">@Zone.Format(occurrence.ArrivedAtUtc)</time></dd>
+            <div class="portal-rtr-summary">
+                <div class="portal-rtr-events">
+                    <section class="portal-rtr-event">
+                        <header class="portal-rtr-event-header">
+                            <h4>
+                                <RadzenIcon Icon="flight_land" aria-hidden="true" />
+                                @UiStrings.ReturnsToRamp.Returned
+                            </h4>
+                            <time class="portal-rtr-event-time" datetime="@occurrence.ArrivedAtUtc.ToString("O")" title="@Zone.Id">
+                                <strong dir="ltr">@Zone.Format(occurrence.ArrivedAtUtc, "HH:mm")</strong>
+                                <span>@Zone.Format(occurrence.ArrivedAtUtc, "d MMM yyyy")</span>
+                            </time>
+                        </header>
+                        <dl class="portal-rtr-event-meta">
+                            <div class="portal-rtr-event-person">
+                                <dt>@UiStrings.ReturnsToRamp.ReceivedBy</dt>
+                                <dd>@(occurrence.ReceivedBy ?? "—")</dd>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(occurrence.ArrivalRemarks))
+                            {
+                                <div class="portal-rtr-detail-remarks">
+                                    <dt>@UiStrings.ReturnsToRamp.ArrivalRemarks</dt>
+                                    <dd>@occurrence.ArrivalRemarks</dd>
+                                </div>
+                            }
+                        </dl>
+                    </section>
+                    <section class="portal-rtr-event">
+                        <header class="portal-rtr-event-header">
+                            <h4>
+                                <RadzenIcon Icon="flight_takeoff" aria-hidden="true" />
+                                @UiStrings.ReturnsToRamp.DepartedAt
+                            </h4>
+                            @if (occurrence.DepartedAtUtc is { } departure)
+                            {
+                                <time class="portal-rtr-event-time" datetime="@departure.ToString("O")" title="@Zone.Id">
+                                    <strong dir="ltr">@Zone.Format(departure, "HH:mm")</strong>
+                                    <span>@Zone.Format(departure, "d MMM yyyy")</span>
+                                </time>
+                            }
+                            else
+                            {
+                                <p class="portal-rtr-event-pending">@UiStrings.ReturnsToRamp.AwaitingDeparture</p>
+                            }
+                        </header>
+                        @if (occurrence.DepartedAtUtc.HasValue)
+                        {
+                            <dl class="portal-rtr-event-meta">
+                                <div class="portal-rtr-event-person">
+                                    <dt>@UiStrings.ReturnsToRamp.HandledBy</dt>
+                                    <dd>@(occurrence.HandledBy ?? "—")</dd>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(occurrence.DepartureRemarks))
+                                {
+                                    <div class="portal-rtr-detail-remarks">
+                                        <dt>@UiStrings.ReturnsToRamp.DepartureRemarks</dt>
+                                        <dd>@occurrence.DepartureRemarks</dd>
+                                    </div>
+                                }
+                            </dl>
+                        }
+                    </section>
                 </div>
-                <div>
-                    <dt>@UiStrings.ReturnsToRamp.DepartedAt</dt>
+                <dl class="portal-rtr-signature">
+                    <dt>
+                        <RadzenIcon Icon="draw" aria-hidden="true" />
+                        @UiStrings.ReturnsToRamp.CustomerSignature
+                    </dt>
                     <dd>
-                        @if (occurrence.DepartedAtUtc is { } departure)
-                        {
-                            <time datetime="@departure.ToString("O")">@Zone.Format(departure)</time>
-                        }
-                        else
-                        {
-                            <text>—</text>
-                        }
+                        <StatusBadge Label="@SignatureStatus(occurrence)" Tone="@(occurrence.HasSignature ? "success" : "neutral")" />
                     </dd>
-                </div>
-                <div>
-                    <dt>@UiStrings.ReturnsToRamp.ReceivedBy</dt>
-                    <dd>@(occurrence.ReceivedBy ?? "—")</dd>
-                </div>
-                @if (occurrence.DepartedAtUtc.HasValue)
-                {
-                    <div>
-                        <dt>@UiStrings.ReturnsToRamp.HandledBy</dt>
-                        <dd>@(occurrence.HandledBy ?? "—")</dd>
-                    </div>
-                }
-                <div>
-                    <dt>@UiStrings.ReturnsToRamp.CustomerSignature</dt>
-                    <dd>@SignatureStatus(occurrence)</dd>
-                </div>
-                @if (!string.IsNullOrWhiteSpace(occurrence.ArrivalRemarks))
-                {
-                    <div class="portal-rtr-detail-remarks">
-                        <dt>@UiStrings.ReturnsToRamp.ArrivalRemarks</dt>
-                        <dd>@occurrence.ArrivalRemarks</dd>
-                    </div>
-                }
-                @if (!string.IsNullOrWhiteSpace(occurrence.DepartureRemarks))
-                {
-                    <div class="portal-rtr-detail-remarks">
-                        <dt>@UiStrings.ReturnsToRamp.DepartureRemarks</dt>
-                        <dd>@occurrence.DepartureRemarks</dd>
-                    </div>
-                }
-            </dl>
+                </dl>
+            </div>
         </section>
 
         <PortalWorkRecordsEditor FlightId="@FlightId" Records="@services" Zone="@Zone" Lookups="@RecordLookups"

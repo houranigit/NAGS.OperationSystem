@@ -803,8 +803,9 @@
   <data name="ReturnsToRamp.Open" xml:space="preserve"><value>مفتوح</value></data>
   <data name="ReturnsToRamp.Closed" xml:space="preserve"><value>مغلق</value></data>
   <data name="ReturnsToRamp.Draft" xml:space="preserve"><value>مسودة</value></data>
-  <data name="ReturnsToRamp.ArrivedAt" xml:space="preserve"><value>الوصول</value></data>
+  <data name="ReturnsToRamp.Returned" xml:space="preserve"><value>العودة</value></data>
   <data name="ReturnsToRamp.DepartedAt" xml:space="preserve"><value>المغادرة</value></data>
+  <data name="ReturnsToRamp.AwaitingDeparture" xml:space="preserve"><value>بانتظار المغادرة</value></data>
   <data name="ReturnsToRamp.ReceivedBy" xml:space="preserve"><value>الموظف المستلِم</value></data>
   <data name="ReturnsToRamp.HandledBy" xml:space="preserve"><value>الموظف المسؤول عن المغادرة</value></data>
   <data name="ReturnsToRamp.CustomerSignature" xml:space="preserve"><value>توقيع العميل</value></data>

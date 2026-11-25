@@ -93,8 +93,9 @@ public static class UiStrings
         public static string Open => UiText.Get("ReturnsToRamp.Open", "Open");
         public static string Closed => UiText.Get("ReturnsToRamp.Closed", "Closed");
         public static string Draft => UiText.Get("ReturnsToRamp.Draft", "Draft");
-        public static string ArrivedAt => UiText.Get("ReturnsToRamp.ArrivedAt", "Arrival");
+        public static string Returned => UiText.Get("ReturnsToRamp.Returned", "Returned");
         public static string DepartedAt => UiText.Get("ReturnsToRamp.DepartedAt", "Departure");
+        public static string AwaitingDeparture => UiText.Get("ReturnsToRamp.AwaitingDeparture", "Awaiting departure");
         public static string ReceivedBy => UiText.Get("ReturnsToRamp.ReceivedBy", "Received by");
         public static string HandledBy => UiText.Get("ReturnsToRamp.HandledBy", "Handled by");
         public static string CustomerSignature => UiText.Get("ReturnsToRamp.CustomerSignature", "Customer signature");
