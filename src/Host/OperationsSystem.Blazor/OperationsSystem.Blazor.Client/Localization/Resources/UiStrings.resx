@@ -770,6 +770,13 @@
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>Login email change failed</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>Identity could not start verification: {0}</value></data>
   <data name="Flights.UnlockToUpdate" xml:space="preserve"><value>Unlock to update…</value></data>
+  <data name="Flights.UploadSignature" xml:space="preserve"><value>Upload PNG signature</value></data>
+  <data name="Flights.ReplaceSignature" xml:space="preserve"><value>Replace PNG signature</value></data>
+  <data name="Flights.ReadingSignature" xml:space="preserve"><value>Reading signature…</value></data>
+  <data name="Flights.DropSignatureOrBrowse" xml:space="preserve"><value>Drag and drop or browse files</value></data>
+  <data name="Flights.SignatureUploadLimit" xml:space="preserve"><value>Up to 2 MB</value></data>
+  <data name="Flights.InvalidSignatureFile" xml:space="preserve"><value>Choose one PNG signature of at most 2 MB.</value></data>
+  <data name="Flights.NoSignature" xml:space="preserve"><value>No signature recorded.</value></data>
   <data name="Flights.Customer" xml:space="preserve"><value>Customer</value></data>
   <data name="Flights.FlightType" xml:space="preserve"><value>Flight type</value></data>
   <data name="Flights.TypeAll" xml:space="preserve"><value>All</value></data>

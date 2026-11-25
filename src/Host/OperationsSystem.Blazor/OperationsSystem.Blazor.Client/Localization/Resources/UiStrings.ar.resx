@@ -770,6 +770,13 @@
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>فشل تغيير بريد تسجيل الدخول</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>تعذر على الهوية بدء التحقق: {0}</value></data>
   <data name="Flights.UnlockToUpdate" xml:space="preserve"><value>فتح القفل للتعديل…</value></data>
+  <data name="Flights.UploadSignature" xml:space="preserve"><value>رفع توقيع بصيغة PNG</value></data>
+  <data name="Flights.ReplaceSignature" xml:space="preserve"><value>استبدال التوقيع بصيغة PNG</value></data>
+  <data name="Flights.ReadingSignature" xml:space="preserve"><value>جارٍ قراءة التوقيع…</value></data>
+  <data name="Flights.DropSignatureOrBrowse" xml:space="preserve"><value>اسحب الملف وأفلته هنا أو تصفّح الملفات</value></data>
+  <data name="Flights.SignatureUploadLimit" xml:space="preserve"><value>حتى 2 ميغابايت</value></data>
+  <data name="Flights.InvalidSignatureFile" xml:space="preserve"><value>اختر ملف توقيع واحدًا بصيغة PNG لا يتجاوز 2 ميغابايت.</value></data>
+  <data name="Flights.NoSignature" xml:space="preserve"><value>لم يُسجّل أي توقيع.</value></data>
   <data name="Flights.Customer" xml:space="preserve"><value>العميل</value></data>
   <data name="Flights.FlightType" xml:space="preserve"><value>نوع الرحلة</value></data>
   <data name="Flights.TypeAll" xml:space="preserve"><value>الكل</value></data>

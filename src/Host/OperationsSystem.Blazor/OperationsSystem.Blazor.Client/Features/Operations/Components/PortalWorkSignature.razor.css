@@ -1,7 +1,7 @@
 .portal-signature {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    align-content: start;
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
     min-width: 0;
     gap: var(--os-space-3);
 }
@@ -27,28 +27,36 @@
     font-weight: 400;
 }
 
-.portal-signature-actions,
-.portal-signature-upload {
+.portal-signature-actions {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--os-space-2);
 }
 
-.portal-signature-actions {
-    flex-wrap: wrap;
+.portal-signature-upload,
+.portal-signature-empty {
+    display: grid;
+    flex: 1 0 auto;
+    place-content: center;
+    justify-items: center;
+    gap: var(--os-space-2);
+    min-block-size: 9rem;
+    padding: var(--os-space-4);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-surface-muted);
+    text-align: center;
 }
 
 .portal-signature-upload {
     position: relative;
-    min-block-size: 4.25rem;
-    padding: var(--os-space-3);
-    border: 1px dashed var(--os-color-border-strong);
-    border-radius: var(--os-radius-sm);
-    background: var(--os-color-surface-muted);
+    border-color: var(--os-color-border-strong);
+    border-style: dashed;
     cursor: pointer;
 }
 
-.portal-signature-upload:not(:has(:disabled)):hover {
+.portal-signature-upload:not(:has(:disabled)):is(:hover, .is-dragging) {
     border-color: var(--os-color-primary);
     background: var(--os-color-primary-soft);
 }
@@ -62,13 +70,28 @@
     border-color: var(--os-color-danger);
 }
 
+.portal-signature-upload ::deep .rzi,
+.portal-signature-empty ::deep .rzi {
+    font-size: var(--os-text-2xl);
+}
+
 .portal-signature-upload ::deep .rzi {
     color: var(--os-color-primary);
+}
+
+.portal-signature-empty ::deep .rzi {
+    color: var(--os-color-text-muted);
 }
 
 .portal-signature-upload-text {
     display: grid;
     min-width: 0;
+    gap: var(--os-space-1);
+}
+
+.portal-signature-upload-text > span {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
 }
 
 .portal-signature-upload ::deep input {

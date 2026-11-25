@@ -39,19 +39,24 @@
     }
     else if (Disabled)
     {
-        <p>No signature recorded.</p>
+        <div class="portal-signature-empty">
+            <RadzenIcon Icon="draw" aria-hidden="true" />
+            <p>@UiStrings.Flights.NoSignature</p>
+        </div>
     }
     @if (!Disabled)
     {
-        <label class="portal-signature-upload">
+        <label class="portal-signature-upload @(draggingFile ? "is-dragging" : null)"
+               @ondragenter="@OnDragEnter" @ondragleave="@ClearDrag" @ondrop="@ClearDrag">
             <RadzenIcon Icon="upload_file" aria-hidden="true" />
             <span class="portal-signature-upload-text">
-                <strong>@(Draft.IsReading ? "Reading signature…" : UploadLabel)</strong>
-                <small>Up to 2 MB</small>
+                <strong>@(Draft.IsReading ? UiStrings.Flights.ReadingSignature : UploadLabel)</strong>
+                <span>@UiStrings.Flights.DropSignatureOrBrowse</span>
+                <small id="@UploadHelpId">@UiStrings.Flights.SignatureUploadLimit</small>
             </span>
             <InputFile @key="pickerRevision" OnChange="@UploadAsync" accept="image/png,.png" disabled="@Draft.IsReading"
                        aria-label="@UploadLabel" aria-invalid="@(uploadError is null ? null : "true")"
-                       aria-describedby="@(uploadError is null ? null : PortalFlightValidation.ErrorId(UploadField))" />
+                       aria-describedby="@UploadDescriptionIds" />
         </label>
         <PortalFieldError Field="@UploadField" Message="@uploadError" />
         @if (Draft.Bytes is not null)
@@ -75,12 +80,23 @@
     [Parameter] public EventCallback Changed { get; set; }
 
     private bool downloading;
+    private bool draggingFile;
     private int pickerRevision;
     private string? uploadError;
     private string? downloadError;
     private string UploadField => $"{ValidationField}-upload";
+    private string UploadHelpId => $"{UploadField}-help";
+    private string UploadDescriptionIds => uploadError is null
+        ? UploadHelpId
+        : $"{UploadHelpId} {PortalFlightValidation.ErrorId(UploadField)}";
     private string UploadLabel => Draft.Bytes is null && (Draft.SavedPath is null || Draft.RemoveSaved)
-        ? "Upload PNG signature" : "Replace PNG signature";
+        ? UiStrings.Flights.UploadSignature
+        : UiStrings.Flights.ReplaceSignature;
+
+    private void OnDragEnter(DragEventArgs args) =>
+        draggingFile = !Draft.IsReading && args.DataTransfer.Types.Contains("Files", StringComparer.Ordinal);
+
+    private void ClearDrag() => draggingFile = false;
 
     private async Task DiscardAsync()
     {
@@ -100,15 +116,23 @@
 
     private async Task UploadAsync(InputFileChangeEventArgs args)
     {
+        ClearDrag();
         if (Disabled || Draft.IsReading)
             return;
 
         uploadError = null;
         const int limit = 2 * 1024 * 1024;
+        if (args.FileCount != 1)
+        {
+            uploadError = UiStrings.Flights.InvalidSignatureFile;
+            pickerRevision++;
+            return;
+        }
+
         var file = args.File;
         if (file.Size <= 0 || file.Size > limit || !Path.GetExtension(file.Name).Equals(".png", StringComparison.OrdinalIgnoreCase))
         {
-            uploadError = "Choose a PNG signature of at most 2 MB.";
+            uploadError = UiStrings.Flights.InvalidSignatureFile;
             pickerRevision++;
             return;
         }
