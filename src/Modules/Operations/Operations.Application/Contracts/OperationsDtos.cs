@@ -43,7 +43,8 @@ public sealed record FlightListItemDto(
     string? WorkOrderNumber = null,
     bool IsAdHocFlight = false,
     DateTimeOffset? ActualArrivalUtc = null,
-    DateTimeOffset? ReturnedToRampUtc = null);
+    DateTimeOffset? ReturnedToRampUtc = null,
+    bool IsOnCall = false);
 
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId)

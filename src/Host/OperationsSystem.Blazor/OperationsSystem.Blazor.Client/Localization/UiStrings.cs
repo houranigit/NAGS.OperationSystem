@@ -68,6 +68,7 @@ public static class UiStrings
         public static string TypeAll => UiText.Get("Flights.TypeAll", "All");
         public static string TypeScheduled => UiText.Get("Flights.TypeScheduled", "Scheduled");
         public static string TypePerLanding => UiText.Get("Flights.TypePerLanding", "Per Landing");
+        public static string TypeOnCall => UiText.Get("Flights.TypeOnCall", "On Call");
         public static string TypeAdHoc => UiText.Get("Flights.TypeAdHoc", "Ad Hoc");
         public static string AwaitingAta => UiText.Get("Flights.AwaitingAta", "Awaiting ATA");
         public static string StaNow => UiText.Get("Flights.StaNow", "STA now");

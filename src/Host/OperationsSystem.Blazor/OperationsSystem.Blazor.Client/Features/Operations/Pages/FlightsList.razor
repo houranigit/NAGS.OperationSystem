@@ -40,6 +40,7 @@
                             <RadzenSelectBarItem Value="@FlightType.All" Text="@UiStrings.Flights.TypeAll" />
                             <RadzenSelectBarItem Value="@FlightType.Scheduled" Text="@UiStrings.Flights.TypeScheduled" />
                             <RadzenSelectBarItem Value="@FlightType.PerLanding" Text="@UiStrings.Flights.TypePerLanding" />
+                            <RadzenSelectBarItem Value="@FlightType.OnCall" Text="@UiStrings.Flights.TypeOnCall" />
                             <RadzenSelectBarItem Value="@FlightType.AdHoc" Text="@UiStrings.Flights.TypeAdHoc" />
                         </Items>
                     </RadzenSelectBar>
@@ -73,7 +74,16 @@
                             <div class="os-role-cell-text">
                                 <div class="os-role-cell-title">
                                     <strong>@flight.FlightNumber</strong>
-                                    <span class="ofl-flight-type-badge os-pill--@type.Tone" title="@type.Label" role="img" aria-label="@type.Label">@type.Abbreviation</span>
+                                    <span class="ofl-flight-type-badges">
+                                        <span class="ofl-flight-type-badge os-pill--@type.Tone" title="@type.Label" role="img" aria-label="@type.Label">@type.Abbreviation</span>
+                                        @if (flight.IsOnCall)
+                                        {
+                                            <span class="ofl-flight-type-badge ofl-on-call-badge os-pill--success" title="@UiStrings.Flights.TypeOnCall"
+                                                  role="img" aria-label="@UiStrings.Flights.TypeOnCall">
+                                                <RadzenIcon Icon="call" class="ofl-on-call-icon" aria-hidden="true" />
+                                            </span>
+                                        }
+                                    </span>
                                 </div>
                                 <span class="ofl-flight-status os-pill--@(status?.Tone ?? "neutral")" title="@statusText">@statusText</span>
                             </div>
@@ -149,7 +159,7 @@
         new("Conflict", "Conflict", "critical")
     ];
 
-    private enum FlightType { All, Scheduled, PerLanding, AdHoc }
+    private enum FlightType { All, Scheduled, PerLanding, OnCall, AdHoc }
 
     private DataListCard<FlightListItem>? list;
     private IReadOnlyList<FlightListItem> items = [];

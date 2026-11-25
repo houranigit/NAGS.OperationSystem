@@ -783,6 +783,7 @@
   <data name="Flights.TypeAll" xml:space="preserve"><value>الكل</value></data>
   <data name="Flights.TypeScheduled" xml:space="preserve"><value>المجدولة</value></data>
   <data name="Flights.TypePerLanding" xml:space="preserve"><value>لكل هبوط</value></data>
+  <data name="Flights.TypeOnCall" xml:space="preserve"><value>تحت الطلب</value></data>
   <data name="Flights.TypeAdHoc" xml:space="preserve"><value>Ad Hoc</value></data>
   <data name="Flights.AwaitingAta" xml:space="preserve"><value>بانتظار ATA</value></data>
   <data name="Flights.StaNow" xml:space="preserve"><value>الوصول المجدول الآن</value></data>

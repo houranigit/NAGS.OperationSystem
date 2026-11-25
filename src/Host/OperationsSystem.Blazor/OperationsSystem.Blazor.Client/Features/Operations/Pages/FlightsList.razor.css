@@ -33,7 +33,7 @@
     white-space: nowrap;
 }
 
-@container flights-list (width < 18rem) {
+@container flights-list (width < 21rem) {
     .ofl-flight-type {
         width: 100%;
     }
@@ -108,6 +108,13 @@
     background: var(--os-color-surface);
 }
 
+.ofl-flight-type-badges {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--os-space-1);
+}
+
 .ofl-flight-type-badge {
     display: inline-flex;
     align-items: center;
@@ -121,6 +128,13 @@
     font-weight: 700;
     line-height: 1;
     white-space: nowrap;
+}
+
+.ofl-on-call-badge ::deep .ofl-on-call-icon {
+    inline-size: 1em;
+    block-size: 1em;
+    font-size: inherit;
+    line-height: 1;
 }
 
 .os-role-cell-text > .ofl-flight-status {

@@ -193,6 +193,8 @@ Arrival/departure DTOs expose creator/updater display names; work DTOs retain th
 
 ## Scheduling and validation
 
+The portal flight register offers separate Per Landing and On Call filters. Per Landing selects flights with the Per Landing designation and no recorded performed services. On Call selects flights with that designation and at least one recorded performed service, including a service recorded during a return to ramp.
+
 The existing flight grid and scheduling dialog support a single flight, multiple selected dates, and basic schedule edits. Required fields are customer, station, operation type, flight number, arrival/departure, and at least one planned service. Aircraft type and assigned staff remain optional. Staff assignments require the existing assignment permission and active staff at the selected station.
 
 The scheduling input shows the customer code as a separate prefix. Flight numbers accept 1–4 digits, optionally followed by either one letter or `/` and one or two route digits; a letter and a route cannot be combined. The dialog checks this format and required details locally on the first Next click. The customer's IATA code may be entered or omitted; it is never required in the input. The backend adds it when missing, validates the complete number, and normalizes letter case on single creation, batch creation, and number changes. For customer `SV`, `123A` or `SV123A` stores `SV123A`, while `123/01` or `SV123/01` stores `SV123/01`. Whitespace, dashes, additional letters, more than four flight digits, empty routes, and routes longer than two digits are rejected. The 12-character storage limit remains, and the grid displays the saved number directly. Existing stored numbers are not rewritten, and planning-only edits preserve them. Number changes use the customer's saved snapshot IATA code.
@@ -225,7 +227,7 @@ All flight routes are under `/api/v1/operations/flights`:
 
 | Method | Route | Behavior |
 |---|---|---|
-| GET | `/` | Filtered, sorted, paged flight register with optional `flightType` (`All`, `Scheduled`, `PerLanding`, or `AdHoc`) |
+| GET | `/` | Filtered, sorted, paged flight register with optional `flightType` (`All`, `Scheduled`, `PerLanding`, `OnCall`, or `AdHoc`) |
 | GET | `/{id}` | Flight planning details, arrival/departure/cancellation submissions, and rowversion |
 | GET | `/{id}/operations` | Portal work and cancellation editor details within the register scope |
 | PUT | `/{id}/operations/approval` | Validate and approve the flight, including pending RTRs, with `If-Match` |

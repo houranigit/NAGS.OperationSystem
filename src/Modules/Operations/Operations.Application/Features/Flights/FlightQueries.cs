@@ -18,7 +18,8 @@ public enum FlightListType
     All,
     Scheduled,
     PerLanding,
-    AdHoc
+    AdHoc,
+    OnCall
 }
 
 public sealed record GetFlightsQuery(
@@ -48,17 +49,6 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
         var flights = FlightListQuery.ApplyScopeAndFilters(db.Flights.AsNoTracking(), scopeResult.Value,
             new FlightListFilter(request.Search, request.StationId, request.CustomerId,
                 request.OperationTypeId, request.FromUtc, request.ToUtc));
-        flights = request.FlightType switch
-        {
-            FlightListType.Scheduled => flights.Where(flight =>
-                flight.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
-                !flight.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)),
-            FlightListType.PerLanding => flights.Where(flight =>
-                flight.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType &&
-                flight.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)),
-            FlightListType.AdHoc => flights.Where(flight => flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType),
-            _ => flights
-        };
         var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
         var dueSoonBy = now.AddMinutes(30);
         // Keep the report precedence and STA thresholds in sync with Android's FlightCardReportStatus.
@@ -67,6 +57,8 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             let hasArrival = flight.ArrivalSubmissions.Any()
             let hasDeparture = flight.DepartureSubmissions.Any()
             let hasCancellation = flight.CancellationSubmissions.Any()
+            let isAdHocFlight = flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType
+            let isPerLanding = flight.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
             select new
             {
                 flight.Id,
@@ -79,14 +71,15 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 OperationTypeName = flight.OperationType.Name,
                 ScheduledArrivalUtc = flight.Schedule.Sta,
                 ScheduledDepartureUtc = flight.Schedule.Std,
-                IsAdHocFlight = flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType,
-                IsPerLanding = flight.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService),
+                IsAdHocFlight = isAdHocFlight,
+                IsPerLanding = isPerLanding,
+                IsOnCall = !isAdHocFlight && isPerLanding && flight.ServiceRecords.Any(),
                 ActualArrivalUtc = flight.ArrivalSubmissions.OrderByDescending(arrival => arrival.IsAccepted)
                     .ThenBy(arrival => arrival.CreatedAtUtc).ThenBy(arrival => arrival.Id)
                     .Select(arrival => (DateTimeOffset?)arrival.Details.Ata).FirstOrDefault(),
                 ReturnedToRampUtc = flight.ReturnToRamps.Where(ramp => ramp.DepartureDetails == null)
                     .Select(ramp => (DateTimeOffset?)ramp.ArrivalDetails.ArrivedAtUtc).FirstOrDefault(),
-                AircraftTypeModel = flight.AircraftType == null ? null : flight.AircraftType.Model,
+                AircraftTypeModel = flight.AircraftType == null ? null : flight.AircraftType!.Model,
                 HasArrivalSubmission = hasArrival,
                 HasDepartureSubmission = hasDeparture,
                 HasCancellationSubmission = hasCancellation,
@@ -104,6 +97,14 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                     : flight.Schedule.Sta <= dueSoonBy ? FlightReportStatus.DueSoon
                     : FlightReportStatus.Scheduled
             };
+        query = request.FlightType switch
+        {
+            FlightListType.Scheduled => query.Where(item => !item.IsAdHocFlight && !item.IsPerLanding),
+            FlightListType.PerLanding => query.Where(item => !item.IsAdHocFlight && item.IsPerLanding && !item.IsOnCall),
+            FlightListType.OnCall => query.Where(item => item.IsOnCall),
+            FlightListType.AdHoc => query.Where(item => item.IsAdHocFlight),
+            _ => query
+        };
         if (request.Statuses is { Count: > 0 } statuses)
             query = query.Where(item => statuses.Contains(item.Status));
 
@@ -127,7 +128,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             item.StationId, item.HasArrivalSubmission, item.HasDepartureSubmission, item.HasCancellationSubmission,
             item.Status.ToString(), item.ApprovalStatus, item.ApprovedByDisplayName, item.ApprovedAtUtc,
             item.ApprovedReturnToRampSequence, item.ApprovalNumber, item.IsAdHocFlight, item.ActualArrivalUtc,
-            item.ReturnedToRampUtc)).ToList();
+            item.ReturnedToRampUtc, item.IsOnCall)).ToList();
         return paging.ToResult(versionedItems, total);
     }
 }

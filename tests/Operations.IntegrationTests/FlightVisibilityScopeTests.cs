@@ -249,6 +249,71 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
     }
 
     [Fact]
+    public async Task Portal_flight_types_split_per_landing_by_performed_services_before_paging()
+    {
+        using var admin = await factory.CreateAuthenticatedAdminClientAsync();
+        var refs = await SetupMasterDataAsync(admin);
+        var userId = (await admin.GetFromJsonAsync<JsonElement>($"{IdentityBase}/me")).GetProperty("id").GetGuid();
+        var now = DateTimeOffset.UtcNow;
+        var employee = new StaffMemberSnapshot(Guid.NewGuid(), "Report employee", "REPORT");
+        var aircraft = new AircraftTypeSnapshot(Guid.NewGuid(), "Airbus", "A320");
+        var service = new ServiceSnapshot(refs.ServiceId, "Performed service");
+        var workWindow = TimeWindow.Create(now.AddMinutes(-19), null).Value;
+
+        Flight CreateFlight(string number, bool perLanding)
+        {
+            var flight = Flight.ScheduleNew(new(refs.CustomerId, null, "Flight type customer"),
+                new(refs.StationId, "TST", "Station"), new(refs.OperationTypeId, "Transit"),
+                FlightNumber.Create(number).Value, ScheduledTime.Create(now.AddHours(-1), now).Value, null,
+                [perLanding ? new(WellKnownMasterDataIds.AircraftPerLandingService, "Aircraft Per Landing") : service],
+                [], userId, now).Value;
+            flight.SubmitArrival(employee, ArrivalDetails.Create(null, now.AddMinutes(-50),
+                aircraft, "HZ-TEST", employee, null).Value, userId, now).IsSuccess.ShouldBeTrue();
+            return flight;
+        }
+
+        var scheduled = CreateFlight("7801", perLanding: false);
+        scheduled.AddService(service, null, workWindow, null, userId, now,
+            initialPerformers: [new(employee, workWindow)]).IsSuccess.ShouldBeTrue();
+        var perLanding = CreateFlight("7802", perLanding: true);
+        perLanding.AddTask(FlightTaskType.Minor, null, null, workWindow, null, userId, now,
+            initialPerformers: [new(employee, workWindow)]).IsSuccess.ShouldBeTrue();
+        var onCall = CreateFlight("7803", perLanding: true);
+        onCall.AddService(service, null, workWindow, null, userId, now,
+            initialPerformers: [new(employee, workWindow)]).IsSuccess.ShouldBeTrue();
+        var onCallWithReturn = CreateFlight("7804", perLanding: true);
+        onCallWithReturn.SubmitDeparture(employee, DepartureDetails.Create(now.AddMinutes(-30), null, employee, null).Value,
+            userId, now).IsSuccess.ShouldBeTrue();
+        var occurrence = onCallWithReturn.StartReturnToRamp(
+            RtrArrivalDetails.Create(now.AddMinutes(-20), employee, null).Value, userId, now).Value;
+        onCallWithReturn.AddService(service, null, workWindow, null, userId, now, occurrence.Id,
+            [new(employee, workWindow)]).IsSuccess.ShouldBeTrue();
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            db.Flights.AddRange(scheduled, perLanding, onCall, onCallWithReturn);
+            await db.SaveChangesAsync();
+        }
+
+        var path = $"{Base}/flights?stationId={refs.StationId}&sort=flightnumber:asc";
+        var all = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>(path))!;
+        all.Items.Select(item => (item.FlightNumber, item.IsPerLanding, item.IsOnCall))
+            .ShouldBe([("7801", false, false), ("7802", true, false), ("7803", true, true), ("7804", true, true)]);
+
+        var onlyPerLanding = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{path}&flightType=PerLanding"))!;
+        onlyPerLanding.TotalCount.ShouldBe(1);
+        onlyPerLanding.Items.ShouldHaveSingleItem().Id.ShouldBe(perLanding.Id);
+
+        var firstOnCall = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{path}&flightType=OnCall&pageSize=1"))!;
+        firstOnCall.TotalCount.ShouldBe(2);
+        firstOnCall.Items.ShouldHaveSingleItem().Id.ShouldBe(onCall.Id);
+        var secondOnCall = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{path}&flightType=OnCall&pageSize=1&page=2"))!;
+        secondOnCall.TotalCount.ShouldBe(2);
+        secondOnCall.Items.ShouldHaveSingleItem().Id.ShouldBe(onCallWithReturn.Id);
+    }
+
+    [Fact]
     public async Task Portal_flight_statuses_match_operational_reports_and_filter_before_paging()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();

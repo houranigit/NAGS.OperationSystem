@@ -294,7 +294,7 @@ internal static class FlightEndpoints
             if (!string.IsNullOrWhiteSpace(flightType) &&
                 (!Enum.TryParse(flightType, ignoreCase: true, out type) ||
                  !string.Equals(Enum.GetName(type), flightType.Trim(), StringComparison.OrdinalIgnoreCase)))
-                return ApiResults.Problem(Error.Validation("Choose All, Scheduled, PerLanding, or AdHoc.", "Operations.Flight.TypeInvalid"));
+                return ApiResults.Problem(Error.Validation("Choose All, Scheduled, PerLanding, OnCall, or AdHoc.", "Operations.Flight.TypeInvalid"));
 
             var result = await sender.Send(new GetFlightsQuery(
                 page, pageSize, search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, type), ct);
