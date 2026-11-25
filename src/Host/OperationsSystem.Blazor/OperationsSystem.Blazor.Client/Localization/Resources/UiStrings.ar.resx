@@ -787,6 +787,7 @@
   <data name="Flights.PrintWorkOrder" xml:space="preserve"><value>طباعة أمر العمل</value></data>
   <data name="Flights.TypeAdHoc" xml:space="preserve"><value>Ad Hoc</value></data>
   <data name="Flights.AwaitingAta" xml:space="preserve"><value>بانتظار ATA</value></data>
+  <data name="Flights.AutoClosed" xml:space="preserve"><value>أُغلقت تلقائيًا</value></data>
   <data name="Flights.StaNow" xml:space="preserve"><value>الوصول المجدول الآن</value></data>
   <data name="Flights.StaIn" xml:space="preserve"><value>الوصول المجدول خلال {0}</value></data>
   <data name="Flights.StaAgo" xml:space="preserve"><value>الوصول المجدول منذ {0}</value></data>

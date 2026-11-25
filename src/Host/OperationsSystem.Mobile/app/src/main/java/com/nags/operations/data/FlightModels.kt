@@ -135,6 +135,7 @@ data class FlightDetail(
     val approvedByDisplayName: String? = null,
     val approvedAtUtc: String? = null,
     val approvedReturnToRampSequence: Int = 0,
+    val isAutoClosed: Boolean = false,
 ) {
     init { ZoneId.of(stationTimeZoneId) }
 

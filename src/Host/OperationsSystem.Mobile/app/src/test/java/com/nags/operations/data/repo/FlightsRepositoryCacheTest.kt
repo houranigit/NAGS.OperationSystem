@@ -1579,6 +1579,37 @@ class FlightsRepositoryCacheTest {
         assertEquals(1, repository.syncStatus.first().itemCount)
     }
 
+    @Test fun fullSyncDropsAutoClosedPerLandingFlightFromOfflineListAndDetails() = runBlocking {
+        val overdue = detail("overdue").copy(isPerLanding = true,
+            scheduledArrivalUtc = "2026-11-03T06:00:00Z", scheduledDepartureUtc = "2026-11-03T07:00:00Z")
+        val overdueRow = item(overdue.id).copy(isPerLanding = true, isMyFlight = false,
+            scheduledArrivalUtc = overdue.scheduledArrivalUtc, scheduledDepartureUtc = overdue.scheduledDepartureUtc)
+            .withVisibilityReports(overdue)
+        val employee = AssignedEmployee("staff", "Employee", "E1")
+        val approved = detail("approved").copy(isPerLanding = true, approvalStatus = "Approved",
+            departureSubmissions = listOf(com.nags.operations.data.FlightDepartureSubmission("departure", employee, clock,
+                employee, isAccepted = true, createdAtUtc = clock)))
+        val approvedRow = item(approved.id).copy(isPerLanding = true, isMyFlight = false).withVisibilityReports(approved)
+        serverItems = listOf(overdueRow, approvedRow)
+        detailLoader = { id -> if (id == overdue.id) overdue else approved }
+        val repository = repository()
+        repository.refreshCache()
+        online = false
+        assertEquals(listOf(overdue.id, approved.id), repository.flights(FlightCategory.PerLanding).items.map { it.id })
+        assertTrue(repository.flight(overdue.id).fromCache)
+
+        online = true
+        serverItems = listOf(approvedRow)
+        clock = "2026-11-04T10:01:00Z"
+        repository.refreshCache()
+        online = false
+        assertEquals(listOf(approved.id), repository.flights(FlightCategory.PerLanding).items.map { it.id })
+        assertNull(repository.cachedFlight(overdue.id))
+        assertNull(dao.detail(owner.value!!, overdue.id))
+        assertTrue(repository.flight(approved.id).isApprovalLocked)
+        assertNull(repository.syncStatus.first().error)
+    }
+
     @Test fun correctingDepartureToAnEarlierTimeRecomputesActualRetentionFromCompleteDetail() = runBlocking {
         val employee = AssignedEmployee("staff", "Employee", "E1")
         val original = com.nags.operations.data.FlightDepartureSubmission("departure", employee, clock,

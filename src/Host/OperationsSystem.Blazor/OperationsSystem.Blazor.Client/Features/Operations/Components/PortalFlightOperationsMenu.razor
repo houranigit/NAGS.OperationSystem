@@ -4,7 +4,7 @@
 @inject DialogService Dialogs
 @inject NotificationService Notifications
 
-@if (ShowDivider && (isLoading || loadError || HasOperationalRecords || CanCreateWorkOrder || CanStartCancellation))
+@if (ShowDivider && (isLoading || loadError || HasOrders || CanCreateWorkOrder || CanStartCancellation))
 {
     <div class="os-row-actions-sep" role="separator"></div>
 }
@@ -18,7 +18,7 @@ else if (loadError)
         <RadzenIcon Icon="refresh" /><span>Retry flight actions</span>
     </button>
 }
-@if (!isLoading && HasOperationalRecords)
+@if (!isLoading && HasOrders)
 {
     @if (HasWorkOrder)
     {
@@ -66,15 +66,16 @@ else if (!isLoading && !loadError)
     private bool ViewOnly => Auth.IsSystemAdministrator
         ? !CanOperateAsAdministrator
         : !Auth.HasPermission(OperationsPermissions.FlightsOperate);
-    private bool HasOperationalRecords => HasWorkOrder || HasCancellationOrder;
-    private bool HasWorkOrder => details?.HasWorkOrderRecords ??
-        (Flight.HasOperationalRecords && (!Flight.HasCancellationSubmission || Flight.Status == "Conflict"));
+    private bool HasOrders => HasWorkOrder || HasCancellationOrder;
+    private bool HasWorkOrder => details is { } current
+        ? current.IsAutoClosed || current.HasWorkOrderRecords
+        : Flight.IsAutoClosed || (Flight.HasOperationalRecords && (!Flight.HasCancellationSubmission || Flight.Status == "Conflict"));
     private bool HasCancellationOrder => details is { } current
         ? current.CancellationSubmissions.Count > 0
         : Flight.HasCancellationSubmission;
-    private bool CanCreateWorkOrder => !HasOperationalRecords && !ViewOnly && details is { } current &&
+    private bool CanCreateWorkOrder => !HasOrders && !ViewOnly && details is { } current &&
         (current.CanSaveArrival || current.CanSaveDeparture || current.CanSaveServices || current.CanSaveTasks || current.CanSaveReturnsToRamp);
-    private bool CanStartCancellation => !HasOperationalRecords && !ViewOnly &&
+    private bool CanStartCancellation => !HasOrders && !ViewOnly &&
         details is { IsApprovalLocked: false, CanSaveCancellation: true };
     private bool CanViewCancellation => details is { CancellationSubmissions.Count: > 0 } current &&
         (Auth.IsSystemAdministrator || current.CanApprove || current.CanUnlock ||
@@ -156,7 +157,7 @@ else if (!isLoading && !loadError)
                 ? OpenCancellationDialogAsync(PortalFlightWorkDialog.ApprovalAction.None, viewReports: true)
                 : Task.CompletedTask;
 
-        return details is { HasWorkOrderRecords: true } flight
+        return HasWorkOrder && details is { } flight
             ? OpenWorkDialogAsync(flight, PortalFlightWorkDialog.ApprovalAction.None)
             : Task.CompletedTask;
     }

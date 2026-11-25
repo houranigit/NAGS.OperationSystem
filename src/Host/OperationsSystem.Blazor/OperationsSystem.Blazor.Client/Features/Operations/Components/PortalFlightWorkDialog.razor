@@ -14,6 +14,10 @@
         {
             <header>
                 <p class="portal-work-note">WO# <strong>@workOrderNumber</strong></p>
+                @if (flight.IsAutoClosed)
+                {
+                    <StatusBadge Label="@UiStrings.Flights.AutoClosed" Tone="slate" />
+                }
             </header>
         }
     </HeaderContent>

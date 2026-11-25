@@ -27,7 +27,10 @@ public sealed record FlightListItem(
     bool HasOperationalRecords = false,
     bool HasCancellationSubmission = false)
 {
+    internal const string AutoClosedStatus = "AutoClosed";
+
     internal bool IsApprovalLocked => FlightApprovalStatuses.IsLocked(ApprovalStatus);
+    internal bool IsAutoClosed => Status == AutoClosedStatus;
 }
 
 internal static class FlightApprovalStatuses

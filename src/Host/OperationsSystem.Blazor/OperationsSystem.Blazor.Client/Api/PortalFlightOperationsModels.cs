@@ -21,7 +21,7 @@ public sealed record PortalFlightOperations(
     IReadOnlyList<PortalFlightReturnToRamp> ReturnToRamps, bool CanSaveReturnsToRamp, int LastReturnToRampSequence,
     string ApprovalStatus = FlightApprovalStatuses.NotApproved, string? ApprovedByDisplayName = null,
     DateTimeOffset? ApprovedAtUtc = null, int ApprovedReturnToRampSequence = 0, bool CanApprove = false, bool CanUnlock = false,
-    string? WorkOrderNumber = null)
+    string? WorkOrderNumber = null, bool IsAutoClosed = false)
 {
     internal bool IsApprovalLocked => FlightApprovalStatuses.IsLocked(ApprovalStatus);
 

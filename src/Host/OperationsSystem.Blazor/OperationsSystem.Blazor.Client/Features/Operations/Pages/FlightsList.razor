@@ -118,7 +118,7 @@
                 </RadzenDataGridColumn>
             </Columns>
             <RowActions Context="flight">
-                @if (flight.HasOperationalRecords || CanOpenFlightOperations || CanEditSchedule)
+                @if (flight.HasOperationalRecords || flight.IsAutoClosed || CanOpenFlightOperations || CanEditSchedule)
                 {
                     <RowActionMenu>
                         <ChildContent>
@@ -126,7 +126,7 @@
                                        OnClick="@(() => OpenEditAsync(flight.Id))" />
                         </ChildContent>
                         <MenuContent>
-                            @if (flight.HasOperationalRecords || CanOpenFlightOperations)
+                            @if (flight.HasOperationalRecords || flight.IsAutoClosed || CanOpenFlightOperations)
                             {
                                 <PortalFlightOperationsMenu @key="flight.Id" Flight="@flight" ShowWorkActions="@CanOpenFlightOperations"
                                     ShowDivider="@CanEditSchedule" Changed="@ReloadAsync" />
@@ -152,6 +152,7 @@
         new("On ground", "OnGround", "info"),
         new("RTR", "ReturnedToRamp", "purple"),
         new("Departed", "Departed", "slate"),
+        new(UiStrings.Flights.AutoClosed, FlightListItem.AutoClosedStatus, "slate"),
         new("Canceled", "Canceled", "danger"),
         new("Conflict", "Conflict", "critical")
     ];

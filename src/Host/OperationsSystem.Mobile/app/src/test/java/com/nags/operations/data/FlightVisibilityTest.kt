@@ -26,6 +26,16 @@ class FlightVisibilityTest {
         assertVisible(old.copy(arrivalSubmissions = listOf(arrival), cancellationSubmissions = listOf(canceled), hasCancellationSubmission = true), true)
     }
 
+    @Test fun autoClosedPerLandingDetailIsHiddenWhileManualApprovalKeepsItsNormalWindow() {
+        val approved = old.copy(isPerLanding = true, approvalStatus = "Approved",
+            departureSubmissions = listOf(departure(now.minusSeconds(60).toString())))
+        assertVisible(approved, true)
+
+        val autoClosed = approved.copy(departureSubmissions = emptyList(), isAutoClosed = true)
+        val cached = Json.decodeFromString<FlightDetail>(Json.encodeToString(autoClosed))
+        assertFalse(cached.isInFlightWindow(now))
+    }
+
     @Test fun upcomingPendingFlightsUseOnlyStaLookaheadAndIncludeItsExactBoundary() {
         assertVisible(old.copy(scheduledArrivalUtc = now.plusSeconds(43200).toString(), scheduledDepartureUtc = now.plusSeconds(86400).toString()), true)
         assertVisible(old.copy(scheduledArrivalUtc = now.plusSeconds(43200).plusNanos(1).toString(), scheduledDepartureUtc = now.plusSeconds(86400).toString()), false)

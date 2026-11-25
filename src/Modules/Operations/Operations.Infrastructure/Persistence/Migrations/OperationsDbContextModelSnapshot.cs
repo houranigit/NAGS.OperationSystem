@@ -113,6 +113,9 @@ namespace Operations.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CreatedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("IsAutoClosed")
+                        .HasColumnType("bit");
+
                     b.Property<int>("LastReturnToRampSequence")
                         .HasColumnType("int");
 

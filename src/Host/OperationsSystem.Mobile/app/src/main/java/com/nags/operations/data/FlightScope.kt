@@ -28,6 +28,7 @@ fun FlightListItem.isInFlightWindow(at: Instant): Boolean = runCatching {
 }.getOrDefault(false)
 
 fun FlightDetail.isInFlightWindow(at: Instant): Boolean = runCatching {
+    if (isAutoClosed) return@runCatching false
     // Legacy cancellation snapshots without actual records cannot establish an unlimited operational view.
     if (hasCancellationSubmission && cancellationSubmissions.isEmpty())
         return@runCatching overlapsFlightWindow(scheduledArrivalUtc, scheduledDepartureUtc, at)

@@ -13,7 +13,8 @@ public enum FlightReportStatus
     ReturnedToRamp,
     Departed,
     Canceled,
-    Conflict
+    Conflict,
+    AutoClosed
 }
 
 public sealed record FlightListItemDto(
@@ -114,4 +115,5 @@ public sealed record FlightDetailDto(
     bool CanApprove = false,
     bool CanUnlock = false,
     string? WorkOrderNumber = null,
-    bool CanEditSchedule = false);
+    bool CanEditSchedule = false,
+    bool IsAutoClosed = false);

@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Seeding;
 using Operations.Domain.ValueObjects;
 
 namespace Operations.Domain.Flights;
@@ -14,8 +15,10 @@ public enum FlightApprovalStatus
 public sealed partial class Flight
 {
     public const int MaxApproverDisplayNameLength = 150;
+    public static readonly TimeSpan AutoCloseDelay = TimeSpan.FromHours(1);
 
     public FlightApprovalStatus ApprovalStatus { get; private set; }
+    public bool IsAutoClosed { get; private set; }
     public Guid? ApprovedByUserId { get; private set; }
     public string? ApprovedByDisplayName { get; private set; }
     public DateTimeOffset? ApprovedAtUtc { get; private set; }
@@ -39,6 +42,26 @@ public sealed partial class Flight
         if (validation.IsFailure)
             return validation;
 
+        return RecordApproval(approvedByUserId, displayName, now, approvalSequence);
+    }
+
+    /// <summary>Requires the planned services and confirmation that all operational collections are empty.</summary>
+    public Result AutoClose(DateTimeOffset now, int approvalSequence)
+    {
+        if (ApprovalStatus != FlightApprovalStatus.NotApproved || !IsPerLanding ||
+            OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType ||
+            now - Schedule.Std < AutoCloseDelay || HasOperationalRecords())
+            return Error.Conflict("The flight is no longer eligible for automatic closure.", "Operations.FlightApproval.AutoCloseNotEligible");
+
+        var approval = RecordApproval(null, "System", now, approvalSequence);
+        if (approval.IsSuccess)
+            IsAutoClosed = true;
+
+        return approval;
+    }
+
+    private Result RecordApproval(Guid? approvedByUserId, string displayName, DateTimeOffset now, int approvalSequence)
+    {
         if (ApprovalNumber is null)
         {
             var number = WorkOrderNumber.Format(Station.IataCode, approvalSequence);
@@ -64,6 +87,7 @@ public sealed partial class Flight
             return Error.Conflict("Only an approved flight can be unlocked.", "Operations.FlightApproval.UnlockNotAllowed");
 
         ApprovalStatus = FlightApprovalStatus.Unlocked;
+        IsAutoClosed = false;
         ApprovalSequence = null;
         ApprovalNumber = null;
         UpdatedAtUtc = now.ToUniversalTime();

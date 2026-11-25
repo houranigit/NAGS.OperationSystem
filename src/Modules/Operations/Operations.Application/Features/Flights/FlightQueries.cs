@@ -51,7 +51,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 request.OperationTypeId, request.FromUtc, request.ToUtc));
         var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
         var dueSoonBy = now.AddMinutes(30);
-        // Keep the report precedence and STA thresholds in sync with Android's FlightCardReportStatus.
+        // Mobile excludes auto-closed flights. Keep the remaining status rules in sync with Android.
         var query =
             from flight in FlightListQuery.ApplySort(flights, request.Sort)
             let hasArrival = flight.ArrivalSubmissions.Any()
@@ -90,7 +90,8 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 flight.ApprovedAtUtc,
                 flight.ApprovedReturnToRampSequence,
                 flight.ApprovalNumber,
-                Status = hasCancellation && (hasArrival || hasDeparture || flight.ReturnToRamps.Any()) ? FlightReportStatus.Conflict
+                Status = flight.IsAutoClosed ? FlightReportStatus.AutoClosed
+                    : hasCancellation && (hasArrival || hasDeparture || flight.ReturnToRamps.Any()) ? FlightReportStatus.Conflict
                     : hasCancellation ? FlightReportStatus.Canceled
                     : flight.ReturnToRamps.Any(ramp => ramp.DepartureDetails == null) ? FlightReportStatus.ReturnedToRamp
                     : hasDeparture ? FlightReportStatus.Departed
@@ -278,7 +279,7 @@ internal static class FlightDetails
             flight.ApprovalStatus, flight.ApprovedByDisplayName, flight.ApprovedAtUtc, flight.ApprovedReturnToRampSequence,
             canReview && flight.ApprovalStatus != FlightApprovalStatus.Approved,
             canReview && flight.ApprovalStatus == FlightApprovalStatus.Approved,
-            flight.ApprovalNumber);
+            flight.ApprovalNumber, IsAutoClosed: flight.IsAutoClosed);
     }
 }
 

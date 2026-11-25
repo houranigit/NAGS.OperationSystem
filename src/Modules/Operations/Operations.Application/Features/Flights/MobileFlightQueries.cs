@@ -247,7 +247,7 @@ internal static class MobileFlightQuery
         var stationId = scope.StationId;
         var terminalCutoff = scope.WindowStartUtc;
         var arrivalLookahead = scope.WindowEndUtc;
-        return query.Where(f => f.Station.StationId == stationId && (
+        return query.Where(f => f.Station.StationId == stationId && !f.IsAutoClosed && (
             f.ReturnToRamps.Any(r => r.DepartureDetails == null) ||
             f.ArrivalSubmissions.Any() && !f.DepartureSubmissions.Any() ||
             !f.ArrivalSubmissions.Any() && !f.DepartureSubmissions.Any() && !f.CancellationSubmissions.Any() &&

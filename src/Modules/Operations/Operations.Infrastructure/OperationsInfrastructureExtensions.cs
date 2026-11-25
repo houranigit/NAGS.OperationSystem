@@ -42,6 +42,8 @@ public static class OperationsInfrastructureExtensions
 
         services.Configure<FlightReminderOptions>(configuration.GetSection(FlightReminderOptions.SectionName));
         services.AddHostedService<FlightReminderBackgroundService>();
+        if (configuration.GetValue(FlightAutoCloseBackgroundService.EnabledKey, true))
+            services.AddHostedService<FlightAutoCloseBackgroundService>();
 
         services.TryAddSingleton(TimeProvider.System);
 

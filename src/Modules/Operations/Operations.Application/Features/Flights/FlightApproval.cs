@@ -42,7 +42,7 @@ public sealed class SetFlightApprovalCommandHandler(IOperationsDbContext db, Por
 
             Result<int> sequence = flight.ApprovalSequence is { } currentSequence
                 ? Result.Success(currentSequence)
-                : await FindAvailableSequenceAsync(flight.Station.StationId, cancellationToken);
+                : await FlightApprovalNumbers.FindAvailableSequenceAsync(db, flight.Station.StationId, cancellationToken);
             if (sequence.IsFailure)
                 return sequence.Error;
 
@@ -69,8 +69,11 @@ public sealed class SetFlightApprovalCommandHandler(IOperationsDbContext db, Por
         FlightServiceWrites.Notify(mobileSync, clock);
         return Result.Success();
     }
+}
 
-    private async Task<Result<int>> FindAvailableSequenceAsync(Guid stationId, CancellationToken cancellationToken)
+public static class FlightApprovalNumbers
+{
+    public static async Task<Result<int>> FindAvailableSequenceAsync(IOperationsDbContext db, Guid stationId, CancellationToken cancellationToken)
     {
         var used = await db.Flights.AsNoTracking()
             .Where(flight => flight.Station.StationId == stationId && flight.ApprovalSequence != null)
