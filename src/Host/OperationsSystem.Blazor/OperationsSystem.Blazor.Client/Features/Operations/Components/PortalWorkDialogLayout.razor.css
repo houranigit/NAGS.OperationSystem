@@ -135,6 +135,7 @@
 
 .portal-step-add button:disabled {
     opacity: 0.55;
+    pointer-events: none;
 }
 
 :is(.portal-step-active, .portal-step-complete) button {
@@ -282,12 +283,6 @@
     margin-block-start: auto;
     padding-block-start: var(--os-space-3);
     border-block-start: 1px solid var(--os-color-border);
-}
-
-.portal-step-add-hint {
-    margin: 0;
-    color: var(--os-color-text-muted);
-    font-size: var(--os-text-sm);
 }
 
 @media (max-width: 680px) {

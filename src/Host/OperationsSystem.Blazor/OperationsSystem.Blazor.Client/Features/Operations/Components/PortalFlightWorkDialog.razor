@@ -1,9 +1,13 @@
 @implements IAsyncDisposable
 
+@{
+    var canAddReturnToRamp = CanAddReturnToRamp;
+}
+
 <PortalWorkDialogLayout StepLabels="@StepLabels" CurrentStep="@step" ShowSteps="@(!loading && flight is not null)"
                         IsGuidedEntry="@IsGuidedEntry" Busy="@saving" StepChanged="@ChangeStep" ValidationAttempt="@validationFocusAttempt"
-                        AddStepLabel="@(ShowAddReturnToRamp ? UiStrings.ReturnsToRamp.Add : null)" AddStepDisabled="@(!CanAddReturnToRamp)"
-                        AddStepHint="@AddReturnToRampHint"
+                        AddStepLabel="@(ShowAddReturnToRamp ? UiStrings.ReturnsToRamp.Add : null)" AddStepDisabled="@(!canAddReturnToRamp)"
+                        AddStepHint="@(canAddReturnToRamp ? null : AddReturnToRampHint)"
                         AddStep="@(() => OpenReturnToRampAsync(null))">
     <HeaderContent>
         @if (flight?.WorkOrderNumber is { } workOrderNumber)

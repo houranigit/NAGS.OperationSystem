@@ -102,27 +102,39 @@ public partial class PortalFlightWorkDialog
     }
 
     private bool CanDraftReturnToRamp => !ViewOnly &&
-        flight is { CancellationSubmissions.Count: 0, CanSaveReturnsToRamp: true };
+        flight is { CancellationSubmissions.Count: 0 } data &&
+        (data.CanSaveReturnsToRamp || data.DepartureSubmissions.Count == 0 && CanEditDeparture);
 
     private bool ShowAddReturnToRamp => !ViewOnly && flight is { CancellationSubmissions.Count: 0 } data &&
         (data.CanSaveReturnsToRamp || CanEditNormalWork || data.CanApprove);
 
     private bool HasOpenReturn => flight?.ReturnToRamps.Any(item => item.IsOpen) == true || pendingReturns.Any(item => item.IsOpen);
 
-    private bool CanAddReturnToRamp => CanDraftReturnToRamp && flight is { DepartureSubmissions.Count: > 0 } && !HasOpenReturn;
+    private bool CanAddReturnToRamp => CanDraftReturnToRamp && !HasOpenReturn &&
+        (flight is { DepartureSubmissions.Count: > 0 } || HasValidDepartureDraft());
+
+    private bool HasValidDepartureDraft()
+    {
+        if (!ActualDeparture.HasValue)
+            return false;
+
+        var checks = new PortalFlightValidation();
+        ReadArrival(checks, requireArrival: true);
+        return ReadDeparture(checks) is not null && checks.Count == 0;
+    }
 
     private string? AddReturnToRampHint
     {
         get
         {
-            if (flight is not { } data || !ShowAddReturnToRamp || CanAddReturnToRamp)
+            if (flight is not { } data || !ShowAddReturnToRamp)
                 return null;
 
             if (HasOpenReturn)
                 return UiStrings.ReturnsToRamp.OpenBlocksAdd;
 
-            if (data.DepartureSubmissions.Count == 0)
-                return UiStrings.ReturnsToRamp.SaveDepartureBeforeAdd;
+            if (data.DepartureSubmissions.Count == 0 && CanEditDeparture)
+                return UiStrings.ReturnsToRamp.CompleteDepartureBeforeAdd;
 
             return UiStrings.ReturnsToRamp.AddUnavailable;
         }
@@ -476,6 +488,12 @@ public partial class PortalFlightWorkDialog
         requireArrivalForValidation = requireArrivalForValidation && validation.HasErrorsInStep(0);
         validation = new();
         var request = ReadNormalWork();
+        if (pendingReturns.Count > 0 && flight.DepartureSubmissions.Count == 0 && request?.Departure is null)
+        {
+            validation.Step = 3;
+            validation.Add(DepartureTimeField, UiStrings.ReturnsToRamp.CompleteDepartureBeforeSave);
+        }
+
         if (validation.Count > 0)
         {
             FocusFirstInvalidStep();

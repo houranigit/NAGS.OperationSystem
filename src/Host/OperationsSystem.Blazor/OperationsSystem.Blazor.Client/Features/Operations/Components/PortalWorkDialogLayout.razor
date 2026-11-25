@@ -30,7 +30,7 @@
                 {
                     <li class="portal-step portal-step-add" title="@AddStepHint">
                         <button type="button" aria-label="@addLabel" title="@(AddStepHint ?? addLabel)"
-                                aria-describedby="@(ShowAddStepHint ? addStepHintId : null)"
+                                aria-description="@AddStepHint"
                                 disabled="@(Busy || AddStepDisabled)" @onclick="AddStep">
                             <span class="portal-step-number"><RadzenIcon Icon="add" aria-hidden="true" /></span>
                             <span class="portal-step-label">@addLabel</span>
@@ -50,10 +50,6 @@
     }
 
     <footer class="portal-editor-footer">
-        @if (ShowAddStepHint)
-        {
-            <p class="portal-step-add-hint" id="@addStepHintId">@AddStepHint</p>
-        }
         @FooterContent
     </footer>
 </div>
@@ -75,9 +71,7 @@
     [Parameter] public RenderFragment? StepContent { get; set; }
     [Parameter] public RenderFragment? FooterContent { get; set; }
 
-    private readonly string addStepHintId = $"portal-add-step-hint-{Guid.NewGuid():N}";
     private ElementReference validationContainer;
-    private bool ShowAddStepHint => ShowSteps && AddStepLabel is not null && AddStepDisabled && AddStepHint is not null;
 
     internal static DialogOptions CreateOptions() => new()
     {
