@@ -257,6 +257,12 @@ public sealed partial class FlightVisibilityScopeTests
 
         staffSaved.CanSaveReturnsToRamp.ShouldBeTrue();
         (await PortalOperationsDetailAsync(admin, id)).CanSaveReturnsToRamp.ShouldBeTrue();
+        using var returnAtDeparture = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{rtrId}",
+            rtrInput with { Arrival = rtrInput.Arrival with { ArrivedAtUtc = departure.Atd } }, staffSaved.RowVersion);
+        returnAtDeparture.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await returnAtDeparture.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.ReturnToRamp.ArrivalBeforeFlightDeparture");
+
         using var rtrResponse = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{rtrId}",
             rtrInput, staffSaved.RowVersion);
         rtrResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -273,6 +279,19 @@ public sealed partial class FlightVisibilityScopeTests
         rtr.CanEdit.ShouldBeTrue();
         rtr.Services.ShouldHaveSingleItem().CreatedByUserId.ShouldBe(administratorId);
 
+        var lateDeparture = departure with
+        {
+            Atd = rtr.ArrivedAtUtc,
+            TargetSubmissionId = departureId,
+            SignatureContent = null,
+            SignatureSignedAtUtc = null
+        };
+        using var correctionAtReturn = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, "batch",
+            OperationsBatchInput(departure: lateDeparture), savedWithReturn.RowVersion);
+        correctionAtReturn.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await correctionAtReturn.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.DepartureSubmission.DepartureAfterReturnToRampArrival");
+
         var approved = await ApprovePortalFlightAsync(admin, id, savedWithReturn.RowVersion);
         approved.ApprovedReturnToRampSequence.ShouldBe(1);
         approved.ReturnToRamps!.ShouldHaveSingleItem().CanEdit.ShouldBeFalse();
@@ -282,6 +301,12 @@ public sealed partial class FlightVisibilityScopeTests
         var secondRtrId = Guid.NewGuid();
         var secondRtrInput = new SaveFlightReturnToRampRequest(new(secondArrival, ReceivedByStaffMemberId: receiver.StaffId),
             new(secondArrival.AddMinutes(25), HandledByStaffMemberId: handler.StaffId), [new(Guid.NewGuid(), secondWork)], []);
+        using var overlappingReturn = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{secondRtrId}",
+            secondRtrInput with { Arrival = secondRtrInput.Arrival with { ArrivedAtUtc = rtr.DepartedAtUtc!.Value } }, approved.RowVersion);
+        overlappingReturn.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await overlappingReturn.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.ReturnToRamp.ArrivalBeforePreviousDeparture");
+
         using var secondRtr = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{secondRtrId}",
             secondRtrInput, approved.RowVersion);
         secondRtr.StatusCode.ShouldBe(HttpStatusCode.OK);

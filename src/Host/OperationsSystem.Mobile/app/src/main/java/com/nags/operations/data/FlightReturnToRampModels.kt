@@ -1,5 +1,6 @@
 package com.nags.operations.data
 
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.Base64
 import kotlinx.serialization.Serializable
@@ -88,6 +89,66 @@ fun FlightDetail.canAddReturnToRamp(occurrences: List<FlightReturnToRampRecord> 
 fun FlightDetail.canEditReturnToRamp(occurrence: FlightReturnToRampRecord): Boolean =
     canSaveReturnsToRamp && !hasCancellationSubmission && occurrence.canEdit &&
         (!isApprovalLocked || occurrence.sequence > approvedReturnToRampSequence)
+
+internal enum class ReturnToRampTimelineIssue(val message: String) {
+    ArrivalAfterFlightDeparture("The first return to ramp must start after the flight's actual departure."),
+    ArrivalAfterPreviousDeparture("The return to ramp must start after the previous return has departed."),
+    DepartureBeforeNextArrival("This return must depart before the next return to ramp starts."),
+}
+
+internal fun FlightDetail.returnToRampTimelineIssues(
+    occurrenceId: String,
+    input: SaveFlightReturnToRampRequest,
+    occurrences: List<FlightReturnToRampRecord> = returnToRamps,
+    baseline: FlightReturnToRampRecord? = returnToRamps.firstOrNull { it.id.equals(occurrenceId, true) },
+    pendingDeparture: SaveFlightDepartureRequest? = null,
+): Set<ReturnToRampTimelineIssue> = buildSet {
+    val sequence = occurrences.firstOrNull { it.id.equals(occurrenceId, true) }?.sequence ?: baseline?.sequence
+    val earlier = occurrences.filter { sequence == null || it.sequence < sequence }
+    // Pending edits to later returns sync after this return, so its departure must also fit the recorded arrivals.
+    val later = (returnToRamps + occurrences).filter { sequence != null && it.sequence > sequence }
+    val arrival = rtrInstant(input.arrival.arrivedAtUtc)
+    val departure = input.departure?.departedAtUtc?.let(::rtrInstant)
+    // Only recheck edges affected by time changes so corrections to historical remarks remain possible.
+    if (arrival != null && arrival != baseline?.arrivedAtUtc?.let(::rtrInstant)) {
+        if (earlier.isNotEmpty()) {
+            if (earlier.any { previous ->
+                val end = previous.departedAtUtc?.let(::rtrInstant)
+                end == null || arrival <= end
+            })
+                add(ReturnToRampTimelineIssue.ArrivalAfterPreviousDeparture)
+        } else if (returnToRampDepartureBoundary(pendingDeparture)?.let { arrival <= it } == true) {
+            add(ReturnToRampTimelineIssue.ArrivalAfterFlightDeparture)
+        }
+    }
+    if (later.isNotEmpty() && (baseline == null || departure != baseline.departedAtUtc?.let(::rtrInstant))) {
+        if (departure == null || later.any { rtrInstant(it.arrivedAtUtc)?.let { start -> departure >= start } == true })
+            add(ReturnToRampTimelineIssue.DepartureBeforeNextArrival)
+    }
+}
+
+internal fun FlightDetail.departureOverlapsFirstReturn(
+    replacement: SaveFlightDepartureRequest,
+    occurrences: List<FlightReturnToRampRecord> = returnToRamps,
+): Boolean {
+    val firstArrival = listOf(returnToRamps, occurrences).mapNotNull { timeline ->
+        timeline.minByOrNull { it.sequence }?.arrivedAtUtc?.let(::rtrInstant)
+    }.minOrNull() ?: return false
+    val updated = rtrInstant(replacement.atd) ?: return false
+    val original = departureSubmissions.firstOrNull { it.matchesReplacement(replacement, currentStaffMemberId) }
+    return updated != original?.atd?.let(::rtrInstant) && updated >= firstArrival
+}
+
+private fun FlightDetail.returnToRampDepartureBoundary(replacement: SaveFlightDepartureRequest?): Instant? {
+    val replacementTime = replacement?.atd?.let(::rtrInstant)
+    val retained = if (replacement == null || replacementTime == null) departureSubmissions else
+        departureSubmissions.filterNot { it.matchesReplacement(replacement, currentStaffMemberId) }
+    return (retained.mapNotNull { rtrInstant(it.atd) } + listOfNotNull(replacementTime)).maxOrNull()
+}
+
+private fun FlightDepartureSubmission.matchesReplacement(replacement: SaveFlightDepartureRequest, staffId: String?) =
+    if (replacement.targetSubmissionId != null) id.equals(replacement.targetSubmissionId, true)
+    else submittedByEmployee.staffMemberId.equals(staffId, true)
 
 /** Latest occurrence owns the card's work summary; normal work remains its separate initial cycle. */
 fun FlightListItem.withReturnToRampReports(detail: FlightDetail): FlightListItem {

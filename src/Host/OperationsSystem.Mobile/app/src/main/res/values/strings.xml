@@ -530,6 +530,10 @@
     <string name="rtr_form_work_summary">Services: %1$d · Tasks: %2$d</string>
     <string name="rtr_form_work_required">Add and finish at least one service or task before recording RTR departure.</string>
     <string name="rtr_form_invalid_actuals">Check the RTR arrival, departure and work periods.</string>
+    <string name="rtr_form_after_flight_departure">The first return to ramp must start after the flight\'s actual departure.</string>
+    <string name="rtr_form_after_previous_departure">The return to ramp must start after the previous return has departed.</string>
+    <string name="rtr_form_before_next_arrival">This return must depart before the next return to ramp starts.</string>
+    <string name="rtr_form_flight_departure_before_first">The flight\'s actual departure must be before the first return to ramp.</string>
     <string name="rtr_form_prerequisite">Save the flight departure and close any open return to ramp before adding one.</string>
     <string name="rtr_form_title">Return to ramp</string>
     <string name="rtr_form_unsaved">New RTR · Draft</string>

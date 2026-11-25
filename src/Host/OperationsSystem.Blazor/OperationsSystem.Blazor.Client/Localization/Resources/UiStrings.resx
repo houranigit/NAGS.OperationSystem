@@ -802,6 +802,11 @@
   <data name="ReturnsToRamp.OpenBlocksAdd" xml:space="preserve"><value>Close the open return to ramp before adding another.</value></data>
   <data name="ReturnsToRamp.CompleteDepartureBeforeAdd" xml:space="preserve"><value>Complete the flight departure details before adding an RTR.</value></data>
   <data name="ReturnsToRamp.CompleteDepartureBeforeSave" xml:space="preserve"><value>Complete the flight departure details before saving the RTR.</value></data>
+  <data name="ReturnsToRamp.ArrivalAfterFlightDeparture" xml:space="preserve"><value>The first RTR must arrive after the flight’s actual departure.</value></data>
+  <data name="ReturnsToRamp.ClosePrevious" xml:space="preserve"><value>Close RTR #{0} before recording this arrival.</value></data>
+  <data name="ReturnsToRamp.ArrivalAfterPreviousDeparture" xml:space="preserve"><value>Arrival must be after the departure of RTR #{0}.</value></data>
+  <data name="ReturnsToRamp.DepartureBeforeNextArrival" xml:space="preserve"><value>Departure must be before the arrival of RTR #{0}.</value></data>
+  <data name="ReturnsToRamp.FlightDepartureBeforeFirstArrival" xml:space="preserve"><value>Actual flight departure must be before the first RTR arrival.</value></data>
   <data name="ReturnsToRamp.AddUnavailable" xml:space="preserve"><value>Add RTR is unavailable for this work order.</value></data>
   <data name="ReturnsToRamp.Open" xml:space="preserve"><value>Open</value></data>
   <data name="ReturnsToRamp.Closed" xml:space="preserve"><value>Closed</value></data>

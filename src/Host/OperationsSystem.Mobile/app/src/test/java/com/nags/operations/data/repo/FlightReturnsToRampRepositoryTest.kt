@@ -75,10 +75,72 @@ class FlightReturnsToRampRepositoryTest {
         assertTrue(dao.rows(owner.value!!).isEmpty())
     }
 
+    @Test fun firstReturnMustStartAfterTheLatestRecordedDeparture() = runBlocking {
+        val otherEmployee = AssignedEmployee("55555555-5555-5555-5555-555555555555", "Colleague", "E2")
+        val laterDeparture = flight.departureSubmissions.single().copy(id = "later", submittedByEmployee = otherEmployee,
+            isAccepted = false, atd = "2026-11-15T15:01:00+03:00")
+        val conflictingFlight = flight.copy(departureSubmissions = flight.departureSubmissions + laterDeparture)
+        val repository = repo()
+        for (invalid in listOf(input.arrival.copy(arrivedAtUtc = at.toString()), input.arrival)) {
+            val failure = runCatching { repository.save(conflictingFlight, id, input.copy(arrival = invalid), preview) }.exceptionOrNull()
+            assertEquals(ReturnToRampTimelineIssue.ArrivalAfterFlightDeparture.message, failure?.message)
+        }
+        assertTrue(dao.rows(owner.value!!).isEmpty())
+
+        val after = at.plusSeconds(61).toString()
+        repository.save(conflictingFlight, id, input.copy(arrival = input.arrival.copy(arrivedAtUtc = after)), preview.copy(arrivedAtUtc = after))
+        assertEquals(id, dao.rows(owner.value!!).single().occurrenceId)
+    }
+
+    @Test fun editsCheckBothSidesOfTheTimelineAndUnchangedHistoricalTimesRemainEditable() {
+        val previous = preview.copy(sequence = 1, departedAtUtc = at.plusSeconds(90).toString(), isOpen = false)
+        val middle = preview.copy(id = "middle", sequence = 2, arrivedAtUtc = at.plusSeconds(100).toString(),
+            departedAtUtc = at.plusSeconds(120).toString(), isOpen = false)
+        val next = preview.copy(id = "next", sequence = 3, arrivedAtUtc = at.plusSeconds(130).toString())
+        val timeline = flight.copy(returnToRamps = listOf(next, previous, middle))
+        val invalid = middle.input().copy(arrival = FlightReturnToRampArrivalInput(previous.departedAtUtc!!),
+            departure = FlightReturnToRampDepartureInput(next.arrivedAtUtc))
+        assertEquals(setOf(ReturnToRampTimelineIssue.ArrivalAfterPreviousDeparture, ReturnToRampTimelineIssue.DepartureBeforeNextArrival),
+            timeline.returnToRampTimelineIssues(middle.id, invalid))
+        assertEquals(setOf(ReturnToRampTimelineIssue.DepartureBeforeNextArrival),
+            timeline.returnToRampTimelineIssues(middle.id, middle.input().copy(departure = null)))
+
+        val recordedOverlap = middle.copy(departedAtUtc = next.arrivedAtUtc)
+        val historic = timeline.copy(returnToRamps = listOf(previous, recordedOverlap, next))
+        assertTrue(historic.returnToRampTimelineIssues(recordedOverlap.id, recordedOverlap.input().copy(
+            arrival = recordedOverlap.input().arrival.copy(remarks = "Corrected remarks"))).isEmpty())
+    }
+
+    @Test fun normalDepartureCorrectionMustRemainBeforeFirstReturn() {
+        val timeline = flight.copy(returnToRamps = listOf(preview))
+        assertTrue(timeline.departureOverlapsFirstReturn(SaveFlightDepartureRequest(preview.arrivedAtUtc)))
+        assertFalse(timeline.departureOverlapsFirstReturn(SaveFlightDepartureRequest(at.plusSeconds(1).toString())))
+
+        val historic = timeline.copy(departureSubmissions = timeline.departureSubmissions.map { it.copy(atd = preview.arrivedAtUtc) })
+        assertFalse(historic.departureOverlapsFirstReturn(SaveFlightDepartureRequest(preview.arrivedAtUtc, remarks = "Corrected remarks")))
+    }
+
+    @Test fun aNewReturnChecksTheDepartureOfAPendingPreviousReturn() = runBlocking {
+        val repository = repo()
+        val departure = at.plusSeconds(90).toString()
+        val first = preview.copy(isOpen = false, departedAtUtc = departure, services = listOf(
+            FlightServiceRecord("66666666-6666-6666-6666-666666666666", "55555555-5555-5555-5555-555555555555", "Transit",
+                preview.arrivedAtUtc, endUtc = departure, createdByUserId = owner.value!!.substringAfter('|'),
+                createdAtUtc = at.toString(), performers = listOf(FlightServicePerformerRecord(
+                    "88888888-8888-8888-8888-888888888888", employee.staffMemberId, employee.fullName, employee.employeeId,
+                    preview.arrivedAtUtc, departure)))))
+        repository.save(flight, id, first.input(), first)
+        val second = preview.copy(id = "99999999-9999-9999-9999-999999999999", sequence = 2, arrivedAtUtc = departure)
+
+        val rejected = runCatching { repository.save(flight, second.id, second.input(), second) }.exceptionOrNull()
+        assertEquals(ReturnToRampTimelineIssue.ArrivalAfterPreviousDeparture.message, rejected?.message)
+        assertEquals(listOf(id), dao.rows(owner.value!!).map { it.occurrenceId })
+    }
+
     @Test fun pendingReturnCanBeEditedAndAnotherCanStartAfterItCloses() = runBlocking {
-        val prior = preview.copy(sequence = 1, departedAtUtc = at.toString(), isOpen = false)
+        val prior = preview.copy(sequence = 1, departedAtUtc = at.plusSeconds(70).toString(), isOpen = false)
         val pending = preview.copy(id = "55555555-5555-5555-5555-555555555555", sequence = 2, isOpen = false,
-            departedAtUtc = at.plusSeconds(90).toString())
+            arrivedAtUtc = at.plusSeconds(80).toString(), departedAtUtc = at.plusSeconds(90).toString())
         val reviewFlight = flight.copy(approvalStatus = "PendingRtr", approvedReturnToRampSequence = 1,
             returnToRamps = listOf(prior, pending))
         assertFalse(reviewFlight.canEditReturnToRamp(prior))
@@ -86,7 +148,9 @@ class FlightReturnsToRampRepositoryTest {
         assertFalse(reviewFlight.canAddReturnToRamp(listOf(prior, pending.copy(isOpen = true))))
         assertTrue(runCatching { repo().save(reviewFlight, id, input, prior) }.isFailure)
         val newId = "66666666-6666-6666-6666-666666666666"
-        repo().save(reviewFlight, newId, input, preview.copy(id = newId, sequence = 3))
+        val afterReturns = at.plusSeconds(100).toString()
+        repo().save(reviewFlight, newId, input.copy(arrival = input.arrival.copy(arrivedAtUtc = afterReturns)),
+            preview.copy(id = newId, sequence = 3, arrivedAtUtc = afterReturns))
         assertEquals(newId, dao.rows(owner.value!!).single().occurrenceId)
     }
 
@@ -258,11 +322,14 @@ class FlightReturnsToRampRepositoryTest {
             send = { _, occurrence, request, version ->
                 attempts += request to version
                 current = current.copy(rowVersion = if (occurrence == id) "AAAAAAAAAAI=" else "AAAAAAAAAAM=",
-                    returnToRamps = if (occurrence == id) listOf(first) else listOf(first, preview.copy(id = secondId, sequence = 2)))
+                    returnToRamps = if (occurrence == id) listOf(first) else listOf(first, preview.copy(id = secondId,
+                        sequence = 2, arrivedAtUtc = request.arrival.arrivedAtUtc)))
                 current
             }, accepted = { _, _ -> }, schedule = {}, json = Json, fetchFlight = { current },
             hasBlockingPriorWork = { false }, now = { at })
-        repository.save(projected, secondId, input.copy(arrival = input.arrival.copy(remarks = "second")), preview.copy(id = secondId, sequence = 2))
+        val secondArrival = at.plusSeconds(100).toString()
+        repository.save(projected, secondId, input.copy(arrival = input.arrival.copy(arrivedAtUtc = secondArrival, remarks = "second")),
+            preview.copy(id = secondId, sequence = 2, arrivedAtUtc = secondArrival))
         repository.save(projected, id, first.input().copy(arrival = input.arrival.copy(remarks = "first")), first)
         current = projected
         online = true

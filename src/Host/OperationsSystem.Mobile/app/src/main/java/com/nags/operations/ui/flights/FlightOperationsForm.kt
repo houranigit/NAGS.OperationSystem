@@ -73,6 +73,7 @@ import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
 import com.nags.operations.data.canAddReturnToRamp
 import com.nags.operations.data.canEditReturnToRamp
+import com.nags.operations.data.departureOverlapsFirstReturn
 import com.nags.operations.ui.components.FlightCard
 import com.nags.operations.data.FlightArrivalSubmission
 import com.nags.operations.ui.util.operationLocalTime
@@ -182,7 +183,6 @@ internal fun FlightOperationsForm(
         // Occurrence.localStatus is transient; retain the exact durable change separately.
         rtrUpdatePendingJson = row?.let { Json.encodeToString(it) }
     }
-    val rtrErrors = rtrDraft?.errors(flight, catalogs, entryZone, null).orEmpty()
     val rtrValidationMessage = stringResource(R.string.rtr_form_invalid_actuals)
     val rtrPrerequisiteMessage = stringResource(R.string.rtr_form_prerequisite)
     val arrival = flight.visibleArrival()
@@ -572,6 +572,14 @@ internal fun FlightOperationsForm(
     }.getOrDefault(false)
     val departureChronologyMessage = stringResource(R.string.flight_departure_before_arrival)
     val departureSaveRequested = departureEnabled && (departureChanged || reviewedDepartureChangeId != null)
+    val proposedDeparture = SaveFlightDepartureRequest(departureTime).takeIf { departureSaveRequested }
+    val queuedDeparture = pendingDepartureInput?.takeIf { pendingDeparture?.status == "pending" }
+    val departureBeforeFirstReturn = proposedDeparture?.let {
+        flight.departureOverlapsFirstReturn(it, pendingRtrOccurrences)
+    } == true
+    val rtrErrors = rtrDraft?.errors(flight, catalogs, entryZone, null, pendingRtrOccurrences,
+        proposedDeparture ?: queuedDeparture).orEmpty()
+    val departureReturnMessage = stringResource(R.string.rtr_form_flight_departure_before_first)
     val changedServiceSaves = serviceChanges.filter { it.input != null }.map { it.serviceRecordId }.toSet()
     val overlapErrors = serviceOverlapValidation(workDrafts.services, entryZone, changedServiceSaves)
     val serviceCompletionRequired = departureSaveRequested || actualDepartureForServices?.isNotBlank() == true && changedServiceSaves.isNotEmpty()
@@ -647,7 +655,7 @@ internal fun FlightOperationsForm(
         val saveTaskInput = !flight.isApprovalLocked && (tasksChanged || forcedTaskIds.isNotEmpty())
         val saveFormDraft = saveServiceInput || saveTaskInput
         val arrivalValid = !saveArrivalInput || aircraftAvailable && arrivalValue.validationErrors(arrivalVersion).isEmpty() && arrivalRemarksValid && parentBoundsErrors.isEmpty() && taskParentBoundsErrors.isEmpty()
-        val departureValid = !saveDepartureInput || departureTime.isNotBlank() && !departureBeforeArrival && !departureNeedsReview &&
+        val departureValid = !saveDepartureInput || departureTime.isNotBlank() && !departureBeforeArrival && !departureBeforeFirstReturn && !departureNeedsReview &&
             parentBoundsErrors.isEmpty() && taskParentBoundsErrors.isEmpty() && serviceCompletionErrors.isEmpty() && taskCompletionErrors.isEmpty()
         val checkedServices = serviceChanges.mapNotNull { change -> change.input?.let { value ->
             workDrafts.services.firstOrNull { it.id == change.serviceRecordId }?.let { draft ->
@@ -674,6 +682,8 @@ internal fun FlightOperationsForm(
             saveError = finishRecordingMessage
         } else if (departureBeforeArrival && saveDepartureInput) {
             saveError = departureChronologyMessage
+        } else if (departureBeforeFirstReturn && saveDepartureInput) {
+            saveError = departureReturnMessage
         } else if (parentBoundsErrors.isNotEmpty()) {
             saveError = actualBoundsMessage
         } else if (taskParentBoundsErrors.isNotEmpty()) {
@@ -1167,6 +1177,7 @@ internal fun FlightOperationsForm(
                     errorMessage = if (validationAttempted && departureChanged) when {
                         departureTime.isBlank() -> stringResource(R.string.departure_atd_required)
                         departureBeforeArrival -> departureChronologyMessage
+                        departureBeforeFirstReturn -> departureReturnMessage
                         else -> null
                     } else null,
                     onOpen = { openPicker("atd") }, onRemove = {
@@ -1205,7 +1216,8 @@ internal fun FlightOperationsForm(
             }
             if (rtrDraft != null && canAddRtr) CompositionLocalProvider(LocalFlightMediaSession provides mediaSession) {
                 FlightRtrFields(rtrDraft, flight, catalogs, !saving, validationAttempted,
-                    onChange = { rtrDraftJson = Json.encodeToString(it) }, onRemove = { rtrDraftJson = null }, openArrivalImmediately = true)
+                    onChange = { rtrDraftJson = Json.encodeToString(it) }, onRemove = { rtrDraftJson = null }, openArrivalImmediately = true,
+                    occurrences = pendingRtrOccurrences, pendingDeparture = proposedDeparture ?: queuedDeparture)
             } else {
                 FlightFormFieldGroup {
                     FlightWorkAddRow(stringResource(R.string.rtr_form_add), enabled = !saving && canAddRtr, onClick = {
@@ -1232,7 +1244,8 @@ internal fun FlightOperationsForm(
                 onSave = onSaveReturnToRamp, onReload = onReviewArrival,
                 onSaveReviewed = onSaveReviewedReturnToRamp, onDiscardReviewed = onDiscardReviewedReturnToRamp,
                 onClose = { rtrUpdateJson = null; rtrUpdateFlightJson = null; rtrUpdatePendingJson = null },
-                currentFlight = flight)
+                currentFlight = flight, pendingReturns = pendingReturnsToRamp.filter { it.status == "pending" },
+                pendingDeparture = queuedDeparture)
         }
     }
     if (picker == "ata" || picker == "atd") {
@@ -1277,7 +1290,8 @@ internal fun FlightOperationsForm(
                 aircraftTypes, loadCustomerLogo, pending, pendingDeparture, loadSignature, onReviewArrival,
                 onSaveArrival, onSaveDeparture, onClose = { updateSection = null; updateSnapshot = null },
                 reviewMode = updateReviewMode, cachedReview = updateReviewCached,
-                currentApprovalLocked = flight.isApprovalLocked, onSaveReviewed = onSaveReviewed, onDiscardReviewed = onDiscardReviewed)
+                currentApprovalLocked = flight.isApprovalLocked, onSaveReviewed = onSaveReviewed, onDiscardReviewed = onDiscardReviewed,
+                pendingReturns = pendingReturnsToRamp.filter { it.status == "pending" })
         }
     }
     workUpdateSnapshot?.let { raw ->

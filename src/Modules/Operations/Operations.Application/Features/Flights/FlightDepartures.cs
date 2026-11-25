@@ -125,6 +125,8 @@ public sealed class SaveFlightDepartureCommandHandler(
         if (chronology.IsFailure) return chronology.Error;
         if (existing is null || existing.Details.Atd != input.Atd)
         {
+            var timeline = flight.ValidateDepartureBeforeReturnToRamp(input.Atd);
+            if (timeline.IsFailure) return timeline.Error;
             var workBounds = FlightServiceBounds.ValidateExistingServices(flight, actualsStaffId, departureOverride: input.Atd);
             if (workBounds.IsFailure) return workBounds.Error;
             var taskBounds = FlightTaskBounds.ValidateExistingTasks(flight, actualsStaffId, departureOverride: input.Atd);

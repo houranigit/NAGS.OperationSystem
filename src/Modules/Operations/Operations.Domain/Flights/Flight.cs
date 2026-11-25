@@ -355,7 +355,7 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         return submission;
     }
 
-    /// <summary>Records or updates one employee's departure. Existing submission collections must be loaded.</summary>
+    /// <summary>Records or updates one employee's departure. Existing submissions and RTRs must be loaded.</summary>
     public Result<FlightDepartureSubmission> SubmitDeparture(
         StaffMemberSnapshot? submittedByEmployee,
         DepartureDetails? details,
@@ -388,6 +388,12 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         if (submission is not null && staffId is not null && submission.SubmittedByEmployee?.StaffMemberId != staffId &&
             !CanCorrectOperationalWork(staffId))
             return Error.Forbidden("Only assigned employees can update another employee's departure.", "Operations.DepartureSubmission.AssignmentRequired");
+        if (submission?.Details.Atd != details.Atd)
+        {
+            var timeline = ValidateDepartureBeforeReturnToRamp(details.Atd);
+            if (timeline.IsFailure)
+                return timeline.Error;
+        }
         if (submission is not null)
         {
             if (submission.Details == details)
@@ -964,6 +970,9 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
             return Error.Conflict("Close the open RTR before adding another occurrence.", "Operations.ReturnToRamp.OpenExists");
         if (LastReturnToRampSequence == int.MaxValue)
             return Error.Conflict("The RTR sequence limit has been reached.", "Operations.ReturnToRamp.SequenceExhausted");
+        var timeline = ValidateReturnToRampTimeline(null, arrivalDetails.ArrivedAtUtc, null);
+        if (timeline.IsFailure)
+            return timeline.Error;
 
         var record = new FlightReturnToRamp(Guid.NewGuid(), Id, LastReturnToRampSequence + 1, arrivalDetails, userId,
             now.ToUniversalTime());
@@ -983,6 +992,10 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
             return found.Error;
         if (arrivalDetails is null)
             return Error.Validation("RTR arrival details are required.", "Operations.ReturnToRamp.ArrivalDetailsRequired");
+        var timeline = ValidateReturnToRampTimeline(returnToRampId, arrivalDetails.ArrivedAtUtc,
+            found.Value.DepartureDetails?.DepartedAtUtc);
+        if (timeline.IsFailure)
+            return timeline.Error;
         var changed = found.Value.UpdateArrival(arrivalDetails);
         if (changed.IsFailure)
             return changed.Error;
@@ -1003,6 +1016,10 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
             return found.Error;
         if (departureDetails is null)
             return Error.Validation("RTR departure details are required.", "Operations.ReturnToRamp.DepartureDetailsRequired");
+        var timeline = ValidateReturnToRampTimeline(returnToRampId, found.Value.ArrivalDetails.ArrivedAtUtc,
+            departureDetails.DepartedAtUtc);
+        if (timeline.IsFailure)
+            return timeline.Error;
         var changed = found.Value.SetDeparture(departureDetails, userId);
         if (changed.IsFailure)
             return changed.Error;

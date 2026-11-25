@@ -103,11 +103,11 @@ public sealed class FlightReturnToRampTests
     }
 
     [Fact]
-    public void ApprovedDeparture_AllowsOneOpenOccurrenceWithoutAnAtdBound()
+    public void ApprovedDeparture_AllowsOneOpenOccurrenceAfterActualDeparture()
     {
         var flight = DepartedFlight();
         var departure = flight.DepartureSubmissions[0];
-        var arrival = Arrival(TestData.Now.AddHours(-2));
+        var arrival = Arrival();
         var user = Guid.NewGuid();
 
         var rtr = flight.StartReturnToRamp(arrival, user, TestData.Now.ToOffset(TimeSpan.FromHours(3))).Value;
@@ -131,9 +131,27 @@ public sealed class FlightReturnToRampTests
         rtr.UpdatedAtUtc.ShouldBeNull();
         rtr.Services.ShouldBeEmpty();
         rtr.Tasks.ShouldBeEmpty();
-        departure.Details.Atd.ShouldBe(TestData.Now.AddHours(1));
+        departure.Details.Atd.ShouldBe(TestData.Now.AddMinutes(-10));
         flight.DepartureSubmissions.ShouldAllBe(item => item.IsAccepted);
         flight.Schedule.ShouldBe(TestData.Schedule());
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    public void FirstOccurrence_RejectsArrivalAtOrBeforeActualDeparture(int minutesFromDeparture)
+    {
+        var flight = DepartedFlight();
+        var departure = flight.DepartureSubmissions.ShouldHaveSingleItem().Details.Atd;
+        var previousUpdate = flight.UpdatedAtUtc;
+
+        var rejected = flight.StartReturnToRamp(Arrival(departure.AddMinutes(minutesFromDeparture)),
+            Guid.NewGuid(), TestData.Now.AddMinutes(1));
+
+        rejected.Error.Code.ShouldBe("Operations.ReturnToRamp.ArrivalBeforeFlightDeparture");
+        flight.ReturnToRamps.ShouldBeEmpty();
+        flight.LastReturnToRampSequence.ShouldBe(0);
+        flight.UpdatedAtUtc.ShouldBe(previousUpdate);
     }
 
     [Theory]
@@ -200,13 +218,13 @@ public sealed class FlightReturnToRampTests
         var first = Start(flight);
         AddCompletedService(flight, first);
         Close(flight, first);
-        var second = flight.StartReturnToRamp(Arrival(TestData.Now.AddHours(-3)), Guid.NewGuid(), TestData.Now.AddMinutes(1)).Value;
+        var second = Start(flight, TestData.Now.AddMinutes(40));
         second.Sequence.ShouldBe(2);
-        flight.UpdateReturnToRampArrival(second.Id, Arrival(TestData.Now.AddHours(-4)), Guid.NewGuid(), TestData.Now.AddMinutes(2))
+        flight.UpdateReturnToRampArrival(second.Id, Arrival(TestData.Now.AddMinutes(35)), Guid.NewGuid(), TestData.Now.AddMinutes(2))
             .Value.ShouldBeSameAs(second);
 
         var removed = flight.RemoveReturnToRamp(second.Id, Guid.NewGuid(), TestData.Now.AddMinutes(3)).Value;
-        var third = Start(flight);
+        var third = Start(flight, TestData.Now.AddMinutes(45));
 
         removed.ShouldBeSameAs(second);
         second.Sequence.ShouldBe(2);
@@ -214,6 +232,31 @@ public sealed class FlightReturnToRampTests
         third.Sequence.ShouldBe(3);
         flight.LastReturnToRampSequence.ShouldBe(3);
         flight.ReturnToRamps.Select(item => item.Id).ShouldBe([first.Id, third.Id]);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public void Corrections_KeepEachDepartureStrictlyBeforeTheNextArrival(int minutesOfOverlap)
+    {
+        var flight = DepartedFlight();
+        var user = Guid.NewGuid();
+        var first = Start(flight);
+        AddCompletedService(flight, first);
+        Close(flight, first);
+        var nextArrival = TestData.Now.AddMinutes(40);
+        var next = Start(flight, nextArrival);
+        var firstDeparture = first.DepartureDetails.ShouldNotBeNull();
+
+        flight.UpdateReturnToRampArrival(next.Id, Arrival(firstDeparture.DepartedAtUtc.AddMinutes(-minutesOfOverlap)),
+            user, TestData.Now.AddMinutes(1)).Error.Code.ShouldBe("Operations.ReturnToRamp.ArrivalBeforePreviousDeparture");
+        flight.CloseReturnToRamp(first.Id, Departure(nextArrival.AddMinutes(minutesOfOverlap)),
+            user, TestData.Now.AddMinutes(1)).Error.Code.ShouldBe("Operations.ReturnToRamp.DepartureAfterNextArrival");
+
+        next.ArrivalDetails.ArrivedAtUtc.ShouldBe(nextArrival);
+        first.DepartureDetails.ShouldBeSameAs(firstDeparture);
+        flight.CloseReturnToRamp(first.Id, Departure(nextArrival.AddMinutes(-1)), user, TestData.Now.AddMinutes(1))
+            .IsSuccess.ShouldBeTrue();
     }
 
     [Fact]
@@ -278,7 +321,7 @@ public sealed class FlightReturnToRampTests
         var firstService = AddCompletedService(flight, first);
         var firstTask = AddCompletedTask(flight, first);
         Close(flight, first);
-        var second = Start(flight);
+        var second = Start(flight, TestData.Now.AddMinutes(40));
         var secondService = AddCompletedService(flight, second);
         var secondTask = AddCompletedTask(flight, second);
         var previousTime = flight.UpdatedAtUtc;
@@ -557,7 +600,7 @@ public sealed class FlightReturnToRampTests
     {
         var flight = ScheduleFlight();
         var sharedSignature = Signature("shared.png");
-        var normalDetails = DepartureDetails.Create(TestData.Now.AddHours(1), sharedSignature, TestData.Staff(), null).Value;
+        var normalDetails = DepartureDetails.Create(TestData.Now.AddMinutes(-10), sharedSignature, TestData.Staff(), null).Value;
         RecordArrival(flight);
         flight.SubmitDeparture(TestData.Staff(), normalDetails, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
         flight.Approve(Guid.NewGuid(), "Reviewer", TestData.Now, 1).IsSuccess.ShouldBeTrue();
@@ -576,7 +619,7 @@ public sealed class FlightReturnToRampTests
         flightSignature.FileName.ShouldBe("shared.png");
         flightSignature.SignedAtUtc.ShouldBe(TestData.Now);
 
-        var second = Start(flight);
+        var second = Start(flight, TestData.Now.AddMinutes(40));
         AddCompletedTask(flight, second);
         Close(flight, second);
         var replacement = CustomerSignature.Create(changeFileName ? "replacement.png" : sharedSignature.FileName,
@@ -624,7 +667,7 @@ public sealed class FlightReturnToRampTests
         var firstTask = AddCompletedTask(flight, first);
         var attachment = flight.AddTaskAttachment(firstTask.Id, Attachment(), Guid.NewGuid(), TestData.Now, first.Id).Value;
         Close(flight, first);
-        var second = Start(flight);
+        var second = Start(flight, TestData.Now.AddMinutes(40));
         var secondService = AddCompletedService(flight, second);
 
         var removed = flight.RemoveReturnToRamp(first.Id, Guid.NewGuid(), TestData.Now.AddMinutes(1)).Value;
@@ -673,7 +716,7 @@ public sealed class FlightReturnToRampTests
     private static Flight DepartedFlight(bool approve = true)
     {
         var flight = ScheduleFlight();
-        var details = DepartureDetails.Create(TestData.Now.AddHours(1),
+        var details = DepartureDetails.Create(TestData.Now.AddMinutes(-10),
             CustomerSignature.Create("flight.png", "signatures/flight.png", "image/png", 100, TestData.Now).Value, TestData.Staff(), null).Value;
         RecordArrival(flight);
         flight.SubmitDeparture(TestData.Staff(), details, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
@@ -685,13 +728,13 @@ public sealed class FlightReturnToRampTests
     private static void RecordArrival(Flight flight)
     {
         var employee = TestData.Staff();
-        var arrival = ArrivalDetails.Create(null, TestData.Now, TestData.AircraftType(), "HZ-ABC", employee, null).Value;
+        var arrival = ArrivalDetails.Create(null, TestData.Now.AddHours(-1), TestData.AircraftType(), "HZ-ABC", employee, null).Value;
         flight.SubmitArrival(employee, arrival, Guid.NewGuid(), TestData.Now).IsSuccess.ShouldBeTrue();
     }
 
     private static (FlightService Service, FlightTask Task) AddNormalWork(Flight flight, Guid actor)
     {
-        var period = TimeWindow.Create(TestData.Now, TestData.Now.AddMinutes(10)).Value;
+        var period = TimeWindow.Create(TestData.Now.AddMinutes(-30), TestData.Now.AddMinutes(-20)).Value;
         var employee = TestData.Staff();
         var service = flight.AddService(TestData.Service(), null, period, null, actor, TestData.Now,
             initialPerformers: [new(employee, period)]).Value;
@@ -709,8 +752,8 @@ public sealed class FlightReturnToRampTests
     private static CustomerSignature Signature(string fileName = "signature.png") =>
         CustomerSignature.Create(fileName, $"signatures/{fileName}", "image/png", 100, TestData.Now).Value;
 
-    private static FlightReturnToRamp Start(Flight flight) =>
-        flight.StartReturnToRamp(Arrival(), Guid.NewGuid(), TestData.Now).Value;
+    private static FlightReturnToRamp Start(Flight flight, DateTimeOffset? at = null) =>
+        flight.StartReturnToRamp(Arrival(at), Guid.NewGuid(), TestData.Now).Value;
 
     private static FlightReturnToRamp Close(Flight flight, FlightReturnToRamp rtr) =>
         flight.CloseReturnToRamp(rtr.Id, Departure(rtr.ArrivalDetails.ArrivedAtUtc.AddMinutes(30)), Guid.NewGuid(), TestData.Now).Value;

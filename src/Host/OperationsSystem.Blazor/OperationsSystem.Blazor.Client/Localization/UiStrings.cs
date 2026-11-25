@@ -92,6 +92,11 @@ public static class UiStrings
         public static string OpenBlocksAdd => UiText.Get("ReturnsToRamp.OpenBlocksAdd", "Close the open return to ramp before adding another.");
         public static string CompleteDepartureBeforeAdd => UiText.Get("ReturnsToRamp.CompleteDepartureBeforeAdd", "Complete the flight departure details before adding an RTR.");
         public static string CompleteDepartureBeforeSave => UiText.Get("ReturnsToRamp.CompleteDepartureBeforeSave", "Complete the flight departure details before saving the RTR.");
+        public static string ArrivalAfterFlightDeparture => UiText.Get("ReturnsToRamp.ArrivalAfterFlightDeparture", "The first RTR must arrive after the flight’s actual departure.");
+        public static string ClosePrevious(int sequence) => string.Format(UiText.Get("ReturnsToRamp.ClosePrevious", "Close RTR #{0} before recording this arrival."), sequence);
+        public static string ArrivalAfterPreviousDeparture(int sequence) => string.Format(UiText.Get("ReturnsToRamp.ArrivalAfterPreviousDeparture", "Arrival must be after the departure of RTR #{0}."), sequence);
+        public static string DepartureBeforeNextArrival(int sequence) => string.Format(UiText.Get("ReturnsToRamp.DepartureBeforeNextArrival", "Departure must be before the arrival of RTR #{0}."), sequence);
+        public static string FlightDepartureBeforeFirstArrival => UiText.Get("ReturnsToRamp.FlightDepartureBeforeFirstArrival", "Actual flight departure must be before the first RTR arrival.");
         public static string AddUnavailable => UiText.Get("ReturnsToRamp.AddUnavailable", "Add RTR is unavailable for this work order.");
         public static string Open => UiText.Get("ReturnsToRamp.Open", "Open");
         public static string Closed => UiText.Get("ReturnsToRamp.Closed", "Closed");

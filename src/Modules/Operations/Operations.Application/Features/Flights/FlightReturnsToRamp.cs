@@ -123,6 +123,9 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
             return PortalFlightRecordCorrections.SavedDetailsRemovalForbidden();
         if (request.PortalOnly && priorTasks.Any(task => task.CreatedByUserId != userId && input.Tasks.All(change => change.RecordId != task.Id)))
             return FlightTaskWrites.PortalDeleteReadOnly();
+        var timeline = flight.ValidateReturnToRampTimeline(request.OccurrenceId, input.Arrival.ArrivedAtUtc,
+            input.Departure?.DepartedAtUtc);
+        if (timeline.IsFailure) return timeline.Error;
         if (await db.Flights.AsNoTracking().AnyAsync(f => f.Id != flight.Id && f.ReturnToRamps.Any(r => r.Id == request.OccurrenceId), ct)) return IdConflict();
         var identities = await ValidateIdentities(flight, request, ct); if (identities.IsFailure) return identities.Error;
         foreach (var deleted in priorServices.Where(old => input.Services.All(s => s.RecordId != old.Id)))

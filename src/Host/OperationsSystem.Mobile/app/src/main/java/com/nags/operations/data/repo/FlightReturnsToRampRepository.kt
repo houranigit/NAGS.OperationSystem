@@ -38,6 +38,7 @@ class FlightReturnsToRampRepository(
     private val onAcknowledged: suspend (String, String, String) -> Unit = { _, _, _ -> },
     private val onLocalSaved: suspend (FlightDetail) -> Unit = {},
     private val now: () -> Instant = Instant::now,
+    private val pendingFlightDeparture: suspend (String) -> SaveFlightDepartureRequest? = { null },
 ) {
     private val drain = Mutex()
     @Volatile private var accepting = true
@@ -57,18 +58,26 @@ class FlightReturnsToRampRepository(
         }
         val baseline = flight.returnToRamps.firstOrNull { it.id == occurrenceId }
         val rows = dao.rows(owner).filter { it.flightId == flight.id }
-        val pendingOccurrences = rows.filter { it.status == "pending" && it.occurrenceId != occurrenceId }
+        val existing = rows.firstOrNull { it.occurrenceId == occurrenceId }
+        val pendingOccurrences = rows.filter { it.status == "pending" }
             .map { it.preview(json) }.associateBy { it.id }
         val priorOccurrences = flight.returnToRamps.filterNot { it.id in pendingOccurrences } + pendingOccurrences.values
-        check(if (baseline == null) flight.canAddReturnToRamp(priorOccurrences) else flight.canEditReturnToRamp(baseline)) {
+        val canSave = when {
+            baseline != null -> flight.canEditReturnToRamp(baseline)
+            occurrenceId in pendingOccurrences -> flight.departureSubmissions.isNotEmpty()
+            else -> flight.canAddReturnToRamp(priorOccurrences)
+        }
+        check(canSave) {
             if (baseline == null) "Save the flight departure and close any open return to ramp before adding another."
             else "This return to ramp cannot be edited. Reload the flight."
         }
         val normalized = input.normalized()
+        val timelineIssue = flight.returnToRampTimelineIssues(occurrenceId, normalized,
+            priorOccurrences, baseline, pendingFlightDeparture(flight.id)).firstOrNull()
+        check(timelineIssue == null) { checkNotNull(timelineIssue).message }
         check(normalized.validationErrors(flight.rowVersion, flight.allowedServiceIds?.toSet(), baseline = baseline).isEmpty()) {
             "Complete the required return-to-ramp fields and work periods before saving."
         }
-        val existing = rows.firstOrNull { it.occurrenceId == occurrenceId }
         if (expectedChangeId != null) {
             check(existing?.changeId == expectedChangeId) { "This saved input changed. Reopen Review before continuing." }
             check(existing?.attemptInputJson == null) { "Retry synchronization before reviewing a request whose result is unknown." }
@@ -155,8 +164,8 @@ class FlightReturnsToRampRepository(
         pendingForFlight(id).firstOrNull { it.occurrenceId == occurrenceId }?.filesJson?.let(::files)
             ?.entries?.firstOrNull { it.key.endsWith("/$attachmentId") }?.value?.let { mediaStore.previewFile(it) }
     }
-    suspend fun project(flight: FlightDetail): FlightDetail {
-        val pending = pendingForFlight(flight.id)
+    suspend fun project(flight: FlightDetail, pendingOnly: Boolean = false): FlightDetail {
+        val pending = pendingForFlight(flight.id).filter { !pendingOnly || it.status == "pending" }
         if (pending.isEmpty()) return flight
         val ids = pending.map { it.occurrenceId }.toSet()
         return flight.copy(returnToRamps = (flight.returnToRamps.filterNot { it.id in ids } + pending.map { it.preview(json) }).sortedBy { it.sequence })

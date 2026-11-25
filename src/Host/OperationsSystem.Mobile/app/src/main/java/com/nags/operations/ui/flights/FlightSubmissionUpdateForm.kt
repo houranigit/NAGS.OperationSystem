@@ -44,6 +44,7 @@ import com.nags.operations.data.mergeArrivalReview
 import com.nags.operations.data.mergeDepartureReview
 import com.nags.operations.data.arrivalEditable
 import com.nags.operations.data.departureEditable
+import com.nags.operations.data.departureOverlapsFirstReturn
 import com.nags.operations.data.visibleArrival
 import com.nags.operations.data.visibleDeparture
 import com.nags.operations.data.AircraftTypeCatalogItem
@@ -57,6 +58,7 @@ import com.nags.operations.data.canUpdateArrivalSubmission
 import com.nags.operations.data.canUpdateDepartureSubmission
 import com.nags.operations.data.db.entities.FlightArrivalPendingEntity
 import com.nags.operations.data.db.entities.FlightDeparturePendingEntity
+import com.nags.operations.data.db.entities.FlightReturnToRampPendingEntity
 import com.nags.operations.data.userMessage
 import com.nags.operations.data.validationErrors
 import com.nags.operations.data.requiresArrivalRemarks
@@ -157,6 +159,7 @@ internal fun FlightSubmissionUpdateForm(
     currentApprovalLocked: Boolean = flight.isApprovalLocked,
     onSaveReviewed: suspend (FlightDetail, FlightOperationReviewTarget, suspend () -> Unit) -> Unit = { _, _, _ -> error("Review saving is unavailable.") },
     onDiscardReviewed: suspend (FlightOperationReviewTarget) -> Unit = { error("Review discard is unavailable.") },
+    pendingReturns: List<FlightReturnToRampPendingEntity> = emptyList(),
 ) {
     val arrival = if (submissionId.isBlank()) flight.visibleArrival() else flight.arrivalSubmissions.firstOrNull { it.id.equals(submissionId, true) }
     val departure = if (submissionId.isBlank()) flight.visibleDeparture() else flight.departureSubmissions.firstOrNull { it.id.equals(submissionId, true) }
@@ -217,6 +220,8 @@ internal fun FlightSubmissionUpdateForm(
     fun arrivalValue() = SaveFlightArrivalRequest(inputTime, aircraftId, tail, reference, remarks,
         targetSubmissionId = submissionId.takeIf { it.isNotBlank() }).normalized()
     fun departureValue() = SaveFlightDepartureRequest(inputTime, remarks = remarks, targetSubmissionId = submissionId.takeIf { it.isNotBlank() }).normalized()
+    val departureBeforeFirstReturn = !isArrival &&
+        reviewed.departureOverlapsFirstReturn(departureValue(), reviewed.withPendingReturns(pendingReturns).returnToRamps)
     var baseline by rememberSaveable { mutableStateOf(if (isArrival) Json.encodeToString(arrivalValue()) else Json.encodeToString(departureValue())) }
     val changed = (if (isArrival) Json.encodeToString(arrivalValue()) else Json.encodeToString(departureValue())) != baseline || signature.isNotBlank()
     var saving by remember { mutableStateOf(false) }
@@ -287,7 +292,7 @@ internal fun FlightSubmissionUpdateForm(
     fun save(acknowledge: Boolean) {
         attempted = true
         if (!enabled) return
-        if (inputTime.isBlank() || departureBeforeArrival || departureMissingArrival || requiredRemarksMissing ||
+        if (inputTime.isBlank() || departureBeforeArrival || departureBeforeFirstReturn || departureMissingArrival || requiredRemarksMissing ||
             isArrival && (errors.isNotEmpty() || !aircraftAvailable || arrivalValue().validationErrors(reviewed.rowVersion).isNotEmpty())) {
             validationRequest++
             return
@@ -373,6 +378,7 @@ internal fun FlightSubmissionUpdateForm(
                         inputTime.isBlank() -> stringResource(if (isArrival) R.string.arrival_ata_required else R.string.departure_atd_required)
                         departureMissingArrival -> stringResource(R.string.flight_arrival_before_work)
                         departureBeforeArrival -> stringResource(R.string.flight_departure_before_arrival)
+                        departureBeforeFirstReturn -> stringResource(R.string.rtr_form_flight_departure_before_first)
                         else -> null
                     } else null,
                     leadingPadding = 0.dp, displayPattern = "dd/MM/yy HH:mm", prominentLabel = true,

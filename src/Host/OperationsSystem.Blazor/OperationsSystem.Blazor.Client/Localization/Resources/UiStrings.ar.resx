@@ -802,6 +802,11 @@
   <data name="ReturnsToRamp.OpenBlocksAdd" xml:space="preserve"><value>أغلق العودة المفتوحة إلى الساحة قبل إضافة عودة أخرى.</value></data>
   <data name="ReturnsToRamp.CompleteDepartureBeforeAdd" xml:space="preserve"><value>أكمل تفاصيل مغادرة الرحلة قبل إضافة عودة إلى الساحة.</value></data>
   <data name="ReturnsToRamp.CompleteDepartureBeforeSave" xml:space="preserve"><value>أكمل تفاصيل مغادرة الرحلة قبل حفظ العودة إلى الساحة.</value></data>
+  <data name="ReturnsToRamp.ArrivalAfterFlightDeparture" xml:space="preserve"><value>يجب أن يكون وصول أول عودة إلى الساحة بعد المغادرة الفعلية للرحلة.</value></data>
+  <data name="ReturnsToRamp.ClosePrevious" xml:space="preserve"><value>أغلق العودة إلى الساحة رقم {0} قبل تسجيل هذا الوصول.</value></data>
+  <data name="ReturnsToRamp.ArrivalAfterPreviousDeparture" xml:space="preserve"><value>يجب أن يكون الوصول بعد مغادرة العودة إلى الساحة رقم {0}.</value></data>
+  <data name="ReturnsToRamp.DepartureBeforeNextArrival" xml:space="preserve"><value>يجب أن تكون المغادرة قبل وصول العودة إلى الساحة رقم {0}.</value></data>
+  <data name="ReturnsToRamp.FlightDepartureBeforeFirstArrival" xml:space="preserve"><value>يجب أن تكون المغادرة الفعلية للرحلة قبل وصول أول عودة إلى الساحة.</value></data>
   <data name="ReturnsToRamp.AddUnavailable" xml:space="preserve"><value>لا يمكن إضافة عودة إلى الساحة لأمر العمل هذا.</value></data>
   <data name="ReturnsToRamp.Open" xml:space="preserve"><value>مفتوح</value></data>
   <data name="ReturnsToRamp.Closed" xml:space="preserve"><value>مغلق</value></data>

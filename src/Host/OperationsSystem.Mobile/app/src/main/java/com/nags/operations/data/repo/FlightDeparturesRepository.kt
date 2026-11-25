@@ -3,9 +3,11 @@ package com.nags.operations.data.repo
 import com.nags.operations.data.ApiException
 import com.nags.operations.data.FlightDepartureSaved
 import com.nags.operations.data.FlightDepartureSubmission
+import com.nags.operations.data.FlightReturnToRampRecord
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.SaveFlightDepartureRequest
 import com.nags.operations.data.departureEditable
+import com.nags.operations.data.departureOverlapsFirstReturn
 import com.nags.operations.data.canUpdateDepartureSubmission
 import com.nags.operations.data.validArrivalId
 import com.nags.operations.data.db.dao.FlightDepartureDao
@@ -60,6 +62,7 @@ class FlightDeparturesRepository(
     private val operationGate: FlightOperationsGate = FlightOperationsGate(),
     private val onAttemptRejected: suspend (String, String?) -> Unit = { _, _ -> },
     private val onLocalSaved: suspend (FlightDetail) -> Unit = {},
+    private val returnsToRamp: suspend (FlightDetail) -> List<FlightReturnToRampRecord> = { it.returnToRamps },
 ) {
     private val gate = Mutex()
     private val localWrites = FlightOperationsLocalLock(operationGate)
@@ -95,6 +98,10 @@ class FlightDeparturesRepository(
             // An upload may have acknowledged/deleted the row during the arrival-lineage lookup.
             // Follow that exact own ACK again under the same lock that publishes the correction.
             val latestOwnAcknowledged = followOwnAcknowledgments(flight.id, acknowledged, ownAcknowledged.second)
+            val currentFlight = flight.copy(departureSubmissions = latestOwnAcknowledged.second)
+            check(!currentFlight.departureOverlapsFirstReturn(input, returnsToRamp(currentFlight))) {
+                "The flight's actual departure must be before the first return to ramp."
+            }
             val existing = dao.rows(owner).firstOrNull { it.flightId == flight.id }
             val preserveAttempt = existing?.status == "pending"
             val normalized = input.normalized()

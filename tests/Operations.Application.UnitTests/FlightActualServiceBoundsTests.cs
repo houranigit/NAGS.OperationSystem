@@ -18,6 +18,7 @@ namespace Operations.Application.UnitTests;
 public sealed class FlightActualServiceBoundsTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 11, 12, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset FirstReturnArrival = Now.AddHours(2);
     private static readonly byte[] InitialVersion = [1, 0, 0, 0, 0, 0, 0, 0];
     private static readonly byte[] Png = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=");
@@ -154,24 +155,37 @@ public sealed class FlightActualServiceBoundsTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task No_normal_work_or_only_rtr_work_does_not_restrict_normal_actual_corrections(bool rtrOnly)
+    public async Task No_normal_work_or_only_rtr_work_allows_actual_corrections_before_any_return(bool rtrOnly)
     {
         await using (var arrivalFixture = await Fixture.CreateAsync(work: rtrOnly ? Work.Rtr : Work.None))
         {
-            var result = await arrivalFixture.SaveArrivalAsync(rtrOnly ? Now.AddMinutes(140) : Now.AddMinutes(1));
+            var result = await arrivalFixture.SaveArrivalAsync(rtrOnly ? FirstReturnArrival.AddMinutes(-15) : Now.AddMinutes(1));
 
             result.IsSuccess.ShouldBeTrue();
             (await arrivalFixture.ReadAsync()).Services.ShouldBeEmpty();
         }
         await using (var departureFixture = await Fixture.CreateAsync(work: rtrOnly ? Work.Rtr : Work.None))
         {
-            var result = await departureFixture.SaveDepartureAsync(rtrOnly ? Now.AddMinutes(130) : Now.AddMinutes(-1));
+            var result = await departureFixture.SaveDepartureAsync(rtrOnly ? FirstReturnArrival.AddMinutes(-5) : Now.AddMinutes(-1));
 
             result.IsSuccess.ShouldBeTrue();
             var retained = await departureFixture.ReadAsync();
             retained.Services.ShouldBeEmpty();
             retained.ServiceRecords.Count.ShouldBe(rtrOnly ? 1 : 0);
         }
+    }
+
+    [Fact]
+    public async Task Departure_correction_at_first_return_is_rejected_before_writing()
+    {
+        await using var fixture = await Fixture.CreateAsync(work: Work.Rtr);
+
+        var result = await fixture.SaveDepartureAsync(FirstReturnArrival);
+
+        result.Error.Code.ShouldBe("Operations.DepartureSubmission.DepartureAfterReturnToRampArrival");
+        fixture.Writes.SaveCalls.ShouldBe(0);
+        fixture.Storage.SaveCalls.ShouldBe(0);
+        (await fixture.ReadAsync()).DepartureSubmissions.ShouldHaveSingleItem().Details.Atd.ShouldBe(fixture.InitialDeparture);
     }
 
     [Theory]
@@ -312,7 +326,7 @@ public sealed class FlightActualServiceBoundsTests
             var reader = new Reader(inner);
             var employee = new StaffMemberSnapshot(staffId, "Operating employee", "E1");
             var initialArrival = arrival ?? Now.AddMinutes(-30);
-            var initialDeparture = departure ?? (work == Work.Rtr ? Now.AddHours(4) : Now.AddHours(1));
+            var initialDeparture = departure ?? (work == Work.Rtr ? FirstReturnArrival.AddMinutes(-10) : Now.AddHours(1));
             var flight = Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), "SV", "Customer"),
                 new StationSnapshot(inner.StationId, "RUH", "Riyadh"), new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
                 FlightNumber.Create("SV100", "SV").Value, ScheduledTime.Create(Now.AddHours(-1), Now.AddHours(1)).Value,
@@ -342,13 +356,10 @@ public sealed class FlightActualServiceBoundsTests
             }
             else if (work == Work.Rtr)
             {
-                flight.Approve(userId, "Reviewer", Now, 1).IsSuccess.ShouldBeTrue();
-                var occurrence = flight.StartReturnToRamp(RtrArrivalDetails.Create(Now.AddHours(2), employee, null).Value, userId, Now).Value;
+                var occurrence = flight.StartReturnToRamp(RtrArrivalDetails.Create(FirstReturnArrival, employee, null).Value, userId, Now).Value;
                 flight.AddService(new ServiceSnapshot(inner.ServiceId, "Service"), null,
                     TimeWindow.Create(Now.AddMinutes(135), null).Value, null, userId, Now, occurrence.Id,
                     [new(employee, TimeWindow.Create(Now.AddMinutes(140), null).Value)]).IsSuccess.ShouldBeTrue();
-                // This fixture represents an editable flight with RTR work saved before the approval feature.
-                db.Entry(flight).Property(item => item.ApprovalStatus).CurrentValue = FlightApprovalStatus.NotApproved;
             }
             db.Flights.Add(flight);
             db.Entry(flight).Property(f => f.RowVersion).CurrentValue = InitialVersion.ToArray();

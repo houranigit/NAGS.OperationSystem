@@ -282,6 +282,7 @@ class AppGraph private constructor(context: Context) {
         json = HttpClientFactory.json,
         onLocalSaved = { discoveryFlights.recordLocalSave(it) },
         signatureStore = DiskDepartureSignatureStore(File(appContext.noBackupFilesDir, "flight-departure-signatures")),
+        returnsToRamp = { flight -> flightReturnsToRamp.project(flight, pendingOnly = true).returnToRamps },
         hasSavedArrival = { id -> flightArrivals.mustSyncBeforeServices(id) },
         hasSavedServices = { id -> flightServices.hasSavedInput(id) || flightTasks.hasSavedInput(id) },
         acknowledgedArrivalVersion = ::acknowledgedBeforeDeparture,
@@ -324,6 +325,7 @@ class AppGraph private constructor(context: Context) {
             },
             schedule = { FlightArrivalSyncWorker.schedule(appContext); appScope.launch { syncFlightOperations() } },
             json = HttpClientFactory.json, fetchFlight = flightsRepository::flight,
+            pendingFlightDeparture = flightDepartures::pendingInput,
             hasBlockingPriorWork = { id -> flightArrivals.hasSavedInput(id) || flightDepartures.hasSavedInput(id) ||
                 flightServices.hasSavedInput(id) || flightTasks.hasSavedInput(id) || hasCancellationIntent(id) || adHocFlights.hasPendingIdentity(id) },
             operationGate = flightOperationsSyncMutex,

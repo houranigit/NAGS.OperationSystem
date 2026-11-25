@@ -420,6 +420,9 @@ public partial class PortalFlightWorkDialog
         if (ArrivalFor(departureSource?.SubmittedByEmployee?.StaffMemberId ?? flight!.CurrentStaffMemberId) is { } ata &&
             atd is { } end && end < ata)
             errors.Add(DepartureTimeField, "Actual departure cannot be before actual arrival.");
+        if (atd is { } proposed && FirstReturnArrival() is { } firstArrival &&
+            proposed >= firstArrival && proposed != departureSource?.Atd)
+            errors.Add(DepartureTimeField, UiStrings.ReturnsToRamp.FlightDepartureBeforeFirstArrival);
         if (AdministratorEntry && (handledByStaffMemberId is null || handledByStaffMemberId == Guid.Empty))
             errors.Add(HandlerField, "Handling employee is required.");
         PortalWorkDraft.ValidateDeparturePeriods(services, tasks, errors, DepartureTimeField);
@@ -659,6 +662,10 @@ public partial class PortalFlightWorkDialog
         var index = pendingReturns.FindIndex(item => item.Id == id);
         var draft = index >= 0 ? pendingReturns[index] : null;
         var sequence = draft?.Sequence ?? flight.LastReturnToRampSequence + pendingReturns.Count + 1;
+        var localDeparture = CanEditDeparture && DepartureChanged() ? ActualDeparture : null;
+        var flightDeparture = PortalReturnToRampTimeline.LatestFlightDeparture(flight,
+            localDeparture.HasValue ? departureSource?.Id : null, localDeparture);
+        var timeline = PortalReturnToRampTimeline.ForOccurrence(flight, sequence, flightDeparture, pendingReturns);
         var result = await DialogService.OpenAsync<PortalReturnToRampDialog>(draft is null
             ? $"Add RTR {sequence} · {flight.FlightNumber}" : $"Edit RTR {sequence} · {flight.FlightNumber}",
             new Dictionary<string, object?>
@@ -668,7 +675,7 @@ public partial class PortalFlightWorkDialog
                 [nameof(PortalReturnToRampDialog.DraftFlight)] = flight,
                 [nameof(PortalReturnToRampDialog.Draft)] = draft,
                 [nameof(PortalReturnToRampDialog.DraftSequence)] = sequence,
-                [nameof(PortalReturnToRampDialog.RequireClosedDraft)] = index >= 0 && index < pendingReturns.Count - 1
+                [nameof(PortalReturnToRampDialog.DraftTimeline)] = timeline
             },
             PortalWorkDialogLayout.CreateOptions());
         if (result is not PortalReturnToRampDraft pending)
@@ -681,6 +688,10 @@ public partial class PortalFlightWorkDialog
         SelectReturn(pending.Id);
         error = null;
     }
+
+    private DateTimeOffset? FirstReturnArrival() =>
+        flight?.ReturnToRamps.MinBy(item => item.Sequence)?.ArrivedAtUtc ??
+        pendingReturns.FirstOrDefault()?.Request.Arrival.ArrivedAtUtc;
 
     private void RemoveReturnToRampDraft(Guid id)
     {

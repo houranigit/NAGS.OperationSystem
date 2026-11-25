@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using OperationsSystem.Blazor.Client.Api;
+using OperationsSystem.Blazor.Client.Localization;
 using OperationsSystem.Blazor.Client.State;
 using Radzen;
 
@@ -31,7 +32,7 @@ public partial class PortalReturnToRampDialog
     [Parameter] public PortalFlightOperations? DraftFlight { get; set; }
     [Parameter] public PortalReturnToRampDraft? Draft { get; set; }
     [Parameter] public int DraftSequence { get; set; }
-    [Parameter] public bool RequireClosedDraft { get; set; }
+    [Parameter] public PortalReturnToRampTimeline? DraftTimeline { get; set; }
 
     private readonly CancellationTokenSource lifetime = new();
     private readonly Guid newOccurrenceId = Guid.NewGuid();
@@ -41,6 +42,7 @@ public partial class PortalReturnToRampDialog
     private PortalWorkLookups lookups = default!;
     private PortalOperationTime arrivalTime = default!;
     private PortalOperationTime departureTime = default!;
+    private PortalReturnToRampTimeline timeline = default!;
     private string? arrivalRemarks;
     private Guid? receivedByStaffMemberId;
     private Guid? handledByStaffMemberId;
@@ -64,7 +66,7 @@ public partial class PortalReturnToRampDialog
 
     private bool ArrivalFieldsLocked => occurrence is not null && !arrivalUnlocked;
     private bool DepartureFieldsLocked => occurrence?.DepartedAtUtc is not null && !departureUnlocked;
-    private bool RequiresDeparture => RequireClosedDraft || occurrence is { IsOpen: false } ||
+    private bool RequiresDeparture => timeline.NextSequence.HasValue || occurrence is { IsOpen: false } ||
         !string.IsNullOrWhiteSpace(departureRemarks) || signature.Bytes is not null || handledByStaffMemberId.HasValue;
 
     private bool IsGuidedEntry => CanEdit && occurrence is null && Draft is null;
@@ -86,6 +88,9 @@ public partial class PortalReturnToRampDialog
             }
 
             zone = StationTimeZone.FromId(data.StationTimeZoneId);
+            timeline = DraftTimeline ?? PortalReturnToRampTimeline.ForOccurrence(data,
+                occurrence?.Sequence ?? data.LastReturnToRampSequence + 1,
+                PortalReturnToRampTimeline.LatestFlightDeparture(data), []);
             arrivalUnlocked = false;
             departureUnlocked = false;
             var loadCatalogs = DraftFlight is not null || data.CanSaveReturnsToRamp;
@@ -303,6 +308,18 @@ public partial class PortalReturnToRampDialog
     {
         validation.Step = ArrivalStep;
         var arrived = arrivalTime.Read("RTR arrival time", validation, ArrivalTimeField, required: true);
+        if (arrived is { } start && (occurrence is null || arrivalTime.HasChanged))
+        {
+            if (timeline.PreviousSequence is { } previous)
+            {
+                if (timeline.PreviousDeparture is not { } previousDeparture)
+                    validation.Add(ArrivalTimeField, UiStrings.ReturnsToRamp.ClosePrevious(previous));
+                else if (start <= previousDeparture)
+                    validation.Add(ArrivalTimeField, UiStrings.ReturnsToRamp.ArrivalAfterPreviousDeparture(previous));
+            }
+            else if (timeline.FlightDeparture is { } flightDeparture && start <= flightDeparture)
+                validation.Add(ArrivalTimeField, UiStrings.ReturnsToRamp.ArrivalAfterFlightDeparture);
+        }
         if (AdministratorEntry && (receivedByStaffMemberId is null || receivedByStaffMemberId == Guid.Empty))
             validation.Add(ReceiverField, "Receiving employee is required.");
         if (PortalWorkDraft.Trim(arrivalRemarks)?.Length > 2000)
@@ -318,6 +335,9 @@ public partial class PortalReturnToRampDialog
             validation.Add(HandlerField, "Handling employee is required.");
         if (arrived > departed)
             validation.Add(DepartureTimeField, "Return-to-ramp departure cannot be before arrival.");
+        if (departed is { } departure && (occurrence is null || departureTime.HasChanged) &&
+            timeline.NextSequence is { } next && timeline.NextArrival is { } nextArrival && departure >= nextArrival)
+            validation.Add(DepartureTimeField, UiStrings.ReturnsToRamp.DepartureBeforeNextArrival(next));
         if (PortalWorkDraft.Trim(departureRemarks)?.Length > 2000)
             validation.Add(DepartureRemarksField, "RTR departure remarks must be at most 2,000 characters.");
 

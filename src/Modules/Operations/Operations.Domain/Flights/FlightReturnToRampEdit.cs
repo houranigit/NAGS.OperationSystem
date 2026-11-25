@@ -13,6 +13,53 @@ public sealed record ReturnToRampTaskInput(Guid Id, FlightTaskType TaskType, Ata
 
 public sealed partial class Flight
 {
+    /// <summary>Checks changed RTR times against the recorded timeline by sequence.</summary>
+    public Result ValidateReturnToRampTimeline(Guid? occurrenceId, DateTimeOffset arrival, DateTimeOffset? departure)
+    {
+        var existing = occurrenceId is { } id ? _returnToRamps.SingleOrDefault(item => item.Id == id) : null;
+        if (existing?.ArrivalDetails.ArrivedAtUtc != arrival)
+        {
+            var earlier = _returnToRamps.Where(item => existing is null || item.Sequence < existing.Sequence);
+            if (earlier.Any(item => item.IsOpen))
+                return Error.Conflict("Close the previous return to ramp first.", "Operations.ReturnToRamp.OpenExists");
+
+            var previousDeparture = earlier.Max(item => item.DepartureDetails?.DepartedAtUtc);
+            if (previousDeparture is null)
+            {
+                var flightDeparture = _departureSubmissions.Max(item => (DateTimeOffset?)item.Details.Atd);
+                if (flightDeparture is { } atd && arrival <= atd)
+                    return Error.Validation("The first RTR arrival must be after the flight's actual departure.",
+                        "Operations.ReturnToRamp.ArrivalBeforeFlightDeparture");
+            }
+            else if (arrival <= previousDeparture.Value)
+            {
+                return Error.Validation("RTR arrival must be after the previous RTR departure.",
+                    "Operations.ReturnToRamp.ArrivalBeforePreviousDeparture");
+            }
+        }
+
+        if (existing is not null && departure is { } at && existing.DepartureDetails?.DepartedAtUtc != at)
+        {
+            var nextArrival = _returnToRamps.Where(item => item.Sequence > existing.Sequence)
+                .Min(item => (DateTimeOffset?)item.ArrivalDetails.ArrivedAtUtc);
+            if (nextArrival is { } next && at >= next)
+                return Error.Validation("RTR departure must be before the next RTR arrival.",
+                    "Operations.ReturnToRamp.DepartureAfterNextArrival");
+        }
+
+        return Result.Success();
+    }
+
+    /// <summary>Checks a new or changed normal departure time against the first RTR arrival.</summary>
+    public Result ValidateDepartureBeforeReturnToRamp(DateTimeOffset departure)
+    {
+        var first = _returnToRamps.MinBy(item => item.Sequence);
+        return first is not null && departure >= first.ArrivalDetails.ArrivedAtUtc
+            ? Error.Validation("Actual departure must be before the first RTR arrival.",
+                "Operations.DepartureSubmission.DepartureAfterReturnToRampArrival")
+            : Result.Success();
+    }
+
     /// <summary>Validate the complete occurrence before reconciling stable records and their original attribution.</summary>
     public Result<FlightReturnToRamp> SaveReturnToRamp(Guid id, RtrArrivalDetails arrival, RtrDepartureDetails? departure,
         IReadOnlyList<ReturnToRampServiceInput> services, IReadOnlyList<ReturnToRampTaskInput> tasks,
@@ -32,6 +79,8 @@ public sealed partial class Flight
             return Error.Conflict("Close the previous return to ramp first.", "Operations.ReturnToRamp.OpenExists");
         if (existing is null && LastReturnToRampSequence == int.MaxValue)
             return Error.Conflict("The RTR sequence limit has been reached.", "Operations.ReturnToRamp.SequenceExhausted");
+        var timeline = ValidateReturnToRampTimeline(id, arrival.ArrivedAtUtc, departure?.DepartedAtUtc);
+        if (timeline.IsFailure) return timeline.Error;
         if (services.Select(s => s.Id).Distinct().Count() != services.Count || tasks.Select(t => t.Id).Distinct().Count() != tasks.Count ||
             services.Any(s => s.Id == Guid.Empty || _services.Any(old => old.Id == s.Id && old.ReturnToRampId != id)) ||
             tasks.Any(t => t.Id == Guid.Empty || _tasks.Any(old => old.Id == t.Id && old.ReturnToRampId != id)))

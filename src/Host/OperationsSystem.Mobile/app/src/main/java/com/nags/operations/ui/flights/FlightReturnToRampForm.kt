@@ -89,15 +89,24 @@ internal fun FlightReturnToRampRecord.rtrDraft(catalogs: FlightOperationsCatalog
 
 /** Validate through the same service/task editors with the occurrence's own actual-time bounds. */
 internal fun FlightRtrDraft.errors(flight: FlightDetail, catalogs: FlightOperationsCatalogs, zone: ZoneId,
-    baseline: FlightReturnToRampRecord?): Map<String, Map<String, Int>> {
+    baseline: FlightReturnToRampRecord?, occurrences: List<FlightReturnToRampRecord> = flight.returnToRamps,
+    pendingDeparture: SaveFlightDepartureRequest? = null,
+): Map<String, Map<String, Int>> {
     val input = input(zone)
     val synthetic = flight.copy(services = baseline?.services.orEmpty(), tasks = baseline?.tasks.orEmpty())
     val result = linkedMapOf<String, Map<String, Int>>()
-    input.validationErrors(flight.rowVersion, flight.allowedServiceIds?.toSet(), taskResourceCatalogs(catalogs), baseline)
-        .takeIf { it.isNotEmpty() }?.let { fields ->
-            result["actuals"] = fields.filter { it.startsWith("arrival") || it.startsWith("departure") || it in setOf("work", "rowVersion") }
-                .associateWith { if (it == "work") R.string.rtr_form_work_required else R.string.rtr_form_invalid_actuals }
+    result["actuals"] = buildMap {
+        input.validationErrors(flight.rowVersion, flight.allowedServiceIds?.toSet(), taskResourceCatalogs(catalogs), baseline)
+            .filter { it.startsWith("arrival") || it.startsWith("departure") || it in setOf("work", "rowVersion") }
+            .forEach { put(it, if (it == "work") R.string.rtr_form_work_required else R.string.rtr_form_invalid_actuals) }
+        for (issue in flight.returnToRampTimelineIssues(id, input, occurrences, baseline, pendingDeparture)) {
+            put(issue.name, when (issue) {
+                ReturnToRampTimelineIssue.ArrivalAfterFlightDeparture -> R.string.rtr_form_after_flight_departure
+                ReturnToRampTimelineIssue.ArrivalAfterPreviousDeparture -> R.string.rtr_form_after_previous_departure
+                ReturnToRampTimelineIssue.DepartureBeforeNextArrival -> R.string.rtr_form_before_next_arrival
+            })
         }
+    }
     work.services.forEach { item ->
         val previous = baseline?.services?.firstOrNull { it.id == item.id }
         val unchanged = previous != null && serviceInputFingerprint(previous.input()) == serviceInputFingerprint(item.serviceInput(zone))
@@ -122,11 +131,13 @@ internal fun FlightRtrFields(draft: FlightRtrDraft, flight: FlightDetail, catalo
     enabled: Boolean, attempted: Boolean, baseline: FlightReturnToRampRecord? = null,
     savedSignature: ByteArray? = null, onChange: (FlightRtrDraft) -> Unit, onRemove: (() -> Unit)? = null,
     openArrivalImmediately: Boolean = false,
+    occurrences: List<FlightReturnToRampRecord> = flight.returnToRamps,
+    pendingDeparture: SaveFlightDepartureRequest? = null,
 ) {
     val zone = stationTimeZone(flight.stationTimeZoneId)
     val year = LocalDateTime.now(zone).year
     var picker by rememberSaveable(draft.id) { mutableStateOf<String?>(if (openArrivalImmediately) "arrival" else null) }
-    val errors = if (attempted) draft.errors(flight, catalogs, zone, baseline) else emptyMap()
+    val errors = if (attempted) draft.errors(flight, catalogs, zone, baseline, occurrences, pendingDeparture) else emptyMap()
     fun open(kind: String) {
         val value = LocalDateTime.now(zone).withSecond(0).withNano(0).toString()
         if (kind == "departure" && draft.departure.start.isBlank())
@@ -207,6 +218,8 @@ internal fun FlightRtrUpdateForm(flight: FlightDetail, record: FlightReturnToRam
     onDiscardReviewed: suspend (String, String) -> Unit,
     onReload: suspend () -> FlightDetail, onClose: () -> Unit,
     currentFlight: FlightDetail = flight,
+    pendingReturns: List<FlightReturnToRampPendingEntity> = emptyList(),
+    pendingDeparture: SaveFlightDepartureRequest? = null,
 ) {
     val zone = stationTimeZone(flight.stationTimeZoneId)
     val reviewing = pending?.status?.let { it != "pending" } == true
@@ -225,6 +238,7 @@ internal fun FlightRtrUpdateForm(flight: FlightDetail, record: FlightReturnToRam
     var localDiscarded by rememberSaveable { mutableStateOf(false) }
     var useLocalSignature by rememberSaveable { mutableStateOf(false) }
     val reviewed = remember(reviewedJson) { Json.decodeFromString<FlightDetail>(reviewedJson) }
+    val occurrences = reviewed.withPendingReturns(pendingReturns).returnToRamps
     val onlineRecord = reviewed.returnToRamps.firstOrNull { it.id == record.id }
     val draft = remember(draftJson) { Json.decodeFromString<FlightRtrDraft>(draftJson) }
     var saving by remember { mutableStateOf(false) }
@@ -305,7 +319,7 @@ internal fun FlightRtrUpdateForm(flight: FlightDetail, record: FlightReturnToRam
         headerTitle = title, validationState = validation, identityContent = {},
         onSave = {
             attempted = true
-            val fields = draft.errors(reviewed, catalogs, zone, onlineRecord)
+            val fields = draft.errors(reviewed, catalogs, zone, onlineRecord, occurrences, pendingDeparture)
             if (fields.isEmpty() && !media.hasActiveRecording) {
                 saving = true; error = null
                 scope.launch {
@@ -354,7 +368,7 @@ internal fun FlightRtrUpdateForm(flight: FlightDetail, record: FlightReturnToRam
                     useLocalSignature && !localDiscarded -> localSignature
                     else -> onlineSignature
                 },
-                onChange = ::update)
+                onChange = ::update, occurrences = occurrences, pendingDeparture = pendingDeparture)
         }
         if (reviewing && !localDiscarded && ready) FlightReviewActions(!saving, onDiscard = {
             saving = true; error = null
