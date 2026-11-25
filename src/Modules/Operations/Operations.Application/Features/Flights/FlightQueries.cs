@@ -83,6 +83,8 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 HasArrivalSubmission = hasArrival,
                 HasDepartureSubmission = hasDeparture,
                 HasCancellationSubmission = hasCancellation,
+                HasOperationalRecords = hasArrival || hasDeparture || hasCancellation ||
+                    flight.ServiceRecords.Any() || flight.TaskRecords.Any() || flight.ReturnToRamps.Any(),
                 flight.ApprovalStatus,
                 flight.ApprovedByDisplayName,
                 flight.ApprovedAtUtc,
@@ -128,7 +130,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             item.StationId, item.HasArrivalSubmission, item.HasDepartureSubmission, item.HasCancellationSubmission,
             item.Status.ToString(), item.ApprovalStatus, item.ApprovedByDisplayName, item.ApprovedAtUtc,
             item.ApprovedReturnToRampSequence, item.ApprovalNumber, item.IsAdHocFlight, item.ActualArrivalUtc,
-            item.ReturnedToRampUtc, item.IsOnCall)).ToList();
+            item.ReturnedToRampUtc, item.IsOnCall, item.HasOperationalRecords)).ToList();
         return paging.ToResult(versionedItems, total);
     }
 }

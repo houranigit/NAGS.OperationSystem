@@ -20,6 +20,11 @@ public sealed record PortalFlightOperations(
 {
     internal bool IsApprovalLocked => FlightApprovalStatuses.IsLocked(ApprovalStatus);
 
+    internal bool HasWorkOrderRecords => ArrivalSubmissions.Count > 0 || DepartureSubmissions.Count > 0 ||
+        Services.Count > 0 || Tasks.Count > 0 || ReturnToRamps.Count > 0;
+
+    internal bool HasOperationalRecords => HasWorkOrderRecords || CancellationSubmissions.Count > 0;
+
     internal bool CanEditReturnToRamp(PortalFlightReturnToRamp occurrence) =>
         occurrence.CanEdit && (!IsApprovalLocked || occurrence.Sequence > ApprovedReturnToRampSequence);
 }

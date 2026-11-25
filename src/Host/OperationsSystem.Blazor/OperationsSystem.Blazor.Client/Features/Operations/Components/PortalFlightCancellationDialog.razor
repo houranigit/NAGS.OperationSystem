@@ -11,11 +11,25 @@
     else if (flight is { } currentFlight && canceledAt is { } time)
     {
         <PortalFlightSummary Flight="@currentFlight" StatusLabel="@(submission is null ? null : "Cancellation submitted")" StatusTone="danger" />
+        @if (currentFlight.WorkOrderNumber is { } workOrderNumber)
+        {
+            <div>WO# <strong>@workOrderNumber</strong></div>
+        }
         <section aria-labelledby="portal-cancellation-heading" class="pcf-fields">
             <h3 id="portal-cancellation-heading" class="pcf-heading">
                 <RadzenIcon Icon="event_busy" /> Cancellation
             </h3>
-            @if (ShowsExactSubmission && submission is { } report)
+            @if (reports.Count > 1)
+            {
+                <div class="pcf-date">
+                    <PortalOperationFormField Label="Cancellation report">
+                        <RadzenDropDown TValue="Guid?" Data="@ReportOptions()" TextProperty="@nameof(PortalCatalogChoice.Label)"
+                                        ValueProperty="@nameof(PortalCatalogChoice.Id)" Value="@submission?.Id"
+                                        ValueChanged="@SelectReportAsync" Disabled="@isSaving" class="pcf-control" />
+                    </PortalOperationFormField>
+                </div>
+            }
+            @if (submission is { } report)
             {
                 <div>Submitted by <strong>@report.SubmitterName</strong></div>
             }
@@ -42,6 +56,14 @@
         <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Disabled="@isSaving"
                       Click="@(() => Dialogs.Close(false))" />
         <div class="pcf-actions-end">
+            @if (IsApprovalReview && flight is not null)
+            {
+                <RadzenButton Text="@(IsUnlockReview ? "Unlock" : "Approve")"
+                              BusyText="@(IsUnlockReview ? "Unlocking…" : "Approving…")"
+                              Icon="@(IsUnlockReview ? "lock_open" : "verified")"
+                              ButtonStyle="ButtonStyle.Primary" Disabled="@(!CanChangeApproval || isSaving)"
+                              IsBusy="@isSaving" Click="@ChangeApprovalAsync" />
+            }
             @if (CanUndo)
             {
                 <RadzenButton Text="Undo" Icon="undo" ButtonStyle="ButtonStyle.Danger" Disabled="@isSaving" Click="@UndoAsync" />
@@ -57,44 +79,61 @@
 
 @code {
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
-    [Parameter] public Guid? SubmissionId { get; set; }
     [Parameter] public bool ViewOnly { get; set; }
     [Parameter] public bool AdministratorEntry { get; set; }
+    [Parameter] public bool ViewOrder { get; set; }
+    [Parameter] public PortalFlightWorkDialog.ApprovalAction ReviewAction { get; set; }
 
     private PortalFlightOperations? flight;
     private PortalFlightCancellation? submission;
+    private IReadOnlyList<PortalFlightCancellation> reports = [];
+    private StationTimeZone zone = default!;
     private PortalOperationTime? canceledAt;
     private string? remarks;
     private string? errorMessage;
     private bool isLoading = true;
     private bool isSaving;
 
-    private bool ShowsExactSubmission => ViewOnly || AdministratorEntry;
-    private bool CanSave => !ViewOnly && flight is { IsApprovalLocked: false, CanSaveCancellation: true };
-    private bool CanUndo => !ViewOnly && flight is { IsApprovalLocked: false } && submission is { } report &&
-        (!AdministratorEntry || report.IsAccountSubmissionBy(Auth.User?.Id));
+    private bool IsApprovalReview => ReviewAction != PortalFlightWorkDialog.ApprovalAction.None;
+    private bool IsUnlockReview => ReviewAction == PortalFlightWorkDialog.ApprovalAction.Unlock;
+    private bool CanChangeApproval => ReviewAction switch
+    {
+        PortalFlightWorkDialog.ApprovalAction.Approve => flight?.CanApprove == true,
+        PortalFlightWorkDialog.ApprovalAction.Unlock => flight?.CanUnlock == true,
+        _ => false
+    };
+    private bool CanSave => !IsApprovalReview && !ViewOnly &&
+        flight is { IsApprovalLocked: false, CanSaveCancellation: true } details &&
+        (submission is null || AdministratorEntry || OwnsSubmission(details, submission));
+    private bool CanUndo => !IsApprovalReview && !ViewOnly && flight is { IsApprovalLocked: false } details &&
+        submission is { } report && OwnsSubmission(details, report);
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
             var details = await Operations.GetPortalFlightOperationsAsync(FlightId);
-            var report = ShowsExactSubmission
-                ? details.CancellationSubmissions.FirstOrDefault(item => item.Id == SubmissionId)
-                : details.CancellationSubmissions.FirstOrDefault(item =>
-                    details.CurrentStaffMemberId.HasValue && item.SubmittedByEmployee?.StaffMemberId == details.CurrentStaffMemberId);
-            if (report?.Id != SubmissionId || report is null &&
-                (ViewOnly || !details.CanSaveCancellation || AdministratorEntry && details.CancellationSubmissions.Count > 0))
+            var viewingOrder = IsApprovalReview || ViewOrder;
+            if (viewingOrder)
+            {
+                reports = Auth.IsSystemAdministrator || details.CanApprove || details.CanUnlock
+                    ? details.CancellationSubmissions
+                    : details.CancellationSubmissions.Where(item => OwnsSubmission(details, item)).ToArray();
+            }
+
+            if (viewingOrder ? reports.Count == 0 || IsApprovalReview && details.HasWorkOrderRecords
+                : ViewOnly || details.IsApprovalLocked || !details.CanSaveCancellation || details.HasOperationalRecords)
             {
                 errorMessage = "Flight actions have changed. Close this dialog and open the actions menu again.";
                 return;
             }
 
-            canceledAt = new PortalOperationTime(StationTimeZone.FromId(details.StationTimeZoneId),
-                report?.CanceledAtUtc ?? DateTimeOffset.UtcNow);
-            remarks = report?.Remarks;
-            submission = report;
+            zone = StationTimeZone.FromId(details.StationTimeZoneId);
+            SetReport(reports.FirstOrDefault(item => OwnsSubmission(details, item)) ?? reports.FirstOrDefault());
             flight = details;
+
+            if (IsApprovalReview && !CanChangeApproval)
+                errorMessage = "This approval action is no longer available. Reopen the Cancellation Order menu.";
         }
         catch (ApiException ex)
         {
@@ -111,6 +150,64 @@
         finally
         {
             isLoading = false;
+        }
+    }
+
+    private bool OwnsSubmission(PortalFlightOperations details, PortalFlightCancellation report) =>
+        report.IsAccountSubmissionBy(Auth.User?.Id) ||
+        details.CurrentStaffMemberId is { } staffId && report.SubmittedByEmployee?.StaffMemberId == staffId;
+
+    private IEnumerable<PortalCatalogChoice> ReportOptions() => reports.Select(
+        report => new PortalCatalogChoice(report.Id, $"{report.SubmitterName} · {zone.Format(report.CanceledAtUtc)}"));
+
+    private void SetReport(PortalFlightCancellation? report)
+    {
+        submission = report;
+        canceledAt = new PortalOperationTime(zone, report?.CanceledAtUtc ?? DateTimeOffset.UtcNow);
+        remarks = report?.Remarks;
+    }
+
+    private async Task SelectReportAsync(Guid? id)
+    {
+        if (isSaving || id == submission?.Id || reports.FirstOrDefault(item => item.Id == id) is not { } report)
+            return;
+
+        if (CanSave && (canceledAt?.HasChanged == true || remarks != submission?.Remarks) &&
+            await Dialogs.Confirm("Discard the unsaved changes?", "Discard changes",
+                new ConfirmOptions { OkButtonText = "Discard", CancelButtonText = "Keep editing" }) != true)
+            return;
+
+        SetReport(report);
+        if (!IsApprovalReview)
+            errorMessage = null;
+    }
+
+    private async Task ChangeApprovalAsync()
+    {
+        if (isSaving || !CanChangeApproval || flight is not { } details)
+            return;
+
+        isSaving = true;
+        errorMessage = null;
+        try
+        {
+            if (IsUnlockReview)
+                await Operations.UnlockPortalFlightAsync(FlightId, details.RowVersion);
+            else
+                await Operations.ApprovePortalFlightAsync(FlightId, details.RowVersion);
+            Dialogs.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage(IsUnlockReview ? "Could not unlock the flight." : "Could not approve the flight.");
+        }
+        catch (JSException)
+        {
+            errorMessage = "The approval change could not be confirmed. Reopen the flight to check its status.";
+        }
+        finally
+        {
+            isSaving = false;
         }
     }
 

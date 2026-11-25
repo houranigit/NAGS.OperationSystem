@@ -333,7 +333,9 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
             ("7705", "Departed", -60),
             ("7706", "ReturnedToRamp", -60),
             ("7707", "Canceled", -60),
-            ("7708", "Conflict", -60)
+            ("7708", "Conflict", -60),
+            ("7709", "ArrivalNotRecorded", -60),
+            ("7710", "ArrivalNotRecorded", -60)
         };
         var flights = new List<Flight>();
         foreach (var (number, status, minutesUntilSta) in scenarios)
@@ -373,6 +375,12 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
             if (status is "Canceled" or "Conflict")
                 flight.SubmitCancellation(cancelingEmployee, CancellationDetails.Create(now, null).Value,
                     userId, now).IsSuccess.ShouldBeTrue();
+            if (number == "7709")
+                flight.AddService(new(refs.ServiceId, "Service"), null,
+                    TimeWindow.Create(now.AddMinutes(-5), null).Value, null, userId, now).IsSuccess.ShouldBeTrue();
+            if (number == "7710")
+                flight.AddTask(FlightTaskType.Minor, null, null,
+                    TimeWindow.Create(now.AddMinutes(-5), null).Value, null, userId, now).IsSuccess.ShouldBeTrue();
             flights.Add(flight);
         }
 
@@ -387,8 +395,10 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         var unfiltered = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{path}&pageSize=100"))!;
         unfiltered.Items.Select(item => (item.FlightNumber, item.Status))
             .ShouldBe(scenarios.Select(scenario => (scenario.Number, scenario.Status)));
+        unfiltered.Items.Where(item => item.HasOperationalRecords).Select(item => item.FlightNumber)
+            .ShouldBe(["7704", "7705", "7706", "7707", "7708", "7709", "7710"]);
         unfiltered.Items.Single(item => item.Status == "OnGround").ActualArrivalUtc.ShouldBe(actualArrival);
-        unfiltered.Items.Single(item => item.Status == "ArrivalNotRecorded").ActualArrivalUtc.ShouldBeNull();
+        unfiltered.Items.Where(item => item.Status == "ArrivalNotRecorded").ShouldAllBe(item => item.ActualArrivalUtc == null);
         unfiltered.Items.Single(item => item.Status == "ReturnedToRamp").ReturnedToRampUtc.ShouldBe(actualReturn);
         unfiltered.Items.Single(item => item.Status == "Departed").ReturnedToRampUtc.ShouldBeNull();
 

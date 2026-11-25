@@ -118,16 +118,22 @@
                 </RadzenDataGridColumn>
             </Columns>
             <RowActions Context="flight">
-                <RowActionMenu>
-                    <ChildContent>
-                        <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
-                                   OnClick="@(() => OpenEditAsync(flight.Id))" />
-                    </ChildContent>
-                    <MenuContent>
-                        <PortalFlightOperationsMenu @key="flight.Id" FlightId="@flight.Id" ShowWorkActions="@CanOpenFlightOperations"
-                            ShowDivider="@Auth.HasPermission(OperationsPermissions.FlightsUpdate)" Changed="@ReloadAsync" />
-                    </MenuContent>
-                </RowActionMenu>
+                @if (flight.HasOperationalRecords || CanOpenFlightOperations || CanEditSchedule)
+                {
+                    <RowActionMenu>
+                        <ChildContent>
+                            <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
+                                       OnClick="@(() => OpenEditAsync(flight.Id))" />
+                        </ChildContent>
+                        <MenuContent>
+                            @if (flight.HasOperationalRecords || CanOpenFlightOperations)
+                            {
+                                <PortalFlightOperationsMenu @key="flight.Id" Flight="@flight" ShowWorkActions="@CanOpenFlightOperations"
+                                    ShowDivider="@CanEditSchedule" Changed="@ReloadAsync" />
+                            }
+                        </MenuContent>
+                    </RowActionMenu>
+                }
             </RowActions>
         </DataListCard>
     </div>
@@ -177,6 +183,7 @@
     private IReadOnlyList<StationFilterOption> stationOptions = [];
     private IReadOnlyList<CustomerFilterOption> customerOptions = [];
     private IReadOnlyList<OperationTypeFilterOption> operationTypeOptions = [];
+    private bool CanEditSchedule => Auth.HasPermission(OperationsPermissions.FlightsUpdate);
     private bool CanOpenFlightOperations => Auth.IsSystemAdministrator
         ? Auth.HasPermission(OperationsPermissions.FlightsView)
         : Auth.HasPermission(OperationsPermissions.FlightsApprove)
