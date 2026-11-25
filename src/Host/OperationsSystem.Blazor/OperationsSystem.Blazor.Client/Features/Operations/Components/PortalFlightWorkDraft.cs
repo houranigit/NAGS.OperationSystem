@@ -394,14 +394,12 @@ public sealed class PortalSignatureDraft(string? savedPath = null)
     public string? SavedPath { get; } = savedPath;
     public string? FileName { get; set; }
     public byte[]? Bytes { get; set; }
-    public PortalOperationTime? SigningTime { get; set; }
     public bool IsReading { get; set; }
     public bool RemoveSaved { get; set; }
 
     public void Clear()
     {
         Bytes = null;
-        SigningTime = null;
         FileName = null;
     }
 }

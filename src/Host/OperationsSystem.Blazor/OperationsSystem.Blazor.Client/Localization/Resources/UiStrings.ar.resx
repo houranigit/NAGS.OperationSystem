@@ -772,6 +772,7 @@
   <data name="Flights.UnlockToUpdate" xml:space="preserve"><value>فتح القفل للتعديل…</value></data>
   <data name="Flights.UploadSignature" xml:space="preserve"><value>رفع توقيع بصيغة PNG</value></data>
   <data name="Flights.ReplaceSignature" xml:space="preserve"><value>استبدال التوقيع بصيغة PNG</value></data>
+  <data name="Flights.DiscardSignature" xml:space="preserve"><value>تجاهل التوقيع الجديد</value></data>
   <data name="Flights.ReadingSignature" xml:space="preserve"><value>جارٍ قراءة التوقيع…</value></data>
   <data name="Flights.DropSignatureOrBrowse" xml:space="preserve"><value>اسحب الملف وأفلته هنا أو تصفّح الملفات</value></data>
   <data name="Flights.SignatureUploadLimit" xml:space="preserve"><value>حتى 2 ميغابايت</value></data>

@@ -772,6 +772,7 @@
   <data name="Flights.UnlockToUpdate" xml:space="preserve"><value>Unlock to update…</value></data>
   <data name="Flights.UploadSignature" xml:space="preserve"><value>Upload PNG signature</value></data>
   <data name="Flights.ReplaceSignature" xml:space="preserve"><value>Replace PNG signature</value></data>
+  <data name="Flights.DiscardSignature" xml:space="preserve"><value>Discard new signature</value></data>
   <data name="Flights.ReadingSignature" xml:space="preserve"><value>Reading signature…</value></data>
   <data name="Flights.DropSignatureOrBrowse" xml:space="preserve"><value>Drag and drop or browse files</value></data>
   <data name="Flights.SignatureUploadLimit" xml:space="preserve"><value>Up to 2 MB</value></data>

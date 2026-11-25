@@ -19,7 +19,6 @@ public partial class PortalReturnToRampDialog
     private const string ArrivalRemarksField = "rtr-arrival-remarks";
     private const string DepartureTimeField = "rtr-departure-time";
     private const string DepartureRemarksField = "rtr-departure-remarks";
-    private const string SignatureTimeField = "rtr-signature-time";
 
     [Inject] private OperationsApiClient Operations { get; set; } = default!;
     [Inject] private MasterDataApiClient MasterData { get; set; } = default!;
@@ -139,8 +138,7 @@ public partial class PortalReturnToRampDialog
         signature = new()
         {
             Bytes = input.Departure?.SignatureContent,
-            FileName = draft.SignatureFileName,
-            SigningTime = input.Departure?.SignatureSignedAtUtc is { } signed ? new(zone, signed) : null
+            FileName = draft.SignatureFileName
         };
         services = input.Services.Select(change =>
         {
@@ -365,9 +363,10 @@ public partial class PortalReturnToRampDialog
         if (PortalWorkDraft.Trim(departureRemarks)?.Length > 2000)
             validation.Add(DepartureRemarksField, "RTR departure remarks must be at most 2,000 characters.");
 
-        var signedAt = signature.SigningTime?.Read("Signed at", validation, SignatureTimeField, required: true);
         if (departed.HasValue && services.All(row => row.Deleted) && tasks.All(row => row.Deleted))
             validation.Add(DepartureTimeField, "Record at least one service or task before closing the return to ramp.");
+
+        var signedAt = signature.Bytes is null ? null : departed;
         return departed is { } end
             ? new(end, PortalWorkDraft.Trim(departureRemarks), signature.Bytes, signedAt, signature.RemoveSaved,
                 AdministratorEntry ? handledByStaffMemberId : null)

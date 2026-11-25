@@ -16,6 +16,7 @@
 .portal-signature h4,
 .portal-signature p,
 .portal-signature-preview {
+    position: relative;
     margin: 0;
 }
 
@@ -123,4 +124,16 @@
     inline-size: 100%;
     max-block-size: 8rem;
     object-fit: contain;
+}
+
+.portal-signature-preview:has(.portal-signature-discard) img {
+    padding-inline: var(--os-space-6);
+}
+
+.portal-signature-preview ::deep .portal-signature-discard {
+    --rz-danger: var(--os-color-danger);
+    --rz-on-danger: var(--os-color-danger-contrast);
+    position: absolute;
+    inset-block-start: var(--os-space-2);
+    inset-inline-end: var(--os-space-2);
 }

@@ -18,7 +18,6 @@ public partial class PortalFlightWorkDialog
     private const string TailField = "arrival-tail";
     private const string ArrivalRemarksField = "arrival-remarks";
     private const string DepartureTimeField = "departure-time";
-    private const string SignatureTimeField = "departure-signature-time";
 
     [Inject] private OperationsApiClient Operations { get; set; } = default!;
     [Inject] private MasterDataApiClient MasterData { get; set; } = default!;
@@ -373,7 +372,7 @@ public partial class PortalFlightWorkDialog
         if (AdministratorEntry && (handledByStaffMemberId is null || handledByStaffMemberId == Guid.Empty))
             errors.Add(HandlerField, "Handling employee is required.");
         PortalWorkDraft.ValidateDeparturePeriods(services, tasks, errors, DepartureTimeField);
-        var signedAt = signature.SigningTime?.Read("Signed at", errors, SignatureTimeField, required: true);
+        var signedAt = signature.Bytes is null ? null : atd;
         return new(atd.GetValueOrDefault(), signature.Bytes, signedAt,
             PortalWorkDraft.Trim(departureRemarks), false, departureSource?.Id,
             AdministratorEntry ? handledByStaffMemberId : null);

@@ -188,9 +188,8 @@
                                                         Immediate="true" Rows="5" Disabled="@(!canEditDepartureFields)" />
                                     </PortalOperationFormField>
                                 </div>
-                                <PortalWorkSignature @key="signature" FlightId="@flight.Id" Draft="@signature" Zone="@zone"
-                                                     Disabled="@(!canEditDepartureFields)" Validation="@validation"
-                                                     ValidationField="@SignatureTimeField" Changed="@RefreshValidation" />
+                                <PortalWorkSignature @key="signature" FlightId="@flight.Id" Draft="@signature" UploadField="departure-signature-upload"
+                                                     Disabled="@(!canEditDepartureFields)" Changed="@RefreshValidation" />
                             </div>
                             @if (CanEditDeparture && !departureAvailable)
                             {

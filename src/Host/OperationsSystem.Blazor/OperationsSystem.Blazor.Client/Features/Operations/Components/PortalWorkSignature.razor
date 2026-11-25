@@ -9,10 +9,14 @@
     {
         <figure class="portal-signature-preview">
             <img src="@($"data:image/png;base64,{Convert.ToBase64String(bytes)}")" alt="Selected customer signature" />
+            @if (!Disabled)
+            {
+                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                              class="portal-signature-discard" aria-label="@UiStrings.Flights.DiscardSignature"
+                              title="@UiStrings.Flights.DiscardSignature" Disabled="@Draft.IsReading" Click="@DiscardAsync" />
+            }
             <figcaption>@Draft.FileName</figcaption>
         </figure>
-        <PortalOperationDateField Label="Signed at" Icon="draw" Time="@(Draft.SigningTime!)" Required="true" Disabled="@Disabled"
-                                  Validation="@Validation" ValidationField="@ValidationField" Changed="@Changed" />
     }
     else if (Draft.SavedPath is { } savedPath && !Draft.RemoveSaved)
     {
@@ -59,24 +63,15 @@
                        aria-describedby="@UploadDescriptionIds" />
         </label>
         <PortalFieldError Field="@UploadField" Message="@uploadError" />
-        @if (Draft.Bytes is not null)
-        {
-            <div class="portal-signature-actions">
-                <RadzenButton Text="Discard new signature" Icon="undo" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
-                              Disabled="@Draft.IsReading" Click="@DiscardAsync" />
-            </div>
-        }
     }
 </section>
 
 @code {
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
     [Parameter, EditorRequired] public PortalSignatureDraft Draft { get; set; } = default!;
-    [Parameter, EditorRequired] public StationTimeZone Zone { get; set; } = default!;
+    [Parameter, EditorRequired] public string UploadField { get; set; } = default!;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool CanRemove { get; set; }
-    [Parameter] public PortalFlightValidation? Validation { get; set; }
-    [Parameter] public string? ValidationField { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
 
     private bool downloading;
@@ -84,7 +79,6 @@
     private int pickerRevision;
     private string? uploadError;
     private string? downloadError;
-    private string UploadField => $"{ValidationField}-upload";
     private string UploadHelpId => $"{UploadField}-help";
     private string UploadDescriptionIds => uploadError is null
         ? UploadHelpId
@@ -100,6 +94,9 @@
 
     private async Task DiscardAsync()
     {
+        if (Disabled || Draft.IsReading)
+            return;
+
         Draft.Clear();
         uploadError = null;
         await Changed.InvokeAsync();
@@ -153,7 +150,6 @@
 
             Draft.Bytes = bytes;
             Draft.FileName = file.Name;
-            Draft.SigningTime = new(Zone, DateTimeOffset.UtcNow);
             Draft.RemoveSaved = false;
         }
         catch (Exception ex) when (ex is IOException or JSException)

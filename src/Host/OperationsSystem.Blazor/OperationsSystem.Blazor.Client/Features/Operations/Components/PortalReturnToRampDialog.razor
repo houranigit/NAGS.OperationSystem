@@ -101,9 +101,8 @@
                                     <PortalFieldError Validation="@validation" Field="@DepartureRemarksField" />
                                 </label>
                             </div>
-                            <PortalWorkSignature @key="signature" FlightId="@flight.Id" Draft="@signature" Zone="@zone"
-                                                 Disabled="@(!editDeparture)" CanRemove="true" Validation="@validation"
-                                                 ValidationField="@SignatureTimeField" Changed="@RefreshValidation" />
+                            <PortalWorkSignature @key="signature" FlightId="@flight.Id" Draft="@signature" UploadField="rtr-signature-upload"
+                                                 Disabled="@(!editDeparture)" CanRemove="true" Changed="@RefreshValidation" />
                         </div>
                         @if (occurrence?.DepartedAtUtc is not null)
                         {

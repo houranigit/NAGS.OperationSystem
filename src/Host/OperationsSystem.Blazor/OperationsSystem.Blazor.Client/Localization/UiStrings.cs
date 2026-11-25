@@ -57,6 +57,7 @@ public static class UiStrings
         public static string UnlockToUpdate => UiText.Get("Flights.UnlockToUpdate", "Unlock to update…");
         public static string UploadSignature => UiText.Get("Flights.UploadSignature", "Upload PNG signature");
         public static string ReplaceSignature => UiText.Get("Flights.ReplaceSignature", "Replace PNG signature");
+        public static string DiscardSignature => UiText.Get("Flights.DiscardSignature", "Discard new signature");
         public static string ReadingSignature => UiText.Get("Flights.ReadingSignature", "Reading signature…");
         public static string DropSignatureOrBrowse => UiText.Get("Flights.DropSignatureOrBrowse", "Drag and drop or browse files");
         public static string SignatureUploadLimit => UiText.Get("Flights.SignatureUploadLimit", "Up to 2 MB");
