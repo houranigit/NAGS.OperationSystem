@@ -769,6 +769,7 @@
   <data name="PortalAccess.PendingLoginEmailDetail" xml:space="preserve"><value>Waiting for {0} to confirm before the linked login email changes.</value></data>
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>Login email change failed</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>Identity could not start verification: {0}</value></data>
+  <data name="Flights.Customer" xml:space="preserve"><value>Customer</value></data>
   <data name="Flights.FlightType" xml:space="preserve"><value>Flight type</value></data>
   <data name="Flights.TypeAll" xml:space="preserve"><value>All</value></data>
   <data name="Flights.TypeScheduled" xml:space="preserve"><value>Scheduled</value></data>
