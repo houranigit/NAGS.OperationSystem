@@ -26,6 +26,16 @@
                         </button>
                     </li>
                 }
+                @if (AddStepLabel is { } addLabel)
+                {
+                    <li class="portal-step portal-step-add" title="@AddStepHint">
+                        <button type="button" aria-label="@addLabel" title="@(AddStepHint ?? addLabel)"
+                                disabled="@(Busy || AddStepDisabled)" @onclick="AddStep">
+                            <span class="portal-step-number"><RadzenIcon Icon="add" aria-hidden="true" /></span>
+                            <span class="portal-step-label">@addLabel</span>
+                        </button>
+                    </li>
+                }
             </ol>
             <div @key="CurrentStep" class="portal-editor-content" role="region" aria-label="@StepLabels[CurrentStep]" tabindex="0">
                 @StepContent
@@ -51,6 +61,10 @@
     [Parameter] public bool Busy { get; set; }
     [Parameter] public int ValidationAttempt { get; set; }
     [Parameter] public EventCallback<int> StepChanged { get; set; }
+    [Parameter] public string? AddStepLabel { get; set; }
+    [Parameter] public string? AddStepHint { get; set; }
+    [Parameter] public bool AddStepDisabled { get; set; }
+    [Parameter] public EventCallback AddStep { get; set; }
     [Parameter] public RenderFragment? HeaderContent { get; set; }
     [Parameter] public RenderFragment? StatusContent { get; set; }
     [Parameter] public RenderFragment? StepContent { get; set; }

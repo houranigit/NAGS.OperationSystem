@@ -83,6 +83,28 @@ public static class UiStrings
             count);
     }
 
+    public static class ReturnsToRamp
+    {
+        public static string Step(int sequence) => string.Format(UiText.Get("ReturnsToRamp.Step", "RTR #{0}"), sequence);
+        public static string Title(int sequence) => string.Format(UiText.Get("ReturnsToRamp.Title", "Return to Ramp #{0}"), sequence);
+        public static string Details => UiText.Get("ReturnsToRamp.Details", "RTR Details");
+        public static string Add => UiText.Get("ReturnsToRamp.Add", "Add RTR");
+        public static string OpenBlocksAdd => UiText.Get("ReturnsToRamp.OpenBlocksAdd", "Close the open return to ramp before adding another.");
+        public static string Open => UiText.Get("ReturnsToRamp.Open", "Open");
+        public static string Closed => UiText.Get("ReturnsToRamp.Closed", "Closed");
+        public static string Draft => UiText.Get("ReturnsToRamp.Draft", "Draft");
+        public static string ArrivedAt => UiText.Get("ReturnsToRamp.ArrivedAt", "Arrival");
+        public static string DepartedAt => UiText.Get("ReturnsToRamp.DepartedAt", "Departure");
+        public static string ReceivedBy => UiText.Get("ReturnsToRamp.ReceivedBy", "Received by");
+        public static string HandledBy => UiText.Get("ReturnsToRamp.HandledBy", "Handled by");
+        public static string CustomerSignature => UiText.Get("ReturnsToRamp.CustomerSignature", "Customer signature");
+        public static string SignatureOnFile => UiText.Get("ReturnsToRamp.SignatureOnFile", "On file");
+        public static string SignatureAttached => UiText.Get("ReturnsToRamp.SignatureAttached", "Attached");
+        public static string SignatureNotRecorded => UiText.Get("ReturnsToRamp.SignatureNotRecorded", "Not recorded");
+        public static string ArrivalRemarks => UiText.Get("ReturnsToRamp.ArrivalRemarks", "Arrival remarks");
+        public static string DepartureRemarks => UiText.Get("ReturnsToRamp.DepartureRemarks", "Departure remarks");
+    }
+
     public static class Notifications
     {
         public static string Title => UiText.Get("Notifications.Title", "Notifications");

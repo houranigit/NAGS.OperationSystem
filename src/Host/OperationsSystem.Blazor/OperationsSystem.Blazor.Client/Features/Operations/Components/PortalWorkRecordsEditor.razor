@@ -46,7 +46,7 @@
         }
         else
         {
-            var panelId = $"portal-{(IsTask ? "task" : "service")}-{record.Id:N}";
+            var panelId = $"{IdPrefix}-{(IsTask ? "task" : "service")}-{record.Id:N}";
             var expanded = IsExpanded(record);
             var label = WorkLabel(record, index);
             var (status, tone) = WorkStatus(record.Start.Local, record.End.Local.HasValue);
@@ -83,7 +83,7 @@
                                         @foreach (var option in TaskTypes)
                                         {
                                             <label>
-                                                <input type="radio" name="@($"portal-task-type-{record.Id:N}")" value="@option.Id"
+                                                <input type="radio" name="@($"{IdPrefix}-task-type-{record.Id:N}")" value="@option.Id"
                                                        checked="@(record.TaskType == option.Id)" @onchange="@(() => SetTaskTypeAsync(record, option.Id))" />
                                                 <span>@option.Label</span>
                                             </label>
@@ -147,7 +147,7 @@
                         @Resources("General support", "general support", record, record.GeneralSupports, Lookups.Supports, edit, end)
                     }
 
-                    <PortalWorkNotes FlightId="@FlightId" RecordPath="@RecordPath(record)" Draft="@record" CanEdit="@edit"
+                    <PortalWorkNotes FlightId="@FlightId" RecordPath="@RecordPath(record)" Draft="@record" CanEdit="@edit" IdPrefix="@IdPrefix"
                                      CanDeleteSavedAttachments="@CanDeleteRecords"
                                      Visible="@expanded" Validation="@Validation" Changed="@Changed" />
 
@@ -205,6 +205,7 @@
     [Parameter] public bool IsTask { get; set; }
     [Parameter] public bool CanAdd { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public string IdPrefix { get; set; } = "portal";
     [Parameter] public bool CanDeleteRecords { get; set; } = true;
     [Parameter] public PortalFlightValidation? Validation { get; set; }
     [Parameter] public int ValidationAttempt { get; set; }

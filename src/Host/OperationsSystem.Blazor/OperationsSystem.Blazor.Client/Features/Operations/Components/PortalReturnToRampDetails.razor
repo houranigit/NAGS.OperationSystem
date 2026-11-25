@@ -1,0 +1,121 @@
+@if (item is { } occurrence)
+{
+    <section class="portal-rtr-detail-page" aria-labelledby="@($"portal-rtr-title-{occurrence.Id:N}")">
+        <header class="portal-rtr-detail-header">
+            <div class="portal-rtr-detail-title">
+                <h2 id="@($"portal-rtr-title-{occurrence.Id:N}")">@UiStrings.ReturnsToRamp.Title(occurrence.Sequence)</h2>
+                <StatusBadge Label="@(occurrence.DepartedAtUtc.HasValue ? UiStrings.ReturnsToRamp.Closed : UiStrings.ReturnsToRamp.Open)"
+                             Tone="@(occurrence.DepartedAtUtc.HasValue ? "success" : "info")" />
+                @if (occurrence.IsDraft)
+                {
+                    <StatusBadge Label="@UiStrings.ReturnsToRamp.Draft" Tone="warning" />
+                }
+            </div>
+            <div class="portal-editor-actions">
+                @Actions
+            </div>
+        </header>
+
+        <section class="portal-editor-section">
+            <div class="portal-editor-heading portal-form-heading">
+                <h3 class="os-operation-section-title">
+                    <RadzenIcon Icon="undo" aria-hidden="true" />
+                    <span>@UiStrings.ReturnsToRamp.Details</span>
+                </h3>
+            </div>
+            <dl class="portal-rtr-detail-list">
+                <div>
+                    <dt>@UiStrings.ReturnsToRamp.ArrivedAt</dt>
+                    <dd><time datetime="@occurrence.ArrivedAtUtc.ToString("O")">@Zone.Format(occurrence.ArrivedAtUtc)</time></dd>
+                </div>
+                <div>
+                    <dt>@UiStrings.ReturnsToRamp.DepartedAt</dt>
+                    <dd>
+                        @if (occurrence.DepartedAtUtc is { } departure)
+                        {
+                            <time datetime="@departure.ToString("O")">@Zone.Format(departure)</time>
+                        }
+                        else
+                        {
+                            <text>—</text>
+                        }
+                    </dd>
+                </div>
+                <div>
+                    <dt>@UiStrings.ReturnsToRamp.ReceivedBy</dt>
+                    <dd>@(occurrence.ReceivedBy ?? "—")</dd>
+                </div>
+                @if (occurrence.DepartedAtUtc.HasValue)
+                {
+                    <div>
+                        <dt>@UiStrings.ReturnsToRamp.HandledBy</dt>
+                        <dd>@(occurrence.HandledBy ?? "—")</dd>
+                    </div>
+                }
+                <div>
+                    <dt>@UiStrings.ReturnsToRamp.CustomerSignature</dt>
+                    <dd>@SignatureStatus(occurrence)</dd>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(occurrence.ArrivalRemarks))
+                {
+                    <div class="portal-rtr-detail-remarks">
+                        <dt>@UiStrings.ReturnsToRamp.ArrivalRemarks</dt>
+                        <dd>@occurrence.ArrivalRemarks</dd>
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(occurrence.DepartureRemarks))
+                {
+                    <div class="portal-rtr-detail-remarks">
+                        <dt>@UiStrings.ReturnsToRamp.DepartureRemarks</dt>
+                        <dd>@occurrence.DepartureRemarks</dd>
+                    </div>
+                }
+            </dl>
+        </section>
+
+        <PortalWorkRecordsEditor FlightId="@FlightId" Records="@services" Zone="@Zone" Lookups="@RecordLookups"
+                                 IdPrefix="@($"portal-rtr-inline-{occurrence.Id:N}")" ReadOnly="true" />
+        <PortalWorkRecordsEditor FlightId="@FlightId" Records="@tasks" Zone="@Zone" Lookups="@RecordLookups"
+                                 IdPrefix="@($"portal-rtr-inline-{occurrence.Id:N}")" ReadOnly="true" IsTask="true" />
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid FlightId { get; set; }
+    [Parameter] public PortalFlightReturnToRamp? Saved { get; set; }
+    [Parameter] public PortalReturnToRampDraft? Draft { get; set; }
+    [Parameter, EditorRequired] public StationTimeZone Zone { get; set; } = default!;
+    [Parameter, EditorRequired] public PortalWorkLookups Lookups { get; set; } = default!;
+    [Parameter] public Guid? CurrentStaffId { get; set; }
+    [Parameter, EditorRequired] public RenderFragment Actions { get; set; } = default!;
+
+    private PortalReturnToRampSummary? item;
+    private List<PortalWorkDraft> services = [];
+    private List<PortalWorkDraft> tasks = [];
+    private PortalWorkLookups RecordLookups => Draft?.Lookups ?? Lookups;
+
+    protected override void OnParametersSet()
+    {
+        if (Saved is { } saved)
+        {
+            item = PortalReturnToRampSummary.From(saved);
+            services = saved.Services.Select(service => PortalWorkDraft.From(service, Zone)).ToList();
+            tasks = saved.Tasks.Select(task => PortalWorkDraft.From(task, Zone)).ToList();
+        }
+        else if (Draft is { } draft)
+        {
+            item = PortalReturnToRampSummary.From(draft, RecordLookups.Staff, CurrentStaffId);
+            (services, tasks) = draft.ReadWorkRecords(Zone, RecordLookups);
+        }
+        else
+        {
+            item = null;
+            services = [];
+            tasks = [];
+        }
+    }
+
+    private static string SignatureStatus(PortalReturnToRampSummary occurrence) => !occurrence.HasSignature
+        ? UiStrings.ReturnsToRamp.SignatureNotRecorded
+        : occurrence.IsDraft ? UiStrings.ReturnsToRamp.SignatureAttached : UiStrings.ReturnsToRamp.SignatureOnFile;
+}

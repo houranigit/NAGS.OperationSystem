@@ -124,6 +124,19 @@
     color: var(--os-color-text);
 }
 
+.portal-step-add button {
+    color: var(--os-color-primary-strong);
+}
+
+.portal-step-add .portal-step-number {
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary);
+}
+
+.portal-step-add button:disabled {
+    opacity: 0.55;
+}
+
 :is(.portal-step-active, .portal-step-complete) button {
     color: var(--os-color-primary-strong);
 }

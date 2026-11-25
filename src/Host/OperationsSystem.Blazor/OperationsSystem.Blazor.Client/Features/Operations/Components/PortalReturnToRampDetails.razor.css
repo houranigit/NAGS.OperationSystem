@@ -1,0 +1,65 @@
+.portal-rtr-detail-page {
+    display: grid;
+    gap: var(--os-space-5);
+    min-inline-size: 0;
+}
+
+.portal-rtr-detail-header,
+.portal-rtr-detail-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--os-space-2);
+}
+
+.portal-rtr-detail-header {
+    justify-content: space-between;
+}
+
+.portal-rtr-detail-title h2 {
+    margin: 0;
+    color: var(--os-color-text);
+    font-size: var(--os-text-lg);
+    font-weight: 800;
+}
+
+.portal-rtr-detail-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.75rem), 1fr));
+    gap: var(--os-space-3) var(--os-space-4);
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.portal-rtr-detail-list dt {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
+.portal-rtr-detail-list dd {
+    margin: 0;
+}
+
+.portal-rtr-detail-remarks {
+    grid-column: 1 / -1;
+}
+
+.portal-rtr-detail-remarks dd {
+    white-space: pre-wrap;
+}
+
+.portal-rtr-detail-page ::deep .portal-work-empty-state {
+    justify-items: start;
+    padding: 0;
+    text-align: start;
+}
+
+.portal-rtr-detail-page ::deep .portal-work-empty-state h4 {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 400;
+}
+
+.portal-rtr-detail-page ::deep .portal-work-records--empty .portal-work-empty-state-icon {
+    display: none;
+}

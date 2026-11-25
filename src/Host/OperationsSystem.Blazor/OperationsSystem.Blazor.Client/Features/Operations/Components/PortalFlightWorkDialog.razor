@@ -1,7 +1,10 @@
 @implements IAsyncDisposable
 
 <PortalWorkDialogLayout StepLabels="@StepLabels" CurrentStep="@step" ShowSteps="@(!loading && flight is not null)"
-                        IsGuidedEntry="@IsGuidedEntry" Busy="@saving" StepChanged="@ChangeStep" ValidationAttempt="@validationFocusAttempt">
+                        IsGuidedEntry="@IsGuidedEntry" Busy="@saving" StepChanged="@ChangeStep" ValidationAttempt="@validationFocusAttempt"
+                        AddStepLabel="@(ShowAddReturnToRamp ? UiStrings.ReturnsToRamp.Add : null)" AddStepDisabled="@(!CanAddReturnToRamp)"
+                        AddStepHint="@(HasOpenReturn ? UiStrings.ReturnsToRamp.OpenBlocksAdd : null)"
+                        AddStep="@(() => OpenReturnToRampAsync(null))">
     <HeaderContent>
         @if (flight?.WorkOrderNumber is { } workOrderNumber)
         {
@@ -221,57 +224,28 @@
                         }
                     </section>
                     break;
-                case 4:
-                    <section class="portal-editor-section">
-                        <div class="portal-editor-heading portal-form-heading">
-                            <h3 class="os-operation-section-title">
-                                <RadzenIcon Icon="undo" aria-hidden="true" />
-                                <span>Returns to ramp</span>
-                            </h3>
-                            @if (CanDraftReturnToRamp && ActualDeparture.HasValue)
-                            {
-                                <RadzenButton Text="Add RTR" Icon="add" ButtonStyle="ButtonStyle.Light" Disabled="@(saving || !CanAddReturnToRamp)"
-                                              Click="@(() => OpenReturnToRampAsync(null))" />
-                            }
-                        </div>
-                        @if (flight.ReturnToRamps.Count == 0 && pendingReturns.Count == 0)
-                        {
-                            <p class="portal-work-note">@(!ViewOnly && !flight.IsApprovalLocked
-                                ? "Approve the flight before adding a return to ramp."
-                                : "No returns to ramp recorded.")</p>
-                        }
-                        @if (CanDraftReturnToRamp && (flight.ReturnToRamps.Any(item => item.IsOpen) || pendingReturns.Any(item => item.IsOpen)))
-                        {
-                            <p class="portal-work-note">Close the open return to ramp before adding another.</p>
-                        }
-                        @foreach (var occurrence in flight.ReturnToRamps)
-                        {
-                            var canEditOccurrence = !ViewOnly && flight.CanEditReturnToRamp(occurrence) && !WorkChanged();
-                            <div class="portal-occurrence" @key="occurrence.Id">
-                                <div>
-                                    <strong>RTR @occurrence.Sequence</strong>
-                                    <p class="portal-work-note">@zone.Format(occurrence.ArrivedAtUtc) – @(occurrence.DepartedAtUtc is { } departure ? zone.Format(departure) : "Open")</p>
-                                </div>
-                                <RadzenButton Text="@(canEditOccurrence ? "Edit" : "View")" Icon="@(canEditOccurrence ? "edit" : "visibility")"
-                                              ButtonStyle="ButtonStyle.Light" Disabled="@saving" Click="@(() => OpenReturnToRampAsync(occurrence.Id))" />
-                            </div>
-                        }
-                        @foreach (var draft in pendingReturns)
-                        {
-                            <div class="portal-occurrence" @key="draft.Id">
-                                <div>
-                                    <strong>RTR @draft.Sequence · Draft</strong>
-                                    <p class="portal-work-note">@zone.Format(draft.Request.Arrival.ArrivedAtUtc) – @(draft.Request.Departure is { } departure ? zone.Format(departure.DepartedAtUtc) : "Open")</p>
-                                </div>
-                                <div class="portal-editor-actions">
-                                    <RadzenButton Text="Edit" Icon="edit" ButtonStyle="ButtonStyle.Light" Disabled="@saving"
-                                                  Click="@(() => OpenReturnToRampAsync(draft.Id))" />
-                                    <RadzenButton Text="Remove" Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Outlined" Disabled="@saving"
-                                                  Click="@(() => RemoveReturnToRampDraft(draft.Id))" />
-                                </div>
-                            </div>
-                        }
-                    </section>
+                default:
+                    @if (CurrentReturnId is { } returnId)
+                    {
+                        var draft = pendingReturns.Find(item => item.Id == returnId);
+                        var occurrence = draft is null ? flight.ReturnToRamps.FirstOrDefault(item => item.Id == returnId) : null;
+                        var canEdit = draft is not null ||
+                            (!ViewOnly && occurrence is not null && flight.CanEditReturnToRamp(occurrence) && !WorkChanged());
+                        <PortalReturnToRampDetails @key="returnId" FlightId="@FlightId" Saved="@occurrence" Draft="@draft"
+                                                   Zone="@zone" Lookups="@lookups" CurrentStaffId="@flight.CurrentStaffMemberId">
+                            <Actions>
+                                <RadzenButton Text="@(canEdit ? "Edit" : "View")" Icon="@(canEdit ? "edit" : "visibility")"
+                                              ButtonStyle="ButtonStyle.Light" Disabled="@saving"
+                                              Click="@(() => OpenReturnToRampAsync(returnId))" />
+                                @if (draft is not null)
+                                {
+                                    <RadzenButton Text="Remove" Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small"
+                                                  Variant="Variant.Outlined" Disabled="@saving"
+                                                  Click="@(() => RemoveReturnToRampDraft(returnId))" />
+                                }
+                            </Actions>
+                        </PortalReturnToRampDetails>
+                    }
                     break;
             }
         }

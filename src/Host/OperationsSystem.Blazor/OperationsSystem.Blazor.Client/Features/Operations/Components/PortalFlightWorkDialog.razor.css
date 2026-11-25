@@ -3,16 +3,3 @@
     color: var(--os-color-text-muted);
     font-size: var(--os-text-sm);
 }
-
-.portal-occurrence {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: var(--os-space-2);
-}
-
-.portal-occurrence {
-    padding-block-start: var(--os-space-3);
-    border-block-start: 1px solid var(--os-color-border);
-}

@@ -27,26 +27,28 @@
                 case 0:
                     var editArrival = CanEdit && !saving && !ArrivalFieldsLocked;
                     <section class="portal-editor-section">
-                        <div class="portal-editor-heading">
-                            <h3>Actual Arrival Details</h3>
+                        <div class="portal-editor-heading portal-form-heading">
+                            <h3 class="os-operation-section-title">
+                                <RadzenIcon Icon="flight_land" aria-hidden="true" />
+                                <span>Actual Arrival Details</span>
+                            </h3>
                         </div>
                         <div class="portal-editor-grid">
-                            <PortalOperationDateField Label="Actual time of arrival" Time="@arrivalTime" Required="true" Disabled="@(!editArrival)"
+                            <PortalOperationDateField Label="Actual time of arrival" Icon="flight_land" Time="@arrivalTime" Required="true" Disabled="@(!editArrival)"
                                                       Validation="@validation" ValidationField="@ArrivalTimeField" Changed="@RefreshValidation" />
                             @if (AdministratorEntry)
                             {
-                                <PortalWorkStaffField Label="Receiving employee" Options="@lookups.Staff"
+                                <PortalWorkStaffField Label="Receiving employee" Icon="person" Options="@lookups.Staff"
                                                       SavedId="@occurrence?.ReceivedByStaffMemberId" SavedName="@occurrence?.ReceivedByFullName"
                                                       @bind-Value="receivedByStaffMemberId" @bind-Value:after="RefreshValidation"
                                                       Disabled="@(!editArrival)" Validation="@validation" Field="@ReceiverField" />
                             }
-                            <label class="portal-editor-full">
-                                <span>Arrival remarks</span>
+                            <PortalOperationFormField Label="Arrival remarks" Class="portal-editor-full"
+                                                      Validation="@validation" Field="@ArrivalRemarksField">
                                 <RadzenTextArea @bind-Value="arrivalRemarks" @bind-Value:after="RefreshValidation" Immediate="true" Rows="3"
                                                 Disabled="@(!editArrival)" aria-invalid="@validation.InvalidAttribute(ArrivalRemarksField)"
                                                 aria-describedby="@validation.DescriptionId(ArrivalRemarksField)" />
-                                <PortalFieldError Validation="@validation" Field="@ArrivalRemarksField" />
-                            </label>
+                            </PortalOperationFormField>
                         </div>
                         @if (occurrence is { } existing)
                         {
@@ -77,29 +79,30 @@
                 case 3:
                     var editDeparture = CanEdit && !saving && !DepartureFieldsLocked;
                     <section class="portal-editor-section">
-                        <div class="portal-editor-heading">
-                            <h3>Actual Departure Details</h3>
+                        <div class="portal-editor-heading portal-form-heading">
+                            <h3 class="os-operation-section-title">
+                                <RadzenIcon Icon="flight_takeoff" aria-hidden="true" />
+                                <span>Actual Departure Details</span>
+                            </h3>
                         </div>
                         <div class="portal-departure-form">
                             <div class="portal-editor-grid portal-departure-fields">
-                                <PortalOperationDateField Label="Actual time of departure" Time="@departureTime" Required="@RequiresDeparture"
+                                <PortalOperationDateField Label="Actual time of departure" Icon="flight_takeoff" Time="@departureTime" Required="@RequiresDeparture"
                                                           Disabled="@(!editDeparture)" Validation="@validation" ValidationField="@DepartureTimeField"
                                                           Changed="@RefreshValidation" />
                                 @if (AdministratorEntry)
                                 {
-                                    <PortalWorkStaffField Label="Handling employee" Options="@lookups.Staff"
+                                    <PortalWorkStaffField Label="Handling employee" Icon="person" Options="@lookups.Staff"
                                                           SavedId="@occurrence?.HandledByStaffMemberId" SavedName="@occurrence?.HandledByFullName"
                                                           @bind-Value="handledByStaffMemberId" @bind-Value:after="RefreshValidation"
                                                           Required="@(RequiresDeparture || departureTime.Local.HasValue)" AllowClear="@(occurrence?.DepartedAtUtc is null)"
                                                           Disabled="@(!editDeparture)" Validation="@validation" Field="@HandlerField" />
                                 }
-                                <label>
-                                    <span>Departure remarks</span>
+                                <PortalOperationFormField Label="Departure remarks" Validation="@validation" Field="@DepartureRemarksField">
                                     <RadzenTextArea @bind-Value="departureRemarks" @bind-Value:after="RefreshValidation" Immediate="true" Rows="5"
                                                     Disabled="@(!editDeparture)" aria-invalid="@validation.InvalidAttribute(DepartureRemarksField)"
                                                     aria-describedby="@validation.DescriptionId(DepartureRemarksField)" />
-                                    <PortalFieldError Validation="@validation" Field="@DepartureRemarksField" />
-                                </label>
+                                </PortalOperationFormField>
                             </div>
                             <PortalWorkSignature @key="signature" FlightId="@flight.Id" Draft="@signature" UploadField="rtr-signature-upload"
                                                  Disabled="@(!editDeparture)" CanRemove="true" Changed="@RefreshValidation" />

@@ -68,6 +68,7 @@
     [Parameter] public bool CanEdit { get; set; }
     [Parameter] public bool CanDeleteSavedAttachments { get; set; } = true;
     [Parameter] public bool Visible { get; set; }
+    [Parameter] public string IdPrefix { get; set; } = "portal";
     [Parameter] public PortalFlightValidation? Validation { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
 
@@ -76,7 +77,7 @@
     private int pickerRevision;
     private string? uploadError;
     private string? mediaError;
-    private string NotesId => $"portal-work-notes-{Draft.Id:N}";
+    private string NotesId => $"{IdPrefix}-work-notes-{Draft.Id:N}";
     private string NotesField => PortalFlightValidation.Field(Draft.Id, "notes");
     private string AttachmentField => PortalFlightValidation.Field(Draft.Id, "attachments");
     private string? AttachmentInvalid => uploadError is not null ? "true" : Validation?.InvalidAttribute(AttachmentField);

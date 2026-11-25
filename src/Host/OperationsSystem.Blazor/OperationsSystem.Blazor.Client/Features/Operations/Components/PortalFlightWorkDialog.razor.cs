@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using OperationsSystem.Blazor.Client.Api;
+using OperationsSystem.Blazor.Client.Localization;
 using OperationsSystem.Blazor.Client.State;
 using Radzen;
 
@@ -8,7 +9,7 @@ namespace OperationsSystem.Blazor.Client.Features.Operations.Components;
 
 public partial class PortalFlightWorkDialog
 {
-    private static readonly string[] WorkStepLabels = ["Arrival", "Services", "Tasks", "Departure", "Returns to ramp"];
+    private static readonly string[] WorkStepLabels = ["Arrival", "Services", "Tasks", "Departure"];
     private static readonly string[] CancellationStepLabels = ["Cancellation"];
     private static readonly Guid UnknownCustomer = new("50000000-0000-0000-0000-000000000001");
     private const string ArrivalTimeField = "arrival-time";
@@ -57,7 +58,18 @@ public partial class PortalFlightWorkDialog
     private bool changingApproval;
     private int step;
 
-    private string[] StepLabels => IsCancellationReview ? CancellationStepLabels : WorkStepLabels;
+    private IEnumerable<(Guid Id, int Sequence)> ReturnSteps =>
+        (flight?.ReturnToRamps.Select(item => (item.Id, item.Sequence)) ?? [])
+        .Concat(pendingReturns.Select(item => (item.Id, item.Sequence)))
+        .OrderBy(item => item.Sequence);
+
+    private string[] StepLabels => IsCancellationReview
+        ? CancellationStepLabels
+        : [.. WorkStepLabels, .. ReturnSteps.Select(item => UiStrings.ReturnsToRamp.Step(item.Sequence))];
+
+    private Guid? CurrentReturnId => step < WorkStepLabels.Length
+        ? null
+        : ReturnSteps.Skip(step - WorkStepLabels.Length).Select(item => (Guid?)item.Id).FirstOrDefault();
     private bool IsCancellationReview => flight is
     {
         CancellationSubmissions.Count: > 0, ArrivalSubmissions.Count: 0, DepartureSubmissions.Count: 0,
@@ -92,8 +104,12 @@ public partial class PortalFlightWorkDialog
     private bool CanDraftReturnToRamp => !ViewOnly &&
         flight is { IsApprovalLocked: true, CancellationSubmissions.Count: 0, CanSaveReturnsToRamp: true };
 
-    private bool CanAddReturnToRamp => CanDraftReturnToRamp && ActualDeparture.HasValue &&
-        flight!.ReturnToRamps.All(item => !item.IsOpen) && pendingReturns.All(item => !item.IsOpen);
+    private bool ShowAddReturnToRamp => !ViewOnly && flight is { CancellationSubmissions.Count: 0 } data &&
+        (data.CanSaveReturnsToRamp || CanEditNormalWork || data.CanApprove);
+
+    private bool HasOpenReturn => flight?.ReturnToRamps.Any(item => item.IsOpen) == true || pendingReturns.Any(item => item.IsOpen);
+
+    private bool CanAddReturnToRamp => CanDraftReturnToRamp && ActualDeparture.HasValue && !HasOpenReturn;
 
     private bool IsGuidedEntry => flight is
     {
@@ -257,7 +273,7 @@ public partial class PortalFlightWorkDialog
 
     private void ChangeStep(int index)
     {
-        if (saving || index == step)
+        if (saving || index == step || index < 0 || index >= StepLabels.Length)
             return;
 
         if (WorkFilesLoading())
@@ -266,7 +282,7 @@ public partial class PortalFlightWorkDialog
             return;
         }
 
-        if (!NormalWorkReadOnly && index is > 0 and < 4)
+        if (!NormalWorkReadOnly && index > 0 && index < WorkStepLabels.Length)
         {
             validation.ClearStep(0);
             requireArrivalForValidation = true;
@@ -280,6 +296,12 @@ public partial class PortalFlightWorkDialog
 
         step = index;
         error = null;
+    }
+
+    private void SelectReturn(Guid id)
+    {
+        var offset = ReturnSteps.Select(item => item.Id).ToList().IndexOf(id);
+        step = offset >= 0 ? WorkStepLabels.Length + offset : Math.Min(step, StepLabels.Length - 1);
     }
 
     private void NextStep()
@@ -445,6 +467,7 @@ public partial class PortalFlightWorkDialog
 
         saving = true;
         int? savingReturn = null;
+        var selectedReturnId = CurrentReturnId;
         try
         {
             if (request is not null)
@@ -472,6 +495,8 @@ public partial class PortalFlightWorkDialog
                 flight = await Operations.SavePortalReturnToRampAsync(FlightId, pending.Id, pending.Request, flight.RowVersion, lifetime.Token);
                 savedChanges = true;
                 pendingReturns.RemoveAt(0);
+                if (selectedReturnId is { } selectedId)
+                    SelectReturn(selectedId);
             }
             DialogService.Close(savedChanges);
         }
@@ -583,8 +608,12 @@ public partial class PortalFlightWorkDialog
                 [nameof(PortalReturnToRampDialog.AdministratorEntry)] = AdministratorEntry
             },
             PortalWorkDialogLayout.CreateOptions());
-        if (result is true)
-            DialogService.Close(true);
+        if (result is PortalFlightOperations updated)
+        {
+            AcceptNormalSave(updated);
+            SelectReturn(occurrence.Id);
+            error = null;
+        }
     }
 
     private async Task OpenReturnToRampDraftAsync(Guid? id)
@@ -614,6 +643,8 @@ public partial class PortalFlightWorkDialog
             pendingReturns[index] = pending;
         else
             pendingReturns.Add(pending);
+        SelectReturn(pending.Id);
+        error = null;
     }
 
     private void RemoveReturnToRampDraft(Guid id)
@@ -621,6 +652,7 @@ public partial class PortalFlightWorkDialog
         pendingReturns.RemoveAll(item => item.Id == id);
         for (var index = 0; index < pendingReturns.Count; index++)
             pendingReturns[index] = pendingReturns[index] with { Sequence = flight!.LastReturnToRampSequence + index + 1 };
+        step = Math.Min(step, StepLabels.Length - 1);
     }
 
     private void CloseWithoutSaving() => DialogService.Close(false);

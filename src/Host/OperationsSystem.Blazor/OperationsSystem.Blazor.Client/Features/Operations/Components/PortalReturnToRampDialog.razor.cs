@@ -140,52 +140,7 @@ public partial class PortalReturnToRampDialog
             Bytes = input.Departure?.SignatureContent,
             FileName = draft.SignatureFileName
         };
-        services = input.Services.Select(change =>
-        {
-            var value = change.Input!;
-            var work = new PortalWorkDraft(change.RecordId, false, zone, value.StartUtc, value.EndUtc)
-            {
-                ServiceId = value.ServiceId, Reference = value.CustomerReferenceNumber, Notes = value.Notes
-            };
-            ReadWork(work, value.Performers, value.Attachments);
-            return work;
-        }).ToList();
-        tasks = input.Tasks.Select(change =>
-        {
-            var value = change.Input!;
-            var work = new PortalWorkDraft(change.RecordId, true, zone, value.StartUtc, value.EndUtc)
-            {
-                TaskType = value.TaskType, AtaChapterId = value.AtaChapterId, Reference = value.CustomerReferenceNumber, Notes = value.Notes
-            };
-            ReadWork(work, value.Performers, value.Attachments);
-            work.Tools.AddRange(ReadResources(value.Tools, lookups.Tools));
-            work.Materials.AddRange(ReadResources(value.Materials, lookups.Materials));
-            work.GeneralSupports.AddRange(ReadResources(value.GeneralSupports, lookups.Supports));
-            return work;
-        }).ToList();
-
-        void ReadWork(PortalWorkDraft work, IReadOnlyList<PortalFlightPerformerRequest> performers,
-            IReadOnlyList<PortalFlightAttachmentRequest> attachments)
-        {
-            foreach (var performer in performers)
-            {
-                var staff = lookups.Staff.FirstOrDefault(choice => choice.Id == performer.StaffMemberId);
-                work.Performers.Add(new(performer.Id, zone, performer.StartUtc, performer.EndUtc)
-                {
-                    StaffMemberId = performer.StaffMemberId, DisplayName = staff?.Label, FullName = staff?.FullName, Notes = performer.Notes
-                });
-            }
-            work.Attachments.AddRange(attachments.Select(file =>
-                new PortalAttachmentDraft(file.Id, file.Kind, file.FileName, file.ContentType, file.Content?.LongLength ?? 0, null, file.Content)));
-        }
-
-        IEnumerable<PortalResourceDraft> ReadResources(IReadOnlyList<PortalFlightResourceRequest> values, IReadOnlyList<PortalCatalogChoice> options) =>
-            values.Select(value => new PortalResourceDraft(value.Id, value.ResourceId,
-                options.FirstOrDefault(choice => choice.Id == value.ResourceId)?.Label ?? "Saved resource",
-                value.Quantity is null ? ResourceCalculationType.Duration : ResourceCalculationType.Quantity, zone, value.StartUtc, value.EndUtc)
-            {
-                Quantity = value.Quantity, Notes = value.Notes
-            });
+        (services, tasks) = draft.ReadWorkRecords(zone, lookups);
     }
 
     private bool WorkChanged() => arrivalTime.HasChanged || departureTime.HasChanged ||
@@ -307,15 +262,18 @@ public partial class PortalReturnToRampDialog
 
         if (DraftFlight is not null)
         {
-            DialogService.Close(new PortalReturnToRampDraft(Draft?.Id ?? newOccurrenceId, DraftSequence, request, signature.FileName));
+            DialogService.Close(new PortalReturnToRampDraft(Draft?.Id ?? newOccurrenceId, DraftSequence, request, signature.FileName)
+            {
+                Lookups = lookups
+            });
             return;
         }
 
         saving = true;
         try
         {
-            await Operations.SavePortalReturnToRampAsync(FlightId, OccurrenceId ?? newOccurrenceId, request, flight.RowVersion, lifetime.Token);
-            DialogService.Close(true);
+            var updated = await Operations.SavePortalReturnToRampAsync(FlightId, OccurrenceId ?? newOccurrenceId, request, flight.RowVersion, lifetime.Token);
+            DialogService.Close(updated);
         }
         catch (ApiException ex)
         {
