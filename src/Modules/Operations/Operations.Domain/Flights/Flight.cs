@@ -117,8 +117,39 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
     public bool CanEditAdHocDetails(Guid userId) => !IsApprovalLocked && OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType &&
         CreatedByUserId == userId && !HasOperationalRecords();
 
-    public bool HasOperationalRecords() => _arrivalSubmissions.Count > 0 || _departureSubmissions.Count > 0 ||
-        _cancellationSubmissions.Count > 0 || _services.Count > 0 || _tasks.Count > 0 || _returnToRamps.Count > 0;
+    public bool HasOperationalRecords() => _cancellationSubmissions.Count > 0 || HasWorkOrderRecords();
+
+    private bool HasWorkOrderRecords() => _arrivalSubmissions.Count > 0 || _departureSubmissions.Count > 0 ||
+        _services.Count > 0 || _tasks.Count > 0 || _returnToRamps.Count > 0;
+
+    /// <summary>Removes the complete work order. Load all operational collections before deleting.</summary>
+    public Result<bool> DeleteWorkOrder(DateTimeOffset now)
+    {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval.Error;
+        if (!HasWorkOrderRecords()) return false;
+
+        _arrivalSubmissions.Clear();
+        _departureSubmissions.Clear();
+        _services.Clear();
+        _tasks.Clear();
+        _returnToRamps.Clear();
+        // Keep the RTR sequence counter to avoid reissuing a removed occurrence's number.
+        UpdatedAtUtc = now.ToUniversalTime();
+        return true;
+    }
+
+    /// <summary>Removes all cancellation reports. Load the cancellation submissions before deleting.</summary>
+    public Result<bool> DeleteCancellationOrder(DateTimeOffset now)
+    {
+        var approval = EnsureApprovalAllowsEdit();
+        if (approval.IsFailure) return approval.Error;
+        if (_cancellationSubmissions.Count == 0) return false;
+
+        _cancellationSubmissions.Clear();
+        UpdatedAtUtc = now.ToUniversalTime();
+        return true;
+    }
 
     /// <summary>Collections must be loaded so another employee's work locks the same planning details.</summary>
     public Result UpdateAdHocDetails(CustomerSnapshot customer, FlightNumber number, ScheduledTime schedule,

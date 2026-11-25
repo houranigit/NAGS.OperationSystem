@@ -2,6 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace OperationsSystem.Blazor.Client.Api;
 
+internal enum PortalFlightOrderKind { WorkOrder, CancellationOrder }
+
 public sealed record PortalFlightOperations(
     Guid Id, string FlightNumber, Guid CustomerId, string? CustomerIataCode, string CustomerName,
     Guid StationId, string StationIata, string OperationTypeName, Guid? AircraftTypeId, string? AircraftTypeModel,

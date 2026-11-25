@@ -20,37 +20,20 @@ else if (loadError)
 }
 @if (!isLoading && HasOperationalRecords)
 {
-    <RowActionSubmenu Text="@(IsCancellationOrder ? "Cancellation Order" : "Work Order")"
-                      Icon="@(IsCancellationOrder ? "event_busy" : "assignment")">
-        @if (IsCancellationOrder ? CanViewCancellation : details is not null)
-        {
-            <button type="button" role="menuitem" class="os-row-actions-item" @onclick="OpenOrderAsync">
-                <RadzenIcon Icon="visibility" /><span>View</span>
-            </button>
-        }
-        @if (!IsCancellationOrder && CanViewCancellation)
-        {
-            <button type="button" role="menuitem" class="os-row-actions-item" @onclick="ViewCancellationAsync">
-                <RadzenIcon Icon="event_busy" /><span>View cancellation</span>
-            </button>
-        }
-        @if (ReviewAction != PortalFlightWorkDialog.ApprovalAction.None)
-        {
-            var unlock = ReviewAction == PortalFlightWorkDialog.ApprovalAction.Unlock;
-            <button type="button" role="menuitem" class="os-row-actions-item" @onclick="OpenReviewAsync">
-                <RadzenIcon Icon="@(unlock ? "lock_open" : "verified")" /><span>@(unlock ? "Unlock" : "Approve")</span>
-            </button>
-        }
-        <button type="button" role="menuitem" class="os-row-actions-item" disabled="@printing" @onclick="PrintWorkOrderAsync">
-            <RadzenIcon Icon="print" /><span>@UiStrings.Flights.PrintWorkOrder</span>
-        </button>
-    </RowActionSubmenu>
+    @if (HasWorkOrder)
+    {
+        @OrderMenu(PortalFlightOrderKind.WorkOrder)
+    }
+    @if (HasCancellationOrder)
+    {
+        @OrderMenu(PortalFlightOrderKind.CancellationOrder)
+    }
 }
 else if (!isLoading && !loadError)
 {
     @if (CanCreateWorkOrder)
     {
-        <button type="button" role="menuitem" class="os-row-actions-item" @onclick="OpenOrderAsync">
+        <button type="button" role="menuitem" class="os-row-actions-item" @onclick="CreateWorkOrderAsync">
             <RadzenIcon Icon="assignment" /><span>Create Work Order</span>
         </button>
     }
@@ -83,10 +66,12 @@ else if (!isLoading && !loadError)
     private bool ViewOnly => Auth.IsSystemAdministrator
         ? !CanOperateAsAdministrator
         : !Auth.HasPermission(OperationsPermissions.FlightsOperate);
-    private bool HasOperationalRecords => details?.HasOperationalRecords ?? Flight.HasOperationalRecords;
-    private bool IsCancellationOrder => details is { } current
-        ? current.CancellationSubmissions.Count > 0 && !current.HasWorkOrderRecords
-        : Flight.HasCancellationSubmission && Flight.Status != "Conflict";
+    private bool HasOperationalRecords => HasWorkOrder || HasCancellationOrder;
+    private bool HasWorkOrder => details?.HasWorkOrderRecords ??
+        (Flight.HasOperationalRecords && (!Flight.HasCancellationSubmission || Flight.Status == "Conflict"));
+    private bool HasCancellationOrder => details is { } current
+        ? current.CancellationSubmissions.Count > 0
+        : Flight.HasCancellationSubmission;
     private bool CanCreateWorkOrder => !HasOperationalRecords && !ViewOnly && details is { } current &&
         (current.CanSaveArrival || current.CanSaveDeparture || current.CanSaveServices || current.CanSaveTasks || current.CanSaveReturnsToRamp);
     private bool CanStartCancellation => !HasOperationalRecords && !ViewOnly &&
@@ -99,9 +84,38 @@ else if (!isLoading && !loadError)
     private PortalFlightWorkDialog.ApprovalAction ReviewAction => details switch
     {
         { CanUnlock: true } => PortalFlightWorkDialog.ApprovalAction.Unlock,
-        { CanApprove: true } => PortalFlightWorkDialog.ApprovalAction.Approve,
+        { CanApprove: true } when !(HasWorkOrder && HasCancellationOrder) => PortalFlightWorkDialog.ApprovalAction.Approve,
         _ => PortalFlightWorkDialog.ApprovalAction.None
     };
+
+    private RenderFragment OrderMenu(PortalFlightOrderKind kind) =>
+        @<RowActionSubmenu Text="@(kind == PortalFlightOrderKind.WorkOrder ? "Work Order" : "Cancellation Order")"
+                          Icon="@(kind == PortalFlightOrderKind.WorkOrder ? "assignment" : "event_busy")">
+            @if (kind == PortalFlightOrderKind.WorkOrder ? details is not null : CanViewCancellation)
+            {
+                <button type="button" role="menuitem" class="os-row-actions-item" @onclick="@(() => ViewOrderAsync(kind))">
+                    <RadzenIcon Icon="visibility" /><span>View</span>
+                </button>
+            }
+            @if (ReviewAction != PortalFlightWorkDialog.ApprovalAction.None &&
+                (kind == PortalFlightOrderKind.WorkOrder || !HasWorkOrder))
+            {
+                var unlock = ReviewAction == PortalFlightWorkDialog.ApprovalAction.Unlock;
+                <button type="button" role="menuitem" class="os-row-actions-item" @onclick="@(() => OpenReviewAsync(kind))">
+                    <RadzenIcon Icon="@(unlock ? "lock_open" : "verified")" /><span>@(unlock ? "Unlock" : "Approve")</span>
+                </button>
+            }
+            <button type="button" role="menuitem" class="os-row-actions-item" disabled="@printing" @onclick="PrintWorkOrderAsync">
+                <RadzenIcon Icon="print" /><span>@UiStrings.Flights.PrintWorkOrder</span>
+            </button>
+            @if (PortalOrderDeletion.CanDelete(Auth, details, kind))
+            {
+                <button type="button" role="menuitem" class="os-row-actions-item os-row-actions-item--danger"
+                        @onclick="@(() => DeleteOrderAsync(kind))">
+                    <RadzenIcon Icon="delete_outline" /><span>Delete</span>
+                </button>
+            }
+        </RowActionSubmenu>;
 
     protected override Task OnInitializedAsync() => ShowWorkActions ? LoadAsync() : Task.CompletedTask;
 
@@ -131,23 +145,31 @@ else if (!isLoading && !loadError)
         }
     }
 
-    private Task OpenOrderAsync()
-    {
-        if (IsCancellationOrder)
-            return ViewCancellationAsync();
+    private Task CreateWorkOrderAsync() => CanCreateWorkOrder && details is { } flight
+        ? OpenWorkDialogAsync(flight, PortalFlightWorkDialog.ApprovalAction.None)
+        : Task.CompletedTask;
 
-        return details is { } flight && (HasOperationalRecords || CanCreateWorkOrder)
+    private Task ViewOrderAsync(PortalFlightOrderKind kind)
+    {
+        if (kind == PortalFlightOrderKind.CancellationOrder)
+            return CanViewCancellation
+                ? OpenCancellationDialogAsync(PortalFlightWorkDialog.ApprovalAction.None, viewReports: true)
+                : Task.CompletedTask;
+
+        return details is { HasWorkOrderRecords: true } flight
             ? OpenWorkDialogAsync(flight, PortalFlightWorkDialog.ApprovalAction.None)
             : Task.CompletedTask;
     }
 
-    private Task OpenReviewAsync()
+    private Task OpenReviewAsync(PortalFlightOrderKind kind)
     {
         var review = ReviewAction;
         if (details is not { } flight || review == PortalFlightWorkDialog.ApprovalAction.None)
             return Task.CompletedTask;
 
-        return IsCancellationOrder ? OpenCancellationDialogAsync(review) : OpenWorkDialogAsync(flight, review);
+        return kind == PortalFlightOrderKind.WorkOrder
+            ? OpenWorkDialogAsync(flight, review)
+            : OpenCancellationDialogAsync(review);
     }
 
     private async Task OpenWorkDialogAsync(PortalFlightOperations flight, PortalFlightWorkDialog.ApprovalAction review)
@@ -197,9 +219,31 @@ else if (!isLoading && !loadError)
         }
     }
 
-    private Task ViewCancellationAsync() => CanViewCancellation
-        ? OpenCancellationDialogAsync(PortalFlightWorkDialog.ApprovalAction.None, viewReports: true)
-        : Task.CompletedTask;
+    private async Task DeleteOrderAsync(PortalFlightOrderKind kind)
+    {
+        if (!PortalOrderDeletion.CanDelete(Auth, details, kind) || details is not { } flight)
+            return;
+
+        ContextMenu.Close();
+        if (!await PortalOrderDeletion.ConfirmAsync(Dialogs, kind, flight.FlightNumber))
+            return;
+
+        try
+        {
+            await Operations.DeletePortalOrderAsync(Flight.Id, kind, flight.RowVersion);
+            Notifications.Notify(NotificationSeverity.Success,
+                kind == PortalFlightOrderKind.WorkOrder ? "Work order deleted" : "Cancellation order deleted");
+            await Changed.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            Notifications.Notify(NotificationSeverity.Error, ex.ToDisplayMessage("Could not delete the order."));
+        }
+        catch (JSException)
+        {
+            Notifications.Notify(NotificationSeverity.Error, "Could not confirm the deletion. Reopen the flight to check its status.");
+        }
+    }
 
     private Task StartCancellationAsync() => CanStartCancellation
         ? OpenCancellationDialogAsync(PortalFlightWorkDialog.ApprovalAction.None)

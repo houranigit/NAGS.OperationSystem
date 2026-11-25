@@ -270,6 +270,11 @@
                     <RadzenButton Text="Previous" Icon="arrow_back" ButtonStyle="ButtonStyle.Light" Disabled="@saving"
                                   class="portal-editor-previous" Click="@(() => ChangeStep(step - 1))" />
                 }
+                @if (CanDeleteOrder)
+                {
+                    <RadzenButton Text="Delete" BusyText="Deleting…" Icon="delete" ButtonStyle="ButtonStyle.Danger"
+                                  Variant="Variant.Outlined" Disabled="@saving" IsBusy="@deletingOrder" Click="@DeleteOrderAsync" />
+                }
                 <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Disabled="@saving" Click="@CloseAsync" />
                 @if (IsGuidedEntry && step + 1 < StepLabels.Length)
                 {
@@ -284,7 +289,7 @@
                 }
                 else if (CanEditNormalWork || pendingReturns.Count > 0)
                 {
-                    <RadzenButton Text="Save" BusyText="Saving…" IsBusy="@saving" Icon="check" ButtonStyle="ButtonStyle.Primary"
+                    <RadzenButton Text="Save" BusyText="Saving…" IsBusy="@(saving && !deletingOrder)" Icon="check" ButtonStyle="ButtonStyle.Primary"
                                   Disabled="@saving" Click="@SaveAsync" />
                 }
             </div>

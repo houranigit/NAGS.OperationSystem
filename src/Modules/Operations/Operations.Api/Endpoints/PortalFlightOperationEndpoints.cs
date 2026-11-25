@@ -37,6 +37,12 @@ internal static class PortalFlightOperationEndpoints
         operations.MapDelete("/approval", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
             SetApprovalAsync(id, false, http, sender, ct));
 
+        writes.MapDelete("/work-order", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
+            DeleteOrderAsync(id, FlightOrderKind.Work, http, sender, ct));
+
+        writes.MapDelete("/cancellation-order", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
+            DeleteOrderAsync(id, FlightOrderKind.Cancellation, http, sender, ct));
+
         writes.MapPut("/batch", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
             SaveBatchAsync(id, http, sender, ct, portalOnly: true))
             .WithMetadata(new RequestSizeLimitAttribute(FlightOperationsBatchPolicy.MaxJsonRequestBytes));
@@ -124,6 +130,14 @@ internal static class PortalFlightOperationEndpoints
 
         var result = await sender.Send(new SetFlightApprovalCommand(id, approve, rowVersion), ct);
         return result.IsFailure ? ApiResults.Problem(result.Error) : (await sender.Send(new GetPortalFlightOperationsQuery(id), ct)).ToOk();
+    }
+
+    private static async Task<IResult> DeleteOrderAsync(Guid id, FlightOrderKind kind, HttpRequest http, ISender sender, CancellationToken ct)
+    {
+        if (http.GetIfMatch() is not { } rowVersion)
+            return ApiResults.Problem(ConcurrencyErrors.PreconditionRequired);
+
+        return (await sender.Send(new DeletePortalFlightOrderCommand(id, kind, rowVersion), ct)).ToNoContent();
     }
 
     private static IResult PrivateFile(HttpResponse response, Stream content, string contentType, string? fileName = null)

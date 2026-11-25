@@ -56,6 +56,11 @@
         <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Light" Disabled="@isSaving"
                       Click="@(() => Dialogs.Close(false))" />
         <div class="pcf-actions-end">
+            @if (CanDeleteOrder)
+            {
+                <RadzenButton Text="Delete" BusyText="Deleting…" Icon="delete" ButtonStyle="ButtonStyle.Danger"
+                              Variant="Variant.Outlined" Disabled="@isSaving" IsBusy="@isDeletingOrder" Click="@DeleteOrderAsync" />
+            }
             @if (IsApprovalReview && flight is not null)
             {
                 <RadzenButton Text="@(IsUnlockReview ? "Unlock" : "Approve")"
@@ -71,7 +76,7 @@
             @if (CanSave)
             {
                 <RadzenButton Text="@(submission is null ? "Submit cancellation" : "Save")"
-                              ButtonStyle="ButtonStyle.Primary" IsBusy="@isSaving" Click="@SaveAsync" />
+                              ButtonStyle="ButtonStyle.Primary" Disabled="@isSaving" IsBusy="@(isSaving && !isDeletingOrder)" Click="@SaveAsync" />
             }
         </div>
     </div>
@@ -93,6 +98,7 @@
     private string? errorMessage;
     private bool isLoading = true;
     private bool isSaving;
+    private bool isDeletingOrder;
 
     private bool IsApprovalReview => ReviewAction != PortalFlightWorkDialog.ApprovalAction.None;
     private bool IsUnlockReview => ReviewAction == PortalFlightWorkDialog.ApprovalAction.Unlock;
@@ -105,8 +111,9 @@
     private bool CanSave => !IsApprovalReview && !ViewOnly &&
         flight is { IsApprovalLocked: false, CanSaveCancellation: true } details &&
         (submission is null || AdministratorEntry || OwnsSubmission(details, submission));
+    private bool CanDeleteOrder => !IsApprovalReview && PortalOrderDeletion.CanDelete(Auth, flight, PortalFlightOrderKind.CancellationOrder);
     private bool CanUndo => !IsApprovalReview && !ViewOnly && flight is { IsApprovalLocked: false } details &&
-        submission is { } report && OwnsSubmission(details, report);
+        (!CanDeleteOrder || reports.Count > 1) && submission is { } report && OwnsSubmission(details, report);
 
     protected override async Task OnInitializedAsync()
     {
@@ -180,6 +187,37 @@
         SetReport(report);
         if (!IsApprovalReview)
             errorMessage = null;
+    }
+
+    private async Task DeleteOrderAsync()
+    {
+        if (isSaving || !CanDeleteOrder || flight is not { } details)
+            return;
+
+        isSaving = true;
+        isDeletingOrder = true;
+        try
+        {
+            if (!await PortalOrderDeletion.ConfirmAsync(Dialogs, PortalFlightOrderKind.CancellationOrder, details.FlightNumber))
+                return;
+
+            errorMessage = null;
+            await Operations.DeletePortalOrderAsync(FlightId, PortalFlightOrderKind.CancellationOrder, details.RowVersion);
+            Dialogs.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            errorMessage = ex.ToDisplayMessage("Could not delete the cancellation order.");
+        }
+        catch (JSException)
+        {
+            errorMessage = "The deletion could not be confirmed. Reopen the flight to check its orders.";
+        }
+        finally
+        {
+            isSaving = false;
+            isDeletingOrder = false;
+        }
     }
 
     private async Task ChangeApprovalAsync()

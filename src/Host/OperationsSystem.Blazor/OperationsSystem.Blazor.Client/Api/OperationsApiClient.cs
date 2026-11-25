@@ -34,6 +34,12 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<PortalFlightOperations> UnlockPortalFlightAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
         api.DeleteAsync<PortalFlightOperations>($"{PortalOperationsPath(id)}/approval", rowVersion, ct);
 
+    internal Task DeletePortalOrderAsync(Guid id, PortalFlightOrderKind kind, string rowVersion, CancellationToken ct = default)
+    {
+        var order = kind == PortalFlightOrderKind.WorkOrder ? "work-order" : "cancellation-order";
+        return api.DeleteAsync($"{PortalOperationsPath(id)}/{order}", rowVersion, ct);
+    }
+
     public Task<PortalFlightOperations> SavePortalFlightWorkAsync(Guid id, PortalWorkBatchRequest request,
         string rowVersion, CancellationToken ct = default) =>
         PutPortalWorkAsync(

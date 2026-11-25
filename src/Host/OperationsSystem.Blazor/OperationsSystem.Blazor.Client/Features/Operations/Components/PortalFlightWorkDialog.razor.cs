@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using OperationsSystem.Blazor.Client.Api;
+using OperationsSystem.Blazor.Client.Auth;
 using OperationsSystem.Blazor.Client.Localization;
 using OperationsSystem.Blazor.Client.State;
 using Radzen;
@@ -25,6 +26,7 @@ public partial class PortalFlightWorkDialog
     [Inject] private OperationsApiClient Operations { get; set; } = default!;
     [Inject] private MasterDataApiClient MasterData { get; set; } = default!;
     [Inject] private DialogService DialogService { get; set; } = default!;
+    [Inject] private AuthSession Auth { get; set; } = default!;
 
     [Parameter, EditorRequired] public Guid FlightId { get; set; }
     [Parameter] public int InitialStep { get; set; }
@@ -58,6 +60,7 @@ public partial class PortalFlightWorkDialog
     private string? error;
     private bool loading = true;
     private bool saving;
+    private bool deletingOrder;
     private int step;
 
     private IEnumerable<(Guid Id, int Sequence)> ReturnSteps =>
@@ -80,6 +83,7 @@ public partial class PortalFlightWorkDialog
 
     private bool IsApprovalReview => ReviewAction != ApprovalAction.None;
     private bool WorkReadOnly => ViewOnly || IsApprovalReview;
+    private bool CanDeleteOrder => !IsApprovalReview && PortalOrderDeletion.CanDelete(Auth, flight, PortalFlightOrderKind.WorkOrder);
     private bool CanChangeApproval => ReviewAction switch
     {
         ApprovalAction.Approve => flight?.CanApprove == true,
@@ -564,6 +568,43 @@ public partial class PortalFlightWorkDialog
         finally
         {
             saving = false;
+        }
+    }
+
+    private async Task DeleteOrderAsync()
+    {
+        if (saving || !CanDeleteOrder || flight is not { } current)
+            return;
+
+        if (WorkFilesLoading())
+        {
+            error = "Wait for the file to finish loading before deleting the work order.";
+            return;
+        }
+
+        saving = true;
+        deletingOrder = true;
+        try
+        {
+            if (!await PortalOrderDeletion.ConfirmAsync(DialogService, PortalFlightOrderKind.WorkOrder, current.FlightNumber))
+                return;
+
+            error = null;
+            await Operations.DeletePortalOrderAsync(FlightId, PortalFlightOrderKind.WorkOrder, current.RowVersion, lifetime.Token);
+            DialogService.Close(true);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.ToDisplayMessage("Could not delete the work order.");
+        }
+        catch (JSException)
+        {
+            error = "The deletion could not be confirmed. Reopen the flight to check its orders.";
+        }
+        finally
+        {
+            saving = false;
+            deletingOrder = false;
         }
     }
 

@@ -19,6 +19,13 @@ public sealed class PortalFlightScope(IOperationsScope scope, IUserContext user,
             : Task.FromResult<Result<FlightOperationAccess>>(Error.Forbidden(
                 "Flight approval permission is required.", "Operations.Flight.ApprovalForbidden"));
 
+    internal Task<Result<FlightOperationAccess>> ResolveOrderDeletionAsync(CancellationToken cancellationToken) =>
+        user.UserType == UserType.SystemAdministrator && user.HasPermission(OperationsPermissions.Flights.Operate)
+            ? ResolveReadAsync(cancellationToken)
+            : Task.FromResult<Result<FlightOperationAccess>>(Error.Forbidden(
+                "Only a system administrator with flight operate permission can delete a flight order.",
+                "Operations.Flight.OrderDeleteForbidden"));
+
     internal async Task<Result<FlightOperationAccess>> ResolveReadAsync(CancellationToken cancellationToken)
     {
         if (!CanReview(user))
