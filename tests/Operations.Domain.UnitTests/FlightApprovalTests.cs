@@ -11,7 +11,7 @@ public sealed class FlightApprovalTests
     private static readonly DateTimeOffset Now = TestData.Now;
 
     [Fact]
-    public void ApprovalLocksNormalWorkAndUnlockRestoresEditing()
+    public void ApprovalLocksOperationalWorkWhileTheRosterCanStillBeChanged()
     {
         var flight = DepartedFlight();
         var reviewer = Guid.NewGuid();
@@ -27,7 +27,11 @@ public sealed class FlightApprovalTests
         flight.ApprovalSequence.ShouldBe(1);
         flight.ApprovalNumber.ShouldBe("RUH-0001");
         flight.ChangeFlightNumber(TestData.FlightNo("SV1021"), Now).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
-        flight.ReplaceAssignedEmployees([], Now).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
+        var assignee = TestData.Staff();
+        flight.ReplaceAssignedEmployees([assignee], Now).IsSuccess.ShouldBeTrue();
+        flight.AssignedEmployees.ShouldHaveSingleItem().Employee.ShouldBe(assignee);
+        flight.ApprovalStatus.ShouldBe(FlightApprovalStatus.Approved);
+        flight.ApprovalNumber.ShouldBe("RUH-0001");
         flight.SubmitArrival(_staff, Arrival(Now), _actor, Now).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
         flight.SubmitDeparture(_staff, Departure(Now.AddHours(2)), _actor, Now).Error.Code.ShouldBe("Operations.FlightApproval.Locked");
 
@@ -37,7 +41,7 @@ public sealed class FlightApprovalTests
         flight.IsApprovalLocked.ShouldBeFalse();
         flight.ApprovalSequence.ShouldBeNull();
         flight.ApprovalNumber.ShouldBeNull();
-        flight.ChangeFlightNumber(TestData.FlightNo("SV1021"), Now.AddMinutes(2)).IsSuccess.ShouldBeTrue();
+        flight.ChangeFlightNumber(TestData.FlightNo("SV1021"), Now.AddMinutes(2)).Error.Code.ShouldBe("Operations.Flight.ScheduleReadOnly");
         flight.ApprovedByUserId.ShouldBe(reviewer);
 
         flight.Approve(reviewer, "Flight reviewer", Now.AddMinutes(3), 10_000).IsSuccess.ShouldBeTrue();

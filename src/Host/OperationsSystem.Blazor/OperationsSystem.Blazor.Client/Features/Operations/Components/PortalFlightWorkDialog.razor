@@ -234,7 +234,7 @@
                         var draft = pendingReturns.Find(item => item.Id == returnId);
                         var occurrence = draft is null ? flight.ReturnToRamps.FirstOrDefault(item => item.Id == returnId) : null;
                         var canEdit = draft is not null ||
-                            (!ViewOnly && occurrence is not null && flight.CanEditReturnToRamp(occurrence) && !WorkChanged());
+                            (!WorkReadOnly && occurrence is not null && flight.CanEditReturnToRamp(occurrence) && !WorkChanged());
                         <PortalReturnToRampDetails @key="returnId" FlightId="@FlightId" Saved="@occurrence" Draft="@draft"
                                                    Zone="@zone" Lookups="@lookups" CurrentStaffId="@flight.CurrentStaffMemberId">
                             <Actions>
@@ -275,21 +275,17 @@
                 {
                     <RadzenButton Text="Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Light" Disabled="@saving" Click="@NextStep" />
                 }
-                @if (CanEditNormalWork || pendingReturns.Count > 0)
+                @if (IsApprovalReview)
                 {
-                    <RadzenButton Text="Save" BusyText="Saving…" IsBusy="@(saving && !changingApproval)" Icon="check" ButtonStyle="ButtonStyle.Primary"
+                    var unlock = ReviewAction == ApprovalAction.Unlock;
+                    <RadzenButton Text="@(unlock ? "Unlock" : "Approve")" BusyText="@(unlock ? "Unlocking…" : "Approving…")"
+                                  IsBusy="@saving" Icon="@(unlock ? "lock_open" : "verified")" ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@(!CanChangeApproval || saving)" Click="@ChangeApprovalAsync" />
+                }
+                else if (CanEditNormalWork || pendingReturns.Count > 0)
+                {
+                    <RadzenButton Text="Save" BusyText="Saving…" IsBusy="@saving" Icon="check" ButtonStyle="ButtonStyle.Primary"
                                   Disabled="@saving" Click="@SaveAsync" />
-                }
-                @if (flight.CanUnlock)
-                {
-                    <RadzenButton Text="Unlock" BusyText="Unlocking…" IsBusy="@changingApproval" Icon="lock_open"
-                                  ButtonStyle="ButtonStyle.Primary" Disabled="@saving" Click="@(() => ChangeApprovalAsync(unlock: true))" />
-                }
-                else if (flight.CanApprove)
-                {
-                    <RadzenButton Text="Approve" BusyText="Approving…" IsBusy="@changingApproval" Icon="verified"
-                                  ButtonStyle="ButtonStyle.Primary" Disabled="@(saving || WorkChanged() || WorkFilesLoading())"
-                                  Click="@(() => ChangeApprovalAsync(unlock: false))" />
                 }
             </div>
         }

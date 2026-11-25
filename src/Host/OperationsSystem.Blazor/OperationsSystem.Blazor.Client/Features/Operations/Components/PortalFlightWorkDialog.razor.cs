@@ -9,6 +9,8 @@ namespace OperationsSystem.Blazor.Client.Features.Operations.Components;
 
 public partial class PortalFlightWorkDialog
 {
+    public enum ApprovalAction { None, Approve, Unlock }
+
     private static readonly string[] WorkStepLabels = ["Arrival", "Services", "Tasks", "Departure"];
     private static readonly string[] CancellationStepLabels = ["Cancellation"];
     private static readonly Guid UnknownCustomer = new("50000000-0000-0000-0000-000000000001");
@@ -28,6 +30,7 @@ public partial class PortalFlightWorkDialog
     [Parameter] public int InitialStep { get; set; }
     [Parameter] public bool ViewOnly { get; set; }
     [Parameter] public bool AdministratorEntry { get; set; }
+    [Parameter] public ApprovalAction ReviewAction { get; set; }
 
     private readonly CancellationTokenSource lifetime = new();
     private PortalFlightOperations? flight;
@@ -55,7 +58,6 @@ public partial class PortalFlightWorkDialog
     private string? error;
     private bool loading = true;
     private bool saving;
-    private bool changingApproval;
     private int step;
 
     private IEnumerable<(Guid Id, int Sequence)> ReturnSteps =>
@@ -76,7 +78,16 @@ public partial class PortalFlightWorkDialog
         Services.Count: 0, Tasks.Count: 0, ReturnToRamps.Count: 0
     };
 
-    private bool NormalWorkReadOnly => ViewOnly || IsCancellationReview || flight?.IsApprovalLocked == true;
+    private bool IsApprovalReview => ReviewAction != ApprovalAction.None;
+    private bool WorkReadOnly => ViewOnly || IsApprovalReview;
+    private bool CanChangeApproval => ReviewAction switch
+    {
+        ApprovalAction.Approve => flight?.CanApprove == true,
+        ApprovalAction.Unlock => flight?.CanUnlock == true,
+        _ => false
+    };
+
+    private bool NormalWorkReadOnly => WorkReadOnly || IsCancellationReview || flight?.IsApprovalLocked == true;
     private bool RequiresArrivalRemarks => flight?.IsAdHocFlight == true && flight.CustomerId == UnknownCustomer;
     private bool CanEditArrival => !NormalWorkReadOnly && flight is { CanSaveArrival: true } data &&
         (!data.IsUnassignedSearchFlight || arrivalSource is null || IsStaffSubmitter(arrivalSource.SubmittedByEmployee, data.CurrentStaffMemberId));
@@ -101,11 +112,11 @@ public partial class PortalFlightWorkDialog
         }
     }
 
-    private bool CanDraftReturnToRamp => !ViewOnly &&
+    private bool CanDraftReturnToRamp => !WorkReadOnly &&
         flight is { CancellationSubmissions.Count: 0 } data &&
         (data.CanSaveReturnsToRamp || data.DepartureSubmissions.Count == 0 && CanEditDeparture);
 
-    private bool ShowAddReturnToRamp => !ViewOnly && flight is { CancellationSubmissions.Count: 0 } data &&
+    private bool ShowAddReturnToRamp => !WorkReadOnly && flight is { CancellationSubmissions.Count: 0 } data &&
         (data.CanSaveReturnsToRamp || CanEditNormalWork || data.CanApprove);
 
     private bool HasOpenReturn => flight?.ReturnToRamps.Any(item => item.IsOpen) == true || pendingReturns.Any(item => item.IsOpen);
@@ -169,6 +180,8 @@ public partial class PortalFlightWorkDialog
             SetDeparture(data.DepartureSubmissions.OrderByDescending(item => IsStaffSubmitter(item.SubmittedByEmployee, data.CurrentStaffMemberId))
                 .ThenByDescending(item => item.IsAccepted).FirstOrDefault());
             step = IsGuidedEntry ? 0 : Math.Clamp(InitialStep, 0, StepLabels.Length - 1);
+            if (IsApprovalReview && !CanChangeApproval)
+                error = "This approval action is no longer available. Reopen the Work Order menu.";
         }
         catch (ApiException ex)
         {
@@ -188,7 +201,7 @@ public partial class PortalFlightWorkDialog
         }
     }
 
-    private Task<PortalWorkLookups> LoadWorkLookupsAsync(PortalFlightOperations data) => ViewOnly
+    private Task<PortalWorkLookups> LoadWorkLookupsAsync(PortalFlightOperations data) => WorkReadOnly
         ? Task.FromResult(new PortalWorkLookups([], [], [], [], [], [], [], false))
         : PortalWorkLookups.LoadAsync(MasterData, data, occurrenceOnly: false,
             administratorEntry: AdministratorEntry, ct: lifetime.Token);
@@ -469,7 +482,7 @@ public partial class PortalFlightWorkDialog
 
     private async Task SaveAsync()
     {
-        if (flight is null || saving || ViewOnly)
+        if (flight is null || saving || WorkReadOnly)
             return;
 
         error = null;
@@ -554,43 +567,32 @@ public partial class PortalFlightWorkDialog
         }
     }
 
-    private async Task ChangeApprovalAsync(bool unlock)
+    private async Task ChangeApprovalAsync()
     {
-        if (flight is not { } current || saving || WorkChanged() || WorkFilesLoading() ||
-            !(unlock ? current.CanUnlock : current.CanApprove))
+        if (flight is not { } current || saving || !CanChangeApproval)
             return;
 
+        var unlock = ReviewAction == ApprovalAction.Unlock;
         saving = true;
-        changingApproval = true;
         error = null;
-        validation = new();
         try
         {
-            var updated = unlock
-                ? await Operations.UnlockPortalFlightAsync(FlightId, current.RowVersion, lifetime.Token)
-                : await Operations.ApprovePortalFlightAsync(FlightId, current.RowVersion, lifetime.Token);
-
-            AcceptNormalSave(updated);
-            services.RemoveAll(row => row.IsPlanned);
             if (unlock)
-                lookups = await LoadWorkLookupsAsync(updated);
-            AddPlannedServiceDrafts(updated);
+                await Operations.UnlockPortalFlightAsync(FlightId, current.RowVersion, lifetime.Token);
+            else
+                await Operations.ApprovePortalFlightAsync(FlightId, current.RowVersion, lifetime.Token);
+            DialogService.Close(true);
         }
         catch (ApiException ex)
         {
-            error = unlock && flight?.ApprovalStatus == FlightApprovalStatuses.Unlocked
-                ? "The flight was unlocked. Reopen it to load the available reference choices."
-                : ex.ToDisplayMessage(unlock ? "Could not unlock the flight." : "Could not approve the flight.");
+            error = ex.ToDisplayMessage(unlock ? "Could not unlock the flight." : "Could not approve the flight.");
         }
         catch (JSException)
         {
-            error = unlock && flight?.ApprovalStatus == FlightApprovalStatuses.Unlocked
-                ? "The flight was unlocked. Reopen it to load the available reference choices."
-                : "The approval change could not be confirmed. Reopen the flight to check its status.";
+            error = "The approval change could not be confirmed. Reopen the flight to check its status.";
         }
         finally
         {
-            changingApproval = false;
             saving = false;
         }
     }
@@ -642,7 +644,7 @@ public partial class PortalFlightWorkDialog
             {
                 [nameof(PortalReturnToRampDialog.FlightId)] = FlightId,
                 [nameof(PortalReturnToRampDialog.OccurrenceId)] = occurrenceId,
-                [nameof(PortalReturnToRampDialog.ViewOnly)] = ViewOnly || !flight.CanEditReturnToRamp(occurrence) || WorkChanged(),
+                [nameof(PortalReturnToRampDialog.ViewOnly)] = WorkReadOnly || !flight.CanEditReturnToRamp(occurrence) || WorkChanged(),
                 [nameof(PortalReturnToRampDialog.AdministratorEntry)] = AdministratorEntry
             },
             PortalWorkDialogLayout.CreateOptions());

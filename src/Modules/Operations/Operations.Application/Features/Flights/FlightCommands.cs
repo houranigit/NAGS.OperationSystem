@@ -311,9 +311,7 @@ public sealed class UpdateScheduledFlightCommandHandler(
 {
     public async Task<Result> Handle(UpdateScheduledFlightCommand request, CancellationToken cancellationToken)
     {
-        var flight = await db.Flights
-            .Include(f => f.PlannedServices)
-            .Include(f => f.AssignedEmployees)
+        var flight = await FlightScheduleWrites.Load(db.Flights)
             .FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
@@ -324,6 +322,10 @@ public sealed class UpdateScheduledFlightCommandHandler(
         var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
         if (accessCheck.IsFailure)
             return accessCheck.Error;
+
+        var schedulePermission = flight.EnsureScheduleAllowsEdit();
+        if (schedulePermission.IsFailure)
+            return schedulePermission.Error;
 
         var aircraft = await resolver.AircraftTypeAsync(request.AircraftTypeId, cancellationToken);
         if (aircraft.IsFailure)
@@ -429,9 +431,7 @@ public sealed class ChangeFlightNumberCommandHandler(
 {
     public async Task<Result> Handle(ChangeFlightNumberCommand request, CancellationToken cancellationToken)
     {
-        var flight = await db.Flights
-            .Include(f => f.PlannedServices)
-            .Include(f => f.AssignedEmployees)
+        var flight = await FlightScheduleWrites.Load(db.Flights)
             .FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
@@ -442,6 +442,10 @@ public sealed class ChangeFlightNumberCommandHandler(
         var accessCheck = scopeResult.Value.EnsureFlightAccess(flight);
         if (accessCheck.IsFailure)
             return accessCheck.Error;
+
+        var schedulePermission = flight.EnsureScheduleAllowsEdit();
+        if (schedulePermission.IsFailure)
+            return schedulePermission.Error;
 
         var number = FlightNumber.Create(request.FlightNumber, flight.Customer.IataCode);
         if (number.IsFailure)
@@ -466,6 +470,19 @@ public sealed class ChangeFlightNumberCommandHandler(
 
         return Result.Success();
     }
+}
+
+internal static class FlightScheduleWrites
+{
+    internal static IQueryable<Flight> Load(IQueryable<Flight> query) => query.AsSplitQuery()
+        .Include(flight => flight.PlannedServices)
+        .Include(flight => flight.AssignedEmployees)
+        .Include(flight => flight.ArrivalSubmissions)
+        .Include(flight => flight.DepartureSubmissions)
+        .Include(flight => flight.CancellationSubmissions)
+        .Include(flight => flight.ServiceRecords)
+        .Include(flight => flight.TaskRecords)
+        .Include(flight => flight.ReturnToRamps);
 }
 
 // --- Assign employees -------------------------------------------------------
@@ -510,23 +527,27 @@ public sealed class AssignEmployeesCommandHandler(
         if (flight.IsPerLanding)
             return PerLandingAssignmentGuard.Error();
 
-        var employees = await resolver.StaffMembersForStationAsync(request.StaffMemberIds, flight.Station.StationId, cancellationToken);
-        if (employees.IsFailure)
-            return employees.Error;
+        var current = flight.AssignedEmployees.Select(employee => employee.Employee)
+            .ToDictionary(employee => employee.StaffMemberId);
+        var selectedIds = request.StaffMemberIds.ToHashSet();
+        var added = await resolver.StaffMembersForStationAsync(
+            selectedIds.Except(current.Keys).ToArray(), flight.Station.StationId, cancellationToken);
+        if (added.IsFailure)
+            return added.Error;
 
-        var rosterChanged = !flight.AssignedEmployees.Select(employee => employee.Employee)
-            .OrderBy(employee => employee.StaffMemberId)
-            .SequenceEqual(employees.Value.OrderBy(employee => employee.StaffMemberId));
-        var currentIds = flight.AssignedEmployees.Select(employee => employee.Employee.StaffMemberId).ToHashSet();
+        var employees = current.Values.Where(employee => selectedIds.Contains(employee.StaffMemberId))
+            .Select(employee => new StaffMemberSnapshot(employee.StaffMemberId, employee.FullName, employee.EmployeeId))
+            .Concat(added.Value).ToList();
+        var rosterChanged = !selectedIds.SetEquals(current.Keys);
         var now = timeProvider.GetUtcNow();
 
         db.SetOriginalRowVersion(flight, request.RowVersion);
-        var assign = flight.ReplaceAssignedEmployees(employees.Value, now);
+        var assign = flight.ReplaceAssignedEmployees(employees, now);
         if (assign.IsFailure)
             return assign.Error;
 
         FlightAssignmentEvents.Enqueue(db, flight,
-            employees.Value.Select(employee => employee.StaffMemberId).Except(currentIds), user, auditContext, now);
+            added.Value.Select(employee => employee.StaffMemberId), user, auditContext, now);
 
         try
         {

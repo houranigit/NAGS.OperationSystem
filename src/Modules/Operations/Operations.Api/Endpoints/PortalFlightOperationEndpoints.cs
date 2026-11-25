@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Net.Http.Headers;
+using Operations.Api.Exports;
 using Operations.Application.Contracts;
 using Operations.Application.Features.Flights;
 using Operations.Domain.Authorization;
@@ -26,6 +28,8 @@ internal static class PortalFlightOperationEndpoints
 
         operations.MapGet("", async (Guid id, ISender sender, CancellationToken ct) =>
             (await sender.Send(new GetPortalFlightOperationsQuery(id), ct)).ToOk());
+
+        operations.MapGet("/print", DownloadWorkOrderAsync);
 
         operations.MapPut("/approval", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
             SetApprovalAsync(id, true, http, sender, ct));
@@ -93,6 +97,24 @@ internal static class PortalFlightOperationEndpoints
             return result.IsFailure ? ApiResults.Problem(result.Error) :
                 PrivateFile(response, result.Value.Content, result.Value.ContentType, result.Value.FileName);
         });
+    }
+
+    private static async Task<IResult> DownloadWorkOrderAsync(Guid id, HttpResponse response, ISender sender, CancellationToken ct)
+    {
+        var result = await sender.Send(new GetFlightWorkOrderPrintQuery(id), ct);
+        if (result.IsFailure)
+            return ApiResults.Problem(result.Error);
+
+        var source = result.Value;
+        var zone = TimeZoneInfo.TryFindSystemTimeZoneById(source.StationTimeZoneId, out var stationZone)
+            ? stationZone
+            : TimeZoneInfo.Utc;
+        var file = WorkOrderPrintDocumentFactory.Create(source, zone);
+        var disposition = new ContentDispositionHeaderValue("inline");
+        disposition.SetHttpFileName(file.FileName);
+        response.Headers.ContentDisposition = disposition.ToString();
+        response.Headers.CacheControl = "private, no-store";
+        return Results.File(file.Content, "application/pdf");
     }
 
     private static async Task<IResult> SetApprovalAsync(Guid id, bool approve, HttpRequest http, ISender sender, CancellationToken ct)

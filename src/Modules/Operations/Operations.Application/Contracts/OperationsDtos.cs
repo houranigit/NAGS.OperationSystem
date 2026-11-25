@@ -112,4 +112,5 @@ public sealed record FlightDetailDto(
     int ApprovedReturnToRampSequence = 0,
     bool CanApprove = false,
     bool CanUnlock = false,
-    string? WorkOrderNumber = null);
+    string? WorkOrderNumber = null,
+    bool CanEditSchedule = false);

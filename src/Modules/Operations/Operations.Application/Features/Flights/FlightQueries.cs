@@ -169,7 +169,10 @@ public sealed class GetFlightByIdQueryHandler(IOperationsDbContext db, IOperatio
         if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
             return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
         var names = await FlightWorkAttribution.NamesAsync(userNames, FlightWorkAttribution.UserIds(flight), cancellationToken);
-        return FlightDetails.Map(flight, station.TimeZoneId, userDisplayNames: names);
+        return FlightDetails.Map(flight, station.TimeZoneId, userDisplayNames: names) with
+        {
+            CanEditSchedule = flight.EnsureScheduleAllowsEdit().IsSuccess
+        };
     }
 }
 

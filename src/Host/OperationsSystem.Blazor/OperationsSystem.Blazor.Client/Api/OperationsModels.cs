@@ -65,7 +65,9 @@ public sealed record FlightDetail(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? UpdatedAtUtc,
     string RowVersion,
-    string StationTimeZoneId);
+    string StationTimeZoneId,
+    bool IsAdHocFlight = false,
+    bool CanEditSchedule = false);
 
 public sealed record ScheduleFlightRequestModel(
     Guid CustomerId,
@@ -102,3 +104,5 @@ public sealed record UpdateScheduledFlightRequestModel(
     IReadOnlyList<Guid>? AssignedStaffMemberIds = null);
 
 public sealed record ChangeFlightNumberRequestModel(string FlightNumber);
+
+public sealed record AssignFlightEmployeesRequestModel(IReadOnlyList<Guid> StaffMemberIds);

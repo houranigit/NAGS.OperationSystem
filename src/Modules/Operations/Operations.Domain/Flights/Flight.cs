@@ -139,11 +139,21 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         return Result.Success();
     }
 
-    public Result ChangeFlightNumber(FlightNumber newNumber, DateTimeOffset now)
+    /// <summary>Schedule changes require all operational record collections to be loaded.</summary>
+    public Result EnsureScheduleAllowsEdit()
     {
         var approval = EnsureApprovalAllowsEdit();
         if (approval.IsFailure) return approval;
         if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType) return AdHocDetailsBoundary();
+        return HasOperationalRecords()
+            ? Error.Conflict("The schedule is read-only after operational work is recorded.", "Operations.Flight.ScheduleReadOnly")
+            : Result.Success();
+    }
+
+    public Result ChangeFlightNumber(FlightNumber newNumber, DateTimeOffset now)
+    {
+        var schedule = EnsureScheduleAllowsEdit();
+        if (schedule.IsFailure) return schedule;
         var numberCheck = ValidateCustomerFlightNumber(Customer, newNumber);
         if (numberCheck.IsFailure)
             return numberCheck.Error;
@@ -162,9 +172,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         IReadOnlyList<StaffMemberSnapshot>? assignedEmployees,
         DateTimeOffset now)
     {
-        var approval = EnsureApprovalAllowsEdit();
-        if (approval.IsFailure) return approval;
-        if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType) return AdHocDetailsBoundary();
+        var scheduleEdit = EnsureScheduleAllowsEdit();
+        if (scheduleEdit.IsFailure) return scheduleEdit;
         var check = PerLandingPolicy.ValidatePlannedServices(plannedServices);
         if (check.IsFailure)
             return check.Error;
@@ -183,8 +192,6 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
 
     public Result ReplaceAssignedEmployees(IReadOnlyList<StaffMemberSnapshot> employees, DateTimeOffset now)
     {
-        var approval = EnsureApprovalAllowsEdit();
-        if (approval.IsFailure) return approval;
         if (OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && employees.Count > 0) return AdHocAssignmentError();
         if (IsPerLanding && employees.Count > 0)
             return PerLandingAssignmentError();

@@ -74,6 +74,10 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             .Concat(ChangeTracker.Entries<FlightDepartureSubmission>().Where(HasChangedOwnedGraph).Select(entry => entry.Entity.FlightId))
             .Concat(ChangeTracker.Entries<FlightCancellationSubmission>().Where(HasChangedOwnedGraph).Select(entry => entry.Entity.FlightId))
             .ToHashSet();
+        var changedPlanningFlightIds = ChangeTracker.Entries<PlannedService>().Where(HasChangedOwnedGraph)
+            .Select(entry => entry.Entity.FlightId)
+            .Concat(ChangeTracker.Entries<FlightAssignedEmployee>().Where(HasChangedOwnedGraph).Select(entry => entry.Entity.FlightId))
+            .ToHashSet();
         var serviceEntries = ChangeTracker.Entries<FlightService>().ToList();
         var changedServiceIds = serviceEntries.Where(HasChangedOwnedGraph).Select(entry => entry.Entity.Id).ToHashSet();
         foreach (var performer in ChangeTracker.Entries<FlightServicePerformer>().Where(HasChangedOwnedGraph))
@@ -120,6 +124,7 @@ public sealed class OperationsDbContext(DbContextOptions<OperationsDbContext> op
             .Where(entry => entry.State is EntityState.Unchanged or EntityState.Modified).ToList())
         {
             if (changedSubmissionFlightIds.Contains(flight.Entity.Id)
+                || changedPlanningFlightIds.Contains(flight.Entity.Id)
                 || changedServiceFlightIds.Contains(flight.Entity.Id)
                 || changedTaskFlightIds.Contains(flight.Entity.Id)
                 || changedReturnFlightIds.Contains(flight.Entity.Id))

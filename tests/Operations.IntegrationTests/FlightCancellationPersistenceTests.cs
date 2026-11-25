@@ -449,7 +449,7 @@ public sealed class FlightCancellationPersistenceTests(FlightCancellationPersist
         var reverting = revertWins ? winningFlight : staleFlight;
         var editing = revertWins ? staleFlight : winningFlight;
         reverting.RevertCancellation(employee.StaffMemberId, canceled.Id, matchingClock).IsSuccess.ShouldBeTrue();
-        editing.ChangeFlightNumber(FlightNumber.Create("SV1021", "SV").Value, matchingClock).IsSuccess.ShouldBeTrue();
+        editing.ReplaceAssignedEmployees([other], matchingClock).IsSuccess.ShouldBeTrue();
         await SaveAsync(db, synchronousSave);
         await Should.ThrowAsync<DbUpdateConcurrencyException>(() => SaveAsync(competingDb, synchronousSave));
         db.ChangeTracker.Clear();
@@ -459,7 +459,11 @@ public sealed class FlightCancellationPersistenceTests(FlightCancellationPersist
         current.CancellationSubmissions.Count.ShouldBe(revertWins ? 1 : 2);
         current.CancellationSubmissions.Single(c => c.Id == retained.Id).IsAccepted.ShouldBeFalse();
         current.CancellationSubmissions.Any(c => c.Id == canceled.Id).ShouldBe(!revertWins);
-        current.FlightNumber.Value.ShouldBe(revertWins ? "SV1020" : "SV1021");
+        await db.Entry(current).Collection(item => item.AssignedEmployees).LoadAsync();
+        if (revertWins)
+            current.AssignedEmployees.ShouldBeEmpty();
+        else
+            current.AssignedEmployees.ShouldHaveSingleItem().Employee.ShouldBe(other);
     }
 
     private static Task<Flight> LoadFlightAsync(OperationsDbContext db, Guid flightId) =>

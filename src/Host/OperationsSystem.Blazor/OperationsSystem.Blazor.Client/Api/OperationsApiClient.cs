@@ -25,6 +25,9 @@ public sealed class OperationsApiClient(BrowserApiClient api)
     public Task<PortalFlightOperations> GetPortalFlightOperationsAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<PortalFlightOperations>(PortalOperationsPath(id), ct);
 
+    public Task DownloadPortalWorkOrderAsync(Guid id, CancellationToken ct = default) =>
+        api.DownloadFileAsync($"{PortalOperationsPath(id)}/print", "work-order.pdf", ct);
+
     public Task<PortalFlightOperations> ApprovePortalFlightAsync(Guid id, string rowVersion, CancellationToken ct = default) =>
         api.PutAsync<object, PortalFlightOperations>($"{PortalOperationsPath(id)}/approval", new { }, rowVersion, ct);
 
@@ -78,6 +81,9 @@ public sealed class OperationsApiClient(BrowserApiClient api)
 
     public Task ChangeFlightNumberAsync(Guid id, ChangeFlightNumberRequestModel request, string rowVersion, CancellationToken ct = default) =>
         api.PostAsync($"/operations/flights/{id}/change-number", request, rowVersion, ct);
+
+    public Task AssignFlightEmployeesAsync(Guid id, IReadOnlyList<Guid> staffMemberIds, string rowVersion, CancellationToken ct = default) =>
+        api.PostAsync($"/operations/flights/{id}/assign", new AssignFlightEmployeesRequestModel(staffMemberIds), rowVersion, ct);
 
     private static string PortalOperationsPath(Guid id) => $"/operations/flights/{id}/operations";
 

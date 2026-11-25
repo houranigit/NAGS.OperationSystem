@@ -14,6 +14,16 @@
         {
             @WizardStepper()
 
+            @if (ScheduleReadOnly)
+            {
+                <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock" Title="Schedule details are read-only">
+                    @if (CanEditRoster)
+                    {
+                        <p>You can update assigned staff on the Staff step.</p>
+                    }
+                </DismissibleDialogMessage>
+            }
+
             <div class="opf-wizard-body">
                 @(step switch
                 {
@@ -58,10 +68,10 @@
                     {
                         <RadzenButton Text="Next" Icon="arrow_forward" ButtonStyle="ButtonStyle.Primary" ButtonType="ButtonType.Button" Click="@NextAsync" />
                     }
-                    else
+                    else if (CanSubmit)
                     {
                         <RadzenButton ButtonType="ButtonType.Submit" Icon="check" Text="@SubmitButtonText"
-                                      ButtonStyle="ButtonStyle.Primary" Disabled="@isSubmitting" />
+                                      ButtonStyle="ButtonStyle.Primary" Disabled="@(isSubmitting || ScheduleReadOnly && !HasRosterChanges)" />
                     }
                 </div>
             </div>
@@ -103,7 +113,12 @@
     ];
 
     private bool IsBulkCreate => BulkMode && FlightId is null;
-    private bool CanAssignStaff => Auth.HasPermission(OperationsPermissions.FlightsAssign);
+    private bool ScheduleReadOnly => original?.CanEditSchedule == false;
+    private bool CanAssignStaff => Auth.HasPermission(OperationsPermissions.FlightsAssign) && original?.IsAdHocFlight != true;
+    private bool CanEditRoster => CanAssignStaff && !IsPerLandingSelected;
+    private bool CanSubmit => FlightId is null || original is not null && (!ScheduleReadOnly || CanEditRoster);
+    private bool HasRosterChanges => original is not null &&
+        !model.AssignedStaffMemberIds.SetEquals(original.AssignedEmployees.Select(member => member.StaffMemberId));
     private int LastStep => (IsBulkCreate ? 3 : 2) - (CanAssignStaff ? 0 : 1);
     private string SubmitButtonText => FlightId is null
         ? (IsBulkCreate ? "Schedule flights" : "Schedule flight")
@@ -114,7 +129,7 @@
         {
             var index = i;
             <div class="@StepClass(index)">
-                <button type="button" class="opf-step-button" disabled="@(index > step)" @onclick="@(() => MoveToStep(index))">
+                <button type="button" class="opf-step-button" disabled="@(index > step && !ScheduleReadOnly)" @onclick="@(() => MoveToStep(index))">
                     <span class="opf-step-node">
                         @if (index < step)
                         {
@@ -152,7 +167,7 @@
                             <span class="opf-flight-prefix-divider">-</span>
                         }
                     </span>
-                    <RadzenTextBox @bind-Value="model.FlightNumber" Name="@flightNumberName" MaxLength="12"
+                    <RadzenTextBox @bind-Value="model.FlightNumber" Name="@flightNumberName" MaxLength="12" Disabled="@ScheduleReadOnly"
                                    class="opf-control os-operation-control-icon opf-flight-number-control" Placeholder="e.g. 123A or 123/01" />
                 </div>
             </div>
@@ -184,8 +199,15 @@
         <label class="os-operation-label">Aircraft type</label>
         <div class="os-operation-input-wrap">
             <RadzenIcon Icon="flight" class="os-operation-field-icon" />
-            <RadzenDropDown @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
-                            AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control os-operation-control-icon" Placeholder="Optional aircraft type" />
+            @if (ScheduleReadOnly)
+            {
+                <RadzenTextBox Value="@(original?.AircraftTypeModel)" Disabled="true" class="opf-control os-operation-control-icon" />
+            }
+            else
+            {
+                <RadzenDropDown @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
+                                AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control os-operation-control-icon" Placeholder="Optional aircraft type" />
+            }
         </div>
     </div>;
 
@@ -201,7 +223,7 @@
                 <label class="os-operation-label">Scheduled arrival <span class="os-operation-required">*</span></label>
                 <div class="os-operation-input-wrap">
                     <RadzenIcon Icon="flight_land" class="os-operation-field-icon" />
-                    <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.ScheduledArrivalUtc" DateFormat="yyyy-MM-dd HH:mm"
+                    <RadzenDatePicker Disabled="@(ScheduleReadOnly || model.StationId == Guid.Empty)" @bind-Value="model.ScheduledArrivalUtc" DateFormat="yyyy-MM-dd HH:mm"
                                       ShowTime="true" class="opf-control os-operation-control-icon" />
                 </div>
             </div>
@@ -209,7 +231,7 @@
                 <label class="os-operation-label">Scheduled departure <span class="os-operation-required">*</span></label>
                 <div class="os-operation-input-wrap">
                     <RadzenIcon Icon="flight_takeoff" class="os-operation-field-icon" />
-                    <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.ScheduledDepartureUtc" DateFormat="yyyy-MM-dd HH:mm"
+                    <RadzenDatePicker Disabled="@(ScheduleReadOnly || model.StationId == Guid.Empty)" @bind-Value="model.ScheduledDepartureUtc" DateFormat="yyyy-MM-dd HH:mm"
                                       ShowTime="true" class="opf-control os-operation-control-icon" />
                 </div>
             </div>
@@ -305,7 +327,7 @@
             {
                 <div class="opf-empty-row">
                     <RadzenIcon Icon="search_off" />
-                    <span>No services match your search.</span>
+                    <span>@(ScheduleReadOnly && services.Count == 0 ? "No planned services are recorded." : "No services match your search.")</span>
                 </div>
             }
             else
@@ -314,7 +336,7 @@
                     @foreach (var service in FilteredServices())
                     {
                         <button type="button" @key="service.Id" class="@ChipClass(model.PlannedServiceIds.Contains(service.Id))"
-                                @onclick="@(() => TogglePlannedService(service))">
+                                disabled="@ScheduleReadOnly" @onclick="@(() => TogglePlannedService(service))">
                             <RadzenIcon Icon="task_alt" />
                             <span>@service.Name</span>
                         </button>
@@ -322,7 +344,7 @@
                 </div>
             }
         </div>
-        @if (!CanAssignStaff)
+        @if (!ScheduleReadOnly && !CanAssignStaff)
         {
             <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock" Title="Staff assignment is not included">
                 <p>@(FlightId is null
@@ -414,7 +436,7 @@
 
     private void MoveToStep(int index)
     {
-        if (index > step)
+        if (index > step && !ScheduleReadOnly)
             return;
 
         errorMessage = null;
@@ -429,7 +451,7 @@
 
     private async Task NextAsync()
     {
-        errorMessage = step switch
+        errorMessage = ScheduleReadOnly ? null : step switch
         {
             0 => ValidateDetails(),
             1 when IsBulkCreate => ValidateCalendar(),
@@ -441,7 +463,7 @@
         if (errorMessage is not null)
             return;
 
-        if (CanAssignStaff && step == 0)
+        if (!ScheduleReadOnly && CanEditRoster && step == 0)
         {
             await LoadStaffForSelectedStationAsync();
             if (errorMessage is not null)
@@ -461,26 +483,35 @@
     {
         try
         {
-            var customersTask = MasterData.GetCustomerOptionsAsync();
-            var stationsTask = MasterData.GetStationOptionsAsync();
-            var operationTypesTask = MasterData.GetOperationTypeOptionsAsync();
-            var aircraftTypesTask = MasterData.GetAircraftTypeOptionsAsync();
-            var servicesTask = MasterData.GetServiceOptionsAsync();
-            Task<FlightDetail?> detailTask = FlightId is { } id ? LoadFlightOrNullAsync(id) : Task.FromResult<FlightDetail?>(null);
-
-            await Task.WhenAll(customersTask, stationsTask, operationTypesTask, aircraftTypesTask, servicesTask, detailTask);
-
-            customers = await customersTask;
-            stations = await stationsTask;
-            operationTypes = (await operationTypesTask)
-                .Where(operationType => operationType.Id != AdHocOperationTypeId)
-                .ToList();
-            aircraftTypes = await aircraftTypesTask;
-            services = await servicesTask;
-
-            if (await detailTask is { } detail)
+            original = FlightId is { } id ? await Operations.GetFlightAsync(id) : null;
+            if (original is { CanEditSchedule: false } saved)
             {
-                original = detail;
+                customers = [new(saved.CustomerId, saved.CustomerIataCode, saved.CustomerName)];
+                stations = [new(saved.StationId, saved.StationIata, saved.StationName, saved.StationTimeZoneId)];
+                operationTypes = [new(saved.OperationTypeId, saved.OperationTypeName)];
+                services = saved.PlannedServices.Select(service =>
+                    new ServiceOption(service.ServiceId, service.Name, service.IsAircraftPerLanding)).ToList();
+            }
+            else
+            {
+                var customersTask = MasterData.GetCustomerOptionsAsync();
+                var stationsTask = MasterData.GetStationOptionsAsync();
+                var operationTypesTask = MasterData.GetOperationTypeOptionsAsync();
+                var aircraftTypesTask = MasterData.GetAircraftTypeOptionsAsync();
+                var servicesTask = MasterData.GetServiceOptionsAsync();
+                await Task.WhenAll(customersTask, stationsTask, operationTypesTask, aircraftTypesTask, servicesTask);
+
+                customers = await customersTask;
+                stations = await stationsTask;
+                operationTypes = (await operationTypesTask)
+                    .Where(operationType => operationType.Id != AdHocOperationTypeId)
+                    .ToList();
+                aircraftTypes = await aircraftTypesTask;
+                services = await servicesTask;
+            }
+
+            if (original is { } detail)
+            {
                 rowVersion = detail.RowVersion;
                 var zone = StationTimeZone.FromId(stations.FirstOrDefault(station => station.Id == detail.StationId)?.TimeZoneId ?? detail.StationTimeZoneId);
                 model = new FlightFormModel
@@ -503,7 +534,7 @@
                 OnStationChanged();
             }
 
-            if (CanAssignStaff && model.StationId != Guid.Empty)
+            if (CanEditRoster && model.StationId != Guid.Empty)
                 await LoadStaffForSelectedStationAsync();
 
             SyncPerLandingAssignmentState();
@@ -519,8 +550,6 @@
             isLoading = false;
         }
     }
-
-    private async Task<FlightDetail?> LoadFlightOrNullAsync(Guid id) => await Operations.GetFlightAsync(id);
 
     private static string ChipClass(bool selected) => selected ? "opf-chip opf-chip-selected" : "opf-chip";
 
@@ -653,13 +682,16 @@
 
     private void TogglePlannedService(ServiceOption service)
     {
+        if (ScheduleReadOnly)
+            return;
+
         Toggle(model.PlannedServiceIds, service.Id);
         SyncPerLandingAssignmentState();
     }
 
     private void ToggleStaff(StaffMemberOption member)
     {
-        if (!CanAssignStaff || member.StationId != model.StationId)
+        if (!CanEditRoster || member.StationId != model.StationId)
             return;
 
         Toggle(model.AssignedStaffMemberIds, member.Id);
@@ -687,7 +719,7 @@
 
     private void ToggleAllStaff()
     {
-        if (!CanAssignStaff)
+        if (!CanEditRoster)
             return;
 
         var ids = AvailableStaff().Select(member => member.Id).ToList();
@@ -706,7 +738,7 @@
 
     private void SyncPerLandingAssignmentState()
     {
-        if (!CanAssignStaff || !IsPerLandingSelected)
+        if (ScheduleReadOnly || !CanAssignStaff || !IsPerLandingSelected)
             return;
 
         model.AssignedStaffMemberIds.Clear();
@@ -739,7 +771,7 @@
 
     private async Task LoadStaffForSelectedStationAsync()
     {
-        if (!CanAssignStaff)
+        if (!CanEditRoster)
             return;
 
         if (model.StationId == Guid.Empty)
@@ -760,7 +792,16 @@
             staffSearchTerm = string.Empty;
 
             var stationStaffIds = staff.Select(member => member.Id).ToHashSet();
-            model.AssignedStaffMemberIds.RemoveWhere(id => !stationStaffIds.Contains(id));
+            if (original is { CanEditSchedule: false } saved)
+            {
+                staff = [.. staff, .. saved.AssignedEmployees.Where(member => !stationStaffIds.Contains(member.StaffMemberId))
+                    .Select(member => new StaffMemberOption(member.StaffMemberId, member.FullName, member.EmployeeId,
+                        saved.StationId, saved.StationIata, string.Empty))];
+            }
+            else
+            {
+                model.AssignedStaffMemberIds.RemoveWhere(id => !stationStaffIds.Contains(id));
+            }
         }
         catch (ApiException ex)
         {
@@ -784,7 +825,10 @@
 
     private async Task SubmitAsync()
     {
-        errorMessage = Validate();
+        if (!CanSubmit || isSubmitting || ScheduleReadOnly && !HasRosterChanges)
+            return;
+
+        errorMessage = ScheduleReadOnly ? ValidateAssignments() : Validate();
         if (errorMessage is not null)
             return;
 
@@ -794,7 +838,10 @@
             object closeResult = true;
             if (FlightId is { } id)
             {
-                await UpdateAsync(id);
+                if (ScheduleReadOnly)
+                    await Operations.AssignFlightEmployeesAsync(id, model.AssignedStaffMemberIds.ToList(), rowVersion!);
+                else
+                    await UpdateAsync(id);
             }
             else if (IsBulkCreate)
             {

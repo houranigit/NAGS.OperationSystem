@@ -454,6 +454,52 @@ public sealed class FlightSchedulingTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task RecordedCancellationLocksTheScheduleButAllowsRosterReplacement(bool approve)
+    {
+        await using var db = NewDb();
+        var reader = new SchedulingMasterDataReader();
+        var employee = new StaffMemberSnapshot(Guid.NewGuid(), "Assigned employee", "E1");
+        var flight = NewFlight(reader.StationId, [employee]);
+        db.Flights.Add(flight);
+        await db.SaveChangesAsync();
+        var details = new GetFlightByIdQueryHandler(db, AdminScope(), reader);
+        (await details.Handle(new(flight.Id), CancellationToken.None)).Value.CanEditSchedule.ShouldBeTrue();
+
+        var now = TimeProvider.System.GetUtcNow();
+        var cancel = CancellationDetails.Create(now, "Recorded cancellation").Value;
+        flight.SubmitCancellation(employee, cancel, Guid.NewGuid(), now).IsSuccess.ShouldBeTrue();
+        if (approve)
+            flight.Approve(Guid.NewGuid(), "Reviewer", now, 1).IsSuccess.ShouldBeTrue();
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        (await details.Handle(new(flight.Id), CancellationToken.None)).Value.CanEditSchedule.ShouldBeFalse();
+        var expectedError = approve ? "Operations.FlightApproval.Locked" : "Operations.Flight.ScheduleReadOnly";
+
+        var resolver = new MasterDataResolver(reader);
+        var update = await new UpdateScheduledFlightCommandHandler(db, AdminScope(), resolver, new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+            .Handle(new(flight.Id, flight.Customer.CustomerId, reader.StationId, flight.OperationType.OperationTypeId,
+                flight.Schedule.Sta.AddHours(2), flight.Schedule.Std.AddHours(2), null, [reader.ServiceId], flight.RowVersion, []), CancellationToken.None);
+        update.Error.Code.ShouldBe(expectedError);
+        var rename = await new ChangeFlightNumberCommandHandler(db, AdminScope(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+            .Handle(new(flight.Id, "5678", flight.RowVersion), CancellationToken.None);
+        rename.Error.Code.ShouldBe(expectedError);
+
+        var assigned = await new AssignEmployeesCommandHandler(db, AdminScope(), resolver, new TestUser(), new AuditActor(), TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+            .Handle(new(flight.Id, [], flight.RowVersion), CancellationToken.None);
+        assigned.IsSuccess.ShouldBeTrue();
+        db.ChangeTracker.Clear();
+        var saved = (await details.Handle(new(flight.Id), CancellationToken.None)).Value;
+        saved.AssignedEmployees.ShouldBeEmpty();
+        saved.ScheduledArrivalUtc.ShouldBe(flight.Schedule.Sta);
+        saved.ScheduledDepartureUtc.ShouldBe(flight.Schedule.Std);
+        saved.FlightNumber.ShouldBe(flight.FlightNumber.Value);
+        saved.CancellationSubmissions!.ShouldHaveSingleItem();
+        saved.ApprovalStatus.ShouldBe(approve ? FlightApprovalStatus.Approved : FlightApprovalStatus.NotApproved);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task ScheduleEdit_WithoutAssignmentPermission_PreservesAnOmittedOrUnchangedRoster(bool includeRoster)
     {
         await using var db = NewDb();

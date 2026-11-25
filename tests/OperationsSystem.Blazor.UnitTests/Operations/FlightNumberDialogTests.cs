@@ -271,7 +271,7 @@ public sealed class FlightNumberDialogTests
         var date = new DateTimeOffset(2026, 11, 5, 10, 0, 0, TimeSpan.Zero);
         var original = new FlightDetail(Guid.NewGuid(), flightNumber, Guid.NewGuid(), customerCode, "Test customer",
             Guid.NewGuid(), "MED", "Medina", Guid.NewGuid(), "Transit", null, null, date, date.AddHours(2), false,
-            [], [], date, null, "saved-version", "Asia/Riyadh");
+            [], [], date, null, "saved-version", "Asia/Riyadh", CanEditSchedule: true);
         typeof(ScheduleFlightDialog).GetProperty(nameof(ScheduleFlightDialog.FlightId))!.SetValue(dialog, original.Id);
         SetField(dialog, "original", original);
         SetField(dialog, "rowVersion", original.RowVersion);

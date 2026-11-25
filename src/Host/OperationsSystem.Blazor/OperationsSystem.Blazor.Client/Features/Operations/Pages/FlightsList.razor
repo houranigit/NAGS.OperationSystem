@@ -118,25 +118,16 @@
                 </RadzenDataGridColumn>
             </Columns>
             <RowActions Context="flight">
-                @{
-                    var canEditSchedule = !flight.IsApprovalLocked && Auth.HasPermission(OperationsPermissions.FlightsUpdate);
-                }
-                @if (CanOpenFlightOperations || canEditSchedule)
-                {
-                    <RowActionMenu>
-                        <ChildContent>
-                            <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
-                                       Visible="@canEditSchedule" OnClick="@(() => OpenEditAsync(flight.Id))" />
-                        </ChildContent>
-                        <MenuContent>
-                            @if (CanOpenFlightOperations)
-                            {
-                                <PortalFlightOperationsMenu @key="flight.Id" FlightId="@flight.Id"
-                                    ShowDivider="@canEditSchedule" Changed="@ReloadAsync" />
-                            }
-                        </MenuContent>
-                    </RowActionMenu>
-                }
+                <RowActionMenu>
+                    <ChildContent>
+                        <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
+                                   OnClick="@(() => OpenEditAsync(flight.Id))" />
+                    </ChildContent>
+                    <MenuContent>
+                        <PortalFlightOperationsMenu @key="flight.Id" FlightId="@flight.Id" ShowWorkActions="@CanOpenFlightOperations"
+                            ShowDivider="@Auth.HasPermission(OperationsPermissions.FlightsUpdate)" Changed="@ReloadAsync" />
+                    </MenuContent>
+                </RowActionMenu>
             </RowActions>
         </DataListCard>
     </div>
