@@ -54,6 +54,7 @@ public static class UiStrings
 
     public static class Flights
     {
+        public static string UnlockToUpdate => UiText.Get("Flights.UnlockToUpdate", "Unlock to update…");
         public static string Customer => UiText.Get("Flights.Customer", "Customer");
         public static string FlightType => UiText.Get("Flights.FlightType", "Flight type");
         public static string TypeAll => UiText.Get("Flights.TypeAll", "All");

@@ -769,6 +769,7 @@
   <data name="PortalAccess.PendingLoginEmailDetail" xml:space="preserve"><value>بانتظار تأكيد {0} قبل تغيير بريد تسجيل الدخول المرتبط.</value></data>
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>فشل تغيير بريد تسجيل الدخول</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>تعذر على الهوية بدء التحقق: {0}</value></data>
+  <data name="Flights.UnlockToUpdate" xml:space="preserve"><value>فتح القفل للتعديل…</value></data>
   <data name="Flights.Customer" xml:space="preserve"><value>العميل</value></data>
   <data name="Flights.FlightType" xml:space="preserve"><value>نوع الرحلة</value></data>
   <data name="Flights.TypeAll" xml:space="preserve"><value>الكل</value></data>

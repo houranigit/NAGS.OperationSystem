@@ -128,7 +128,7 @@
                                     @if (ArrivalFieldsLocked && CanEditArrival)
                                     {
                                         <button type="button" class="portal-actuals-update" disabled="@saving"
-                                                @onclick="@(() => unlockedArrivalId = submittedArrival.Id)">Update arrival details…</button>
+                                                @onclick="@(() => unlockedArrivalId = submittedArrival.Id)">@UiStrings.Flights.UnlockToUpdate</button>
                                     }
                                 </p>
                             }
@@ -211,7 +211,7 @@
                                     @if (DepartureFieldsLocked && CanEditDeparture)
                                     {
                                         <button type="button" class="portal-actuals-update" disabled="@(saving || !departureAvailable)"
-                                                @onclick="@(() => unlockedDepartureId = submittedDeparture.Id)">Update departure details…</button>
+                                                @onclick="@(() => unlockedDepartureId = submittedDeparture.Id)">@UiStrings.Flights.UnlockToUpdate</button>
                                     }
                                 </p>
                             }

@@ -191,16 +191,15 @@
     padding: 0;
     border: 0;
     background: transparent;
-    color: var(--os-color-info);
+    color: var(--os-color-link);
     font: inherit;
-    font-weight: 600;
     text-decoration: underline;
     text-underline-offset: 0.15em;
     cursor: pointer;
 }
 
 .portal-editor-content ::deep .portal-actuals-update:focus-visible {
-    outline: 2px solid var(--os-color-info);
+    outline: 2px solid var(--os-color-link);
     outline-offset: 2px;
 }
 

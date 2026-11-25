@@ -169,7 +169,7 @@
                             else if (locked && record.CanEdit && !ReadOnly)
                             {
                                 <button type="button" class="portal-actuals-update" @onclick="@(() => record.CorrectionsUnlocked = true)">
-                                    Update @(IsTask ? "task" : "service") details…
+                                    @UiStrings.Flights.UnlockToUpdate
                                 </button>
                             }
                         </p>
