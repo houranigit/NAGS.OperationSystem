@@ -2,7 +2,7 @@
 
 <section class="portal-signature">
     <div class="portal-signature-heading">
-        <h4>Customer signature</h4>
+        <h4 class="os-operation-label">Customer signature</h4>
         <small>Optional</small>
     </div>
     @if (Draft.Bytes is { } bytes)
@@ -11,7 +11,7 @@
             <img src="@($"data:image/png;base64,{Convert.ToBase64String(bytes)}")" alt="Selected customer signature" />
             <figcaption>@Draft.FileName</figcaption>
         </figure>
-        <PortalOperationDateField Label="Signed at" Time="@(Draft.SigningTime!)" Required="true" Disabled="@Disabled"
+        <PortalOperationDateField Label="Signed at" Icon="draw" Time="@(Draft.SigningTime!)" Required="true" Disabled="@Disabled"
                                   Validation="@Validation" ValidationField="@ValidationField" Changed="@Changed" />
     }
     else if (Draft.SavedPath is { } savedPath && !Draft.RemoveSaved)

@@ -1,0 +1,31 @@
+<label class="os-operation-field @Class">
+    <span class="os-operation-label">
+        @Label
+        @if (Required)
+        {
+            <span class="os-operation-required" aria-hidden="true">*</span>
+        }
+    </span>
+    @if (Icon is not null)
+    {
+        <span class="os-operation-input-wrap os-operation-control-icon">
+            <RadzenIcon Icon="@Icon" class="os-operation-field-icon" aria-hidden="true" />
+            @ChildContent
+        </span>
+    }
+    else
+    {
+        @ChildContent
+    }
+    <PortalFieldError Validation="@Validation" Field="@Field" />
+</label>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public PortalFlightValidation? Validation { get; set; }
+    [Parameter] public string? Field { get; set; }
+}

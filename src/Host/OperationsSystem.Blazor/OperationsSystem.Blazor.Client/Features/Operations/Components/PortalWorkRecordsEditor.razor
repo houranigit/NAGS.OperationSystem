@@ -1,8 +1,11 @@
 @inject AuthSession Auth
 
 <section class="portal-work-records @(Records.Count == 0 ? "portal-work-records--empty" : null)">
-    <div class="portal-section-heading">
-        <h3>@(IsTask ? "Tasks" : "Services")</h3>
+    <div class="portal-section-heading portal-form-heading">
+        <h3 class="os-operation-section-title">
+            <RadzenIcon Icon="@(IsTask ? "assignment" : "build")" aria-hidden="true" />
+            <span>@(IsTask ? "Tasks" : "Services")</span>
+        </h3>
         @if (CanAdd && !ReadOnly)
         {
             <RadzenButton Icon="add" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
@@ -75,7 +78,7 @@
                             <div class="portal-task-fields portal-work-full">
                                 <fieldset class="portal-task-type" disabled="@(!edit || !record.CanChangeKind)"
                                           aria-invalid="@Invalid(record.Id, "type")" aria-describedby="@Description(record.Id, "type")">
-                                    <legend>Task type</legend>
+                                    <legend class="os-operation-label">Task type</legend>
                                     <div class="portal-task-type-options">
                                         @foreach (var option in TaskTypes)
                                         {
@@ -88,38 +91,34 @@
                                     </div>
                                     <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "type")" />
                                 </fieldset>
-                                <label>
-                                    <span>ATA chapter</span>
+                                <PortalOperationFormField Label="ATA chapter" Icon="menu_book" Validation="@Validation" Field="@Field(record.Id, "ataChapter")">
                                     <RadzenDropDown TValue="Guid?" Data="@PortalWorkLookups.WithSaved(Lookups.Chapters, record.AtaChapterId, record.AtaChapterLabel)"
                                                     TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
                                                     @bind-Value="record.AtaChapterId" @bind-Value:after="NotifyChangedAsync" AllowClear="true" AllowFiltering="true"
                                                     FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" Disabled="@(!edit)"
                                                     aria-invalid="@Invalid(record.Id, "ataChapter")" aria-describedby="@Description(record.Id, "ataChapter")" />
-                                    <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "ataChapter")" />
-                                </label>
+                                </PortalOperationFormField>
                                 @CustomerReferenceField(record, edit)
                             </div>
                         }
                         else
                         {
-                            <label>
-                                <span>Service *</span>
+                            <PortalOperationFormField Label="Service" Required="true" Icon="settings" Validation="@Validation" Field="@Field(record.Id, "service")">
                                 <RadzenDropDown TValue="Guid?" Data="@PortalWorkLookups.WithSaved(Lookups.Services, record.ServiceId, record.ServiceName)"
                                                 TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
                                                 @bind-Value="record.ServiceId" @bind-Value:after="NotifyChangedAsync"
                                                 AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                                                 Disabled="@(!edit || !record.CanChangeKind)"
                                                 aria-invalid="@Invalid(record.Id, "service")" aria-describedby="@Description(record.Id, "service")" />
-                                <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "service")" />
-                            </label>
+                            </PortalOperationFormField>
                             @CustomerReferenceField(record, edit)
                         }
-                        <PortalOperationDateField Label="Start" Time="@record.Start" Required="true" Disabled="@(!edit)"
+                        <PortalOperationDateField Label="Start" Icon="schedule" Time="@record.Start" Required="true" Disabled="@(!edit)"
                                                   Validation="@Validation" ValidationField="@Field(record.Id, "start")" Changed="@Changed" />
-                        <PortalOperationDateField Label="End" Time="@record.End" Disabled="@(!end || locked && record.End.HasOriginal)"
+                        <PortalOperationDateField Label="End" Icon="schedule" Time="@record.End" Disabled="@(!end || locked && record.End.HasOriginal)"
                                                   Validation="@Validation" ValidationField="@Field(record.Id, "end")" Changed="@Changed" />
-                        <label class="portal-performer-picker portal-work-full">
-                            <span>Performed by *</span>
+                        <PortalOperationFormField Label="Performed by" Required="true" Icon="groups" Class="portal-work-full"
+                                                  Validation="@Validation" Field="@Field(record.Id, "performers")">
                             <RadzenDropDown TValue="IEnumerable<Guid>" Data="@PerformerOptions(record)"
                                             TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
                                             DisabledProperty="@nameof(PortalCatalogChoice.IsDisabled)"
@@ -130,8 +129,7 @@
                                             Placeholder="Select staff" Disabled="@(!edit || Lookups.Staff.Count == 0 && record.Performers.Count == 0)"
                                             aria-label="Performed by" aria-invalid="@Invalid(record.Id, "performers")"
                                             aria-describedby="@Description(record.Id, "performers")" />
-                            <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "performers")" />
-                        </label>
+                        </PortalOperationFormField>
                     </div>
 
                     <section class="portal-work-entries">
@@ -314,12 +312,11 @@
             await NotifyChangedAsync();
     }
 
-    private RenderFragment CustomerReferenceField(PortalWorkDraft record, bool edit) => @<label>
-        <span>Customer Ref #</span>
+    private RenderFragment CustomerReferenceField(PortalWorkDraft record, bool edit) => @<PortalOperationFormField
+        Label="Customer Ref #" Validation="@Validation" Field="@Field(record.Id, "reference")">
         <RadzenTextBox @bind-Value="record.Reference" @bind-Value:after="NotifyChangedAsync" Immediate="true" Disabled="@(!edit)"
                        aria-invalid="@Invalid(record.Id, "reference")" aria-describedby="@Description(record.Id, "reference")" />
-        <PortalFieldError Validation="@Validation" Field="@Field(record.Id, "reference")" />
-    </label>;
+    </PortalOperationFormField>;
 
     private RenderFragment PerformerRows(PortalWorkDraft record, bool edit, bool end) => @<text>
         @{
@@ -365,12 +362,11 @@
                             }
                             @if (IsTask)
                             {
-                                <label class="portal-work-full portal-work-entry-notes">
-                                    <span>Performer notes</span>
+                                <PortalOperationFormField Label="Performer notes" Class="portal-work-full"
+                                                          Validation="@Validation" Field="@Field(period.Id, "notes")">
                                     <RadzenTextArea @bind-Value="period.Notes" @bind-Value:after="NotifyChangedAsync" Immediate="true" Rows="2" Disabled="@(!edit)"
                                                     aria-invalid="@Invalid(period.Id, "notes")" aria-describedby="@Description(period.Id, "notes")" />
-                                    <PortalFieldError Validation="@Validation" Field="@Field(period.Id, "notes")" />
-                                </label>
+                                </PortalOperationFormField>
                             }
                         </div>
                     }
@@ -384,7 +380,7 @@
             var started = start.Local.HasValue;
             var (status, tone) = WorkStatus(start.Local, IsCompletePeriod(start, end));
         }
-        <PortalOperationDateField Label="Start" Time="@start" Required="true" Disabled="@(!canEdit)"
+        <PortalOperationDateField Label="Start" Icon="schedule" Time="@start" Required="true" Disabled="@(!canEdit)"
                                   Validation="@Validation" ValidationField="@Field(id, "start")" Changed="@Changed">
             <LabelContent>
                 @if (!started)
@@ -393,7 +389,7 @@
                 }
             </LabelContent>
         </PortalOperationDateField>
-        <PortalOperationDateField Label="End" Time="@end" Disabled="@(!canSetEnd || !canEdit && end.HasOriginal)"
+        <PortalOperationDateField Label="End" Icon="schedule" Time="@end" Disabled="@(!canSetEnd || !canEdit && end.HasOriginal)"
                                   Validation="@Validation" ValidationField="@Field(id, "end")" Changed="@Changed">
             <LabelContent>
                 @if (started)
@@ -547,8 +543,7 @@
 
     private RenderFragment Resources(string title, string name, PortalWorkDraft record, List<PortalResourceDraft> rows,
         IReadOnlyList<PortalCatalogChoice> options, bool edit, bool end) => @<section class="portal-task-resources" aria-label="@title">
-        <label class="portal-resource-picker">
-            <span>@title</span>
+        <PortalOperationFormField Label="@title">
             <RadzenDropDown TValue="IEnumerable<Guid>" Data="@ResourceOptions(options, rows)"
                             TextProperty="@nameof(PortalCatalogChoice.Label)" ValueProperty="@nameof(PortalCatalogChoice.Id)"
                             DisabledProperty="@nameof(PortalCatalogChoice.IsDisabled)"
@@ -559,7 +554,7 @@
                             AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
                             Placeholder="@($"Select {title.ToLowerInvariant()}")" Disabled="@(!edit || options.Count == 0 && rows.Count == 0)"
                             aria-label="@title" />
-        </label>
+        </PortalOperationFormField>
         @if (rows.Count > 0)
         {
             <div class="portal-work-entries">
@@ -574,12 +569,11 @@
                         <div class="portal-work-entry-details portal-work-entry-row">
                             @if (resource.CalculationType is ResourceCalculationType.Quantity)
                             {
-                                <label class="portal-work-quantity">
-                                    <span>Quantity *</span>
+                                <PortalOperationFormField Label="Quantity" Required="true" Class="portal-work-quantity"
+                                                          Validation="@Validation" Field="@Field(resource.Id, "quantity")">
                                     <RadzenNumeric TValue="decimal?" @bind-Value="resource.Quantity" @bind-Value:after="NotifyChangedAsync"
                                                    Immediate="true" Disabled="@(!edit)" InputAttributes="@(Validation?.InputAttributes(Field(resource.Id, "quantity")))" />
-                                    <PortalFieldError Validation="@Validation" Field="@Field(resource.Id, "quantity")" />
-                                </label>
+                                </PortalOperationFormField>
                             }
                             @if (resource.CalculationType is ResourceCalculationType.Duration)
                             {
@@ -593,12 +587,11 @@
                                                   Click="@(() => RemoveEntryAsync(rows, resource, resource.IsSaved))" />
                                 </div>
                             }
-                            <label class="portal-work-full portal-work-entry-notes">
-                                <span>Resource notes</span>
+                            <PortalOperationFormField Label="Resource notes" Class="portal-work-full"
+                                                      Validation="@Validation" Field="@Field(resource.Id, "notes")">
                                 <RadzenTextArea @bind-Value="resource.Notes" @bind-Value:after="NotifyChangedAsync" Immediate="true" Rows="2" Disabled="@(!edit)"
                                                 aria-invalid="@Invalid(resource.Id, "notes")" aria-describedby="@Description(resource.Id, "notes")" />
-                                <PortalFieldError Validation="@Validation" Field="@Field(resource.Id, "notes")" />
-                            </label>
+                            </PortalOperationFormField>
                         </div>
                     </div>
                 }

@@ -133,18 +133,18 @@
 
     private RenderFragment CustomerFlightNumberFields(string flightNumberName) => @<text>
         <div class="opf-grid-2">
-            <div class="opf-field-block">
-                <label class="opf-label">Customer <span class="opf-required">*</span></label>
-                <div class="opf-input-wrap">
-                    <RadzenIcon Icon="business" class="opf-field-icon" />
+            <div class="os-operation-field">
+                <label class="os-operation-label">Customer <span class="os-operation-required">*</span></label>
+                <div class="os-operation-input-wrap">
+                    <RadzenIcon Icon="business" class="os-operation-field-icon" />
                     <RadzenDropDown @bind-Value="model.CustomerId" Disabled="@(FlightId is not null)" Data="@customers" TextProperty="Name" ValueProperty="Id"
                                     AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
-                                    class="opf-control opf-control-icon" Placeholder="Select customer" />
+                                    class="opf-control os-operation-control-icon" Placeholder="Select customer" />
                 </div>
             </div>
-            <div class="opf-field-block">
-                <label class="opf-label">Flight number <span class="opf-required">*</span></label>
-                <div class="opf-input-wrap">
+            <div class="os-operation-field">
+                <label class="os-operation-label">Flight number <span class="os-operation-required">*</span></label>
+                <div class="os-operation-input-wrap">
                     <span class="opf-flight-prefix">
                         <span>@CustomerIataPrefix</span>
                         @if (ShowCustomerFlightPrefixDivider)
@@ -153,7 +153,7 @@
                         }
                     </span>
                     <RadzenTextBox @bind-Value="model.FlightNumber" Name="@flightNumberName" MaxLength="12"
-                                   class="opf-control opf-control-icon opf-flight-number-control" Placeholder="e.g. 123A or 123/01" />
+                                   class="opf-control os-operation-control-icon opf-flight-number-control" Placeholder="e.g. 123A or 123/01" />
                 </div>
             </div>
         </div>
@@ -161,56 +161,56 @@
 
     private RenderFragment StationOperationFields() => @<text>
         <div class="opf-grid-2">
-            <div class="opf-field-block">
-                <label class="opf-label">Station <span class="opf-required">*</span></label>
-                <div class="opf-input-wrap">
-                    <RadzenIcon Icon="flight_takeoff" class="opf-field-icon" />
+            <div class="os-operation-field">
+                <label class="os-operation-label">Station <span class="os-operation-required">*</span></label>
+                <div class="os-operation-input-wrap">
+                    <RadzenIcon Icon="flight_takeoff" class="os-operation-field-icon" />
                     <RadzenDropDown @bind-Value="model.StationId" @bind-Value:after="OnStationChanged" Disabled="@(FlightId is not null)" Data="@stations" TextProperty="IataCode" ValueProperty="Id"
-                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control opf-control-icon" Placeholder="Select station" />
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control os-operation-control-icon" Placeholder="Select station" />
                 </div>
             </div>
-            <div class="opf-field-block">
-                <label class="opf-label">Operation type <span class="opf-required">*</span></label>
-                <div class="opf-input-wrap">
-                    <RadzenIcon Icon="settings" class="opf-field-icon" />
+            <div class="os-operation-field">
+                <label class="os-operation-label">Operation type <span class="os-operation-required">*</span></label>
+                <div class="os-operation-input-wrap">
+                    <RadzenIcon Icon="settings" class="os-operation-field-icon" />
                     <RadzenDropDown @bind-Value="model.OperationTypeId" Disabled="@(FlightId is not null)" Data="@operationTypes" TextProperty="Name" ValueProperty="Id"
-                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control opf-control-icon" Placeholder="Select operation" />
+                                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control os-operation-control-icon" Placeholder="Select operation" />
                 </div>
             </div>
         </div>
     </text>;
 
-    private RenderFragment AircraftTypeField() => @<div class="opf-field-block">
-        <label class="opf-label">Aircraft type</label>
-        <div class="opf-input-wrap">
-            <RadzenIcon Icon="flight" class="opf-field-icon" />
+    private RenderFragment AircraftTypeField() => @<div class="os-operation-field">
+        <label class="os-operation-label">Aircraft type</label>
+        <div class="os-operation-input-wrap">
+            <RadzenIcon Icon="flight" class="os-operation-field-icon" />
             <RadzenDropDown @bind-Value="model.AircraftTypeId" Data="@aircraftTypes" TextProperty="Model" ValueProperty="Id"
-                            AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control opf-control-icon" Placeholder="Optional aircraft type" />
+                            AllowClear="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control os-operation-control-icon" Placeholder="Optional aircraft type" />
         </div>
     </div>;
 
     private RenderFragment FlightDetailsStep() => @<section class="opf-step-content">
-        <div class="opf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>Flight details</span></div>
+        <div class="os-operation-section-title"><RadzenIcon Icon="flight_takeoff" /><span>Flight details</span></div>
 
         @CustomerFlightNumberFields("flightNumber")
         @StationOperationFields()
         @AircraftTypeField()
 
         <div class="opf-grid-2">
-            <div class="opf-field-block">
-                <label class="opf-label">Scheduled arrival <span class="opf-required">*</span></label>
-                <div class="opf-input-wrap">
-                    <RadzenIcon Icon="flight_land" class="opf-field-icon" />
+            <div class="os-operation-field">
+                <label class="os-operation-label">Scheduled arrival <span class="os-operation-required">*</span></label>
+                <div class="os-operation-input-wrap">
+                    <RadzenIcon Icon="flight_land" class="os-operation-field-icon" />
                     <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.ScheduledArrivalUtc" DateFormat="yyyy-MM-dd HH:mm"
-                                      ShowTime="true" class="opf-control opf-control-icon" />
+                                      ShowTime="true" class="opf-control os-operation-control-icon" />
                 </div>
             </div>
-            <div class="opf-field-block">
-                <label class="opf-label">Scheduled departure <span class="opf-required">*</span></label>
-                <div class="opf-input-wrap">
-                    <RadzenIcon Icon="flight_takeoff" class="opf-field-icon" />
+            <div class="os-operation-field">
+                <label class="os-operation-label">Scheduled departure <span class="os-operation-required">*</span></label>
+                <div class="os-operation-input-wrap">
+                    <RadzenIcon Icon="flight_takeoff" class="os-operation-field-icon" />
                     <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.ScheduledDepartureUtc" DateFormat="yyyy-MM-dd HH:mm"
-                                      ShowTime="true" class="opf-control opf-control-icon" />
+                                      ShowTime="true" class="opf-control os-operation-control-icon" />
                 </div>
             </div>
         </div>
@@ -218,52 +218,52 @@
     </section>;
 
     private RenderFragment BulkFlightDetailsStep() => @<section class="opf-step-content">
-        <div class="opf-section-line"><RadzenIcon Icon="flight_takeoff" /><span>Flight details</span></div>
+        <div class="os-operation-section-title"><RadzenIcon Icon="flight_takeoff" /><span>Flight details</span></div>
 
         @CustomerFlightNumberFields("bulkFlightNumber")
         @StationOperationFields()
         @AircraftTypeField()
 
         <div class="opf-grid-2">
-            <div class="opf-field-block">
-                <label class="opf-label">Period start date <span class="opf-required">*</span></label>
-                <div class="opf-input-wrap">
-                    <RadzenIcon Icon="event" class="opf-field-icon" />
+            <div class="os-operation-field">
+                <label class="os-operation-label">Period start date <span class="os-operation-required">*</span></label>
+                <div class="os-operation-input-wrap">
+                    <RadzenIcon Icon="event" class="os-operation-field-icon" />
                     <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.PeriodStartDate" DateFormat="yyyy-MM-dd" ShowTime="false"
-                                      class="opf-control opf-control-icon" />
+                                      class="opf-control os-operation-control-icon" />
                 </div>
             </div>
-            <div class="opf-field-block">
-                <label class="opf-label">Period end date <span class="opf-required">*</span></label>
-                <div class="opf-input-wrap">
-                    <RadzenIcon Icon="event_available" class="opf-field-icon" />
+            <div class="os-operation-field">
+                <label class="os-operation-label">Period end date <span class="os-operation-required">*</span></label>
+                <div class="os-operation-input-wrap">
+                    <RadzenIcon Icon="event_available" class="os-operation-field-icon" />
                     <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.PeriodEndDate" DateFormat="yyyy-MM-dd" ShowTime="false"
-                                      class="opf-control opf-control-icon" />
+                                      class="opf-control os-operation-control-icon" />
                 </div>
             </div>
         </div>
 
         <div class="opf-grid-2">
-            <div class="opf-field-block">
-                <label class="opf-label">STA time <span class="opf-required">*</span></label>
-                <div class="opf-input-wrap">
-                    <RadzenIcon Icon="schedule" class="opf-field-icon" />
+            <div class="os-operation-field">
+                <label class="os-operation-label">STA time <span class="os-operation-required">*</span></label>
+                <div class="os-operation-input-wrap">
+                    <RadzenIcon Icon="schedule" class="os-operation-field-icon" />
                     <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.ScheduledArrivalTimeUtc" DateFormat="HH:mm" ShowTime="true"
-                                      ShowSeconds="false" class="opf-control opf-control-icon" />
+                                      ShowSeconds="false" class="opf-control os-operation-control-icon" />
                 </div>
             </div>
-            <div class="opf-field-block">
-                <label class="opf-label">STD time <span class="opf-required">*</span></label>
-                <div class="opf-input-wrap">
-                    <RadzenIcon Icon="schedule" class="opf-field-icon" />
+            <div class="os-operation-field">
+                <label class="os-operation-label">STD time <span class="os-operation-required">*</span></label>
+                <div class="os-operation-input-wrap">
+                    <RadzenIcon Icon="schedule" class="os-operation-field-icon" />
                     <RadzenDatePicker Disabled="@(model.StationId == Guid.Empty)" @bind-Value="model.ScheduledDepartureTimeUtc" DateFormat="HH:mm" ShowTime="true"
-                                      ShowSeconds="false" class="opf-control opf-control-icon" />
+                                      ShowSeconds="false" class="opf-control os-operation-control-icon" />
                 </div>
             </div>
         </div>
 
-        <div class="opf-field-block">
-            <label class="opf-label">Weekdays <span class="opf-required">*</span></label>
+        <div class="os-operation-field">
+            <label class="os-operation-label">Weekdays <span class="os-operation-required">*</span></label>
             <div class="opf-weekday-list">
                 @foreach (var option in WeekdayOptions)
                 {
@@ -279,7 +279,7 @@
     </section>;
 
     private RenderFragment CalendarStep() => @<section class="opf-step-content">
-        <div class="opf-section-line"><RadzenIcon Icon="calendar_month" /><span>Calendar</span></div>
+        <div class="os-operation-section-title"><RadzenIcon Icon="calendar_month" /><span>Calendar</span></div>
         <div class="opf-step-toolbar">
             <span class="opf-selection-count">@model.SelectedScheduleDates.Count selected</span>
             <RadzenButton Text="Reset weekdays" Icon="restart_alt" ButtonStyle="ButtonStyle.Light"
@@ -295,7 +295,7 @@
     </section>;
 
     private RenderFragment ServicesStep() => @<section class="opf-step-content">
-        <div class="opf-section-line"><RadzenIcon Icon="settings" /><span>Planned services</span></div>
+        <div class="os-operation-section-title"><RadzenIcon Icon="settings" /><span>Planned services</span></div>
         <div class="opf-step-toolbar">
             @SearchBox(serviceSearchTerm, "Search services", OnServiceSearchInput, ClearServiceSearch)
             <span class="opf-selection-count">@model.PlannedServiceIds.Count selected</span>
@@ -333,7 +333,7 @@
     </section>;
 
     private RenderFragment StaffStep() => @<section class="opf-step-content">
-        <div class="opf-section-line"><RadzenIcon Icon="groups" /><span>Assigned staff</span></div>
+        <div class="os-operation-section-title"><RadzenIcon Icon="groups" /><span>Assigned staff</span></div>
         @if (IsPerLandingSelected)
         {
             <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Title="Per landing flight">

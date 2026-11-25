@@ -1,11 +1,24 @@
-<label class="portal-operation-date">
+<label class="portal-operation-date os-operation-field">
     <span class="portal-operation-date-heading @(LabelContent is null ? null : "portal-operation-date-heading-with-content")">
-        <span>@Label @if (Required) { <span aria-hidden="true">*</span> }</span>
+        <span class="os-operation-label">
+            @Label
+            @if (Required)
+            {
+                <span class="os-operation-required" aria-hidden="true">*</span>
+            }
+        </span>
         @LabelContent
     </span>
-    <RadzenDatePicker TValue="DateTime?" @bind-Value="Time.Local" @bind-Value:after="Changed.InvokeAsync" DateFormat="yyyy-MM-dd HH:mm"
-                      ShowTime="true" Immediate="true" AllowClear="@(!Required)" Disabled="@Disabled"
-                      InputAttributes="@(Validation?.InputAttributes(ValidationField))" />
+    <span class="os-operation-input-wrap">
+        @if (Icon is not null)
+        {
+            <RadzenIcon Icon="@Icon" class="os-operation-field-icon" aria-hidden="true" />
+        }
+        <RadzenDatePicker TValue="DateTime?" @bind-Value="Time.Local" @bind-Value:after="Changed.InvokeAsync" DateFormat="yyyy-MM-dd HH:mm"
+                          ShowTime="true" Immediate="true" AllowClear="@(!Required)" Disabled="@Disabled"
+                          class="@(Icon is null ? null : "os-operation-control-icon")"
+                          InputAttributes="@(Validation?.InputAttributes(ValidationField))" />
+    </span>
     <PortalFieldError Validation="@Validation" Field="@ValidationField" />
 </label>
 
@@ -14,6 +27,7 @@
     [Parameter, EditorRequired] public PortalOperationTime Time { get; set; } = default!;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Required { get; set; }
+    [Parameter] public string? Icon { get; set; }
     [Parameter] public RenderFragment? LabelContent { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
     [Parameter] public PortalFlightValidation? Validation { get; set; }

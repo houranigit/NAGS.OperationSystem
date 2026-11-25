@@ -1,7 +1,7 @@
 @inject OperationsApiClient Operations
 
 <div class="portal-work-notes">
-    <label for="@NotesId">Notes</label>
+    <label for="@NotesId" class="os-operation-label">Notes</label>
     <div class="portal-notes-editor">
         <RadzenTextArea id="@NotesId" @bind-Value="Draft.Notes" @bind-Value:after="Changed.InvokeAsync"
                         Immediate="true" Rows="5" Disabled="@(!CanEdit)"

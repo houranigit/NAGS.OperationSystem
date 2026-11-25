@@ -13,11 +13,6 @@
     gap: var(--os-space-1) var(--os-space-2);
 }
 
-.portal-signature h4 {
-    font: inherit;
-    font-weight: 600;
-}
-
 .portal-signature h4,
 .portal-signature p,
 .portal-signature-preview {

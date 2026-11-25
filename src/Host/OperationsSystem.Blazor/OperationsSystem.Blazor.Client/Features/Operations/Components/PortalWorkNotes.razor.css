@@ -3,10 +3,6 @@
     gap: var(--os-space-1);
 }
 
-.portal-work-notes > label {
-    font-weight: 600;
-}
-
 .portal-notes-editor {
     border: 1px solid var(--os-color-border-strong);
     border-radius: var(--os-radius-sm);

@@ -4,15 +4,6 @@
     font-size: var(--os-text-sm);
 }
 
-.portal-report-picker {
-    display: grid;
-    align-content: start;
-    width: min(100%, 28rem);
-    min-width: 0;
-    gap: var(--os-space-1);
-    font-weight: 600;
-}
-
 .portal-occurrence {
     display: flex;
     align-items: center;

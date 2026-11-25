@@ -530,6 +530,85 @@ a {
     overflow: hidden;
 }
 
+/* Operations dialog forms */
+.os-operation-section-title {
+    display: grid;
+    grid-template-columns: auto auto minmax(24px, 1fr);
+    align-items: center;
+    flex: 1;
+    gap: var(--os-space-2);
+    margin: var(--os-space-1) 0 0;
+    color: var(--os-color-text);
+    font-size: var(--os-text-base);
+    font-weight: 800;
+    line-height: inherit;
+}
+
+.os-operation-section-title::after {
+    content: "";
+    height: 1px;
+    background: var(--os-color-border);
+}
+
+.os-operation-section-title .rz-icon {
+    color: var(--os-color-text-muted);
+    font-size: 1.25rem;
+}
+
+.os-operation-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--os-space-1);
+    min-width: 0;
+}
+
+.os-operation-field :is(.rz-datepicker, .rz-dropdown, .rz-textbox, .rz-textarea) {
+    width: 100%;
+    min-width: 0;
+}
+
+.os-operation-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 800;
+}
+
+.os-operation-required {
+    color: var(--os-color-danger);
+}
+
+.os-operation-input-wrap {
+    position: relative;
+    display: block;
+    min-width: 0;
+}
+
+.os-operation-input-wrap .os-operation-field-icon {
+    position: absolute;
+    z-index: 2;
+    inset-block-start: 50%;
+    inset-inline-start: var(--os-space-4);
+    transform: translateY(-50%);
+    color: var(--os-color-text-muted);
+    font-size: 1.25rem;
+    pointer-events: none;
+}
+
+.os-operation-control-icon > input,
+.os-operation-control-icon.rz-datepicker > .rz-inputtext,
+input.os-operation-control-icon,
+.os-operation-control-icon :is(.rz-dropdown-label, .rz-dropdown-chips) {
+    padding-inline-start: 52px;
+}
+
+.os-operation-control-icon .rz-dropdown-trigger,
+.os-operation-control-icon .rz-datepicker-trigger {
+    z-index: 3;
+}
+
 /* --- List page layout ---------------------------------------------------- */
 .os-list-page {
     --os-list-control-height: 2rem;

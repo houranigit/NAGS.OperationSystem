@@ -150,7 +150,11 @@
     gap: var(--os-space-2);
 }
 
-.portal-editor-content ::deep :is(.portal-editor-heading, .portal-section-heading) h3 {
+.portal-editor-content ::deep .portal-form-heading {
+    min-block-size: 0;
+}
+
+.portal-editor-content ::deep :is(.portal-editor-heading, .portal-section-heading) h3:not(.os-operation-section-title) {
     margin: 0;
     font-size: var(--os-text-lg);
     font-weight: 700;
@@ -162,6 +166,14 @@
     align-content: start;
     gap: var(--os-space-3);
     min-width: 0;
+}
+
+.portal-editor-content ::deep .portal-editor-section:has(> .portal-form-heading) {
+    gap: var(--os-space-2);
+}
+
+.portal-editor-content ::deep .portal-report-picker {
+    width: min(100%, 28rem);
 }
 
 .portal-editor-content ::deep .portal-actuals-note {
@@ -203,6 +215,10 @@
     gap: var(--os-space-3);
 }
 
+.portal-editor-content ::deep .portal-editor-section:has(> .portal-form-heading) .portal-editor-grid {
+    gap: var(--os-space-2) var(--os-space-4);
+}
+
 .portal-editor-content ::deep .portal-departure-form {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
@@ -214,7 +230,7 @@
     grid-template-columns: minmax(0, 1fr);
 }
 
-.portal-editor-content ::deep .portal-editor-grid > label {
+.portal-editor-content ::deep .portal-editor-grid > label:not(.os-operation-field) {
     display: grid;
     align-content: start;
     gap: var(--os-space-1);
