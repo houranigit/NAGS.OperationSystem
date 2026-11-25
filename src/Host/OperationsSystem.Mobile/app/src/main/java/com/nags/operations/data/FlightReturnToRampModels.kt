@@ -82,7 +82,7 @@ data class FlightReturnToRampRecord(
 }
 
 fun FlightDetail.canAddReturnToRamp(occurrences: List<FlightReturnToRampRecord> = returnToRamps): Boolean =
-    isApprovalLocked && canSaveReturnsToRamp && departureSubmissions.isNotEmpty() &&
+    canSaveReturnsToRamp && departureSubmissions.isNotEmpty() &&
         !hasCancellationSubmission && occurrences.none { it.isOpen }
 
 fun FlightDetail.canEditReturnToRamp(occurrence: FlightReturnToRampRecord): Boolean =

@@ -61,7 +61,8 @@ class FlightReturnsToRampRepository(
             .map { it.preview(json) }.associateBy { it.id }
         val priorOccurrences = flight.returnToRamps.filterNot { it.id in pendingOccurrences } + pendingOccurrences.values
         check(if (baseline == null) flight.canAddReturnToRamp(priorOccurrences) else flight.canEditReturnToRamp(baseline)) {
-            "Approve the flight and close the previous return to ramp before adding another. Approved records are locked."
+            if (baseline == null) "Save the flight departure and close any open return to ramp before adding another."
+            else "This return to ramp cannot be edited. Reload the flight."
         }
         val normalized = input.normalized()
         check(normalized.validationErrors(flight.rowVersion, flight.allowedServiceIds?.toSet(), baseline = baseline).isEmpty()) {

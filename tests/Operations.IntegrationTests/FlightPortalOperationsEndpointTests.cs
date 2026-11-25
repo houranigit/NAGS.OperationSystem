@@ -255,24 +255,27 @@ public sealed partial class FlightVisibilityScopeTests
         var rtrInput = new SaveFlightReturnToRampRequest(new(rtrArrival, ReceivedByStaffMemberId: receiver.StaffId),
             new(rtrArrival.AddMinutes(25), HandledByStaffMemberId: handler.StaffId), [new(Guid.NewGuid(), rtrWork)], []);
 
-        await AssertPortalOperationsConflictAsync(
-            await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{rtrId}", rtrInput, staffSaved.RowVersion),
-            "Operations.FlightApproval.ReturnToRampRequiresApproval");
-        var approved = await ApprovePortalFlightAsync(admin, id, staffSaved.RowVersion);
+        staffSaved.CanSaveReturnsToRamp.ShouldBeTrue();
+        (await PortalOperationsDetailAsync(admin, id)).CanSaveReturnsToRamp.ShouldBeTrue();
         using var rtrResponse = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{rtrId}",
-            rtrInput, approved.RowVersion);
+            rtrInput, staffSaved.RowVersion);
         rtrResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var pendingRtr = (await rtrResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!;
-        pendingRtr.ApprovalStatus.ShouldBe(FlightApprovalStatus.PendingRtr);
-        pendingRtr.WorkOrderNumber.ShouldBe(approved.WorkOrderNumber);
-        var rtr = pendingRtr.ReturnToRamps!.ShouldHaveSingleItem();
+        var savedWithReturn = (await rtrResponse.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        savedWithReturn.ApprovalStatus.ShouldBe(FlightApprovalStatus.NotApproved);
+        savedWithReturn.WorkOrderNumber.ShouldBeNull();
+        var rtr = savedWithReturn.ReturnToRamps!.ShouldHaveSingleItem();
         rtr.Id.ShouldBe(rtrId);
+        rtr.Sequence.ShouldBe(1);
         rtr.CreatedByUserId.ShouldBe(administratorId);
         rtr.ReceivedByStaffMemberId.ShouldBe(receiver.StaffId);
         rtr.HandledByStaffMemberId.ShouldBe(handler.StaffId);
         rtr.IsOpen.ShouldBeFalse();
+        rtr.CanEdit.ShouldBeTrue();
         rtr.Services.ShouldHaveSingleItem().CreatedByUserId.ShouldBe(administratorId);
 
+        var approved = await ApprovePortalFlightAsync(admin, id, savedWithReturn.RowVersion);
+        approved.ApprovedReturnToRampSequence.ShouldBe(1);
+        approved.ReturnToRamps!.ShouldHaveSingleItem().CanEdit.ShouldBeFalse();
         var secondArrival = rtrArrival.AddMinutes(30);
         var secondWork = OperationsBatchClosedService(unrestrictedServiceId, handler.StaffId,
             secondArrival.AddMinutes(5), secondArrival.AddMinutes(20));
@@ -280,15 +283,14 @@ public sealed partial class FlightVisibilityScopeTests
         var secondRtrInput = new SaveFlightReturnToRampRequest(new(secondArrival, ReceivedByStaffMemberId: receiver.StaffId),
             new(secondArrival.AddMinutes(25), HandledByStaffMemberId: handler.StaffId), [new(Guid.NewGuid(), secondWork)], []);
         using var secondRtr = await WritePortalOperationsAsync(admin, id, HttpMethod.Put, $"returns-to-ramp/{secondRtrId}",
-            secondRtrInput, pendingRtr.RowVersion);
+            secondRtrInput, approved.RowVersion);
         secondRtr.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var twoPendingReturns = (await secondRtr.Content.ReadFromJsonAsync<FlightDetailDto>())!;
-        twoPendingReturns.ApprovalStatus.ShouldBe(FlightApprovalStatus.PendingRtr);
-        twoPendingReturns.WorkOrderNumber.ShouldBe(approved.WorkOrderNumber);
-        twoPendingReturns.ReturnToRamps!.Select(item => item.Id).ShouldBe([rtrId, secondRtrId]);
-        twoPendingReturns.ReturnToRamps!.ShouldAllBe(item => item.CanEdit);
+        var pendingReturn = (await secondRtr.Content.ReadFromJsonAsync<FlightDetailDto>())!;
+        pendingReturn.ApprovalStatus.ShouldBe(FlightApprovalStatus.PendingRtr);
+        pendingReturn.WorkOrderNumber.ShouldBe(approved.WorkOrderNumber);
+        pendingReturn.ReturnToRamps!.Select(item => (item.Id, item.CanEdit)).ShouldBe([(rtrId, false), (secondRtrId, true)]);
 
-        var reapproved = await ApprovePortalFlightAsync(admin, id, twoPendingReturns.RowVersion);
+        var reapproved = await ApprovePortalFlightAsync(admin, id, pendingReturn.RowVersion);
         reapproved.WorkOrderNumber.ShouldBe(approved.WorkOrderNumber);
         reapproved.ApprovedReturnToRampSequence.ShouldBe(2);
         reapproved.ReturnToRamps!.ShouldAllBe(item => !item.CanEdit);

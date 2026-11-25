@@ -93,7 +93,8 @@ public sealed partial class Flight
         if (existing is null)
         {
             _returnToRamps.Add(candidate); LastReturnToRampSequence = candidate.Sequence;
-            ApprovalStatus = FlightApprovalStatus.PendingRtr;
+            if (ApprovalStatus == FlightApprovalStatus.Approved)
+                ApprovalStatus = FlightApprovalStatus.PendingRtr;
             _services.AddRange(candidate.Services); _tasks.AddRange(candidate.Tasks);
         }
         else

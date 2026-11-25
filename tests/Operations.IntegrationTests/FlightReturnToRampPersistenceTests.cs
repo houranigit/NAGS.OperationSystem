@@ -611,7 +611,7 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
     }
 
     [Fact]
-    public async Task Departure_and_approval_are_required_before_start_and_stale_eligibility_needs_a_reload()
+    public async Task Departure_is_required_before_start_and_stale_eligibility_needs_a_reload()
     {
         await using var db = fixture.CreateContext();
         await db.Database.MigrateAsync();
@@ -625,15 +625,13 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         var recordingDeparture = await LoadAsync(db, flight.Id);
         var stale = await LoadAsync(competing, flight.Id);
         var version = stale.RowVersion.ToArray();
-        stale.StartReturnToRamp(Arrival(), Guid.NewGuid(), Now).IsFailure.ShouldBeTrue();
-        var reviewer = Guid.NewGuid();
-        RecordArrival(recordingDeparture, reviewer);
-        recordingDeparture.SubmitDeparture(Employee(), Departure(), reviewer, Now).IsSuccess.ShouldBeTrue();
-        recordingDeparture.StartReturnToRamp(Arrival(), reviewer, Now).Error.Code.ShouldBe("Operations.FlightApproval.ReturnToRampRequiresApproval");
-        recordingDeparture.Approve(reviewer, "Flight reviewer", Now, 1).IsSuccess.ShouldBeTrue();
+        stale.StartReturnToRamp(Arrival(), Guid.NewGuid(), Now).Error.Code.ShouldBe("Operations.ReturnToRamp.DepartureRequired");
+        var actor = Guid.NewGuid();
+        RecordArrival(recordingDeparture, actor);
+        recordingDeparture.SubmitDeparture(Employee(), Departure(), actor, Now).IsSuccess.ShouldBeTrue();
         await db.SaveChangesAsync();
 
-        stale.StartReturnToRamp(Arrival(), Guid.NewGuid(), Now).IsFailure.ShouldBeTrue();
+        stale.StartReturnToRamp(Arrival(), Guid.NewGuid(), Now).Error.Code.ShouldBe("Operations.ReturnToRamp.DepartureRequired");
         (await competing.SaveChangesAsync()).ShouldBe(0);
         stale.RowVersion.ShouldBe(version);
         stale.ReturnToRamps.ShouldBeEmpty();
@@ -644,7 +642,10 @@ public sealed class FlightReturnToRampPersistenceTests(FlightReturnToRampPersist
         current.StartReturnToRamp(Arrival(), Guid.NewGuid(), Now).IsSuccess.ShouldBeTrue();
         await competing.SaveChangesAsync();
         db.ChangeTracker.Clear();
-        (await LoadAsync(db, flight.Id)).ReturnToRamps.ShouldHaveSingleItem().Sequence.ShouldBe(1);
+        var reloaded = await LoadAsync(db, flight.Id);
+        reloaded.ReturnToRamps.ShouldHaveSingleItem().Sequence.ShouldBe(1);
+        reloaded.ApprovalStatus.ShouldBe(FlightApprovalStatus.NotApproved);
+        reloaded.ApprovalNumber.ShouldBeNull();
     }
 
     [Fact]

@@ -90,6 +90,8 @@ public static class UiStrings
         public static string Details => UiText.Get("ReturnsToRamp.Details", "RTR Details");
         public static string Add => UiText.Get("ReturnsToRamp.Add", "Add RTR");
         public static string OpenBlocksAdd => UiText.Get("ReturnsToRamp.OpenBlocksAdd", "Close the open return to ramp before adding another.");
+        public static string SaveDepartureBeforeAdd => UiText.Get("ReturnsToRamp.SaveDepartureBeforeAdd", "Save the departure details before adding an RTR.");
+        public static string AddUnavailable => UiText.Get("ReturnsToRamp.AddUnavailable", "Add RTR is unavailable for this work order.");
         public static string Open => UiText.Get("ReturnsToRamp.Open", "Open");
         public static string Closed => UiText.Get("ReturnsToRamp.Closed", "Closed");
         public static string Draft => UiText.Get("ReturnsToRamp.Draft", "Draft");

@@ -506,7 +506,7 @@
     <string name="rtr_form_work_summary">%1$d خدمات · %2$d مهام</string>
     <string name="rtr_form_work_required">أضف وأكمل خدمة أو مهمة واحدة على الأقل قبل تسجيل مغادرة العودة إلى الموقف.</string>
     <string name="rtr_form_invalid_actuals">تحقق من أوقات الوصول والمغادرة والعمل للعودة إلى الموقف.</string>
-    <string name="rtr_form_prerequisite">يجب اعتماد الرحلة وإغلاق العودة السابقة قبل إضافة عودة أخرى.</string>
+    <string name="rtr_form_prerequisite">احفظ مغادرة الرحلة وأغلق أي عودة مفتوحة إلى الساحة قبل إضافة عودة.</string>
     <string name="rtr_form_title">العودة إلى الموقف</string>
     <string name="rtr_form_unsaved">عودة جديدة · مسودة</string>
     <string name="rtr_sync_title">العودة إلى الساحة</string>

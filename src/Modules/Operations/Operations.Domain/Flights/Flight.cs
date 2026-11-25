@@ -950,7 +950,7 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         UpdatedAtUtc = now.ToUniversalTime();
     }
 
-    /// <summary>Starts an RTR after approval. Load all occurrences and operational records before mutation.</summary>
+    /// <summary>Starts an RTR after a recorded departure. Load all occurrences and operational records before mutation.</summary>
     public Result<FlightReturnToRamp> StartReturnToRamp(RtrArrivalDetails? arrivalDetails, Guid userId, DateTimeOffset now)
     {
         var check = ValidateReturnToRampWrite(userId);
@@ -960,8 +960,6 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
             return Error.Validation("RTR arrival details are required.", "Operations.ReturnToRamp.ArrivalDetailsRequired");
         if (_departureSubmissions.Count == 0)
             return Error.Conflict("A flight departure must be recorded before adding RTR.", "Operations.ReturnToRamp.DepartureRequired");
-        var approval = EnsureApprovalAllowsReturnToRamp(Guid.Empty);
-        if (approval.IsFailure) return approval.Error;
         if (_returnToRamps.Any(item => item.IsOpen))
             return Error.Conflict("Close the open RTR before adding another occurrence.", "Operations.ReturnToRamp.OpenExists");
         if (LastReturnToRampSequence == int.MaxValue)
@@ -971,7 +969,8 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
             now.ToUniversalTime());
         _returnToRamps.Add(record);
         LastReturnToRampSequence = record.Sequence;
-        ApprovalStatus = FlightApprovalStatus.PendingRtr;
+        if (ApprovalStatus == FlightApprovalStatus.Approved)
+            ApprovalStatus = FlightApprovalStatus.PendingRtr;
         UpdatedAtUtc = now.ToUniversalTime();
         return record;
     }

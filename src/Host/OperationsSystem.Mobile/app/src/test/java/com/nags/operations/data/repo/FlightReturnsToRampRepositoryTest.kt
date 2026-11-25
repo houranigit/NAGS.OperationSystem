@@ -58,9 +58,17 @@ class FlightReturnsToRampRepositoryTest {
         assertTrue(dao.rows(owner.value!!).isEmpty())
     }
 
+    @Test fun savedDepartureAllowsNewReturnWithoutFlightApproval() = runBlocking {
+        val repository = repo()
+        for (status in listOf("NotApproved", "Unlocked")) {
+            repository.save(flight.copy(approvalStatus = status), id, input, preview)
+            assertEquals(id, dao.rows(owner.value!!).single().occurrenceId)
+            repository.discard(flight.id, id)
+        }
+    }
+
     @Test fun prerequisitesAndPermissionFailuresNeverPublishLocalInput() = runBlocking {
-        for (invalid in listOf(flight.copy(approvalStatus = "NotApproved"), flight.copy(approvalStatus = "Unlocked"),
-            flight.copy(departureSubmissions = emptyList()), flight.copy(canSaveReturnsToRamp = false),
+        for (invalid in listOf(flight.copy(departureSubmissions = emptyList()), flight.copy(canSaveReturnsToRamp = false),
             flight.copy(hasCancellationSubmission = true), flight.copy(returnToRamps = listOf(preview.copy(id = "another-open"))))) {
             assertTrue(runCatching { repo().save(invalid, id, input, preview) }.isFailure)
         }

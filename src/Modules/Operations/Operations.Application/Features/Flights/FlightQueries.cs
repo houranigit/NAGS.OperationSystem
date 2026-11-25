@@ -210,9 +210,7 @@ internal static class FlightDetails
 
     public static FlightDetailDto Map(Flight flight, string stationTimeZoneId, Guid? currentStaffMemberId = null, bool canSaveArrival = false, bool canSaveDeparture = false, bool canSaveCancellation = false, bool canSaveServices = false, Guid? currentUserId = null, IReadOnlyList<Guid>? allowedServiceIds = null, bool canSaveTasks = false, bool assignedWorkCorrection = false, IReadOnlyDictionary<Guid, string>? userDisplayNames = null, bool canEditFlightDetails = false, bool creatorOnlyWorkDelete = false, bool unrestrictedServices = false, bool legacyStaffAttribution = false, bool canReview = false)
     {
-        var canSaveReturnsToRamp = canSaveTasks && flight.CancellationSubmissions.Count == 0 && flight.DepartureSubmissions.Count > 0 &&
-            (flight.EnsureApprovalAllowsReturnToRamp(Guid.Empty).IsSuccess ||
-                flight.ReturnToRamps.Any(occurrence => flight.EnsureApprovalAllowsReturnToRamp(occurrence.Id).IsSuccess));
+        var canSaveReturnsToRamp = canSaveTasks && flight.CancellationSubmissions.Count == 0 && flight.DepartureSubmissions.Count > 0;
         var canShare = canSaveTasks && flight.CancellationSubmissions.Count == 0 && currentStaffMemberId is { } sharingStaffId &&
             flight.OperationType.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType && !flight.IsPerLanding &&
             flight.AssignedEmployees.Any(employee => employee.Employee.StaffMemberId == sharingStaffId);

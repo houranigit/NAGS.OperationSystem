@@ -74,16 +74,11 @@ public sealed partial class Flight
         ? Error.Conflict("This flight is locked. Unlock it before changing its recorded details.", "Operations.FlightApproval.Locked")
         : Result.Success();
 
-    /// <summary>Checks an existing occurrence when found, otherwise checks creation of a new occurrence.</summary>
+    /// <summary>Protects previously approved occurrences while a flight remains locked.</summary>
     public Result EnsureApprovalAllowsReturnToRamp(Guid occurrenceId)
     {
         var existing = _returnToRamps.SingleOrDefault(item => item.Id == occurrenceId);
-        if (existing is null)
-            return IsApprovalLocked
-                ? Result.Success()
-                : Error.Conflict("Approve the flight before adding a return to ramp.", "Operations.FlightApproval.ReturnToRampRequiresApproval");
-
-        return IsApprovalLocked && existing.Sequence <= ApprovedReturnToRampSequence
+        return IsApprovalLocked && existing is not null && existing.Sequence <= ApprovedReturnToRampSequence
             ? Error.Conflict("This return to ramp is approved and locked.", "Operations.FlightApproval.ReturnToRampLocked")
             : Result.Success();
     }

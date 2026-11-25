@@ -284,6 +284,12 @@
     border-block-start: 1px solid var(--os-color-border);
 }
 
+.portal-step-add-hint {
+    margin: 0;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+}
+
 @media (max-width: 680px) {
     .portal-editor-body {
         grid-template-columns: auto minmax(0, 1fr);

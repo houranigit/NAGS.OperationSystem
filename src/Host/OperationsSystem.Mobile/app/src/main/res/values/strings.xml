@@ -530,7 +530,7 @@
     <string name="rtr_form_work_summary">Services: %1$d · Tasks: %2$d</string>
     <string name="rtr_form_work_required">Add and finish at least one service or task before recording RTR departure.</string>
     <string name="rtr_form_invalid_actuals">Check the RTR arrival, departure and work periods.</string>
-    <string name="rtr_form_prerequisite">Flight approval and a closed previous RTR are required before adding another return.</string>
+    <string name="rtr_form_prerequisite">Save the flight departure and close any open return to ramp before adding one.</string>
     <string name="rtr_form_title">Return to ramp</string>
     <string name="rtr_form_unsaved">New RTR · Draft</string>
     <string name="rtr_sync_title">Returns to ramp</string>

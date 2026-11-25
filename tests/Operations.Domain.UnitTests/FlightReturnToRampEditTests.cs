@@ -10,17 +10,29 @@ public sealed class FlightReturnToRampEditTests
     private readonly StaffMemberSnapshot _staff = TestData.Staff();
     private static readonly DateTimeOffset Now = TestData.Now;
 
-    [Fact]
-    public void New_occurrence_requires_departure_and_approval_and_only_one_open_occurrence_is_allowed()
+    [Theory]
+    [InlineData(FlightApprovalStatus.NotApproved)]
+    [InlineData(FlightApprovalStatus.Unlocked)]
+    public void Departure_allows_one_open_occurrence_without_changing_editable_approval_status(FlightApprovalStatus approvalStatus)
     {
-        var flight = Flight(); var id = Guid.NewGuid();
+        var flight = Flight();
+        var id = Guid.NewGuid();
         flight.SaveReturnToRamp(id, Arrival(), null, [], [], _actor, Now).Error.Code.ShouldBe("Operations.ReturnToRamp.DepartureRequired");
         Depart(flight);
-        flight.SaveReturnToRamp(id, Arrival(), null, [], [], _actor, Now).Error.Code.ShouldBe("Operations.FlightApproval.ReturnToRampRequiresApproval");
-        Approve(flight);
+        if (approvalStatus == FlightApprovalStatus.Unlocked)
+        {
+            Approve(flight);
+            flight.Unlock(Now).IsSuccess.ShouldBeTrue();
+        }
+
         flight.SaveReturnToRamp(id, Arrival(), null, [], [], _actor, Now).IsSuccess.ShouldBeTrue();
+
+        flight.ApprovalStatus.ShouldBe(approvalStatus);
+        flight.IsApprovalLocked.ShouldBeFalse();
+        flight.ApprovalNumber.ShouldBeNull();
         flight.SaveReturnToRamp(Guid.NewGuid(), Arrival(), null, [], [], _actor, Now).Error.Code.ShouldBe("Operations.ReturnToRamp.OpenExists");
-        flight.ReturnToRamps.Count.ShouldBe(1); flight.LastReturnToRampSequence.ShouldBe(1);
+        flight.ReturnToRamps.ShouldHaveSingleItem().Id.ShouldBe(id);
+        flight.LastReturnToRampSequence.ShouldBe(1);
     }
 
     [Fact]

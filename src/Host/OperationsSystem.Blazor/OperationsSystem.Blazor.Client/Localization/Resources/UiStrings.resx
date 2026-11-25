@@ -800,6 +800,8 @@
   <data name="ReturnsToRamp.Details" xml:space="preserve"><value>RTR Details</value></data>
   <data name="ReturnsToRamp.Add" xml:space="preserve"><value>Add RTR</value></data>
   <data name="ReturnsToRamp.OpenBlocksAdd" xml:space="preserve"><value>Close the open return to ramp before adding another.</value></data>
+  <data name="ReturnsToRamp.SaveDepartureBeforeAdd" xml:space="preserve"><value>Save the departure details before adding an RTR.</value></data>
+  <data name="ReturnsToRamp.AddUnavailable" xml:space="preserve"><value>Add RTR is unavailable for this work order.</value></data>
   <data name="ReturnsToRamp.Open" xml:space="preserve"><value>Open</value></data>
   <data name="ReturnsToRamp.Closed" xml:space="preserve"><value>Closed</value></data>
   <data name="ReturnsToRamp.Draft" xml:space="preserve"><value>Draft</value></data>

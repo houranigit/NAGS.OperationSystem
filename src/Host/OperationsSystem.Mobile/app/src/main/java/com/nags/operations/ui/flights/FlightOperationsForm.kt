@@ -1213,7 +1213,7 @@ internal fun FlightOperationsForm(
                             rtrOccurrences.maxOfOrNull { it.sequence } ?: 0) + 1, arrival = FlightWorkPeriod.now(entryZone)))
                     })
                 }
-                if (!flight.hasCancellationSubmission && (!flight.isApprovalLocked || pendingRtrOccurrences.any { it.isOpen }))
+                if (!flight.hasCancellationSubmission && (flight.departureSubmissions.isEmpty() || pendingRtrOccurrences.any { it.isOpen }))
                     Text(rtrPrerequisiteMessage, Modifier.padding(horizontal = 12.dp),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

@@ -800,6 +800,8 @@
   <data name="ReturnsToRamp.Details" xml:space="preserve"><value>تفاصيل العودة إلى الساحة</value></data>
   <data name="ReturnsToRamp.Add" xml:space="preserve"><value>إضافة عودة إلى الساحة</value></data>
   <data name="ReturnsToRamp.OpenBlocksAdd" xml:space="preserve"><value>أغلق العودة المفتوحة إلى الساحة قبل إضافة عودة أخرى.</value></data>
+  <data name="ReturnsToRamp.SaveDepartureBeforeAdd" xml:space="preserve"><value>احفظ تفاصيل المغادرة قبل إضافة عودة إلى الساحة.</value></data>
+  <data name="ReturnsToRamp.AddUnavailable" xml:space="preserve"><value>لا يمكن إضافة عودة إلى الساحة لأمر العمل هذا.</value></data>
   <data name="ReturnsToRamp.Open" xml:space="preserve"><value>مفتوح</value></data>
   <data name="ReturnsToRamp.Closed" xml:space="preserve"><value>مغلق</value></data>
   <data name="ReturnsToRamp.Draft" xml:space="preserve"><value>مسودة</value></data>

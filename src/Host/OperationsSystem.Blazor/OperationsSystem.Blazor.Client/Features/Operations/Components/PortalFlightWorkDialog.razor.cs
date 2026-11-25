@@ -102,14 +102,31 @@ public partial class PortalFlightWorkDialog
     }
 
     private bool CanDraftReturnToRamp => !ViewOnly &&
-        flight is { IsApprovalLocked: true, CancellationSubmissions.Count: 0, CanSaveReturnsToRamp: true };
+        flight is { CancellationSubmissions.Count: 0, CanSaveReturnsToRamp: true };
 
     private bool ShowAddReturnToRamp => !ViewOnly && flight is { CancellationSubmissions.Count: 0 } data &&
         (data.CanSaveReturnsToRamp || CanEditNormalWork || data.CanApprove);
 
     private bool HasOpenReturn => flight?.ReturnToRamps.Any(item => item.IsOpen) == true || pendingReturns.Any(item => item.IsOpen);
 
-    private bool CanAddReturnToRamp => CanDraftReturnToRamp && ActualDeparture.HasValue && !HasOpenReturn;
+    private bool CanAddReturnToRamp => CanDraftReturnToRamp && flight is { DepartureSubmissions.Count: > 0 } && !HasOpenReturn;
+
+    private string? AddReturnToRampHint
+    {
+        get
+        {
+            if (flight is not { } data || !ShowAddReturnToRamp || CanAddReturnToRamp)
+                return null;
+
+            if (HasOpenReturn)
+                return UiStrings.ReturnsToRamp.OpenBlocksAdd;
+
+            if (data.DepartureSubmissions.Count == 0)
+                return UiStrings.ReturnsToRamp.SaveDepartureBeforeAdd;
+
+            return UiStrings.ReturnsToRamp.AddUnavailable;
+        }
+    }
 
     private bool IsGuidedEntry => flight is
     {
