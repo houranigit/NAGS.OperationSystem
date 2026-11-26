@@ -5,6 +5,7 @@
 @inject OperationsApiClient Operations
 @inject MasterDataApiClient MasterData
 @inject DialogService DialogService
+@inject NotificationService Notifications
 @inject AuthSession Auth
 @inject UserTimeZone UserTimeZone
 
@@ -346,14 +347,23 @@
     private Task OnAppointmentSelect(SchedulerAppointmentSelectEventArgs<CalendarItem> args) =>
         args.Data is { } item ? OpenFlightAsync(item.Flight.Id) : Task.CompletedTask;
 
-    private Task OpenFlightAsync(Guid flightId) =>
-        DialogService.OpenAsync<ScheduleFlightDialog>("Flight details",
+    private async Task OpenFlightAsync(Guid flightId)
+    {
+        var hasUpdatePermission = Auth.HasPermission(OperationsPermissions.FlightsUpdate);
+        var result = await DialogService.OpenAsync<ScheduleFlightDialog>(hasUpdatePermission ? "Edit flight" : "Flight details",
             new Dictionary<string, object?>
             {
                 [nameof(ScheduleFlightDialog.FlightId)] = flightId,
-                [nameof(ScheduleFlightDialog.ViewOnly)] = true
+                [nameof(ScheduleFlightDialog.ViewOnly)] = !hasUpdatePermission
             },
             new DialogOptions { Width = "760px" });
+
+        if (result is true)
+        {
+            Notifications.Notify(NotificationSeverity.Success, "Flight updated");
+            await ReloadAsync();
+        }
+    }
 
     private static void OnAppointmentRender(SchedulerAppointmentRenderEventArgs<CalendarItem> args)
     {
