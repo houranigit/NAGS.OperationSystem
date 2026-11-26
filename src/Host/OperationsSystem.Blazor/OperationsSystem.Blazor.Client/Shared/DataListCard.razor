@@ -144,6 +144,7 @@
                             ColumnReordering="@KeepFrozenColumnInPlace"
                             PageNumbersCount="5" ShowPagingSummary="true" PagingSummaryFormat="@(PageSizeOptions.Any() ? PagingSummaryFormat : TotalCountText)"
                             AllowSorting="@AllowSorting" LoadData="@LoadData" EmptyText="@(EmptyText ?? UiStrings.Common.NoData)"
+                            Template="@RowDetail" ShowExpandColumn="false" ExpandMode="DataGridExpandMode.Single" RowRender="@RowRender"
                             SelectionMode="DataGridSelectionMode.Single" @bind-Value="@selection"
                             GridLines="DataGridGridLines.Horizontal">
                 <Columns>
@@ -177,6 +178,11 @@
 
     /// <summary>Column definitions (RadzenDataGridColumn) for the concrete <typeparamref name="TItem"/>.</summary>
     [Parameter] public RenderFragment? Columns { get; set; }
+
+    /// <summary>Optional contextual content shown below a row opened by the page.</summary>
+    [Parameter] public RenderFragment<TItem>? RowDetail { get; set; }
+
+    [Parameter] public Action<RowRenderEventArgs<TItem>>? RowRender { get; set; }
 
     /// <summary>Cell content for the pinned trailing actions column. Omit to hide the column.</summary>
     [Parameter] public RenderFragment<TItem>? RowActions { get; set; }
@@ -284,6 +290,14 @@
         else
             await LoadData.InvokeAsync(new LoadDataArgs { Skip = 0, Top = PageSize });
     }
+
+    public Task OpenRowDetailAsync(TItem item) => grid is not null && !grid.IsRowExpanded(item)
+        ? grid.ExpandRow(item)
+        : Task.CompletedTask;
+
+    public Task CloseRowDetailAsync(TItem item) => grid is not null && grid.IsRowExpanded(item)
+        ? grid.CollapseRows([item])
+        : Task.CompletedTask;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

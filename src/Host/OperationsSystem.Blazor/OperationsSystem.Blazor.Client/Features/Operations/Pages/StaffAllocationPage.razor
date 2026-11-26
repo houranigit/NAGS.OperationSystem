@@ -1,0 +1,136 @@
+@page "/operations/staff-allocation"
+
+<PageTitle>Staff allocation</PageTitle>
+
+<RequirePermission Permission="@MasterDataPermissions.StaffAllocationView">
+    <div class="os-list-page sa-page">
+        <PageHeader Title="Staff allocation" Section="@UiStrings.Nav.Operations" />
+
+        @if (!Auth.HasGlobalReadScope)
+        {
+            <ErrorState Message="Staff allocation across stations requires global read access." />
+        }
+        else
+        {
+            <DataListCard @ref="list" TItem="StaffAllocationMember" Data="@items" Count="@totalCount"
+                          IsLoading="@isLoading" HasError="@loadError" ErrorMessage="Could not load staff allocation." OnRetry="@RefreshAsync"
+                          LoadData="@LoadDataAsync" PageSize="@currentPageSize" PageSizeReady="@pageSizeReady"
+                          PageSizeChanged="@OnPageSizeChangedAsync" ColumnLayoutKey="@GridKey" AllowSorting="false"
+                          SearchValue="@searchTerm" SearchValueChanged="@(value => searchTerm = value)" OnSearch="@ReloadGridAsync"
+                          SearchPlaceholder="Search staff" CountLabel="staff" PageSizeText="@($"{totalCount:N0} staff")"
+                          EmptyText="No staff match your filters." UseCollapsibleFilters="true"
+                          ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync" RowRender="@RenderStaffRow">
+                <Toolbar>
+                    @if (moveError is not null)
+                    {
+                        <div class="sa-reassign-status sa-reassign-status--error" role="alert">
+                            <RadzenIcon Icon="error_outline" />
+                            <span>@moveError</span>
+                        </div>
+                    }
+                    else if (moveSuccess is not null)
+                    {
+                        <div class="sa-reassign-status" role="status">
+                            <RadzenIcon Icon="check" />
+                            <span>@moveSuccess</span>
+                        </div>
+                    }
+                </Toolbar>
+
+                <Filters>
+                    <div class="sa-filters">
+                        <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions"
+                                        Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
+                        <DataListFilter TValue="Guid?" Placeholder="All manpower types" Data="@manpowerOptions"
+                                        Value="@manpowerFilter" ValueChanged="@OnManpowerFilterChangedAsync" />
+                        <DataListFilter TValue="Guid?" Placeholder="All licenses" Data="@licenseOptions"
+                                        Value="@licenseFilter" ValueChanged="@OnLicenseFilterChangedAsync" />
+                    </div>
+                </Filters>
+
+                <Columns>
+                    <RadzenDataGridColumn TItem="StaffAllocationMember" UniqueID="employee" Title="Employee" Width="30%" MinWidth="200px">
+                        <Template Context="member">
+                            <div class="sa-staff-cell">
+                                <span class="sa-staff-icon" aria-hidden="true"><RadzenIcon Icon="person" /></span>
+                                <span class="sa-staff-identity">
+                                    <strong class="sa-staff-name">@member.FullName</strong>
+                                    <span class="sa-staff-id">@member.EmployeeId</span>
+                                </span>
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="StaffAllocationMember" Property="ManpowerTypeName" Title="Manpower type" Width="24%" MinWidth="155px" />
+                    <RadzenDataGridColumn TItem="StaffAllocationMember" UniqueID="licenses" Title="Licenses" MinWidth="155px">
+                        <Template Context="member">
+                            @if (member.Licenses.Count == 0)
+                            {
+                                <span class="sa-no-license">No licenses recorded</span>
+                            }
+                            else
+                            {
+                                <div class="sa-licenses">
+                                    @foreach (var license in member.Licenses)
+                                    {
+                                        <span class="sa-license" title="@($"{license.Name} · {license.LicenseNumber}")">@license.Code</span>
+                                    }
+                                </div>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="StaffAllocationMember" UniqueID="station" Title="Primary station" Width="208px" MinWidth="170px">
+                        <Template Context="member">
+                            @{
+                                stationsById.TryGetValue(member.StationId, out var station);
+                            }
+                            @if (CanReassignStaff && station is not null)
+                            {
+                                <div @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
+                                    <select class="sa-station-select" value="@SelectedStationId(member)" disabled="@(isLoading || isMoving || stations.Count < 2)"
+                                            aria-label="@($"Primary station for {member.FullName}")" title="@station.Name"
+                                            @onchange="@(args => SelectDestinationAsync(member, args))">
+                                        @foreach (var option in stations)
+                                        {
+                                            <option value="@option.Id" title="@option.Name">@StationLabel(option)</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+                            else
+                            {
+                                <span title="@station?.Name">@(station is null ? "—" : StationLabel(station))</span>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+
+                <RowDetail Context="member">
+                    @if (pendingMove is { } move && move.Member.Id == member.Id)
+                    {
+                        <div class="sa-reassign" role="group" aria-label="Confirm station change" aria-busy="@(isMoving ? "true" : "false")"
+                             @onclick:stopPropagation="true">
+                            <div class="sa-reassign-copy">
+                                <div class="sa-reassign-summary">
+                                    Move <strong>@member.FullName</strong> from <strong>@move.Origin.IataCode</strong> to <strong>@move.Destination.IataCode</strong>?
+                                </div>
+                                @if (move.CoverageWarnings.Count > 0)
+                                {
+                                    <div class="sa-reassign-warning">
+                                        <RadzenIcon Icon="warning_amber" />
+                                        <span>No other staff at @move.Origin.IataCode with @string.Join(", ", move.CoverageWarnings).</span>
+                                    </div>
+                                }
+                            </div>
+                            <div class="sa-reassign-actions">
+                                <button class="sa-reassign-cancel" type="button" disabled="@isMoving" @onclick="@CancelMoveAsync">Cancel</button>
+                                <button class="sa-reassign-confirm" type="button" disabled="@isMoving" @onclick="@ConfirmMoveAsync">
+                                    @(isMoving ? "Moving…" : "Confirm move")
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </RowDetail>
+            </DataListCard>
+        }
+    </div>
+</RequirePermission>

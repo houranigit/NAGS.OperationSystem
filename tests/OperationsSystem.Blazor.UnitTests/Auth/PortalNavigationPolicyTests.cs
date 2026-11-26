@@ -28,6 +28,18 @@ public sealed class PortalNavigationPolicyTests
     }
 
     [Fact]
+    public void Staff_allocation_viewer_can_land_on_the_grid_and_open_a_direct_link()
+    {
+        const string route = "/operations/staff-allocation";
+        var permissions = new[] { MasterDataPermissions.StaffAllocationView };
+
+        PortalNavigationPolicy.ResolvePostLogin(UserTypes.ViewerOnly, permissions, null)
+            .ShouldBe(route);
+        PortalNavigationPolicy.IsRouteAuthorized(route, permissions)
+            .ShouldBeTrue();
+    }
+
+    [Fact]
     public void Landing_order_is_deterministic_and_follows_the_navigation_catalog()
     {
         var permissions = new[]
@@ -61,6 +73,7 @@ public sealed class PortalNavigationPolicyTests
     [InlineData("/operations/dashboard")]
     [InlineData("/operations/calendar")]
     [InlineData("/operations/work-orders")]
+    [InlineData("/operations/staff-allocation")]
     [InlineData("/operations/flights/00000000-0000-0000-0000-000000000001")]
     [InlineData("/unknown")]
     public void Unauthorized_or_unknown_viewer_return_url_falls_back_to_landing(string returnUrl)

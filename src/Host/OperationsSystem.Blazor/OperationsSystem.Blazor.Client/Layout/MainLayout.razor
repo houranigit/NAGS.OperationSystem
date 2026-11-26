@@ -103,7 +103,9 @@
             <AuthorizeView Context="operations">
                 @{
                     var canOpsFlights = operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsView);
-                    var canOperations = canOpsFlights;
+                    var canStaffAllocation = Auth.HasGlobalReadScope
+                        && operations.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, MasterDataPermissions.StaffAllocationView);
+                    var canOperations = canOpsFlights || canStaffAllocation;
                     var operationsActive = IsNavGroupActive("operations");
                 }
                 @if (canOperations)
@@ -127,6 +129,13 @@
                                 <NavLink href="/operations/flights" class="os-nav-link" title="Flights" @onclick="CloseNav">
                                     <RadzenIcon Icon="flight" />
                                     <span>Flights</span>
+                                </NavLink>
+                            }
+                            @if (canStaffAllocation)
+                            {
+                                <NavLink href="/operations/staff-allocation" class="os-nav-link" title="Staff allocation" @onclick="CloseNav">
+                                    <RadzenIcon Icon="group_work" />
+                                    <span>Staff allocation</span>
                                 </NavLink>
                             }
                         </div>

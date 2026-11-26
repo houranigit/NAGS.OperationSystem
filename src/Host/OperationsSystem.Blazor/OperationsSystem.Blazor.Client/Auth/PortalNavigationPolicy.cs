@@ -19,6 +19,7 @@ public static class PortalNavigationPolicy
         new("/roles", IdentityPermissions.RolesView),
         new("/audit", AuditPermissions.TrailsView),
         new("/operations/flights", OperationsPermissions.FlightsView),
+        new("/operations/staff-allocation", MasterDataPermissions.StaffAllocationView),
         new("/master-data/countries", MasterDataPermissions.CountriesView),
         new("/master-data/manpower-types", MasterDataPermissions.ManpowerTypesView),
         new("/master-data/licenses", MasterDataPermissions.LicensesView),
@@ -84,6 +85,8 @@ public static class PortalNavigationPolicy
 
         if (path == "operations/flights")
             return granted.Contains(OperationsPermissions.FlightsView);
+        if (path == "operations/staff-allocation")
+            return granted.Contains(MasterDataPermissions.StaffAllocationView);
 
         if (IsListOrGuidDetail(path, "users"))
             return granted.Contains(IdentityPermissions.UsersView);
