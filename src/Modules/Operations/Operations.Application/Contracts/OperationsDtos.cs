@@ -52,7 +52,9 @@ public sealed record FlightListItemDto(
     bool HasWorkOrderRecords = false,
     string? CancellationType = null,
     int ServiceRecordCount = 0,
-    int TaskRecordCount = 0);
+    int TaskRecordCount = 0,
+    bool HasOpenServiceRecords = false,
+    bool HasOpenTaskRecords = false);
 
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId)

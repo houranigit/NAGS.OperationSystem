@@ -248,8 +248,8 @@
     /// <summary>Opts in to resizable, reorderable columns with an account-specific saved layout.</summary>
     [Parameter] public string? ColumnLayoutKey { get; set; }
 
-    /// <summary>Restores saved column widths from the previous layout when the current layout has no preferences.</summary>
-    [Parameter] public string? PreviousColumnLayoutKey { get; set; }
+    /// <summary>Looks for legacy layouts in order to restore saved column widths when the current layout has no preferences.</summary>
+    [Parameter] public IReadOnlyList<string> PreviousColumnLayoutKeys { get; set; } = [];
 
     [Parameter] public bool AllowSorting { get; set; } = true;
 
@@ -312,8 +312,11 @@
 
         columnPreferencesRequested = true;
         var savedLayout = await GridPrefs.GetColumnLayoutAsync(key, userId);
-        if (savedLayout is null && PreviousColumnLayoutKey is { } previousKey)
+        foreach (var previousKey in PreviousColumnLayoutKeys)
         {
+            if (savedLayout is not null)
+                break;
+
             savedLayout = await GridPrefs.GetColumnLayoutAsync(previousKey, userId);
             if (savedLayout is not null)
             {

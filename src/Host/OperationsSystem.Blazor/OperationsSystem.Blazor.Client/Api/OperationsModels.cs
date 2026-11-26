@@ -31,7 +31,9 @@ public sealed record FlightListItem(
     bool HasWorkOrderRecords = false,
     string? CancellationType = null,
     int ServiceRecordCount = 0,
-    int TaskRecordCount = 0)
+    int TaskRecordCount = 0,
+    bool HasOpenServiceRecords = false,
+    bool HasOpenTaskRecords = false)
 {
     internal const string AutoClosedStatus = "AutoClosed";
 

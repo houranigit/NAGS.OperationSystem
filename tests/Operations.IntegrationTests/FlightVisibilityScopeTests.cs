@@ -364,13 +364,22 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
                 var closedReturn = flight.StartReturnToRamp(
                     RtrArrivalDetails.Create(now.AddMinutes(-25), employee, null).Value, userId, now).Value;
                 var workWindow = TimeWindow.Create(now.AddMinutes(-24), now.AddMinutes(-21)).Value;
+                flight.AddService(new(refs.ServiceId, "Service"), null, workWindow, null, userId, now, closedReturn.Id,
+                    [new(employee, workWindow)]).IsSuccess.ShouldBeTrue();
                 flight.AddTask(FlightTaskType.Minor, null, null, workWindow, null, userId, now, closedReturn.Id,
                     [new(employee, workWindow)]).IsSuccess.ShouldBeTrue();
                 flight.CloseReturnToRamp(closedReturn.Id, RtrDepartureDetails.Create(now.AddMinutes(-20), null, employee, null).Value,
                     userId, now).IsSuccess.ShouldBeTrue();
                 if (status == "ReturnedToRamp")
-                    flight.StartReturnToRamp(RtrArrivalDetails.Create(actualReturn, employee, null).Value,
-                        userId, now).IsSuccess.ShouldBeTrue();
+                {
+                    var openReturn = flight.StartReturnToRamp(RtrArrivalDetails.Create(actualReturn, employee, null).Value,
+                        userId, now).Value;
+                    var openWindow = TimeWindow.Create(actualReturn.AddMinutes(1), null).Value;
+                    flight.AddService(new(refs.ServiceId, "Service"), null, openWindow, null, userId, now, openReturn.Id,
+                        [new(employee, openWindow)]).IsSuccess.ShouldBeTrue();
+                    flight.AddTask(FlightTaskType.Minor, null, null, openWindow, null, userId, now, openReturn.Id,
+                        [new(employee, openWindow)]).IsSuccess.ShouldBeTrue();
+                }
             }
             if (status is "Canceled" or "Conflict")
             {
@@ -416,7 +425,12 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         completeWork.CancellationType.ShouldBeNull();
         completeWork.HasWorkOrderRecords.ShouldBeTrue();
         completeWork.TaskRecordCount.ShouldBe(1);
-        completeWork.ServiceRecordCount.ShouldBe(0);
+        completeWork.ServiceRecordCount.ShouldBe(1);
+        completeWork.HasOpenServiceRecords.ShouldBeFalse();
+        completeWork.HasOpenTaskRecords.ShouldBeFalse();
+        var returnWithOpenWork = orderPage.Items.Single(item => item.FlightNumber == "7706");
+        returnWithOpenWork.HasOpenServiceRecords.ShouldBeTrue();
+        returnWithOpenWork.HasOpenTaskRecords.ShouldBeTrue();
         var cancellation = orderPage.Items.Single(item => item.FlightNumber == "7707");
         cancellation.HasWorkOrderRecords.ShouldBeFalse();
         cancellation.HasCancellationSubmission.ShouldBeTrue();
@@ -428,8 +442,14 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         nextOrders.Items.First().HasCancellationSubmission.ShouldBeTrue();
         nextOrders.Items.First().CancellationType.ShouldBe(nameof(CancellationType.Unplanned));
         nextOrders.Items.ShouldAllBe(item => item.HasWorkOrderRecords);
-        nextOrders.Items.Single(item => item.FlightNumber == "7709").ServiceRecordCount.ShouldBe(1);
-        nextOrders.Items.Single(item => item.FlightNumber == "7710").TaskRecordCount.ShouldBe(1);
+        var serviceOnly = nextOrders.Items.Single(item => item.FlightNumber == "7709");
+        serviceOnly.ServiceRecordCount.ShouldBe(1);
+        serviceOnly.HasOpenServiceRecords.ShouldBeTrue();
+        serviceOnly.HasOpenTaskRecords.ShouldBeFalse();
+        var taskOnly = nextOrders.Items.Single(item => item.FlightNumber == "7710");
+        taskOnly.TaskRecordCount.ShouldBe(1);
+        taskOnly.HasOpenServiceRecords.ShouldBeFalse();
+        taskOnly.HasOpenTaskRecords.ShouldBeTrue();
         var withoutOrders = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{path}&hasOperationalRecords=false"))!;
         withoutOrders.Items.Select(item => item.FlightNumber).ShouldBe(["7701", "7702", "7703"]);
 

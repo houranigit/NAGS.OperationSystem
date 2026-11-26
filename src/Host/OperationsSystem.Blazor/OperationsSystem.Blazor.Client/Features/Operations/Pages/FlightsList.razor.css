@@ -209,6 +209,24 @@
 
 .ofl-order-time > .ofl-order-on-ground {
     color: var(--os-color-flight-on-ground);
+    font-weight: 600;
+}
+
+.ofl-order-work > .ofl-order-open-work {
+    color: var(--os-color-flight-on-ground);
+}
+
+.ofl-order-time > .ofl-order-difference {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.ofl-order-time > .ofl-order-early {
+    color: color-mix(in srgb, var(--os-color-success) 90%, var(--os-color-text));
+}
+
+.ofl-order-time > .ofl-order-late {
+    color: var(--os-color-danger);
 }
 
 .ofl-order-unissued {
@@ -246,38 +264,22 @@
 .ofl-cancellation-summary {
     position: sticky;
     inset-inline-start: var(--os-space-2);
-    display: flex;
+    display: grid;
+    grid-template-columns: 1rem minmax(0, 1fr);
     align-items: center;
-    flex-wrap: wrap;
-    gap: var(--os-space-1) var(--os-space-3);
+    column-gap: var(--os-space-1);
+    inline-size: max-content;
     max-inline-size: calc(100cqi - 84px - 2 * var(--os-space-2));
     padding-block: var(--os-space-1);
-    color: var(--os-color-text);
-}
-
-.ofl-cancellation-type,
-.ofl-cancellation-identity {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--os-space-1);
-}
-
-.ofl-cancellation-type,
-.ofl-cancellation-summary > time {
     color: var(--os-color-danger);
 }
 
-.ofl-cancellation-type ::deep .rzi {
+.ofl-cancellation-summary ::deep .rzi {
     font-size: 1rem;
 }
 
 .ofl-cancellation-summary > time {
+    grid-column: 2;
     font-size: var(--os-text-xs);
     font-variant-numeric: tabular-nums;
-}
-
-.ofl-cancellation-identity > span {
-    color: var(--os-color-text-muted);
-    overflow-wrap: anywhere;
 }
