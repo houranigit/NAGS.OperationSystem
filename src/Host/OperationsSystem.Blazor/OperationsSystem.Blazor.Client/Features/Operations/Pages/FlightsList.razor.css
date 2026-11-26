@@ -207,7 +207,7 @@
     color: var(--os-color-text-muted);
 }
 
-.ofl-order-time > .ofl-order-on-ground {
+.ofl-order-time > .ofl-order-ongoing {
     color: var(--os-color-flight-on-ground);
     font-weight: 600;
 }
@@ -239,10 +239,6 @@
     text-overflow: ellipsis;
 }
 
-.ofl-work-orders ::deep .rz-data-grid-data {
-    container-type: inline-size;
-}
-
 .ofl-work-orders ::deep .os-list-toolbar--collapsible .os-list-toolbar-filters {
     gap: var(--os-space-2);
 }
@@ -255,6 +251,10 @@
     background: color-mix(in srgb, var(--os-color-danger-bg) 42%, var(--os-color-surface));
 }
 
+.ofl-work-orders ::deep .rz-grid-table tbody > tr:has(.ofl-conflict-cell) > td {
+    background: color-mix(in srgb, var(--os-color-danger-bg) 78%, var(--os-color-surface));
+}
+
 .ofl-work-orders ::deep .rz-grid-table .ofl-cancellation-cell,
 .ofl-work-orders ::deep .ofl-cancellation-cell .rz-cell-data {
     overflow: visible;
@@ -262,24 +262,32 @@
 }
 
 .ofl-cancellation-summary {
-    position: sticky;
-    inset-inline-start: var(--os-space-2);
-    display: grid;
-    grid-template-columns: 1rem minmax(0, 1fr);
+    display: flex;
     align-items: center;
-    column-gap: var(--os-space-1);
+    gap: var(--os-space-2);
     inline-size: max-content;
-    max-inline-size: calc(100cqi - 84px - 2 * var(--os-space-2));
+    max-inline-size: 100%;
     padding-block: var(--os-space-1);
     color: var(--os-color-danger);
+    white-space: nowrap;
+}
+
+.ofl-conflict-summary {
+    color: var(--os-color-danger-strong);
 }
 
 .ofl-cancellation-summary ::deep .rzi {
+    flex-shrink: 0;
     font-size: 1rem;
 }
 
+.ofl-cancellation-summary > strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .ofl-cancellation-summary > time {
-    grid-column: 2;
+    flex-shrink: 0;
     font-size: var(--os-text-xs);
     font-variant-numeric: tabular-nums;
 }

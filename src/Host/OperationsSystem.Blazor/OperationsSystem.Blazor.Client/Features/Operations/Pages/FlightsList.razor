@@ -131,9 +131,9 @@
                     <RadzenDataGridColumn TItem="FlightListItem" UniqueID="@ScheduledTimesColumnId" Title="S. Times"
                                           Sortable="false" Reorderable="false" Width="180px">
                         <Template Context="flight">
-                            @if (IsCancellationOnly(flight))
+                            @if (ShowsOrderAlert(flight))
                             {
-                                @CancellationSummary(flight)
+                                @OrderAlert(flight)
                             }
                             else
                             {
@@ -151,7 +151,7 @@
                             @{ var zone = StationTimeZone.FromId(flight.StationTimeZoneId); }
                             <div class="ofl-order-times">
                                 @OrderTime("ATA", flight.ActualArrivalUtc, zone, flight.ScheduledArrivalUtc)
-                                @OrderTime("ATD", flight.ActualDepartureUtc, zone, flight.ScheduledDepartureUtc, showOnGround: true)
+                                @OrderTime("ATD", flight.ActualDepartureUtc, zone, flight.ScheduledDepartureUtc, showOngoing: true)
                             </div>
                         </Template>
                     </RadzenDataGridColumn>
@@ -178,10 +178,11 @@
                 <RadzenDataGridColumn TItem="FlightListItem" Property="@nameof(FlightListItem.ApprovalStatus)" UniqueID="approval-status"
                                       Title="Status" Sortable="@WorkOrdersOnly" Reorderable="@(!WorkOrdersOnly)" Width="160px">
                     <Template Context="flight">
-                        @{
+                        @if (!WorkOrdersOnly || !IsConflict(flight))
+                        {
                             var approval = ApprovalBadge(flight.ApprovalStatus);
+                            <StatusBadge Label="@approval.Label" Tone="@approval.Tone" Icon="@approval.Icon" />
                         }
-                        <StatusBadge Label="@approval.Label" Tone="@approval.Tone" Icon="@approval.Icon" />
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="FlightListItem" Property="@nameof(FlightListItem.WorkOrderNumber)" UniqueID="work-order"
@@ -191,10 +192,6 @@
                         @if (WorkOrdersOnly)
                         {
                             @WorkOrderNumber(flight)
-                            @if (flight.HasCancellationSubmission && flight.HasWorkOrderRecords)
-                            {
-                                <span class="ofl-order-meta" title="@ConflictDetails(flight)">Work &amp; cancellation</span>
-                            }
                         }
                         else if (flight.WorkOrderNumber is { } number)
                         {
@@ -324,18 +321,22 @@
 
     private string ResultCountText => WorkOrdersOnly ? $"{totalCount:N0} {CountLabel}" : UiStrings.Flights.TotalCount(totalCount);
 
-    private static bool IsCancellationOnly(FlightListItem flight) => flight.HasCancellationSubmission && !flight.HasWorkOrderRecords;
+    private static bool IsConflict(FlightListItem flight) =>
+        flight.Status == "Conflict" || (flight.HasCancellationSubmission && flight.HasWorkOrderRecords);
+
+    private static bool ShowsOrderAlert(FlightListItem flight) =>
+        IsConflict(flight) || (flight.HasCancellationSubmission && !flight.HasWorkOrderRecords);
 
     private static void RenderWorkOrderCell(DataGridCellRenderEventArgs<FlightListItem> args)
     {
-        if (args.Data is not { } flight || !IsCancellationOnly(flight) || args.Column is not { } column)
+        if (args.Data is not { } flight || !ShowsOrderAlert(flight) || args.Column is not { } column)
             return;
 
         if (column.UniqueID == ScheduledTimesColumnId)
         {
             args.Attributes["colspan"] = column.Grid.ColumnsCollection.Count(item => item.GetVisible()
                 && item.UniqueID is ScheduledTimesColumnId or ActualTimesColumnId or RecordedWorkColumnId);
-            args.Attributes["class"] = "ofl-cancellation-cell";
+            args.Attributes["class"] = IsConflict(flight) ? "ofl-cancellation-cell ofl-conflict-cell" : "ofl-cancellation-cell";
         }
         else if (column.UniqueID is ActualTimesColumnId or RecordedWorkColumnId)
         {
@@ -350,15 +351,22 @@
         _ => "Cancellation order"
     };
 
-    private static RenderFragment CancellationSummary(FlightListItem flight) =>
-        @<div class="ofl-cancellation-summary">
-            <RadzenIcon Icon="event_busy" aria-hidden="true" />
-            <strong>@CancellationLabel(flight.CancellationType)</strong>
+    private static RenderFragment OrderAlert(FlightListItem flight)
+    {
+        var conflict = IsConflict(flight);
+        var label = conflict
+            ? (flight.HasCancellationSubmission ? "Work and cancellation conflict" : "Conflicting reports")
+            : CancellationLabel(flight.CancellationType);
+
+        return @<div class="ofl-cancellation-summary @(conflict ? "ofl-conflict-summary" : null)">
+            <RadzenIcon Icon="@(conflict ? "error_outline" : "event_busy")" aria-hidden="true" />
+            <strong title="@label">@label</strong>
             @if (flight.CanceledAtUtc is { } canceledAt)
             {
-                <time datetime="@canceledAt.ToString("O")">@StationTimeZone.FromId(flight.StationTimeZoneId).Format(canceledAt, "dd MMM yyyy HH:mm")</time>
+                <time datetime="@canceledAt.ToString("O")" title="Cancellation time">@StationTimeZone.FromId(flight.StationTimeZoneId).Format(canceledAt, "dd MMM yyyy HH:mm")</time>
             }
         </div>;
+    }
 
     private static RenderFragment WorkOrderNumber(FlightListItem flight) =>
         @<text>
@@ -373,7 +381,7 @@
         </text>;
 
     private static RenderFragment OrderTime(string label, DateTimeOffset? timestamp, StationTimeZone zone,
-        DateTimeOffset? scheduled = null, bool showOnGround = false) =>
+        DateTimeOffset? scheduled = null, bool showOngoing = false) =>
         @<div class="ofl-order-time">
             <span>@label</span>
             @if (timestamp is { } value)
@@ -384,9 +392,9 @@
                     @ScheduleDifference(value - scheduledTime)
                 }
             }
-            else if (showOnGround)
+            else if (showOngoing)
             {
-                <span class="ofl-order-on-ground">Still on ground</span>
+                <span class="ofl-order-ongoing">Ongoing</span>
             }
             else
             {
@@ -401,17 +409,12 @@
             }
             @if (minutes != 0)
             {
-                var (hours, remainder) = Math.DivRem(Math.Abs(minutes), 60);
-                var duration = hours == 0 ? $"{remainder}m" : remainder == 0 ? $"{hours}h" : $"{hours}h {remainder}m";
+                var duration = FlightStatusTime.Elapsed(TimeSpan.FromMinutes(Math.Abs(minutes)));
                 var late = minutes > 0;
                 <span class="ofl-order-difference @(late ? "ofl-order-late" : "ofl-order-early")"
                       title="@($"{duration} {(late ? "late" : "early")}")">@(late ? "+" : "−")@duration</span>
             }
         </text>;
-
-    private static string ConflictDetails(FlightListItem flight) => flight.CanceledAtUtc is { } timestamp
-        ? $"{CancellationLabel(flight.CancellationType)} · {StationTimeZone.FromId(flight.StationTimeZoneId).Format(timestamp, "dd MMM yyyy HH:mm")}"
-        : "Work and cancellation orders";
 
     private int ActiveFilterCount =>
         (stationFilter.HasValue ? 1 : 0)

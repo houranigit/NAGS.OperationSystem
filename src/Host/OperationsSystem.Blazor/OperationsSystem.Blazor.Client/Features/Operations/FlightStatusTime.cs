@@ -53,7 +53,7 @@ internal static class FlightStatusTime
     private static string Date(FlightListItem flight, DateTimeOffset timestamp) =>
         StationTimeZone.FromId(flight.StationTimeZoneId).Format(timestamp, "MMM d, yyyy");
 
-    private static string Elapsed(TimeSpan elapsed)
+    internal static string Elapsed(TimeSpan elapsed)
     {
         if (elapsed.Days > 0)
             return elapsed.Hours > 0 ? $"{elapsed.Days}d {elapsed.Hours}h" : $"{elapsed.Days}d";
