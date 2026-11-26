@@ -258,7 +258,7 @@ Whitespace is trimmed; clearing the portal field removes the mapping. Older clie
 omit the field preserve any existing mapping. Protected system records allow mapping-only
 edits while their names, classification, and lifecycle protections remain in force.
 
-The current Operations baseline does not expose the former flight/billing exports, submission emails, RTR workflows, or operational ATA task selection. MasterData catalog administration and historical migration files remain available independently. Earlier rollout instructions for retired Operations features are superseded by the scheduling baseline above.
+The current Operations baseline does not expose the former submission emails, RTR workflows, or operational ATA task selection. The Flights register provides the Excel, CSV, PDF, and Billing exports documented in [Operations Module Foundation](../modules/operations-foundation.md). MasterData catalog administration and historical migration files remain available independently. Earlier rollout instructions for retired Operations features are superseded by the scheduling baseline above.
 
 ## SQL performance settings
 

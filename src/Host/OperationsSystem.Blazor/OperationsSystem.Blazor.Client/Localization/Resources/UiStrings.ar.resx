@@ -769,6 +769,16 @@
   <data name="PortalAccess.PendingLoginEmailDetail" xml:space="preserve"><value>بانتظار تأكيد {0} قبل تغيير بريد تسجيل الدخول المرتبط.</value></data>
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>فشل تغيير بريد تسجيل الدخول</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>تعذر على الهوية بدء التحقق: {0}</value></data>
+  <data name="Flights.Export" xml:space="preserve"><value>تصدير</value></data>
+  <data name="Flights.Exporting" xml:space="preserve"><value>جارٍ التصدير...</value></data>
+  <data name="Flights.ExcelWorkbook" xml:space="preserve"><value>مصنف Excel (.xlsx)</value></data>
+  <data name="Flights.CsvFile" xml:space="preserve"><value>ملف CSV (.csv)</value></data>
+  <data name="Flights.PdfReport" xml:space="preserve"><value>تقرير PDF (.pdf)</value></data>
+  <data name="Flights.ExportBilling" xml:space="preserve"><value>تصدير تقرير الفوترة</value></data>
+  <data name="Flights.ExportReady" xml:space="preserve"><value>تم تجهيز التصدير</value></data>
+  <data name="Flights.ExportReadyDetail" xml:space="preserve"><value>تم تنزيل {0}.</value></data>
+  <data name="Flights.ExportFailed" xml:space="preserve"><value>تعذر التصدير</value></data>
+  <data name="Flights.ExportFailedDetail" xml:space="preserve"><value>تعذر إنشاء ملف التصدير. يرجى المحاولة مرة أخرى.</value></data>
   <data name="Flights.UnlockToUpdate" xml:space="preserve"><value>فتح القفل للتعديل…</value></data>
   <data name="Flights.UploadSignature" xml:space="preserve"><value>رفع توقيع بصيغة PNG</value></data>
   <data name="Flights.ReplaceSignature" xml:space="preserve"><value>استبدال التوقيع بصيغة PNG</value></data>

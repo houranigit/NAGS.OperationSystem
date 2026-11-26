@@ -10,14 +10,29 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null,
         string? sort = null, CancellationToken ct = default, IReadOnlyList<string>? statuses = null, string? flightType = null)
     {
-        var query = new QueryBuilder()
-            .Add("page", page).Add("pageSize", pageSize).Add("search", search)
+        var query = WithFlightFilters(new QueryBuilder().Add("page", page).Add("pageSize", pageSize),
+            search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, flightType).Build();
+        return api.GetAsync<PagedResult<FlightListItem>>($"/operations/flights{query}", ct);
+    }
+
+    public Task DownloadFlightsExportAsync(string format, string? search, Guid? stationId, Guid? customerId,
+        Guid? operationTypeId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, string? sort,
+        IReadOnlyList<string>? statuses, string? flightType, string? report = null, CancellationToken ct = default)
+    {
+        var query = WithFlightFilters(new QueryBuilder().Add("format", format),
+            search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, flightType)
+            .Add("report", report).Build();
+        return api.DownloadFileAsync($"/operations/flights/export{query}", cancellationToken: ct);
+    }
+
+    private static QueryBuilder WithFlightFilters(QueryBuilder query, string? search, Guid? stationId, Guid? customerId,
+        Guid? operationTypeId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, string? sort,
+        IReadOnlyList<string>? statuses, string? flightType) => query
+            .Add("search", search)
             .Add("stationId", stationId).Add("customerId", customerId).Add("operationTypeId", operationTypeId)
             .Add("status", statuses is { Count: > 0 } ? string.Join(',', statuses) : null)
             .Add("flightType", flightType)
-            .Add("fromUtc", fromUtc).Add("toUtc", toUtc).Add("sort", sort).Build();
-        return api.GetAsync<PagedResult<FlightListItem>>($"/operations/flights{query}", ct);
-    }
+            .Add("fromUtc", fromUtc).Add("toUtc", toUtc).Add("sort", sort);
 
     public Task<FlightDetail> GetFlightAsync(Guid id, CancellationToken ct = default) =>
         api.GetAsync<FlightDetail>($"/operations/flights/{id}", ct);

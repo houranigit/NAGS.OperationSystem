@@ -50,15 +50,10 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             new FlightListFilter(request.Search, request.StationId, request.CustomerId,
                 request.OperationTypeId, request.FromUtc, request.ToUtc));
         var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
-        var dueSoonBy = now.AddMinutes(30);
-        // Mobile excludes auto-closed flights. Keep the remaining status rules in sync with Android.
         var query =
-            from flight in FlightListQuery.ApplySort(flights, request.Sort)
-            let hasArrival = flight.ArrivalSubmissions.Any()
-            let hasDeparture = flight.DepartureSubmissions.Any()
-            let hasCancellation = flight.CancellationSubmissions.Any()
-            let isAdHocFlight = flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType
-            let isPerLanding = flight.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
+            from match in FlightListQuery.MatchReportFilters(
+                FlightListQuery.ApplySort(flights, request.Sort), request.FlightType, request.Statuses, now)
+            let flight = match.Flight
             select new
             {
                 flight.Id,
@@ -71,45 +66,27 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 OperationTypeName = flight.OperationType.Name,
                 ScheduledArrivalUtc = flight.Schedule.Sta,
                 ScheduledDepartureUtc = flight.Schedule.Std,
-                IsAdHocFlight = isAdHocFlight,
-                IsPerLanding = isPerLanding,
-                IsOnCall = !isAdHocFlight && isPerLanding && flight.ServiceRecords.Any(),
+                match.IsAdHocFlight,
+                match.IsPerLanding,
+                match.IsOnCall,
                 ActualArrivalUtc = flight.ArrivalSubmissions.OrderByDescending(arrival => arrival.IsAccepted)
                     .ThenBy(arrival => arrival.CreatedAtUtc).ThenBy(arrival => arrival.Id)
                     .Select(arrival => (DateTimeOffset?)arrival.Details.Ata).FirstOrDefault(),
                 ReturnedToRampUtc = flight.ReturnToRamps.Where(ramp => ramp.DepartureDetails == null)
                     .Select(ramp => (DateTimeOffset?)ramp.ArrivalDetails.ArrivedAtUtc).FirstOrDefault(),
                 AircraftTypeModel = flight.AircraftType == null ? null : flight.AircraftType!.Model,
-                HasArrivalSubmission = hasArrival,
-                HasDepartureSubmission = hasDeparture,
-                HasCancellationSubmission = hasCancellation,
-                HasOperationalRecords = hasArrival || hasDeparture || hasCancellation ||
+                match.HasArrivalSubmission,
+                match.HasDepartureSubmission,
+                match.HasCancellationSubmission,
+                HasOperationalRecords = match.HasArrivalSubmission || match.HasDepartureSubmission || match.HasCancellationSubmission ||
                     flight.ServiceRecords.Any() || flight.TaskRecords.Any() || flight.ReturnToRamps.Any(),
                 flight.ApprovalStatus,
                 flight.ApprovedByDisplayName,
                 flight.ApprovedAtUtc,
                 flight.ApprovedReturnToRampSequence,
                 flight.ApprovalNumber,
-                Status = flight.IsAutoClosed ? FlightReportStatus.AutoClosed
-                    : hasCancellation && (hasArrival || hasDeparture || flight.ReturnToRamps.Any()) ? FlightReportStatus.Conflict
-                    : hasCancellation ? FlightReportStatus.Canceled
-                    : flight.ReturnToRamps.Any(ramp => ramp.DepartureDetails == null) ? FlightReportStatus.ReturnedToRamp
-                    : hasDeparture ? FlightReportStatus.Departed
-                    : hasArrival ? FlightReportStatus.OnGround
-                    : flight.Schedule.Sta <= now ? FlightReportStatus.ArrivalNotRecorded
-                    : flight.Schedule.Sta <= dueSoonBy ? FlightReportStatus.DueSoon
-                    : FlightReportStatus.Scheduled
+                match.Status
             };
-        query = request.FlightType switch
-        {
-            FlightListType.Scheduled => query.Where(item => !item.IsAdHocFlight && !item.IsPerLanding),
-            FlightListType.PerLanding => query.Where(item => !item.IsAdHocFlight && item.IsPerLanding && !item.IsOnCall),
-            FlightListType.OnCall => query.Where(item => item.IsOnCall),
-            FlightListType.AdHoc => query.Where(item => item.IsAdHocFlight),
-            _ => query
-        };
-        if (request.Statuses is { Count: > 0 } statuses)
-            query = query.Where(item => statuses.Contains(item.Status));
 
         var total = await query.LongCountAsync(cancellationToken);
         if (paging.IsOutOfRange(total))
@@ -293,6 +270,63 @@ internal sealed record FlightListFilter(
 
 internal static class FlightListQuery
 {
+    internal sealed class ReportMatch
+    {
+        public required Flight Flight { get; init; }
+        public bool HasArrivalSubmission { get; init; }
+        public bool HasDepartureSubmission { get; init; }
+        public bool HasCancellationSubmission { get; init; }
+        public bool IsAdHocFlight { get; init; }
+        public bool IsPerLanding { get; init; }
+        public bool IsOnCall { get; init; }
+        public FlightReportStatus Status { get; init; }
+    }
+
+    internal static IQueryable<ReportMatch> MatchReportFilters(IQueryable<Flight> flights, FlightListType type,
+        IReadOnlyList<FlightReportStatus>? statuses, DateTimeOffset now)
+    {
+        var dueSoonBy = now.AddMinutes(30);
+        // Mobile excludes auto-closed flights. Keep the remaining status rules in sync with Android.
+        var query =
+            from flight in flights
+            let hasArrival = flight.ArrivalSubmissions.Any()
+            let hasDeparture = flight.DepartureSubmissions.Any()
+            let hasCancellation = flight.CancellationSubmissions.Any()
+            let isAdHoc = flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType
+            let isPerLanding = flight.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
+            select new ReportMatch
+            {
+                Flight = flight,
+                HasArrivalSubmission = hasArrival,
+                HasDepartureSubmission = hasDeparture,
+                HasCancellationSubmission = hasCancellation,
+                IsAdHocFlight = isAdHoc,
+                IsPerLanding = isPerLanding,
+                IsOnCall = !isAdHoc && isPerLanding && flight.ServiceRecords.Any(),
+                Status = flight.IsAutoClosed ? FlightReportStatus.AutoClosed
+                    : hasCancellation && (hasArrival || hasDeparture || flight.ReturnToRamps.Any()) ? FlightReportStatus.Conflict
+                    : hasCancellation ? FlightReportStatus.Canceled
+                    : flight.ReturnToRamps.Any(ramp => ramp.DepartureDetails == null) ? FlightReportStatus.ReturnedToRamp
+                    : hasDeparture ? FlightReportStatus.Departed
+                    : hasArrival ? FlightReportStatus.OnGround
+                    : flight.Schedule.Sta <= now ? FlightReportStatus.ArrivalNotRecorded
+                    : flight.Schedule.Sta <= dueSoonBy ? FlightReportStatus.DueSoon
+                    : FlightReportStatus.Scheduled
+            };
+
+        query = type switch
+        {
+            FlightListType.Scheduled => query.Where(item => !item.IsAdHocFlight && !item.IsPerLanding),
+            FlightListType.PerLanding => query.Where(item => !item.IsAdHocFlight && item.IsPerLanding && !item.IsOnCall),
+            FlightListType.OnCall => query.Where(item => item.IsOnCall),
+            FlightListType.AdHoc => query.Where(item => item.IsAdHocFlight),
+            _ => query
+        };
+        return statuses is { Count: > 0 }
+            ? query.Where(item => statuses.Contains(item.Status))
+            : query;
+    }
+
     public static IQueryable<Flight> ApplyScopeAndFilters(
         IQueryable<Flight> query,
         OperationsScopeContext scope,

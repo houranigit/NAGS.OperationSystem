@@ -46,31 +46,49 @@
                         </div>
                     }
 
-                    @if (UseCollapsibleFilters && Filters is not null)
+                    @if (!UseCollapsibleFilters)
                     {
-                        <button type="button" class="@FilterToggleCssClass" aria-expanded="@(filtersExpanded ? "true" : "false")" @onclick="ToggleFilters">
-                            <RadzenIcon Icon="tune" />
-                            <span>@FilterToggleText</span>
-                            @if (ActiveFilterCount > 0)
-                            {
-                                <span class="os-filter-count">@ActiveFilterCount</span>
-                            }
-                            <span class="os-filter-toggle-chevron">
-                                <RadzenIcon Icon="expand_more" />
-                            </span>
-                        </button>
+                        @Filters
+                    }
 
-                        @if (OnClearFilters.HasDelegate && ActiveFilterCount > 0)
+                    @if (HasFilterPanel || HasToolbarPanel)
+                    {
+                        <div class="os-list-toolbar-toggles">
+                            @if (HasFilterPanel)
+                            {
+                                <button type="button" class="@ToggleCssClass(filtersExpanded)" aria-expanded="@(filtersExpanded ? "true" : "false")" @onclick="ToggleFilters">
+                                    <RadzenIcon Icon="tune" />
+                                    <span>@FilterToggleText</span>
+                                    @if (ActiveFilterCount > 0)
+                                    {
+                                        <span class="os-filter-count">@ActiveFilterCount</span>
+                                    }
+                                    <span class="os-filter-toggle-chevron">
+                                        <RadzenIcon Icon="expand_more" />
+                                    </span>
+                                </button>
+                            }
+
+                            @if (HasToolbarPanel)
+                            {
+                                <button type="button" class="@ToggleCssClass(toolbarPanelExpanded)" aria-expanded="@(toolbarPanelExpanded ? "true" : "false")"
+                                        aria-controls="@toolbarPanelId" @onclick="ToggleToolbarPanel">
+                                    <RadzenIcon Icon="@ToolbarPanelIcon" />
+                                    <span>@ToolbarPanelLabel</span>
+                                    <span class="os-filter-toggle-chevron">
+                                        <RadzenIcon Icon="expand_more" />
+                                    </span>
+                                </button>
+                            }
+                        </div>
+
+                        @if (HasFilterPanel && OnClearFilters.HasDelegate && ActiveFilterCount > 0)
                         {
                             <button type="button" class="os-clear-filters" @onclick="ClearFiltersAsync">
                                 <RadzenIcon Icon="filter_alt_off" />
                                 <span>@ClearFiltersText</span>
                             </button>
                         }
-                    }
-                    else
-                    {
-                        @Filters
                     }
                 </div>
 
@@ -79,12 +97,25 @@
                 </div>
             </div>
 
-            @if (UseCollapsibleFilters && Filters is not null)
+            @if (HasFilterPanel || HasToolbarPanel)
             {
-                <div class="@FilterPanelCssClass">
-                    <div class="os-list-filter-panel-inner">
-                        @Filters
-                    </div>
+                <div class="os-list-toolbar-panels">
+                    @if (HasFilterPanel)
+                    {
+                        <div class="@PanelCssClass(filtersExpanded)">
+                            <div class="os-list-filter-panel-inner">
+                                @Filters
+                            </div>
+                        </div>
+                    }
+                    @if (HasToolbarPanel)
+                    {
+                        <div id="@toolbarPanelId" class="@PanelCssClass(toolbarPanelExpanded)" inert="@(!toolbarPanelExpanded)">
+                            <div class="os-list-filter-panel-inner">
+                                @ToolbarPanel
+                            </div>
+                        </div>
+                    }
                 </div>
             }
         </div>
@@ -158,6 +189,11 @@
     /// <summary>Extra controls rendered on the right of the toolbar, before the count badge.</summary>
     [Parameter] public RenderFragment? Toolbar { get; set; }
 
+    /// <summary>Optional second collapsible row. Supply a label to show its toggle beside Filters.</summary>
+    [Parameter] public RenderFragment? ToolbarPanel { get; set; }
+    [Parameter] public string? ToolbarPanelLabel { get; set; }
+    [Parameter] public string ToolbarPanelIcon { get; set; } = "expand_more";
+
     /// <summary>Filter controls (dropdowns) rendered beside the search box.</summary>
     [Parameter] public RenderFragment? Filters { get; set; }
 
@@ -222,6 +258,8 @@
 
     private bool filterStateInitialized;
     private bool filtersExpanded;
+    private bool toolbarPanelExpanded;
+    private readonly string toolbarPanelId = $"list-toolbar-panel-{Guid.NewGuid():N}";
 
     protected override void OnParametersSet()
     {
@@ -314,15 +352,19 @@
     }
 
     private void ToggleFilters() => filtersExpanded = !filtersExpanded;
+    private void ToggleToolbarPanel() => toolbarPanelExpanded = !toolbarPanelExpanded;
 
     private async Task ClearFiltersAsync() => await OnClearFilters.InvokeAsync();
 
     private string ToolbarCssClass =>
-        UseCollapsibleFilters ? "os-list-toolbar os-list-toolbar--collapsible" : "os-list-toolbar";
+        UseCollapsibleFilters || HasToolbarPanel ? "os-list-toolbar os-list-toolbar--collapsible" : "os-list-toolbar";
 
-    private string FilterPanelCssClass =>
-        filtersExpanded ? "os-list-filter-panel is-expanded" : "os-list-filter-panel";
+    private bool HasFilterPanel => UseCollapsibleFilters && Filters is not null;
+    private bool HasToolbarPanel => ToolbarPanel is not null && !string.IsNullOrWhiteSpace(ToolbarPanelLabel);
 
-    private string FilterToggleCssClass =>
-        filtersExpanded ? "os-filter-toggle is-expanded" : "os-filter-toggle";
+    private static string PanelCssClass(bool expanded) =>
+        expanded ? "os-list-filter-panel is-expanded" : "os-list-filter-panel";
+
+    private static string ToggleCssClass(bool expanded) =>
+        expanded ? "os-filter-toggle is-expanded" : "os-filter-toggle";
 }

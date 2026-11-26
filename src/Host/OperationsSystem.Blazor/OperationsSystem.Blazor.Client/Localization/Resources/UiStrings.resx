@@ -769,6 +769,16 @@
   <data name="PortalAccess.PendingLoginEmailDetail" xml:space="preserve"><value>Waiting for {0} to confirm before the linked login email changes.</value></data>
   <data name="PortalAccess.LoginEmailChangeFailed" xml:space="preserve"><value>Login email change failed</value></data>
   <data name="PortalAccess.LoginEmailChangeFailedDetail" xml:space="preserve"><value>Identity could not start verification: {0}</value></data>
+  <data name="Flights.Export" xml:space="preserve"><value>Export</value></data>
+  <data name="Flights.Exporting" xml:space="preserve"><value>Exporting...</value></data>
+  <data name="Flights.ExcelWorkbook" xml:space="preserve"><value>Excel workbook (.xlsx)</value></data>
+  <data name="Flights.CsvFile" xml:space="preserve"><value>CSV file (.csv)</value></data>
+  <data name="Flights.PdfReport" xml:space="preserve"><value>PDF report (.pdf)</value></data>
+  <data name="Flights.ExportBilling" xml:space="preserve"><value>Export Billing</value></data>
+  <data name="Flights.ExportReady" xml:space="preserve"><value>Export ready</value></data>
+  <data name="Flights.ExportReadyDetail" xml:space="preserve"><value>{0} has been downloaded.</value></data>
+  <data name="Flights.ExportFailed" xml:space="preserve"><value>Export failed</value></data>
+  <data name="Flights.ExportFailedDetail" xml:space="preserve"><value>The export could not be generated. Please try again.</value></data>
   <data name="Flights.UnlockToUpdate" xml:space="preserve"><value>Unlock to update…</value></data>
   <data name="Flights.UploadSignature" xml:space="preserve"><value>Upload PNG signature</value></data>
   <data name="Flights.ReplaceSignature" xml:space="preserve"><value>Replace PNG signature</value></data>

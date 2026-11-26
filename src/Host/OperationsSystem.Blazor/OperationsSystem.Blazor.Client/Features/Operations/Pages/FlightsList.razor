@@ -31,7 +31,8 @@
                       ColumnLayoutKey="@GridKey"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
                       SearchPlaceholder="Search flight number, customer, or ID" CountLabel="flights" EmptyText="No flights match your filters."
-                      UseCollapsibleFilters="true" ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync">
+                      UseCollapsibleFilters="true" ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync"
+                      ToolbarPanelLabel="@(CanExport ? UiStrings.Flights.Export : null)" ToolbarPanelIcon="download">
             <Toolbar>
                 <div class="ofl-flight-type">
                     <RadzenSelectBar TValue="FlightType" Value="@flightType" ValueChanged="@OnFlightTypeChangedAsync"
@@ -46,6 +47,29 @@
                     </RadzenSelectBar>
                 </div>
             </Toolbar>
+            <ToolbarPanel>
+                <div class="ofl-export-options" aria-busy="@(isExporting ? "true" : "false")">
+                    <RadzenButton Text="@UiStrings.Flights.ExcelWorkbook" Icon="table_view" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Light"
+                                  Disabled="@(!ExportAvailable)" Click="@(() => ExportAsync("xlsx", UiStrings.Flights.ExcelWorkbook))" />
+                    <RadzenButton Text="@UiStrings.Flights.CsvFile" Icon="csv" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Light"
+                                  Disabled="@(!ExportAvailable)" Click="@(() => ExportAsync("csv", UiStrings.Flights.CsvFile))" />
+                    <RadzenButton Text="@UiStrings.Flights.PdfReport" Icon="picture_as_pdf" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Light"
+                                  Disabled="@(!ExportAvailable)" Click="@(() => ExportAsync("pdf", UiStrings.Flights.PdfReport))" />
+                    <RadzenButton Text="@UiStrings.Flights.ExportBilling" Icon="receipt_long" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Light"
+                                  Disabled="@(!ExportAvailable)" Click="@(() => ExportAsync("xlsx", UiStrings.Flights.ExportBilling, "billing"))" />
+                </div>
+                @if (isExporting)
+                {
+                    <span class="ofl-export-feedback" role="status">@UiStrings.Flights.Exporting</span>
+                }
+                else if (exportMessage is not null)
+                {
+                    <span class="@(exportFailed ? "ofl-export-feedback ofl-export-error" : "ofl-export-feedback")"
+                          role="@(exportFailed ? "alert" : "status")">
+                        <strong>@(exportFailed ? UiStrings.Flights.ExportFailed : UiStrings.Flights.ExportReady)</strong> @exportMessage
+                    </span>
+                }
+            </ToolbarPanel>
             <Filters>
                 <div class="ofl-filters">
                     <DataListFilter TValue="Guid?" Placeholder="All stations" Data="@stationOptions" Value="@stationFilter" ValueChanged="@OnStationFilterChangedAsync" />
@@ -169,6 +193,9 @@
     private FlightType flightType = FlightType.All;
     private bool isLoading;
     private bool loadError;
+    private bool isExporting;
+    private bool exportFailed;
+    private string? exportMessage;
     private string searchTerm = string.Empty;
     private string? appliedSearchQuery;
     private Guid? stationFilter;
@@ -185,6 +212,10 @@
     private IReadOnlyList<CustomerFilterOption> customerOptions = [];
     private IReadOnlyList<OperationTypeFilterOption> operationTypeOptions = [];
     private bool CanEditSchedule => Auth.HasPermission(OperationsPermissions.FlightsUpdate);
+    private bool CanExport => Auth.HasPermission(OperationsPermissions.FlightsExport);
+    private bool ExportAvailable => CanExport && !isExporting && !isLoading && !loadError && totalCount > 0;
+    private string? SearchFilter => string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm;
+    private string? FlightTypeFilter => flightType == FlightType.All ? null : flightType.ToString();
     private bool CanOpenFlightOperations => Auth.IsSystemAdministrator
         ? Auth.HasPermission(OperationsPermissions.FlightsView)
         : Auth.HasPermission(OperationsPermissions.FlightsApprove)
@@ -403,6 +434,36 @@
         await ReloadAsync();
     }
 
+    private async Task ExportAsync(string format, string formatLabel, string? report = null)
+    {
+        if (!ExportAvailable)
+            return;
+
+        isExporting = true;
+        exportMessage = null;
+        exportFailed = false;
+        try
+        {
+            await Operations.DownloadFlightsExportAsync(format, SearchFilter, stationFilter, customerFilter, operationTypeFilter,
+                DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort, statusFilters, FlightTypeFilter, report);
+            exportMessage = string.Format(UiStrings.Flights.ExportReadyDetail, formatLabel);
+        }
+        catch (ApiException ex)
+        {
+            exportFailed = true;
+            exportMessage = ex.ToDisplayMessage(UiStrings.Flights.ExportFailedDetail);
+        }
+        catch (JSException)
+        {
+            exportFailed = true;
+            exportMessage = UiStrings.Flights.ExportFailedDetail;
+        }
+        finally
+        {
+            isExporting = false;
+        }
+    }
+
     private async Task LoadDataAsync(LoadDataArgs args)
     {
         currentPageSize = args.Top ?? currentPageSize;
@@ -430,9 +491,9 @@
         try
         {
             var result = await Operations.GetFlightsAsync(currentPage, currentPageSize,
-                string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm, stationFilter, customerFilter, operationTypeFilter,
+                SearchFilter, stationFilter, customerFilter, operationTypeFilter,
                 DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort, statuses: statusFilters,
-                flightType: flightType == FlightType.All ? null : flightType.ToString());
+                flightType: FlightTypeFilter);
             if (request != loadRequest)
                 return;
 

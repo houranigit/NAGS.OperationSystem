@@ -3,6 +3,7 @@ using BuildingBlocks.Api.Concurrency;
 using BuildingBlocks.Api.Results;
 using BuildingBlocks.Application.Persistence;
 using BuildingBlocks.Domain.Results;
+using MasterData.Contracts.Readers;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http.Features;
 using System.Text.Json;
 using Microsoft.Net.Http.Headers;
+using Operations.Api.Exports;
 using Operations.Application.Contracts;
 using Operations.Application.Features.Flights;
 using Operations.Domain.Authorization;
@@ -290,16 +292,18 @@ internal static class FlightEndpoints
             if (statuses is null)
                 return ApiResults.Problem(Error.Validation("One or more flight statuses are invalid.", "Operations.Flight.StatusInvalid"));
 
-            var type = FlightListType.All;
-            if (!string.IsNullOrWhiteSpace(flightType) &&
-                (!Enum.TryParse(flightType, ignoreCase: true, out type) ||
-                 !string.Equals(Enum.GetName(type), flightType.Trim(), StringComparison.OrdinalIgnoreCase)))
+            if (!TryParseFlightType(flightType, out var type))
                 return ApiResults.Problem(Error.Validation("Choose All, Scheduled, PerLanding, OnCall, or AdHoc.", "Operations.Flight.TypeInvalid"));
 
             var result = await sender.Send(new GetFlightsQuery(
                 page, pageSize, search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, type), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
+
+        flights.MapGet("/export", ExportFlightsAsync)
+            .RequirePermission(OperationsPermissions.Flights.View)
+            .RequirePermission(OperationsPermissions.Flights.Export)
+            .WithName("ExportFlights");
 
         flights.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
         {
@@ -380,6 +384,73 @@ internal static class FlightEndpoints
             var result = await sender.Send(new InviteEmployeesToFlightCommand(id, request.StaffMemberIds ?? [], rowVersion), ct);
             return result.ToNoContent();
         }).RequirePermission(OperationsPermissions.Flights.Invite);
+    }
+
+    private static async Task<IResult> ExportFlightsAsync(ISender sender,
+        [FromServices] ILegacySystemIdReader legacySystemIds, TimeProvider clock, HttpResponse response, CancellationToken ct,
+        string? format = null, string? search = null, Guid? stationId = null, Guid? customerId = null,
+        Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null,
+        string? status = null, string? flightType = null, string? timeZoneId = null, string? report = null)
+    {
+        if (!FlightExportDocumentFactory.TryParseFormat(format, out var exportFormat))
+            return ApiResults.Problem(Error.Validation(
+                new Dictionary<string, string[]> { ["format"] = ["Format must be one of: xlsx, csv, or pdf."] },
+                code: "Operations.Flight.ExportFormatInvalid"));
+
+        var billing = string.Equals(report, "billing", StringComparison.OrdinalIgnoreCase);
+        if ((!string.IsNullOrWhiteSpace(report) && !billing) || (billing && exportFormat != FlightExportFormat.Xlsx))
+            return ApiResults.Problem(Error.Validation(
+                "The billing report requires Excel format (xlsx). Omit report for standard exports.",
+                "Operations.Flight.ExportReportInvalid"));
+
+        if (!FlightExportTimeZoneResolver.TryResolve(timeZoneId, out var timeZone))
+            return ApiResults.Problem(Error.Validation(new Dictionary<string, string[]>
+            {
+                ["timeZoneId"] = ["Time zone must be a valid IANA, Windows, or Browser UTC±HH:mm identifier."]
+            }, code: "Operations.Flight.ExportTimeZoneInvalid"));
+
+        var statuses = ParseStatuses(status);
+        if (statuses is null)
+            return ApiResults.Problem(Error.Validation("One or more flight statuses are invalid.", "Operations.Flight.StatusInvalid"));
+        if (!TryParseFlightType(flightType, out var type))
+            return ApiResults.Problem(Error.Validation("Choose All, Scheduled, PerLanding, OnCall, or AdHoc.", "Operations.Flight.TypeInvalid"));
+
+        var result = await sender.Send(new GetFlightsExportQuery(search, stationId, customerId, operationTypeId,
+            fromUtc, toUtc, sort, statuses, type, IncludeManpower: billing), ct);
+        if (result.IsFailure)
+            return ApiResults.Problem(result.Error);
+
+        if (string.IsNullOrWhiteSpace(timeZoneId) && stationId is { } filterStation &&
+            result.Value.FirstOrDefault(row => row.StationId == filterStation) is { } stationRow &&
+            FlightExportTimeZoneResolver.TryResolve(stationRow.StationTimeZoneId, out var stationZone))
+            timeZone = stationZone;
+
+        var generatedAtUtc = clock.GetUtcNow();
+        FlightExportFile file;
+        if (billing)
+        {
+            file = BillingExportDocumentFactory.Create(result.Value, generatedAtUtc, timeZone);
+        }
+        else
+        {
+            var legacyIds = exportFormat == FlightExportFormat.Xlsx
+                ? await legacySystemIds.GetAsync(FlightExportDocumentFactory.CollectLegacySystemIdRequest(result.Value), ct)
+                : null;
+            var criteria = new FlightExportCriteria(search, stationId is { } station ? [station] : [],
+                customerId is { } customer ? [customer] : [], operationTypeId, statuses, fromUtc, toUtc, type);
+            file = FlightExportDocumentFactory.Create(exportFormat, result.Value, criteria, generatedAtUtc, timeZone, legacyIds);
+        }
+
+        response.Headers.CacheControl = "private, no-store";
+        return Results.File(file.Content, file.ContentType, file.FileName, enableRangeProcessing: false);
+    }
+
+    private static bool TryParseFlightType(string? value, out FlightListType type)
+    {
+        type = FlightListType.All;
+        return string.IsNullOrWhiteSpace(value) ||
+            Enum.TryParse(value, ignoreCase: true, out type) &&
+            string.Equals(Enum.GetName(type), value.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<FlightReportStatus>? ParseStatuses(string? value)

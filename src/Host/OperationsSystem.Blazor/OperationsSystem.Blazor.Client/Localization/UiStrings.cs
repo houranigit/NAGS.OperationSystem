@@ -54,6 +54,16 @@ public static class UiStrings
 
     public static class Flights
     {
+        public static string Export => UiText.Get("Flights.Export", "Export");
+        public static string Exporting => UiText.Get("Flights.Exporting", "Exporting…");
+        public static string ExcelWorkbook => UiText.Get("Flights.ExcelWorkbook", "Excel workbook (.xlsx)");
+        public static string CsvFile => UiText.Get("Flights.CsvFile", "CSV file (.csv)");
+        public static string PdfReport => UiText.Get("Flights.PdfReport", "PDF report (.pdf)");
+        public static string ExportBilling => UiText.Get("Flights.ExportBilling", "Export Billing");
+        public static string ExportReady => UiText.Get("Flights.ExportReady", "Export ready");
+        public static string ExportReadyDetail => UiText.Get("Flights.ExportReadyDetail", "{0} has been downloaded.");
+        public static string ExportFailed => UiText.Get("Flights.ExportFailed", "Export failed");
+        public static string ExportFailedDetail => UiText.Get("Flights.ExportFailedDetail", "The export could not be generated. Please try again.");
         public static string UnlockToUpdate => UiText.Get("Flights.UnlockToUpdate", "Unlock to update…");
         public static string UploadSignature => UiText.Get("Flights.UploadSignature", "Upload PNG signature");
         public static string ReplaceSignature => UiText.Get("Flights.ReplaceSignature", "Replace PNG signature");

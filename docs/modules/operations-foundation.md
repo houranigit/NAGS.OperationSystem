@@ -157,7 +157,7 @@ Android Room 15 stores desired RTR input, durable private media references, revi
 
 Domain guards use loaded collections. Operational write callers must load all three submission collections, all `ServiceRecords` with performers/attachments, all `TaskRecords` with tools/materials/general supports/performers/attachments, and `ReturnToRamps` with their work graph. Automatic closure queries only flights for which SQL confirms all those collections are empty and checks the flight rowversion at save. The public `Services` and `Tasks` views are not mapped navigations and exclude occurrence work. For an existing tracked flight, changes anywhere in these attached graphs, including nested edits or removals, force the flight's rowversion check in synchronous and asynchronous saves, even when `UpdatedAtUtc` is unchanged. Return-to-ramp sequence uniqueness and the single-open-occurrence rule are also indexed in SQL. Composite occurrence/flight foreign keys prevent work from being grouped under another flight's occurrence. Flight remains the cascade-delete path; occurrence relations use `NoAction` to avoid multiple cascade paths. There is no database constraint enforcing cancellation exclusivity across tables, so direct SQL bypasses it. Arrival, departure, services, and cancellation retain rejected/conflicting device intent for the explicit reload/review workflows above. RTR input uses its independent frozen-attempt queue and explicit Review workflow described above; normal-work batches and RTR saves retain separate HTTP boundaries.
 
-Arrival and departure add their API/mobile queues described above. Services and Tasks add the scoped save/delete, attachment transfer, and local draft/queue workflows above. RTR adds the scoped atomic occurrence save and independent Android queue described above. Flight detail reads include arrival/departure submissions and complete RTR occurrences with their nested work alongside planning details. Approval selection, persisted lifecycle status and billing remain deferred.
+Arrival and departure add their API/mobile queues described above. Services and Tasks add the scoped save/delete, attachment transfer, and local draft/queue workflows above. RTR adds the scoped atomic occurrence save and independent Android queue described above. Flight detail reads include arrival/departure submissions and complete RTR occurrences with their nested work alongside planning details. Approval selection, persisted lifecycle status and billing calculations remain deferred.
 
 ### Portal work and cancellation
 
@@ -204,6 +204,8 @@ Arrival/departure DTOs expose creator/updater display names; work DTOs retain th
 ## Scheduling and validation
 
 The portal flight register offers separate Per Landing and On Call filters. Per Landing selects flights with the Per Landing designation and no recorded performed services. On Call selects flights with that designation and at least one recorded performed service, including a service recorded during a return to ramp.
+
+**Export** beside Filters opens the Excel workbook, CSV file, PDF report, and Export Billing actions. Exports require both `operations.flights.view` and `operations.flights.export` and use the caller's flight visibility scope. The register passes its current search, filters, and sort and exports all matching flights across pages. The portal exports operational timestamps in each flight's station time zone. The Billing workbook lists recorded activities and manpower when available. Billing rates and calculations remain outside the export.
 
 **Edit schedule** is available on flights the user can update. After any arrival, departure, cancellation, service, task, or return to ramp has been recorded, schedule fields open read-only. Users with Flight Assign permission can update the roster on eligible flights in **Not Approved** or **Unlocked** status. The roster is read-only in **Approved** and **Pending RTR** status.
 
@@ -263,6 +265,7 @@ All flight routes are under `/api/v1/operations/flights`:
 | GET | `/mobile/{id}/invitation-options` | Invitation options within the mobile scope |
 | POST | `/mobile/{id}/invite` | Existing add-only invitation behavior within the mobile scope |
 | GET | `/customer-logos/{customerId}` | Customer logo when at least one flight for that customer is visible to the caller |
+| GET | `/export` | Filtered Flights Excel, CSV, or PDF export, or the Excel Billing report with `report=billing` |
 | POST | `/` | Schedule one flight |
 | POST | `/bulk` | Schedule selected dates |
 | PUT | `/{id}` | Update scheduled details |
@@ -275,7 +278,7 @@ Edits and invitations retain the existing `If-Match` rowversion precondition. In
 
 Customer logo reads require `operations.flights.view` and the existing flight visibility scope. Operations checks for a visible flight before reading logo content through the MasterData-owned reader contract. MasterData retains logo storage and customer-management permissions. The register includes the current opaque `customerLogoVersion` from a batched MasterData read; `none` identifies an absent logo. Logo responses include the actual version as an ETag and accept an optional `expectedVersion`, returning `412` if it changed. Missing logos or files return `404` for the card's flight-icon fallback. Customer options expose the same `logoVersion` for catalog synchronization.
 
-Legacy work-order, mobile BFF, timeline, lifecycle, reporting, and dashboard endpoints are removed. The shared change hub remains owned by the API host because MasterData publishes catalog hints and Operations publishes basic-flight hints.
+Legacy work-order, mobile BFF, timeline, lifecycle, and dashboard endpoints are removed. The Flights register exports read the current Operations records. The shared change hub remains owned by the API host because MasterData publishes catalog hints and Operations publishes basic-flight hints.
 
 ## Mobile discovery, History and AdHoc
 

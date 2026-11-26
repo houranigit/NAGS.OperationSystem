@@ -121,6 +121,12 @@
 }
 
 /* --- Collapsible filter tray -------------------------------------------- */
+.os-list-toolbar-toggles {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-3);
+}
+
 .os-filter-toggle,
 .os-clear-filters {
     display: inline-flex;
@@ -204,6 +210,10 @@
     opacity: 1;
     transform: translateY(0);
     pointer-events: auto;
+}
+
+.os-list-toolbar-panels > .is-expanded + .is-expanded {
+    margin-block-start: var(--os-space-2);
 }
 
 .os-list-filter-panel-inner {
