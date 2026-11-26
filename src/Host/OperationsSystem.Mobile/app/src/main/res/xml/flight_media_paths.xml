@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="flight_work_media" path="flight-work-media/" />
+    <cache-path name="flight_work_orders" path="flight-work-orders/" />
     <files-path name="service_pending" path="flight-service-attachments/" />
     <files-path name="service_previews" path="flight-service-attachment-previews/" />
     <files-path name="task_pending" path="flight-task-attachments/" />

@@ -10,7 +10,7 @@ namespace Operations.IntegrationTests;
 public sealed partial class FlightVisibilityScopeTests
 {
     [Fact]
-    public async Task Portal_work_order_print_uses_flight_view_scope_before_and_after_work_is_recorded()
+    public async Task Work_order_print_uses_portal_and_mobile_read_scopes_before_and_after_work_is_recorded()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
@@ -21,11 +21,19 @@ public sealed partial class FlightVisibilityScopeTests
         var arrivalTime = DateTimeOffset.UtcNow.AddHours(-2);
         var flight = await SchedulePortalFlightAtAsync(admin, refs, "8799", arrivalTime, [viewer.StaffId, operatorAccount.StaffId]);
         var otherFlight = await SchedulePortalFlightAtAsync(admin, refs, "8798", arrivalTime, [operatorAccount.StaffId]);
+        var outsideWindow = await SchedulePortalFlightAtAsync(admin, refs, "8797", arrivalTime.AddHours(25), [viewer.StaffId]);
         var path = $"{Base}/flights/{flight}/operations/print";
+        var mobilePath = $"{Base}/flights/mobile/{flight}/print";
 
-        await AssertWorkOrderPdfAsync(viewerClient, path, expectedMinPages: 1);
+        await AssertWorkOrderPdfAsync(viewerClient, path, "8799", expectedMinPages: 1);
+        await AssertWorkOrderPdfAsync(viewerClient, mobilePath, "8799", expectedMinPages: 1);
         using var hidden = await viewerClient.GetAsync($"{Base}/flights/{otherFlight}/operations/print");
         hidden.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        await AssertWorkOrderPdfAsync(viewerClient, $"{Base}/flights/mobile/{otherFlight}/print", "8798", expectedMinPages: 1);
+        using var notYetVisible = await viewerClient.GetAsync($"{Base}/flights/mobile/{outsideWindow}/print");
+        notYetVisible.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        using var missingStaffLink = await admin.GetAsync(mobilePath);
+        missingStaffLink.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
         var detail = await PortalOperationsDetailAsync(operatorClient, flight);
         var aircraft = await OperationsBatchAircraftAsync(admin);
@@ -50,23 +58,24 @@ public sealed partial class FlightVisibilityScopeTests
         returned.StatusCode.ShouldBe(HttpStatusCode.OK, await returned.Content.ReadAsStringAsync());
         var afterReturn = (await returned.Content.ReadFromJsonAsync<FlightDetailDto>())!;
         afterReturn.WorkOrderNumber.ShouldBeNull();
-        await AssertWorkOrderPdfAsync(viewerClient, path, expectedMinPages: 2);
+        await AssertWorkOrderPdfAsync(viewerClient, path, "8799", expectedMinPages: 2);
+        await AssertWorkOrderPdfAsync(viewerClient, mobilePath, "8799", expectedMinPages: 2);
         (await PortalOperationsDetailAsync(operatorClient, flight)).RowVersion.ShouldBe(afterReturn.RowVersion);
     }
 
-    private static async Task AssertWorkOrderPdfAsync(HttpClient client, string path, int expectedMinPages)
+    private static async Task AssertWorkOrderPdfAsync(HttpClient client, string path, string flightNumber, int expectedMinPages)
     {
         using var response = await client.GetAsync(path);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         response.Content.Headers.ContentType?.MediaType.ShouldBe("application/pdf");
         response.Content.Headers.ContentDisposition?.DispositionType.ShouldBe("inline");
-        response.Content.Headers.ContentDisposition?.FileNameStar.ShouldEndWith("-8799.pdf");
+        response.Content.Headers.ContentDisposition?.FileNameStar.ShouldEndWith($"-{flightNumber}.pdf");
         response.Headers.CacheControl?.Private.ShouldBeTrue();
         response.Headers.CacheControl?.NoStore.ShouldBeTrue();
         var content = await response.Content.ReadAsByteArrayAsync();
         Encoding.ASCII.GetString(content, 0, 5).ShouldBe("%PDF-");
         using var file = PdfReader.Open(new MemoryStream(content));
-        file.Info.Title.ShouldContain("8799");
+        file.Info.Title.ShouldContain(flightNumber);
         file.PageCount.ShouldBeGreaterThanOrEqualTo(expectedMinPages);
     }
 }

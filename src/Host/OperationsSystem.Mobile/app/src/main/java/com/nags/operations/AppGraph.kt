@@ -30,6 +30,7 @@ import com.nags.operations.data.network.NetworkMonitor
 import com.nags.operations.data.notifications.NotificationPushPayload
 import com.nags.operations.data.repo.AuthRepository
 import com.nags.operations.data.repo.FlightsRepository
+import com.nags.operations.data.repo.FlightWorkOrderExports
 import com.nags.operations.data.repo.FlightArrivalsRepository
 import com.nags.operations.data.repo.FlightDeparturesRepository
 import com.nags.operations.data.repo.FlightServicesRepository
@@ -96,6 +97,8 @@ class AppGraph private constructor(context: Context) {
     }.distinctUntilChanged()
 
     private suspend fun flightCacheOwner() = sharedCatalogOwnerKey(HttpClientFactory.baseUrl, tokenStore.getCacheSessionSubject())
+
+    internal val flightWorkOrderExports = FlightWorkOrderExports(appContext, operationsApi, ::flightCacheOwner)
 
     private val customerLogos = CustomerLogoStore(
         root = File(context.noBackupFilesDir, "customer-logos"), fetch = operationsApi::customerLogo,
@@ -618,6 +621,7 @@ class AppGraph private constructor(context: Context) {
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
+            flightWorkOrderExports.clear()
             sharedFlightsRepository.clear()
             adHocFlights.clear()
             discoveryFlights.clear()
@@ -794,6 +798,7 @@ class AppGraph private constructor(context: Context) {
             notificationsRepository.clearLocal()
             sharedCatalogsRepository.clearLocal()
             flightsRepository.clearLocal()
+            flightWorkOrderExports.clear()
             sharedFlightsRepository.clear()
             adHocFlights.clear()
             discoveryFlights.clear()

@@ -44,6 +44,10 @@ The scratch AdHoc form opens from the saved station context when available, and 
 
 Room `shared-catalogs.db` version 15 retains the AdHoc context/intent, source-specific discovery manifests/details and saved-work interaction rows added by 13 → 14. The additive 14 → 15 migration adds the RTR queue without replacing earlier tables. Existing catalog rows, snapshots, operational queues, frozen attempts, local drafts and private-file references are retained. Denied, expired or station-changed flights lose their cached shared operational view; retained own input remains available for safe retry/review or discard. Discarding a materialized AdHoc planning edit does not discard its independent operational input. The earlier `operations.db` work-order queue remains unopened.
 
+## Work Order export
+
+On the flight-details sheet, the top-left iOS-style share icon reveals **Export WO**. When connected, it loads the same Work Order PDF as **Print WO** in the portal and opens a preview of the saved flight details and work. From the preview, choose **Download** to pick a location or **Share** to open Android’s share chooser.
+
 ## Shared Flights
 
 Shared Flights is the second navigation destination, showing one combined newest-first feed of the caller's own posts, direct shares and Whole station posts. It has no Received/Sent tabs or search section. Each post shows the sharer's initials avatar/name beside a relative timestamp, followed by Shared with {employee} / {employee} and n others / @StationName staff, its optional plain-text message (four-line preview with an inline bold See more action) and an inset smaller variant of the original flight card. Timestamps use minutes, hours and days, then the full station-local date from seven days. Paging and pull-to-refresh retain the existing screen patterns. Opening the card uses the same details/forms and permissions as Search; sharing never adds an assignment or a new access level.
@@ -179,6 +183,7 @@ Flight calls use the bounded Operations mobile routes (`category` is omitted onl
 - `PUT /api/v1/operations/flights/mobile/adhoc/{clientFlightId}` with Customer, Flight number, STA and STD
 - `PUT /api/v1/operations/flights/mobile/adhoc/{id}/details` with those same fields and `If-Match`
 - `GET /api/v1/operations/flights/mobile/{id}`
+- `GET /api/v1/operations/flights/mobile/{id}/print`
 - `GET /api/v1/operations/flights/mobile/customer-logos/{customerId}?expectedVersion={logoVersion}` for customers on a currently visible flight; the response ETag identifies the returned version and `412` rejects a version mismatch
 - `GET /api/v1/operations/flights/mobile/{id}/invitation-options`
 - `POST /api/v1/operations/flights/mobile/{id}/invite` with `{ "staffMemberIds": [...] }` and `If-Match`.

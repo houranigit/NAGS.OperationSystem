@@ -13,19 +13,31 @@ using Operations.Domain.ValueObjects;
 
 namespace Operations.Application.Features.Flights;
 
-public sealed record GetFlightWorkOrderPrintQuery(Guid Id) : IQuery<WorkOrderPrintDto>;
+public sealed record GetFlightWorkOrderPrintQuery(Guid Id, bool MobileOnly = false) : IQuery<WorkOrderPrintDto>;
 
-public sealed class GetFlightWorkOrderPrintQueryHandler(IOperationsDbContext db, IOperationsScope scope,
+public sealed class GetFlightWorkOrderPrintQueryHandler(IOperationsDbContext db, IOperationsScope scope, IMobileFlightScope mobileScope,
     IMasterDataReader masterData, IFileStorage storage, IUserDisplayNameReader userNames)
     : IQueryHandler<GetFlightWorkOrderPrintQuery, WorkOrderPrintDto>
 {
     public async Task<Result<WorkOrderPrintDto>> Handle(GetFlightWorkOrderPrintQuery request, CancellationToken ct)
     {
-        var resolved = await scope.ResolveAsync(ct);
-        if (resolved.IsFailure)
-            return resolved.Error;
+        var flights = db.Flights.AsNoTracking();
+        IQueryable<Flight> visible;
+        if (request.MobileOnly)
+        {
+            var resolved = await mobileScope.ResolveAsync(ct);
+            if (resolved.IsFailure)
+                return resolved.Error;
+            visible = MobileFlightQuery.ApplyReadScope(flights, resolved.Value);
+        }
+        else
+        {
+            var resolved = await scope.ResolveAsync(ct);
+            if (resolved.IsFailure)
+                return resolved.Error;
+            visible = FlightListQuery.ApplyPortalVisibility(flights, resolved.Value);
+        }
 
-        var visible = FlightListQuery.ApplyPortalVisibility(db.Flights.AsNoTracking(), resolved.Value);
         var flight = await FlightServiceWrites.Load(visible).SingleOrDefaultAsync(f => f.Id == request.Id, ct);
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");

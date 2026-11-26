@@ -29,7 +29,8 @@ internal static class PortalFlightOperationEndpoints
         operations.MapGet("", async (Guid id, ISender sender, CancellationToken ct) =>
             (await sender.Send(new GetPortalFlightOperationsQuery(id), ct)).ToOk());
 
-        operations.MapGet("/print", DownloadWorkOrderAsync);
+        operations.MapGet("/print", (Guid id, HttpResponse response, ISender sender, CancellationToken ct) =>
+            DownloadWorkOrderAsync(id, response, sender, ct, mobileOnly: false));
 
         operations.MapPut("/approval", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
             SetApprovalAsync(id, true, http, sender, ct));
@@ -105,9 +106,10 @@ internal static class PortalFlightOperationEndpoints
         });
     }
 
-    private static async Task<IResult> DownloadWorkOrderAsync(Guid id, HttpResponse response, ISender sender, CancellationToken ct)
+    internal static async Task<IResult> DownloadWorkOrderAsync(Guid id, HttpResponse response, ISender sender, CancellationToken ct,
+        bool mobileOnly)
     {
-        var result = await sender.Send(new GetFlightWorkOrderPrintQuery(id), ct);
+        var result = await sender.Send(new GetFlightWorkOrderPrintQuery(id, MobileOnly: mobileOnly), ct);
         if (result.IsFailure)
             return ApiResults.Problem(result.Error);
 

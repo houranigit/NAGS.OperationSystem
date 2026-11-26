@@ -81,9 +81,10 @@ import kotlinx.coroutines.launch
 internal fun FlightDetailsSheetFrame(
     onClose: () -> Unit,
     onBack: () -> Unit,
+    leadingHeaderAction: (@Composable () -> Unit)? = null,
     trailingHeaderAction: (@Composable () -> Unit)? = null,
-    trailingHeaderActionWidth: Dp = 48.dp,
-    trailingHeaderActionHeight: Dp = 48.dp,
+    headerActionWidth: Dp = 48.dp,
+    headerActionHeight: Dp = 48.dp,
     content: @Composable (ScrollState) -> Unit,
 ) {
     val headerDrag = remember { FlightSheetDragReversal() }
@@ -118,7 +119,8 @@ internal fun FlightDetailsSheetFrame(
     }
     val isLight = !MaterialTheme.colorScheme.isDark
     val ground = FlightFormGround
-    val headerHeight = if (trailingHeaderAction != null) maxOf(48.dp, trailingHeaderActionHeight) else 48.dp
+    val headerHeight = if (leadingHeaderAction != null || trailingHeaderAction != null)
+        maxOf(48.dp, headerActionHeight) else 48.dp
     val detailsTitle = stringResource(R.string.flights_details)
     val expanded = sheetState.targetValue == SheetValue.Expanded
     val toggleLabel = stringResource(if (expanded) R.string.flight_sheet_collapse else R.string.flight_sheet_expand)
@@ -231,9 +233,16 @@ internal fun FlightDetailsSheetFrame(
                                     Box(Modifier.size(width = 34.dp, height = 4.dp)
                                         .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f), CircleShape))
                                 }
+                                if (leadingHeaderAction != null) Box(
+                                    Modifier.align(Alignment.CenterStart).padding(start = 12.dp)
+                                        .width(headerActionWidth).height(headerActionHeight),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    leadingHeaderAction()
+                                }
                                 if (trailingHeaderAction != null) Box(
                                     Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)
-                                        .width(trailingHeaderActionWidth).height(trailingHeaderActionHeight),
+                                        .width(headerActionWidth).height(headerActionHeight),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     trailingHeaderAction()

@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.EventBusy
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -99,6 +100,7 @@ import com.nags.operations.R
 import com.nags.operations.data.CancellationType
 import com.nags.operations.data.FlightDetail
 import com.nags.operations.data.FlightListItem
+import com.nags.operations.data.LOCAL_ADHOC_VERSION
 import com.nags.operations.data.SaveFlightCancellationRequest
 import com.nags.operations.data.db.entities.FlightCancellationPendingEntity
 import com.nags.operations.data.ownCancellation
@@ -157,12 +159,26 @@ internal fun FlightDetailsSheet(
         if (showOperations) add(FlightRecordingAction.Operate)
     }
     val actionMetrics = flightActionMetrics()
+    val exportableFlight = state.detail?.takeUnless { it.rowVersion == LOCAL_ADHOC_VERSION }
+    var exportOpen by rememberSaveable(state.selectedFlightId) { mutableStateOf(false) }
     var expandedAction by rememberSaveable(state.selectedFlightId) { mutableStateOf<FlightRecordingAction?>(null) }
-    androidx.compose.runtime.LaunchedEffect(availableActions, showShare) {
-        if (expandedAction !in availableActions && !(showShare && expandedAction == FlightRecordingAction.Share)) expandedAction = null
+    val headerActions = buildList {
+        if (exportableFlight != null) add(FlightRecordingAction.Export)
+        if (showShare) add(FlightRecordingAction.Share)
+    }
+    androidx.compose.runtime.LaunchedEffect(availableActions, headerActions) {
+        if (expandedAction !in availableActions && expandedAction !in headerActions) expandedAction = null
     }
     var contentOrigin by remember(state.selectedFlightId) { mutableStateOf(Offset.Zero) }
     var expandedActionBounds by remember(state.selectedFlightId) { mutableStateOf<Rect?>(null) }
+    val headerExportAction: (@Composable () -> Unit)? = if (exportableFlight != null) ({
+        FlightRecordingActions(loading = false, availableActions = listOf(FlightRecordingAction.Export),
+            metrics = actionMetrics, expandedAction = expandedAction?.takeIf { it == FlightRecordingAction.Export },
+            onExpandedActionChange = { expandedAction = it; expandedActionBounds = null },
+            onExpandedBoundsChange = { expandedActionBounds = it },
+            onOperations = onOperations, onCanceled = onCanceled, onRevertCancellation = onRevertCancellation,
+            onExport = { exportOpen = true }, centerFaceVertically = true, alignStart = true)
+    }) else null
     val headerShareAction: (@Composable () -> Unit)? = if (showShare) ({
         FlightRecordingActions(loading = false, availableActions = listOf(FlightRecordingAction.Share),
             metrics = actionMetrics, expandedAction = expandedAction?.takeIf { it == FlightRecordingAction.Share },
@@ -174,8 +190,8 @@ internal fun FlightDetailsSheet(
     FlightDetailsSheetFrame(onClose = onClose, onBack = {
         if (expandedAction != null) { expandedAction = null; expandedActionBounds = null }
         else onClose()
-    }, trailingHeaderAction = headerShareAction, trailingHeaderActionWidth = actionMetrics.toolbarWidth,
-        trailingHeaderActionHeight = actionMetrics.touchHeight) { contentScroll ->
+    }, leadingHeaderAction = headerExportAction, trailingHeaderAction = headerShareAction,
+        headerActionWidth = actionMetrics.toolbarWidth, headerActionHeight = actionMetrics.touchHeight) { contentScroll ->
         key(state.selectedFlightId) {
             BackHandler(enabled = expandedAction != null) { expandedAction = null; expandedActionBounds = null }
             var staffExpanded by rememberSaveable { mutableStateOf(false) }
@@ -186,7 +202,7 @@ internal fun FlightDetailsSheet(
                 state.items.any { it.id == state.selectedFlightId && (it.isAdHocFlight || it.isMyAdHocFlight) }
             val actions: @Composable (Boolean) -> Unit = { loading ->
                 FlightRecordingActions(loading = loading, availableActions = availableActions, metrics = actionMetrics,
-                    expandedAction = expandedAction?.takeIf { it != FlightRecordingAction.Share },
+                    expandedAction = expandedAction?.takeIf { it in availableActions },
                     onExpandedActionChange = { expandedAction = it; expandedActionBounds = null },
                     onExpandedBoundsChange = { expandedActionBounds = it },
                     onOperations = onOperations, onCanceled = onCanceled, onRevertCancellation = onRevertCancellation)
@@ -274,6 +290,9 @@ internal fun FlightDetailsSheet(
             }
         }
     }
+    if (exportOpen && exportableFlight != null) key(exportableFlight.id) {
+        FlightWorkOrderExportDialog(exportableFlight, state.isOnline, onDismiss = { exportOpen = false })
+    }
 }
 
 private data class FlightActionMetrics(
@@ -299,7 +318,7 @@ private fun flightActionMetrics(): FlightActionMetrics {
     return FlightActionMetrics(heading, face, maxOf(48.dp, maxOf(36.dp, face) + 4.dp))
 }
 
-private enum class FlightRecordingAction { Cancel, Review, Revert, Share, Operate }
+private enum class FlightRecordingAction { Cancel, Review, Revert, Share, Export, Operate }
 
 /** First tap reveals one action; a second tap opens its existing flow. */
 @Composable
@@ -314,7 +333,9 @@ private fun FlightRecordingActions(
     onCanceled: () -> Unit,
     onRevertCancellation: () -> Unit,
     onShare: () -> Unit = {},
+    onExport: () -> Unit = {},
     centerFaceVertically: Boolean = false,
+    alignStart: Boolean = false,
 ) {
     val style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
     val density = LocalDensity.current
@@ -342,7 +363,7 @@ private fun FlightRecordingActions(
                     val faceHeight = metrics.collapsedFaceSize + (metrics.expandedFaceHeight - metrics.collapsedFaceSize) * expansion
                     val accent = when {
                         expanded && action == FlightRecordingAction.Cancel -> AccentRed
-                        expanded && action == FlightRecordingAction.Share -> AccentBlue
+                        expanded && (action == FlightRecordingAction.Share || action == FlightRecordingAction.Export) -> AccentBlue
                         else -> null
                     }
                     val fill = detailFill()
@@ -353,6 +374,7 @@ private fun FlightRecordingActions(
                         FlightRecordingAction.Review -> R.string.cancellation_review
                         FlightRecordingAction.Revert -> R.string.cancellation_revert
                         FlightRecordingAction.Share -> R.string.flights_send
+                        FlightRecordingAction.Export -> R.string.flight_wo_export
                         FlightRecordingAction.Operate -> R.string.flights_operate
                     })
                     val label = when (action) {
@@ -365,6 +387,7 @@ private fun FlightRecordingActions(
                         FlightRecordingAction.Review -> Icons.Outlined.Edit
                         FlightRecordingAction.Revert -> Icons.AutoMirrored.Outlined.Undo
                         FlightRecordingAction.Share -> Icons.Outlined.Share
+                        FlightRecordingAction.Export -> Icons.Outlined.IosShare
                         FlightRecordingAction.Operate -> Icons.Outlined.Edit
                     }
                     val labelLimit = metrics.expandedFaceWidth - 16.dp - metrics.iconSize - 6.dp
@@ -373,8 +396,10 @@ private fun FlightRecordingActions(
                             constraints = Constraints(maxWidth = labelLimit.roundToPx().coerceAtLeast(0))).size.width.toDp()
                     }
                     val interactions = remember(action) { MutableInteractionSource() }
+                    val collapsedOffset = metrics.slotWidth * index +
+                        if (alignStart) 0.dp else metrics.toolbarWidth - collapsedWidth
                     Box(Modifier
-                        .offset { IntOffset(((metrics.toolbarWidth - collapsedWidth + metrics.slotWidth * index) * (1f - expansion)).roundToPx(), 0) }
+                        .offset { IntOffset((collapsedOffset * (1f - expansion)).roundToPx(), 0) }
                         .width(buttonWidth).height(metrics.touchHeight)
                         .zIndex(if (expanded) 2f else if (expansion > 0f) 1f else 0f)
                         .graphicsLayer { alpha = opacity }
@@ -386,6 +411,7 @@ private fun FlightRecordingActions(
                                     FlightRecordingAction.Cancel, FlightRecordingAction.Review -> onCanceled()
                                     FlightRecordingAction.Revert -> onRevertCancellation()
                                     FlightRecordingAction.Share -> onShare()
+                                    FlightRecordingAction.Export -> onExport()
                                     FlightRecordingAction.Operate -> onOperations()
                                 }
                             } else onExpandedActionChange(action)
@@ -394,7 +420,8 @@ private fun FlightRecordingActions(
                         .then(if (!enabled) Modifier.clearAndSetSemantics { } else Modifier)) {
                         // Align the painted edge, not an invisible touch-slot inset, with the sheet gutter.
                         Box(Modifier.width(faceWidth).height(faceHeight)
-                            .align(if (centerFaceVertically) Alignment.CenterEnd else Alignment.TopEnd)
+                            .align(if (alignStart) Alignment.CenterStart
+                                else if (centerFaceVertically) Alignment.CenterEnd else Alignment.TopEnd)
                             .offset(y = if (centerFaceVertically) 0.dp else 2.dp)
                             .background(if (loading) fill else containerColor, CircleShape), contentAlignment = Alignment.Center) {
                             if (!loading) Row(Modifier.padding(horizontal = 8.dp).clearAndSetSemantics { },

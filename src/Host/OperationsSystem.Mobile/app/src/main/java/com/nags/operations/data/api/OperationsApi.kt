@@ -12,6 +12,7 @@ import com.nags.operations.data.CustomerLogoDownload
 import io.ktor.http.HttpHeaders
 import com.nags.operations.data.api.HttpClientFactory.bodyOrThrow
 import io.ktor.client.HttpClient
+import io.ktor.client.request.accept
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.request.parameter
@@ -37,9 +38,12 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.ContentDisposition
+import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.readBuffer
 import kotlinx.io.readByteArray
 import java.io.IOException
+import java.io.OutputStream
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import io.ktor.http.ContentType
@@ -108,6 +112,43 @@ class OperationsApi internal constructor(private val client: HttpClient) {
 
     suspend fun flight(id: String): FlightDetail =
         client.get(HttpClientFactory.url("api/v1/operations/flights/mobile/$id")).bodyOrThrow()
+
+    internal suspend fun downloadWorkOrder(flightId: String, output: OutputStream): String? =
+        client.prepareGet(HttpClientFactory.url("api/v1/operations/flights/mobile/${UUID.fromString(flightId)}/print")) {
+            accept(ContentType.Application.Pdf)
+        }.execute { response ->
+            if (!response.status.isSuccess()) {
+                val error = response.bodyAsChannel().readBuffer(8_192L).readByteArray().decodeToString()
+                throw ApiException(response.status.value, error)
+            }
+            check(response.contentType()?.withoutParameters() == ContentType.Application.Pdf) {
+                "The server did not return a Work Order PDF."
+            }
+            val expectedLength = response.headers[HttpHeaders.ContentLength]?.toLongOrNull()
+            check(expectedLength == null || expectedLength <= MAX_WORK_ORDER_BYTES) {
+                "This Work Order PDF is too large to export."
+            }
+
+            val body = response.bodyAsChannel()
+            val signature = body.readBuffer(5L).readByteArray()
+            check(signature.contentEquals("%PDF-".encodeToByteArray())) { "The Work Order PDF could not be read." }
+            output.write(signature)
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var size = signature.size.toLong()
+            while (true) {
+                val count = body.readAvailable(buffer)
+                if (count < 0) break
+                size += count
+                check(size <= MAX_WORK_ORDER_BYTES) { "This Work Order PDF is too large to export." }
+                output.write(buffer, 0, count)
+            }
+            body.closedCause?.let { throw it }
+            check(expectedLength == null || size == expectedLength) { "The Work Order PDF download was incomplete." }
+
+            response.headers[HttpHeaders.ContentDisposition]?.let { header ->
+                ContentDisposition.parse(header).parameter(ContentDisposition.Parameters.FileName)
+            }
+        }
 
     /** Older servers can still prepare flights using the individual detail route. */
     internal suspend fun flightDetailsBatch(ids: List<String>): FlightDetailsBatch? {
@@ -223,6 +264,7 @@ class OperationsApi internal constructor(private val client: HttpClient) {
 
     private companion object {
         const val MAX_LOGO_BYTES = 2 * 1024 * 1024
+        const val MAX_WORK_ORDER_BYTES = 50L * 1024 * 1024
     }
 }
 
