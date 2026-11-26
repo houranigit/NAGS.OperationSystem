@@ -56,9 +56,9 @@ public sealed class GetFlightInvitationOptionsQueryHandler(
                 return access.Error;
         }
         if (flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType)
-            return Error.Validation("AdHoc flights do not have assigned employees.", "Operations.AdHoc.AssignmentsNotAllowed");
+            return FlightAssignmentGuard.AdHocError();
         if (flight.IsPerLanding)
-            return PerLandingAssignmentGuard.Error();
+            return FlightAssignmentGuard.PerLandingError();
 
         var assigned = flight.AssignedEmployees.Select(employee => employee.Employee.StaffMemberId).ToHashSet();
         var staff = await masterData.GetActiveStaffMembersForStationAsync(flight.Station.StationId, cancellationToken);
@@ -124,9 +124,9 @@ public sealed class InviteEmployeesToFlightCommandHandler(
                 return access.Error;
         }
         if (flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType)
-            return Error.Validation("AdHoc flights do not have assigned employees.", "Operations.AdHoc.AssignmentsNotAllowed");
+            return FlightAssignmentGuard.AdHocError();
         if (flight.IsPerLanding)
-            return PerLandingAssignmentGuard.Error();
+            return FlightAssignmentGuard.PerLandingError();
 
         var assigned = flight.AssignedEmployees.Select(employee => employee.Employee.StaffMemberId).ToHashSet();
         var requested = request.StaffMemberIds.Distinct().Where(id => !assigned.Contains(id)).ToList();

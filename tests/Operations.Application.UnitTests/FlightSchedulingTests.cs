@@ -381,6 +381,59 @@ public sealed class FlightSchedulingTests
         (await db.Flights.CountAsync()).ShouldBe(0);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AdHocScheduling_PersistsAnUnassignedScheduleAndRejectsStaff(bool bulk)
+    {
+        await using var db = NewDb();
+        var reader = new SchedulingMasterDataReader();
+        var employeeId = Guid.NewGuid();
+        reader.StaffMembers.Add(employeeId, new(employeeId, "Employee", "E1", reader.StationId, Guid.NewGuid(), true));
+        var resolver = new MasterDataResolver(reader);
+        var user = new TestUser();
+        var audit = new AuditActor();
+        var customerId = Guid.NewGuid();
+        var operationTypeId = WellKnownMasterDataIds.AdHocOperationType;
+        var date = new DateOnly(2026, 7, 3);
+        var arrival = new DateTimeOffset(2026, 7, 3, 10, 0, 0, TimeSpan.Zero);
+
+        async Task<Result> ScheduleAsync(IReadOnlyList<Guid> staffIds)
+        {
+            if (bulk)
+            {
+                return await new ScheduleFlightsCommandHandler(db, AdminScope(), resolver, user, audit,
+                    TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+                    .Handle(new(customerId, reader.StationId, operationTypeId, "123a", new TimeOnly(10, 0),
+                        new TimeOnly(11, 0), [date, date.AddDays(1)], null, [reader.ServiceId], staffIds),
+                        CancellationToken.None);
+            }
+
+            return await new ScheduleFlightCommandHandler(db, AdminScope(), resolver, user, audit,
+                TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
+                .Handle(new(customerId, reader.StationId, operationTypeId, "123a", arrival, arrival.AddHours(1),
+                    null, [reader.ServiceId], staffIds), CancellationToken.None);
+        }
+
+        (await ScheduleAsync([employeeId])).Error.Code.ShouldBe("Operations.AdHoc.AssignmentsNotAllowed");
+        (await db.Flights.CountAsync()).ShouldBe(0);
+        db.ChangeTracker.HasChanges().ShouldBeFalse();
+
+        (await ScheduleAsync([])).IsSuccess.ShouldBeTrue();
+        db.ChangeTracker.Clear();
+        var flights = await db.Flights.Include(flight => flight.PlannedServices)
+            .Include(flight => flight.AssignedEmployees).ToListAsync();
+        flights.Count.ShouldBe(bulk ? 2 : 1);
+        foreach (var flight in flights)
+        {
+            flight.OperationType.OperationTypeId.ShouldBe(operationTypeId);
+            flight.FlightNumber.Value.ShouldBe("SV123A");
+            flight.PlannedServices.ShouldHaveSingleItem().Service.ServiceId.ShouldBe(reader.ServiceId);
+            flight.AssignedEmployees.ShouldBeEmpty();
+        }
+        (await db.OutboxMessages.CountAsync()).ShouldBe(0);
+    }
+
     [Fact]
     public async Task SchedulingOutsideStationScope_IsDenied()
     {

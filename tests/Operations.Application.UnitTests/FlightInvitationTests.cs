@@ -133,8 +133,11 @@ public sealed class FlightInvitationTests
                 new OperationTypeSnapshot(WellKnownMasterDataIds.AdHocOperationType, "AdHoc"), FlightNumber.CreateAdHoc("AD100").Value,
                 ScheduledTime.Create(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1)).Value,
                 Guid.NewGuid(), DateTimeOffset.UtcNow, Guid.NewGuid(), new string('A', 64)).Value
-            : FlightFor(reader.StationId, [Snapshot(original)], adHoc: true);
+            : FlightFor(reader.StationId, [Snapshot(original)]);
         db.Flights.Add(flight);
+        // Preserve a legacy imported roster without using the current scheduling path to assign it.
+        if (!withFingerprint)
+            db.Entry(flight.OperationType).Property(item => item.OperationTypeId).CurrentValue = WellKnownMasterDataIds.AdHocOperationType;
         await db.SaveChangesAsync();
         var scope = new StaticScope(new OperationsScopeContext(UserType.StationStaff, reader.StationId, Guid.NewGuid(), true));
         var roster = flight.AssignedEmployees.ToArray();
@@ -195,9 +198,9 @@ public sealed class FlightInvitationTests
 
     private static StaffMemberSnapshot Snapshot(StaffMemberReadSnapshot staff) => new(staff.Id, staff.FullName, staff.EmployeeId);
 
-    private static Flight FlightFor(Guid stationId, IReadOnlyList<StaffMemberSnapshot> staff, bool perLanding = false, bool adHoc = false) =>
+    private static Flight FlightFor(Guid stationId, IReadOnlyList<StaffMemberSnapshot> staff, bool perLanding = false) =>
         Flight.ScheduleNew(new CustomerSnapshot(Guid.NewGuid(), "SV", "Saudia"),
-            new StationSnapshot(stationId, "RUH", "Riyadh"), new OperationTypeSnapshot(adHoc ? WellKnownMasterDataIds.AdHocOperationType : Guid.NewGuid(), "Transit"),
+            new StationSnapshot(stationId, "RUH", "Riyadh"), new OperationTypeSnapshot(Guid.NewGuid(), "Transit"),
             FlightNumber.Create("SV200", "SV").Value,
             ScheduledTime.Create(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1)).Value,
             null, [new ServiceSnapshot(perLanding ? WellKnownMasterDataIds.AircraftPerLandingService : Guid.NewGuid(), "Planned service")],

@@ -99,13 +99,25 @@ public sealed partial class FlightVisibilityScopeTests
             plannedServiceIds = new[] { refs.ServiceId }, assignedStaffMemberIds = new[] { creator.StaffId }
         });
         strictNumber.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        using var noScratchScheduling = await admin.PostAsJsonAsync($"{Base}/flights", new
+        object PortalAdHocSchedule(Guid[] assignedStaffMemberIds) => new
         {
             customerId = refs.CustomerId, stationId = refs.StationId, operationTypeId = WellKnownMasterDataIds.AdHocOperationType,
             flightNumber = "1234", scheduledArrivalUtc = valid.ScheduledArrivalUtc, scheduledDepartureUtc = valid.ScheduledDepartureUtc,
-            plannedServiceIds = new[] { refs.ServiceId }, assignedStaffMemberIds = new[] { creator.StaffId }
-        });
-        noScratchScheduling.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            plannedServiceIds = new[] { refs.ServiceId }, assignedStaffMemberIds
+        };
+        using var assignedAdHoc = await admin.PostAsJsonAsync($"{Base}/flights", PortalAdHocSchedule([creator.StaffId]));
+        assignedAdHoc.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await assignedAdHoc.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
+            .ShouldBe("Operations.AdHoc.AssignmentsNotAllowed");
+
+        using var portalAdHoc = await admin.PostAsJsonAsync($"{Base}/flights", PortalAdHocSchedule([]));
+        portalAdHoc.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var portalId = await portalAdHoc.Content.ReadFromJsonAsync<Guid>();
+        var portalSaved = (await admin.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/{portalId}"))!;
+        portalSaved.IsAdHocFlight.ShouldBeTrue();
+        portalSaved.AssignedEmployees.ShouldBeEmpty();
+        portalSaved.PlannedServices.ShouldHaveSingleItem().ServiceId.ShouldBe(refs.ServiceId);
+
         var unknown = valid with { CustomerId = WellKnownMasterDataIds.UnknownCustomer, FlightNumber = "123456789012",
             ScheduledDepartureUtc = valid.ScheduledArrivalUtc };
         using var unknownResponse = await CreateMobileAdHocAsync(client, Guid.NewGuid(), unknown);

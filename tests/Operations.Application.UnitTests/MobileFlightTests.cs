@@ -139,11 +139,12 @@ public sealed class MobileFlightTests
         var ownAdHoc = FlightFor("300", adHoc: true);
         var ownMixed = FlightFor("400", perLanding: true, adHoc: true);
         var otherUser = Guid.NewGuid();
-        var assignedAdHoc = FlightFor("600", assigned: true, adHoc: true, createdBy: otherUser);
+        var assignedAdHoc = FlightFor("600", assigned: true, createdBy: otherUser);
         db.Flights.AddRange(mine, landing, ownAdHoc, ownMixed, assignedAdHoc,
             FlightFor("500"), // A station dispatcher still cannot widen My Flights.
             FlightFor("700", perLanding: true, adHoc: true, createdBy: otherUser),
             FlightFor("800", assigned: true, stationId: Guid.NewGuid()));
+        SeedLegacyAdHocOperation(db, assignedAdHoc);
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -184,8 +185,10 @@ public sealed class MobileFlightTests
     public async Task AdHocDetail_AllowsStationColleaguesToOperateWithoutAssignmentOrPlanningAuthority(bool assigned)
     {
         await using var db = NewDb();
-        var flight = FlightFor("100", assigned: assigned, adHoc: true, createdBy: Guid.NewGuid());
+        var flight = FlightFor("100", assigned: assigned, adHoc: !assigned, createdBy: Guid.NewGuid());
         db.Flights.Add(flight);
+        if (assigned)
+            SeedLegacyAdHocOperation(db, flight);
         await db.SaveChangesAsync();
 
         var result = await new GetMobileFlightByIdQueryHandler(db, Scope(), new SchedulingMasterDataReader(), new Actor())
@@ -583,6 +586,10 @@ public sealed class MobileFlightTests
         task.CanEdit.ShouldBeTrue(); task.CanSetEnd.ShouldBeTrue(); task.CanChangeType.ShouldBeTrue(); task.CanDelete.ShouldBeTrue();
         names.Requests.ShouldHaveSingleItem().ShouldBe(new[] { creator, flight.CreatedByUserId }, ignoreOrder: true);
     }
+
+    // Existing imported Ad Hoc records may already have assigned employees.
+    private static void SeedLegacyAdHocOperation(OperationsDbContext db, Flight flight) =>
+        db.Entry(flight.OperationType).Property(item => item.OperationTypeId).CurrentValue = WellKnownMasterDataIds.AdHocOperationType;
 
     private static Flight FlightFor(string number, bool assigned = false, bool perLanding = false,
         bool adHoc = false, Guid? stationId = null, Guid? createdBy = null, DateTimeOffset? sta = null, DateTimeOffset? std = null) =>

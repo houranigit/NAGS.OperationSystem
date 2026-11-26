@@ -105,7 +105,8 @@
     private bool IsBulkCreate => BulkMode && FlightId is null;
     private bool ApprovalLocked => FlightApprovalStatuses.IsLocked(original?.ApprovalStatus);
     private bool ScheduleReadOnly => ApprovalLocked || original?.CanEditSchedule == false;
-    private bool CanAssignStaff => Auth.HasPermission(OperationsPermissions.FlightsAssign) && original?.IsAdHocFlight != true;
+    private bool IsAdHocSelected => model.OperationTypeId == AdHocOperationTypeId;
+    private bool CanAssignStaff => Auth.HasPermission(OperationsPermissions.FlightsAssign) && !IsAdHocSelected;
     private bool CanEditRoster => !ApprovalLocked && CanAssignStaff && !IsPerLandingSelected;
     private bool ShowStaffStep => CanAssignStaff || ApprovalLocked && original?.AssignedEmployees.Count > 0;
     private bool CanSubmit => FlightId is null || original is not null && (!ScheduleReadOnly || CanEditRoster);
@@ -180,7 +181,8 @@
                 <label class="os-operation-label">Operation type <span class="os-operation-required">*</span></label>
                 <div class="os-operation-input-wrap">
                     <RadzenIcon Icon="settings" class="os-operation-field-icon" />
-                    <RadzenDropDown @bind-Value="model.OperationTypeId" Disabled="@(FlightId is not null)" Data="@operationTypes" TextProperty="Name" ValueProperty="Id"
+                    <RadzenDropDown @bind-Value="model.OperationTypeId" @bind-Value:after="ClearUnavailableStaffAssignments"
+                                    Disabled="@(FlightId is not null)" Data="@operationTypes" TextProperty="Name" ValueProperty="Id"
                                     AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="opf-control os-operation-control-icon" Placeholder="Select operation" />
                 </div>
             </div>
@@ -336,7 +338,7 @@
                 </div>
             }
         </div>
-        @if (!ScheduleReadOnly && !CanAssignStaff)
+        @if (!ScheduleReadOnly && !IsAdHocSelected && !CanAssignStaff)
         {
             <DismissibleDialogMessage AlertStyle="AlertStyle.Info" Icon="lock" Title="Staff assignment is not included">
                 <p>@(FlightId is null
@@ -520,9 +522,7 @@
 
                 customers = await customersTask;
                 stations = await stationsTask;
-                operationTypes = (await operationTypesTask)
-                    .Where(operationType => operationType.Id != AdHocOperationTypeId)
-                    .ToList();
+                operationTypes = await operationTypesTask;
                 aircraftTypes = await aircraftTypesTask;
                 services = await servicesTask;
             }
@@ -554,7 +554,7 @@
             if (CanEditRoster && model.StationId != Guid.Empty)
                 await LoadStaffForSelectedStationAsync();
 
-            SyncPerLandingAssignmentState();
+            ClearUnavailableStaffAssignments();
         }
         catch (ApiException ex)
         {
@@ -703,7 +703,7 @@
             return;
 
         Toggle(model.PlannedServiceIds, service.Id);
-        SyncPerLandingAssignmentState();
+        ClearUnavailableStaffAssignments();
     }
 
     private void ToggleStaff(StaffMemberOption member)
@@ -753,9 +753,9 @@
             model.AssignedStaffMemberIds.Add(id);
     }
 
-    private void SyncPerLandingAssignmentState()
+    private void ClearUnavailableStaffAssignments()
     {
-        if (ScheduleReadOnly || !CanAssignStaff || !IsPerLandingSelected)
+        if (ScheduleReadOnly || (!IsAdHocSelected && !IsPerLandingSelected))
             return;
 
         model.AssignedStaffMemberIds.Clear();

@@ -144,26 +144,33 @@ public sealed class FlightTests
         flight.UpdatedAtUtc.ShouldBeNull();
     }
 
-    [Theory]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    [InlineData(true, false)]
-    public void AdHoc_RejectsRosterChangesWithoutRelyingOnCreationFingerprint(bool withFingerprint, bool existingRoster)
+    [Fact]
+    public void ScheduleNew_RejectsAssignedStaffForAdHoc()
     {
         var operation = new OperationTypeSnapshot(WellKnownMasterDataIds.AdHocOperationType, "AdHoc");
-        var original = TestData.Staff();
+        var result = Flight.ScheduleNew(TestData.Customer(), TestData.Station(), operation, TestData.FlightNo(),
+            TestData.Schedule(), null, [TestData.Service()], [TestData.Staff()], Guid.NewGuid(), TestData.Now);
+
+        result.Error.Code.ShouldBe("Operations.AdHoc.AssignmentsNotAllowed");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AdHoc_RejectsRosterChangesWithoutRelyingOnCreationFingerprint(bool withFingerprint)
+    {
+        var operation = new OperationTypeSnapshot(WellKnownMasterDataIds.AdHocOperationType, "AdHoc");
         var flight = withFingerprint
             ? Flight.CreateAdHoc(TestData.Customer(), TestData.Station(), operation, TestData.FlightNo(),
                 TestData.Schedule(), Guid.NewGuid(), TestData.Now, Guid.NewGuid(), new string('A', 64)).Value
             : Flight.ScheduleNew(TestData.Customer(), TestData.Station(), operation, TestData.FlightNo(),
-                TestData.Schedule(), null, [TestData.Service()], existingRoster ? [original] : [], Guid.NewGuid(), TestData.Now).Value;
+                TestData.Schedule(), null, [TestData.Service()], [], Guid.NewGuid(), TestData.Now).Value;
         var employee = TestData.Staff();
-        var roster = flight.AssignedEmployees.ToArray();
 
         flight.ReplaceAssignedEmployees([employee], TestData.Now.AddMinutes(1)).Error.Code.ShouldBe("Operations.AdHoc.AssignmentsNotAllowed");
         flight.InviteEmployees([employee], TestData.Now.AddMinutes(1)).Error.Code.ShouldBe("Operations.AdHoc.AssignmentsNotAllowed");
 
-        flight.AssignedEmployees.ShouldBe(roster);
+        flight.AssignedEmployees.ShouldBeEmpty();
         flight.UpdatedAtUtc.ShouldBeNull();
         flight.CanCorrectOperationalWork(employee.StaffMemberId).ShouldBeTrue();
     }

@@ -69,8 +69,8 @@ public sealed class ScheduleFlightCommandHandler(
         if (stationCheck.IsFailure)
             return stationCheck.Error;
 
-        if (request.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType)
-            return Error.Validation("Scheduled flights cannot use the Ad Hoc operation type.", "Operations.Flight.AdHocNotSchedulable");
+        if (request.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && request.AssignedStaffMemberIds.Count > 0)
+            return FlightAssignmentGuard.AdHocError();
 
         var build = await FlightBuildHelpers.BuildAsync(resolver, request.CustomerId, request.StationId, request.OperationTypeId,
             request.AircraftTypeId, request.FlightNumber, request.ScheduledArrivalUtc, request.ScheduledDepartureUtc,
@@ -78,8 +78,8 @@ public sealed class ScheduleFlightCommandHandler(
         if (build.IsFailure)
             return build.Error;
 
-        if (PerLandingAssignmentGuard.HasPerLandingAssignedStaff(build.Value.PlannedServices, request.AssignedStaffMemberIds))
-            return PerLandingAssignmentGuard.Error();
+        if (FlightAssignmentGuard.HasPerLandingAssignedStaff(build.Value.PlannedServices, request.AssignedStaffMemberIds))
+            return FlightAssignmentGuard.PerLandingError();
 
         var employees = await resolver.StaffMembersForStationAsync(request.AssignedStaffMemberIds, request.StationId, cancellationToken);
         if (employees.IsFailure)
@@ -161,8 +161,8 @@ public sealed class ScheduleFlightsCommandHandler(
         if (stationCheck.IsFailure)
             return stationCheck.Error;
 
-        if (request.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType)
-            return Error.Validation("Scheduled flights cannot use the Ad Hoc operation type.", "Operations.Flight.AdHocNotSchedulable");
+        if (request.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && request.AssignedStaffMemberIds.Count > 0)
+            return FlightAssignmentGuard.AdHocError();
 
         var selectedDates = request.SelectedDates
             .Distinct()
@@ -181,8 +181,8 @@ public sealed class ScheduleFlightsCommandHandler(
         if (references.IsFailure)
             return references.Error;
 
-        if (PerLandingAssignmentGuard.HasPerLandingAssignedStaff(references.Value.PlannedServices, request.AssignedStaffMemberIds))
-            return PerLandingAssignmentGuard.Error();
+        if (FlightAssignmentGuard.HasPerLandingAssignedStaff(references.Value.PlannedServices, request.AssignedStaffMemberIds))
+            return FlightAssignmentGuard.PerLandingError();
 
         var employees = await resolver.StaffMembersForStationAsync(request.AssignedStaffMemberIds, request.StationId, cancellationToken);
         if (employees.IsFailure)
@@ -528,8 +528,10 @@ public sealed class AssignEmployeesCommandHandler(
         if (approval.IsFailure)
             return approval.Error;
 
+        if (flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && request.StaffMemberIds.Count > 0)
+            return FlightAssignmentGuard.AdHocError();
         if (flight.IsPerLanding)
-            return PerLandingAssignmentGuard.Error();
+            return FlightAssignmentGuard.PerLandingError();
 
         var current = flight.AssignedEmployees.Select(employee => employee.Employee)
             .ToDictionary(employee => employee.StaffMemberId);
@@ -568,7 +570,7 @@ public sealed class AssignEmployeesCommandHandler(
     }
 }
 
-internal static class PerLandingAssignmentGuard
+internal static class FlightAssignmentGuard
 {
     public static bool HasPerLandingAssignedStaff(
         IReadOnlyList<ServiceSnapshot> plannedServices,
@@ -576,7 +578,10 @@ internal static class PerLandingAssignmentGuard
         assignedStaffMemberIds.Count > 0 &&
         plannedServices.Any(service => PerLandingPolicy.IsAircraftPerLanding(service.ServiceId));
 
-    public static Error Error() =>
+    public static Error AdHocError() =>
+        Error.Validation("AdHoc flights do not have assigned employees.", "Operations.AdHoc.AssignmentsNotAllowed");
+
+    public static Error PerLandingError() =>
         BuildingBlocks.Domain.Results.Error.Validation(
             "Per Landing flights cannot have assigned staff because they are available station-wide.",
             "Operations.PerLanding.AssignmentNotAllowed");
