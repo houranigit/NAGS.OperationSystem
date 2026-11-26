@@ -184,3 +184,100 @@
 .ofl-flight-status.os-pill--info {
     color: var(--os-color-flight-on-ground);
 }
+.ofl-order-times,
+.ofl-order-work,
+.ofl-order-meta {
+    font-size: var(--os-text-xs);
+}
+
+.ofl-order-work {
+    display: grid;
+}
+
+.ofl-order-time {
+    display: flex;
+    align-items: baseline;
+    gap: var(--os-space-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.ofl-order-time > span,
+.ofl-order-meta,
+.ofl-order-unissued {
+    color: var(--os-color-text-muted);
+}
+
+.ofl-order-time > .ofl-order-on-ground {
+    color: var(--os-color-flight-on-ground);
+}
+
+.ofl-order-unissued {
+    white-space: nowrap;
+}
+
+.ofl-order-meta {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ofl-work-orders ::deep .rz-data-grid-data {
+    container-type: inline-size;
+}
+
+.ofl-work-orders ::deep .os-list-toolbar--collapsible .os-list-toolbar-filters {
+    gap: var(--os-space-2);
+}
+
+.ofl-work-orders ::deep .os-list-toolbar--collapsible .os-search {
+    min-width: min(100%, 8.5rem);
+}
+
+.ofl-work-orders ::deep .rz-grid-table tbody > tr:has(.ofl-cancellation-cell) > td {
+    background: color-mix(in srgb, var(--os-color-danger-bg) 42%, var(--os-color-surface));
+}
+
+.ofl-work-orders ::deep .rz-grid-table .ofl-cancellation-cell,
+.ofl-work-orders ::deep .ofl-cancellation-cell .rz-cell-data {
+    overflow: visible;
+    white-space: normal;
+}
+
+.ofl-cancellation-summary {
+    position: sticky;
+    inset-inline-start: var(--os-space-2);
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--os-space-1) var(--os-space-3);
+    max-inline-size: calc(100cqi - 84px - 2 * var(--os-space-2));
+    padding-block: var(--os-space-1);
+    color: var(--os-color-text);
+}
+
+.ofl-cancellation-type,
+.ofl-cancellation-identity {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--os-space-1);
+}
+
+.ofl-cancellation-type,
+.ofl-cancellation-summary > time {
+    color: var(--os-color-danger);
+}
+
+.ofl-cancellation-type ::deep .rzi {
+    font-size: 1rem;
+}
+
+.ofl-cancellation-summary > time {
+    font-size: var(--os-text-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+.ofl-cancellation-identity > span {
+    color: var(--os-color-text-muted);
+    overflow-wrap: anywhere;
+}

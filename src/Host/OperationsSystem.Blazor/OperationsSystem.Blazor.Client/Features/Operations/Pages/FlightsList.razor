@@ -8,29 +8,33 @@
 @inject GridPreferences GridPrefs
 @inject AuthSession Auth
 
-<PageTitle>Flights</PageTitle>
+<PageTitle>@PageName</PageTitle>
 
 <RequirePermission Permission="@OperationsPermissions.FlightsView">
-    <div class="os-list-page">
-        <PageHeader Title="Flights" Section="@UiStrings.Nav.Operations">
+    <div class="@(WorkOrdersOnly ? "os-list-page ofl-work-orders" : "os-list-page")">
+        <PageHeader Title="@PageName" Section="@UiStrings.Nav.Operations">
             <Actions>
-                <AuthorizeView Context="schedule">
-                    @if (schedule.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsSchedule))
-                    {
-                        <RadzenButton Text="Schedule flights" Icon="event_repeat" ButtonStyle="ButtonStyle.Light" class="ofl-schedule-bulk-button" Click="@OpenBulkScheduleAsync" />
-                        <RadzenButton Text="Schedule flight" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenScheduleAsync" />
-                    }
-                </AuthorizeView>
+                @if (!WorkOrdersOnly)
+                {
+                    <AuthorizeView Context="schedule">
+                        @if (schedule.User.HasClaim(PortalAuthStateProvider.PermissionClaimType, OperationsPermissions.FlightsSchedule))
+                        {
+                            <RadzenButton Text="Schedule flights" Icon="event_repeat" ButtonStyle="ButtonStyle.Light" class="ofl-schedule-bulk-button" Click="@OpenBulkScheduleAsync" />
+                            <RadzenButton Text="Schedule flight" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OpenScheduleAsync" />
+                        }
+                    </AuthorizeView>
+                }
             </Actions>
         </PageHeader>
 
         <DataListCard @ref="list" TItem="FlightListItem" Data="@items" Count="@totalCount" IsLoading="@isLoading"
                       HasError="@loadError" OnRetry="@ReloadAsync" LoadData="@LoadDataAsync"
                       PageSize="@currentPageSize" PageSizeReady="@pageSizeReady" PageSizeChanged="@OnPageSizeChangedAsync"
-                      PageSizeText="@FlightCountText"
-                      ColumnLayoutKey="@GridKey"
+                      PageSizeText="@ResultCountText"
+                      ColumnLayoutKey="@ColumnLayoutKey" PreviousColumnLayoutKey="@(WorkOrdersOnly ? GridKey : null)"
+                      CellRender="@(WorkOrdersOnly ? RenderWorkOrderCell : null)"
                       SearchValue="@searchTerm" SearchValueChanged="@(v => searchTerm = v)" OnSearch="@ReloadAsync"
-                      SearchPlaceholder="Search flight number, customer, or ID" CountLabel="flights" EmptyText="No flights match your filters."
+                      SearchPlaceholder="@SearchPlaceholder" CountLabel="@CountLabel" EmptyText="@EmptyText"
                       UseCollapsibleFilters="true" ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync"
                       ToolbarPanelLabel="@(CanExport ? UiStrings.Flights.Export : null)" ToolbarPanelIcon="download">
             <Toolbar>
@@ -85,54 +89,114 @@
                 </div>
             </Filters>
             <Columns>
-                <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" UniqueID="flight-number" Title="Flight #" MinWidth="120px">
+                <RadzenDataGridColumn TItem="FlightListItem" Property="FlightNumber" UniqueID="@FlightNumberColumnId" Title="Flight #"
+                                      Reorderable="@(!WorkOrdersOnly)" MinWidth="@(WorkOrdersOnly ? "200px" : "120px")">
                     <Template Context="flight">
-                        @{
-                            var type = FlightTypeBadge(flight);
-                            var timedStatus = FlightStatusTime.At(flight, statusTimeUtc);
-                            var status = statusOptions.FirstOrDefault(option => option.Value == timedStatus.Status);
-                            var statusText = timedStatus.Text ?? status?.Label ?? timedStatus.Status ?? "—";
+                        @if (WorkOrdersOnly && IsCancellationOnly(flight))
+                        {
+                            @CancellationSummary(flight)
                         }
-                        <div class="os-role-cell">
-                            <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
-                            <div class="os-role-cell-text">
-                                <div class="os-role-cell-title">
-                                    <strong>@flight.FlightNumber</strong>
-                                    <span class="ofl-flight-type-badges">
-                                        <span class="ofl-flight-type-badge os-pill--@type.Tone" title="@type.Label" role="img" aria-label="@type.Label">@type.Abbreviation</span>
-                                        @if (flight.IsOnCall)
-                                        {
-                                            <span class="ofl-flight-type-badge ofl-on-call-badge os-pill--success" title="@UiStrings.Flights.TypeOnCall"
-                                                  role="img" aria-label="@UiStrings.Flights.TypeOnCall">
-                                                <RadzenIcon Icon="call" class="ofl-on-call-icon" aria-hidden="true" />
-                                            </span>
-                                        }
-                                    </span>
+                        else
+                        {
+                            var type = FlightTypeBadge(flight);
+                            <div class="os-role-cell">
+                                <span class="os-role-cell-icon"><RadzenIcon Icon="flight" /></span>
+                                <div class="os-role-cell-text">
+                                    <div class="os-role-cell-title">
+                                        <strong>@flight.FlightNumber</strong>
+                                        <span class="ofl-flight-type-badges">
+                                            <span class="ofl-flight-type-badge os-pill--@type.Tone" title="@type.Label" role="img" aria-label="@type.Label">@type.Abbreviation</span>
+                                            @if (flight.IsOnCall)
+                                            {
+                                                <span class="ofl-flight-type-badge ofl-on-call-badge os-pill--success" title="@UiStrings.Flights.TypeOnCall"
+                                                      role="img" aria-label="@UiStrings.Flights.TypeOnCall">
+                                                    <RadzenIcon Icon="call" class="ofl-on-call-icon" aria-hidden="true" />
+                                                </span>
+                                            }
+                                        </span>
+                                    </div>
+                                    @if (WorkOrdersOnly)
+                                    {
+                                        <span class="ofl-order-meta" title="@flight.CustomerName">@flight.CustomerName</span>
+                                    }
+                                    else
+                                    {
+                                        var timedStatus = FlightStatusTime.At(flight, statusTimeUtc);
+                                        var status = statusOptions.FirstOrDefault(option => option.Value == timedStatus.Status);
+                                        var statusText = timedStatus.Text ?? status?.Label ?? timedStatus.Status ?? "—";
+                                        <span class="ofl-flight-status os-pill--@(status?.Tone ?? "neutral")" title="@statusText">@statusText</span>
+                                    }
                                 </div>
-                                <span class="ofl-flight-status os-pill--@(status?.Tone ?? "neutral")" title="@statusText">@statusText</span>
                             </div>
-                        </div>
+                        }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FlightListItem" Property="CustomerName" UniqueID="customer" Title="@UiStrings.Flights.Customer" Width="180px" />
-                <RadzenDataGridColumn TItem="FlightListItem" Property="StationIataCode" UniqueID="station" Title="Station" Width="120px" />
-                <RadzenDataGridColumn TItem="FlightListItem" Property="OperationTypeName" UniqueID="operation" Title="Operation" Width="120px" />
-                <RadzenDataGridColumn TItem="FlightListItem" UniqueID="duration" Title="Duration" Sortable="false" Width="120px">
-                    <Template Context="flight">@DurationDisplay(flight)</Template>
-                </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FlightListItem" UniqueID="approval-status" Title="Approval status" Sortable="false" Width="160px">
+                @if (WorkOrdersOnly)
+                {
+                    <RadzenDataGridColumn TItem="FlightListItem" UniqueID="scheduled-times" Title="S. Times" Sortable="false" Width="180px">
+                        <Template Context="flight">
+                            @{ var zone = StationTimeZone.FromId(flight.StationTimeZoneId); }
+                            <div class="ofl-order-times">
+                                @OrderTime("STA", flight.ScheduledArrivalUtc, zone)
+                                @OrderTime("STD", flight.ScheduledDepartureUtc, zone)
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="FlightListItem" UniqueID="recorded-times" Title="A. Times" Sortable="false" Width="180px">
+                        <Template Context="flight">
+                            @{ var zone = StationTimeZone.FromId(flight.StationTimeZoneId); }
+                            <div class="ofl-order-times">
+                                @OrderTime("ATA", flight.ActualArrivalUtc, zone)
+                                @OrderTime("ATD", flight.ActualDepartureUtc, zone, showOnGround: true)
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="FlightListItem" UniqueID="recorded-work" Title="Work" Sortable="false" Width="100px">
+                        <Template Context="flight">
+                            <div class="ofl-order-work">
+                                <span>@flight.ServiceRecordCount @(flight.ServiceRecordCount == 1 ? "service" : "services")</span>
+                                <span>@flight.TaskRecordCount @(flight.TaskRecordCount == 1 ? "task" : "tasks")</span>
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+                }
+                else
+                {
+                    <RadzenDataGridColumn TItem="FlightListItem" Property="CustomerName" UniqueID="customer" Title="@UiStrings.Flights.Customer" Width="180px" />
+                    <RadzenDataGridColumn TItem="FlightListItem" Property="StationIataCode" UniqueID="station" Title="Station" Width="120px" />
+                    <RadzenDataGridColumn TItem="FlightListItem" Property="OperationTypeName" UniqueID="operation" Title="Operation" Width="120px" />
+                    <RadzenDataGridColumn TItem="FlightListItem" UniqueID="duration" Title="Duration" Sortable="false" Width="120px">
+                        <Template Context="flight">@DurationDisplay(flight)</Template>
+                    </RadzenDataGridColumn>
+                }
+                <RadzenDataGridColumn TItem="FlightListItem" Property="@nameof(FlightListItem.ApprovalStatus)" UniqueID="approval-status"
+                                      Title="Status" Sortable="@WorkOrdersOnly" Width="160px">
                     <Template Context="flight">
                         @{
                             var approval = ApprovalBadge(flight.ApprovalStatus);
                         }
                         <StatusBadge Label="@approval.Label" Tone="@approval.Tone" Icon="@approval.Icon" />
+                        @if (WorkOrdersOnly && flight.IsApprovalLocked && !string.IsNullOrWhiteSpace(flight.ApprovedByDisplayName))
+                        {
+                            <span class="ofl-order-meta" title="@ApprovalDetails(flight)">@flight.ApprovedByDisplayName</span>
+                        }
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FlightListItem" UniqueID="work-order" Title="WO#" Sortable="false" Width="120px">
+                <RadzenDataGridColumn TItem="FlightListItem" Property="@nameof(FlightListItem.WorkOrderNumber)" UniqueID="work-order"
+                                      Title="@(WorkOrdersOnly ? "WO #" : "WO#")" Reorderable="@(!WorkOrdersOnly)"
+                                      Sortable="@WorkOrdersOnly" Width="120px">
                     <Template Context="flight">
-                        @if (flight.WorkOrderNumber is { } workOrderNumber)
+                        @if (WorkOrdersOnly)
                         {
-                            <strong>@workOrderNumber</strong>
+                            @WorkOrderNumber(flight)
+                            @if (flight.HasCancellationSubmission && flight.HasWorkOrderRecords)
+                            {
+                                <span class="ofl-order-meta" title="@ConflictDetails(flight)">Work &amp; cancellation</span>
+                            }
+                        }
+                        else if (flight.WorkOrderNumber is { } number)
+                        {
+                            <strong>@number</strong>
                         }
                         else
                         {
@@ -146,14 +210,17 @@
                 {
                     <RowActionMenu>
                         <ChildContent>
-                            <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
-                                       OnClick="@(() => OpenEditAsync(flight.Id))" />
+                            @if (CanEditSchedule)
+                            {
+                                <RowAction Text="Edit schedule" Icon="edit" Permission="@OperationsPermissions.FlightsUpdate"
+                                           OnClick="@(() => OpenEditAsync(flight.Id))" />
+                            }
                         </ChildContent>
                         <MenuContent>
                             @if (flight.HasOperationalRecords || flight.IsAutoClosed || CanOpenFlightOperations)
                             {
                                 <PortalFlightOperationsMenu @key="flight.Id" Flight="@flight" ShowWorkActions="@CanOpenFlightOperations"
-                                    ShowDivider="@CanEditSchedule" Changed="@ReloadAsync" />
+                                    ShowDivider="@CanEditSchedule" WorkOrdersOnly="@WorkOrdersOnly" Changed="@ReloadAsync" />
                             }
                         </MenuContent>
                     </RowActionMenu>
@@ -164,9 +231,18 @@
 </RequirePermission>
 
 @code {
+    [Parameter] public bool WorkOrdersOnly { get; set; }
     [SupplyParameterFromQuery(Name = "search")] private string? SearchQuery { get; set; }
 
-    private const string GridKey = "operations-flights";
+    private string GridKey => WorkOrdersOnly ? "operations-work-orders" : "operations-flights";
+    private string ColumnLayoutKey => WorkOrdersOnly ? $"{GridKey}-v2" : GridKey;
+    private string PageName => WorkOrdersOnly ? "Work Orders" : "Flights";
+    private string SearchPlaceholder => WorkOrdersOnly
+        ? "Search WO number, flight number, customer, or ID"
+        : "Search flight number, customer, or ID";
+    private string CountLabel => WorkOrdersOnly ? "flights with orders" : "flights";
+    private string EmptyText => WorkOrdersOnly ? "No work or cancellation orders match your filters." : "No flights match your filters.";
+    private const string FlightNumberColumnId = "flight-number";
     private static readonly int[] PageSizes = [10, 25, 50, 100];
     private readonly StatusFilterOption[] statusOptions =
     [
@@ -211,7 +287,7 @@
     private IReadOnlyList<StationFilterOption> stationOptions = [];
     private IReadOnlyList<CustomerFilterOption> customerOptions = [];
     private IReadOnlyList<OperationTypeFilterOption> operationTypeOptions = [];
-    private bool CanEditSchedule => Auth.HasPermission(OperationsPermissions.FlightsUpdate);
+    private bool CanEditSchedule => !WorkOrdersOnly && Auth.HasPermission(OperationsPermissions.FlightsUpdate);
     private bool CanExport => Auth.HasPermission(OperationsPermissions.FlightsExport);
     private bool ExportAvailable => CanExport && !isExporting && !isLoading && !loadError && totalCount > 0;
     private string? SearchFilter => string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm;
@@ -240,7 +316,90 @@
         _ => ("Not Approved", "gray", null)
     };
 
-    private string FlightCountText => UiStrings.Flights.TotalCount(totalCount);
+    private string ResultCountText => WorkOrdersOnly ? $"{totalCount:N0} {CountLabel}" : UiStrings.Flights.TotalCount(totalCount);
+
+    private static bool IsCancellationOnly(FlightListItem flight) => flight.HasCancellationSubmission && !flight.HasWorkOrderRecords;
+
+    private static void RenderWorkOrderCell(DataGridCellRenderEventArgs<FlightListItem> args)
+    {
+        if (args.Data is not { } flight || !IsCancellationOnly(flight) || args.Column is not { } column)
+            return;
+
+        if (column.UniqueID == FlightNumberColumnId)
+        {
+            args.Attributes["colspan"] = column.Grid.ColumnsCollection.Count(item => item.GetVisible() && item.UniqueID != "actions");
+            args.Attributes["class"] = "ofl-cancellation-cell";
+        }
+        else if (column.UniqueID != "actions")
+        {
+            args.Attributes["style"] = "display:none";
+        }
+    }
+
+    private static string CancellationLabel(string? type) => type switch
+    {
+        "Planned" => "Planned cancellation",
+        "Unplanned" => "Unplanned cancellation",
+        _ => "Cancellation order"
+    };
+
+    private static RenderFragment CancellationSummary(FlightListItem flight) =>
+        @<div class="ofl-cancellation-summary">
+            @{
+                var approval = ApprovalBadge(flight.ApprovalStatus);
+            }
+            <span class="ofl-cancellation-type">
+                <RadzenIcon Icon="event_busy" aria-hidden="true" />
+                <strong>@CancellationLabel(flight.CancellationType)</strong>
+            </span>
+            @if (flight.CanceledAtUtc is { } canceledAt)
+            {
+                <time datetime="@canceledAt.ToString("O")">@StationTimeZone.FromId(flight.StationTimeZoneId).Format(canceledAt, "dd MMM yyyy HH:mm")</time>
+            }
+            <span class="ofl-cancellation-identity">
+                <strong>@flight.FlightNumber</strong>
+                <span>@flight.CustomerName · @flight.StationIataCode</span>
+            </span>
+            @WorkOrderNumber(flight)
+            <StatusBadge Label="@approval.Label" Tone="@approval.Tone" Icon="@approval.Icon" />
+        </div>;
+
+    private static RenderFragment WorkOrderNumber(FlightListItem flight) =>
+        @<text>
+            @if (!string.IsNullOrWhiteSpace(flight.WorkOrderNumber))
+            {
+                <strong>@flight.WorkOrderNumber</strong>
+            }
+            else
+            {
+                <span class="ofl-order-unissued" title="Work order number not issued">@flight.StationIataCode - ____</span>
+            }
+        </text>;
+
+    private static RenderFragment OrderTime(string label, DateTimeOffset? timestamp, StationTimeZone zone, bool showOnGround = false) =>
+        @<div class="ofl-order-time">
+            <span>@label</span>
+            @if (timestamp is { } value)
+            {
+                <time datetime="@value.ToString("O")">@zone.Format(value, "dd MMM yyyy HH:mm")</time>
+            }
+            else if (showOnGround)
+            {
+                <span class="ofl-order-on-ground">Still on ground</span>
+            }
+            else
+            {
+                <span>—</span>
+            }
+        </div>;
+
+    private static string ConflictDetails(FlightListItem flight) => flight.CanceledAtUtc is { } timestamp
+        ? $"{CancellationLabel(flight.CancellationType)} · {StationTimeZone.FromId(flight.StationTimeZoneId).Format(timestamp, "dd MMM yyyy HH:mm")}"
+        : "Work and cancellation orders";
+
+    private static string ApprovalDetails(FlightListItem flight) => flight.ApprovedAtUtc is { } timestamp
+        ? $"Approved by {flight.ApprovedByDisplayName} · {StationTimeZone.FromId(flight.StationTimeZoneId).Format(timestamp, "dd MMM yyyy HH:mm")}"
+        : $"Approved by {flight.ApprovedByDisplayName}";
 
     private int ActiveFilterCount =>
         (stationFilter.HasValue ? 1 : 0)
@@ -276,7 +435,7 @@
 
     protected override Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (firstRender && !WorkOrdersOnly)
             statusClockTask = UpdateStatusClockAsync(statusClockCancellation.Token);
 
         return Task.CompletedTask;
@@ -445,7 +604,8 @@
         try
         {
             await Operations.DownloadFlightsExportAsync(format, SearchFilter, stationFilter, customerFilter, operationTypeFilter,
-                DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort, statusFilters, FlightTypeFilter, report);
+                DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort, statusFilters, FlightTypeFilter, report,
+                workOrdersOnly: WorkOrdersOnly);
             exportMessage = string.Format(UiStrings.Flights.ExportReadyDetail, formatLabel);
         }
         catch (ApiException ex)
@@ -493,7 +653,7 @@
             var result = await Operations.GetFlightsAsync(currentPage, currentPageSize,
                 SearchFilter, stationFilter, customerFilter, operationTypeFilter,
                 DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort, statuses: statusFilters,
-                flightType: FlightTypeFilter);
+                flightType: FlightTypeFilter, workOrdersOnly: WorkOrdersOnly);
             if (request != loadRequest)
                 return;
 

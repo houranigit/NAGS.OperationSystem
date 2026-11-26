@@ -167,6 +167,8 @@ System administrators with flight View permission can open work orders, return-t
 
 For a flight with no saved operational records, the register offers Edit schedule, Create Work Order, and Cancel flight in that order, subject to permissions. Once an operational record exists, the menu offers Edit schedule and a submenu for the recorded order. Work Order opens the normal editor. Cancellation Order opens the cancellation editor. Each order submenu offers View, the appropriate Approve or Unlock action, and Print WO as permitted. Approval and unlock use the corresponding editor in read-only review mode. A flight with conflicting work and cancellation reports shows both order submenus. Approval becomes available again after resolving the conflict.
 
+The portal’s Work Orders page uses the Flights register’s visibility, filters, order actions, and export formats. It lists flights with a saved arrival, departure, cancellation, service, task, or RTR, including incomplete orders and conflicts. Automatic closure by itself does not qualify, even when it issued a WO number. Search also matches the WO number. Related times use the station time zone, with the accepted submission shown when available and the earliest submitted alternative otherwise. The cancellation type and time come from the same submission. Service and task counts include recorded RTR work and exclude planned services.
+
 System administrators with flight View and Operate can delete an unlocked order from its submenu or its editor after confirming the order type and flight. Deleting a Work Order removes the saved arrivals, departures, services, tasks, returns to ramp, and associated media. Deleting a Cancellation Order removes all cancellation reports. Each action preserves the flight schedule, assigned employees, and reports belonging to the other order. Approved and Pending RTR work orders remain locked. After deletion, the register refreshes to show the remaining order or the actions for a flight with no saved work.
 
 The portal Work Order editor covers Arrival, Services, Tasks, Departure, and RTR. Reported actuals open read-only with attribution and an explicit update action for authorized corrections. Users can draft RTR occurrences in the Work Order once they enter valid flight departure details, including before those details are saved. The preceding RTR must be closed before adding the next. One Save submits normal work in an atomic batch, then saves the RTR drafts in sequence through the occurrence endpoint. A failed occurrence save leaves the remaining drafts in the editor and retains changes already acknowledged by the API. Cancellation Order shows the employee’s own submission. Administrators and scoped approvers can inspect all cancellation reports for the flight. Undo removes only the caller’s exact submission.
@@ -241,7 +243,7 @@ All flight routes are under `/api/v1/operations/flights`:
 
 | Method | Route | Behavior |
 |---|---|---|
-| GET | `/` | Filtered, sorted, paged flight register with optional `flightType` (`All`, `Scheduled`, `PerLanding`, `OnCall`, or `AdHoc`) |
+| GET | `/` | Filtered, sorted, paged flight register with optional `flightType` (`All`, `Scheduled`, `PerLanding`, `OnCall`, or `AdHoc`) and `hasOperationalRecords` |
 | GET | `/{id}` | Flight planning details, arrival/departure/cancellation submissions, and rowversion |
 | GET | `/{id}/operations` | Portal work and cancellation editor details within the register scope |
 | GET | `/{id}/operations/print` | Work Order PDF with available saved details within the portal flight register scope |
@@ -265,7 +267,7 @@ All flight routes are under `/api/v1/operations/flights`:
 | GET | `/mobile/{id}/invitation-options` | Invitation options within the mobile scope |
 | POST | `/mobile/{id}/invite` | Existing add-only invitation behavior within the mobile scope |
 | GET | `/customer-logos/{customerId}` | Customer logo when at least one flight for that customer is visible to the caller |
-| GET | `/export` | Filtered Flights Excel, CSV, or PDF export, or the Excel Billing report with `report=billing` |
+| GET | `/export` | Filtered Flights Excel, CSV, or PDF export, or the Excel Billing report with `report=billing`. Accepts the same `hasOperationalRecords` filter |
 | POST | `/` | Schedule one flight |
 | POST | `/bulk` | Schedule selected dates |
 | PUT | `/{id}` | Update scheduled details |

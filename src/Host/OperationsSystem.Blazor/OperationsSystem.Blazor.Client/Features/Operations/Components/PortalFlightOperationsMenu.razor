@@ -54,6 +54,7 @@ else if (!isLoading && !loadError)
     [Parameter, EditorRequired] public FlightListItem Flight { get; set; } = default!;
     [Parameter] public bool ShowWorkActions { get; set; }
     [Parameter] public bool ShowDivider { get; set; }
+    [Parameter] public bool WorkOrdersOnly { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
 
     private PortalFlightOperations? details;
@@ -73,9 +74,9 @@ else if (!isLoading && !loadError)
     private bool HasCancellationOrder => details is { } current
         ? current.CancellationSubmissions.Count > 0
         : Flight.HasCancellationSubmission;
-    private bool CanCreateWorkOrder => !HasOrders && !ViewOnly && details is { } current &&
+    private bool CanCreateWorkOrder => !WorkOrdersOnly && !HasOrders && !ViewOnly && details is { } current &&
         (current.CanSaveArrival || current.CanSaveDeparture || current.CanSaveServices || current.CanSaveTasks || current.CanSaveReturnsToRamp);
-    private bool CanStartCancellation => !HasOrders && !ViewOnly &&
+    private bool CanStartCancellation => !WorkOrdersOnly && !HasOrders && !ViewOnly &&
         details is { IsApprovalLocked: false, CanSaveCancellation: true };
     private bool CanViewCancellation => details is { CancellationSubmissions.Count: > 0 } current &&
         (Auth.IsSystemAdministrator || current.CanApprove || current.CanUnlock ||

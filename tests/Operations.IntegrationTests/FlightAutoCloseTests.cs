@@ -81,6 +81,9 @@ public sealed partial class FlightVisibilityScopeTests
             item.ApprovalStatus == FlightApprovalStatus.NotApproved && item.WorkOrderNumber == null);
         var filtered = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{portalPath}&status=AutoClosed"))!;
         filtered.Items.Select(item => item.Id).ShouldBe(hiddenIds, ignoreOrder: true);
+        var recordedOrders = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{portalPath}&hasOperationalRecords=true"))!;
+        recordedOrders.Items.Select(item => item.Id).ShouldBe(
+            [withArrival.Id, withService.Id, withTask.Id, canceled.Id, manuallyApproved.Id], ignoreOrder: true);
 
         var mobileAfter = (await client.GetFromJsonAsync<MobileFlightPageDto>($"{mobilePath}?category=PerLanding"))!;
         mobileAfter.Items.Select(item => item.Id).ShouldBe(

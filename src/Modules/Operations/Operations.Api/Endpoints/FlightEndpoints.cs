@@ -286,7 +286,7 @@ internal static class FlightEndpoints
         flights.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, Guid? stationId = null, Guid? customerId = null,
             Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null,
-            string? status = null, string? flightType = null) =>
+            string? status = null, string? flightType = null, bool? hasOperationalRecords = null) =>
         {
             var statuses = ParseStatuses(status);
             if (statuses is null)
@@ -296,7 +296,8 @@ internal static class FlightEndpoints
                 return ApiResults.Problem(Error.Validation("Choose All, Scheduled, PerLanding, OnCall, or AdHoc.", "Operations.Flight.TypeInvalid"));
 
             var result = await sender.Send(new GetFlightsQuery(
-                page, pageSize, search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, type), ct);
+                page, pageSize, search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, type,
+                hasOperationalRecords), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
@@ -390,7 +391,8 @@ internal static class FlightEndpoints
         [FromServices] ILegacySystemIdReader legacySystemIds, TimeProvider clock, HttpResponse response, CancellationToken ct,
         string? format = null, string? search = null, Guid? stationId = null, Guid? customerId = null,
         Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null,
-        string? status = null, string? flightType = null, string? timeZoneId = null, string? report = null)
+        string? status = null, string? flightType = null, string? timeZoneId = null, string? report = null,
+        bool? hasOperationalRecords = null)
     {
         if (!FlightExportDocumentFactory.TryParseFormat(format, out var exportFormat))
             return ApiResults.Problem(Error.Validation(
@@ -416,7 +418,7 @@ internal static class FlightEndpoints
             return ApiResults.Problem(Error.Validation("Choose All, Scheduled, PerLanding, OnCall, or AdHoc.", "Operations.Flight.TypeInvalid"));
 
         var result = await sender.Send(new GetFlightsExportQuery(search, stationId, customerId, operationTypeId,
-            fromUtc, toUtc, sort, statuses, type, IncludeManpower: billing), ct);
+            fromUtc, toUtc, sort, statuses, type, IncludeManpower: billing, HasOperationalRecords: hasOperationalRecords), ct);
         if (result.IsFailure)
             return ApiResults.Problem(result.Error);
 

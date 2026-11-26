@@ -14,7 +14,7 @@ public sealed class PortalNavigationPolicyTests
     }
 
     [Fact]
-    public void Flights_only_viewer_lands_on_the_grid_without_sidebar()
+    public void Flights_viewer_lands_on_flights_and_can_navigate_to_work_orders()
     {
         var permissions = new[] { OperationsPermissions.FlightsView };
 
@@ -22,8 +22,23 @@ public sealed class PortalNavigationPolicyTests
             .ShouldBe("/operations/flights");
         PortalNavigationPolicy.GetPrimaryDestinations(permissions)
             .Select(destination => destination.Path)
-            .ShouldBe(["/operations/flights"]);
+            .ShouldBe(["/operations/flights", "/operations/work-orders"]);
         PortalNavigationPolicy.ShouldShowSidebar(UserTypes.ViewerOnly, permissions)
+            .ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Work_orders_direct_link_requires_the_flights_view_permission()
+    {
+        const string route = "/operations/work-orders";
+        const string returnUrl = route + "?search=123";
+
+        PortalNavigationPolicy.ResolvePostLogin(
+                UserTypes.ViewerOnly,
+                [OperationsPermissions.FlightsView],
+                returnUrl)
+            .ShouldBe(returnUrl);
+        PortalNavigationPolicy.IsRouteAuthorized(route, [MasterDataPermissions.StaffAllocationView])
             .ShouldBeFalse();
     }
 
@@ -51,7 +66,7 @@ public sealed class PortalNavigationPolicyTests
 
         PortalNavigationPolicy.GetPrimaryDestinations(permissions)
             .Select(destination => destination.Path)
-            .ShouldBe(["/users", "/operations/flights", "/master-data/customers"]);
+            .ShouldBe(["/users", "/operations/flights", "/operations/work-orders", "/master-data/customers"]);
         PortalNavigationPolicy.ResolveLandingPage(permissions).ShouldBe("/users");
     }
 
@@ -72,7 +87,6 @@ public sealed class PortalNavigationPolicyTests
     [InlineData("/users/not-a-guid")]
     [InlineData("/operations/dashboard")]
     [InlineData("/operations/calendar")]
-    [InlineData("/operations/work-orders")]
     [InlineData("/operations/staff-allocation")]
     [InlineData("/operations/flights/00000000-0000-0000-0000-000000000001")]
     [InlineData("/unknown")]

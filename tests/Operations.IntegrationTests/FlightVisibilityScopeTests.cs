@@ -373,8 +373,12 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
                         userId, now).IsSuccess.ShouldBeTrue();
             }
             if (status is "Canceled" or "Conflict")
-                flight.SubmitCancellation(cancelingEmployee, CancellationDetails.Create(now, null).Value,
-                    userId, now).IsSuccess.ShouldBeTrue();
+            {
+                var cancellationDetails = status == "Canceled"
+                    ? CancellationDetails.Create(now, "Planned test cancellation", CancellationType.Planned)
+                    : CancellationDetails.Create(now, null);
+                flight.SubmitCancellation(cancelingEmployee, cancellationDetails.Value, userId, now).IsSuccess.ShouldBeTrue();
+            }
             if (number == "7709")
                 flight.AddService(new(refs.ServiceId, "Service"), null,
                     TimeWindow.Create(now.AddMinutes(-5), null).Value, null, userId, now).IsSuccess.ShouldBeTrue();
@@ -401,6 +405,44 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         unfiltered.Items.Where(item => item.Status == "ArrivalNotRecorded").ShouldAllBe(item => item.ActualArrivalUtc == null);
         unfiltered.Items.Single(item => item.Status == "ReturnedToRamp").ReturnedToRampUtc.ShouldBe(actualReturn);
         unfiltered.Items.Single(item => item.Status == "Departed").ReturnedToRampUtc.ShouldBeNull();
+
+        var ordersPath = $"{path}&hasOperationalRecords=true";
+        var orderPage = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{ordersPath}&pageSize=4"))!;
+        orderPage.TotalCount.ShouldBe(7);
+        orderPage.Items.Select(item => item.FlightNumber).ShouldBe(["7704", "7705", "7706", "7707"]);
+        var completeWork = orderPage.Items.Single(item => item.FlightNumber == "7705");
+        completeWork.ActualDepartureUtc.ShouldBe(now.AddMinutes(-30));
+        completeWork.CanceledAtUtc.ShouldBeNull();
+        completeWork.CancellationType.ShouldBeNull();
+        completeWork.HasWorkOrderRecords.ShouldBeTrue();
+        completeWork.TaskRecordCount.ShouldBe(1);
+        completeWork.ServiceRecordCount.ShouldBe(0);
+        var cancellation = orderPage.Items.Single(item => item.FlightNumber == "7707");
+        cancellation.HasWorkOrderRecords.ShouldBeFalse();
+        cancellation.HasCancellationSubmission.ShouldBeTrue();
+        cancellation.CanceledAtUtc.ShouldBe(now);
+        cancellation.CancellationType.ShouldBe(nameof(CancellationType.Planned));
+        var nextOrders = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{ordersPath}&pageSize=4&page=2"))!;
+        nextOrders.TotalCount.ShouldBe(7);
+        nextOrders.Items.Select(item => item.FlightNumber).ShouldBe(["7708", "7709", "7710"]);
+        nextOrders.Items.First().HasCancellationSubmission.ShouldBeTrue();
+        nextOrders.Items.First().CancellationType.ShouldBe(nameof(CancellationType.Unplanned));
+        nextOrders.Items.ShouldAllBe(item => item.HasWorkOrderRecords);
+        nextOrders.Items.Single(item => item.FlightNumber == "7709").ServiceRecordCount.ShouldBe(1);
+        nextOrders.Items.Single(item => item.FlightNumber == "7710").TaskRecordCount.ShouldBe(1);
+        var withoutOrders = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{path}&hasOperationalRecords=false"))!;
+        withoutOrders.Items.Select(item => item.FlightNumber).ShouldBe(["7701", "7702", "7703"]);
+
+        var numberQuery = $"stationId={refs.StationId}&search={completeWork.WorkOrderNumber.ShouldNotBeNull()}";
+        var byNumber = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{Base}/flights?{numberQuery}&hasOperationalRecords=true"))!;
+        byNumber.Items.ShouldHaveSingleItem().Id.ShouldBe(completeWork.Id);
+        var ordinarySearch = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{Base}/flights?{numberQuery}"))!;
+        ordinarySearch.Items.ShouldBeEmpty();
+
+        var exportText = await admin.GetStringAsync($"{Base}/flights/export?stationId={refs.StationId}&sort=flightnumber:asc&hasOperationalRecords=true&format=csv");
+        var exportedFlights = exportText.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Skip(1).Select(line => line.Split(',')[2].Trim('"'));
+        exportedFlights.ShouldBe(["7704", "7705", "7706", "7707", "7708", "7709", "7710"]);
 
         var filter = $"{path}&status=duesoon,%20ReturnedToRamp,DueSoon&pageSize=1";
         var first = (await admin.GetFromJsonAsync<PagedList<PortalFlightStatus>>($"{filter}&page=1"))!;

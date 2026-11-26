@@ -25,7 +25,13 @@ public sealed record FlightListItem(
     DateTimeOffset? ReturnedToRampUtc = null,
     bool IsOnCall = false,
     bool HasOperationalRecords = false,
-    bool HasCancellationSubmission = false)
+    bool HasCancellationSubmission = false,
+    DateTimeOffset? ActualDepartureUtc = null,
+    DateTimeOffset? CanceledAtUtc = null,
+    bool HasWorkOrderRecords = false,
+    string? CancellationType = null,
+    int ServiceRecordCount = 0,
+    int TaskRecordCount = 0)
 {
     internal const string AutoClosedStatus = "AutoClosed";
 

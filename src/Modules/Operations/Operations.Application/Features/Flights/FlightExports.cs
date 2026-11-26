@@ -20,7 +20,8 @@ public sealed record GetFlightsExportQuery(
     string? Sort,
     IReadOnlyList<FlightReportStatus>? Statuses,
     FlightListType FlightType,
-    bool IncludeManpower) : IQuery<IReadOnlyList<FlightExportRowDto>>;
+    bool IncludeManpower,
+    bool? HasOperationalRecords = null) : IQuery<IReadOnlyList<FlightExportRowDto>>;
 
 public sealed class GetFlightsExportQueryHandler(
     IOperationsDbContext db, IOperationsScope scope, IMasterDataReader masterData, TimeProvider clock)
@@ -33,9 +34,10 @@ public sealed class GetFlightsExportQueryHandler(
             return resolved.Error;
 
         var visible = FlightListQuery.ApplyScopeAndFilters(db.Flights.AsNoTracking(), resolved.Value,
-            new FlightListFilter(request.Search, request.StationId, request.CustomerId, request.OperationTypeId, request.FromUtc, request.ToUtc));
+            new FlightListFilter(request.Search, request.StationId, request.CustomerId, request.OperationTypeId,
+                request.FromUtc, request.ToUtc, SearchWorkOrderNumber: request.HasOperationalRecords is true));
         var matches = await FlightListQuery.MatchReportFilters(FlightListQuery.ApplySort(visible, request.Sort),
-                request.FlightType, request.Statuses, clock.GetUtcNow())
+                request.FlightType, request.Statuses, clock.GetUtcNow(), request.HasOperationalRecords)
             .Select(item => new { item.Flight.Id, item.Status, item.IsPerLanding }).ToListAsync(ct);
         if (matches.Count == 0)
             return Array.Empty<FlightExportRowDto>();

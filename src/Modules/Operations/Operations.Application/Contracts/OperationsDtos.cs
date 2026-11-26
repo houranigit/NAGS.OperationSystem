@@ -46,7 +46,13 @@ public sealed record FlightListItemDto(
     DateTimeOffset? ActualArrivalUtc = null,
     DateTimeOffset? ReturnedToRampUtc = null,
     bool IsOnCall = false,
-    bool HasOperationalRecords = false);
+    bool HasOperationalRecords = false,
+    DateTimeOffset? ActualDepartureUtc = null,
+    DateTimeOffset? CanceledAtUtc = null,
+    bool HasWorkOrderRecords = false,
+    string? CancellationType = null,
+    int ServiceRecordCount = 0,
+    int TaskRecordCount = 0);
 
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId)

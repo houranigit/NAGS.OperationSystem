@@ -141,10 +141,11 @@
                             AllowColumnResize="@columnPreferencesReady" AllowColumnReorder="@columnPreferencesReady"
                             Settings="@columnSettings" SettingsChanged="@GridSettingsChanged"
                             ColumnResized="@MarkColumnLayoutChanged" ColumnReordered="@MarkColumnLayoutChanged"
-                            ColumnReordering="@KeepFrozenColumnInPlace"
+                            ColumnReordering="@KeepFixedColumnInPlace"
                             PageNumbersCount="5" ShowPagingSummary="true" PagingSummaryFormat="@(PageSizeOptions.Any() ? PagingSummaryFormat : TotalCountText)"
                             AllowSorting="@AllowSorting" LoadData="@LoadData" EmptyText="@(EmptyText ?? UiStrings.Common.NoData)"
-                            Template="@RowDetail" ShowExpandColumn="false" ExpandMode="DataGridExpandMode.Single" RowRender="@RowRender"
+                            Template="@RowDetail" ShowExpandColumn="false" ExpandMode="DataGridExpandMode.Single"
+                            RowRender="@RowRender" CellRender="@CellRender"
                             SelectionMode="DataGridSelectionMode.Single" @bind-Value="@selection"
                             GridLines="DataGridGridLines.Horizontal">
                 <Columns>
@@ -183,6 +184,8 @@
     [Parameter] public RenderFragment<TItem>? RowDetail { get; set; }
 
     [Parameter] public Action<RowRenderEventArgs<TItem>>? RowRender { get; set; }
+
+    [Parameter] public Action<DataGridCellRenderEventArgs<TItem>>? CellRender { get; set; }
 
     /// <summary>Cell content for the pinned trailing actions column. Omit to hide the column.</summary>
     [Parameter] public RenderFragment<TItem>? RowActions { get; set; }
@@ -245,6 +248,9 @@
     /// <summary>Opts in to resizable, reorderable columns with an account-specific saved layout.</summary>
     [Parameter] public string? ColumnLayoutKey { get; set; }
 
+    /// <summary>Restores saved column widths from the previous layout when the current layout has no preferences.</summary>
+    [Parameter] public string? PreviousColumnLayoutKey { get; set; }
+
     [Parameter] public bool AllowSorting { get; set; } = true;
 
     [Parameter] public bool ShowSearch { get; set; } = true;
@@ -306,6 +312,15 @@
 
         columnPreferencesRequested = true;
         var savedLayout = await GridPrefs.GetColumnLayoutAsync(key, userId);
+        if (savedLayout is null && PreviousColumnLayoutKey is { } previousKey)
+        {
+            savedLayout = await GridPrefs.GetColumnLayoutAsync(previousKey, userId);
+            if (savedLayout is not null)
+            {
+                foreach (var column in savedLayout.Columns)
+                    column.OrderIndex = null;
+            }
+        }
 
         if (savedLayout is not null)
         {
@@ -332,8 +347,8 @@
 
     private void MarkColumnLayoutChanged() => columnLayoutChanged = true;
 
-    private static void KeepFrozenColumnInPlace(DataGridColumnReorderingEventArgs<TItem> args) =>
-        args.Cancel = args.ToColumn?.Frozen == true;
+    private static void KeepFixedColumnInPlace(DataGridColumnReorderingEventArgs<TItem> args) =>
+        args.Cancel = args.ToColumn is { Frozen: true } or { Reorderable: false };
 
     private async Task OnGridSettingsChangedAsync(DataGridSettings settings)
     {

@@ -10,6 +10,7 @@ using Operations.Application.Authorization;
 using Operations.Application.Common;
 using Operations.Application.Contracts;
 using Operations.Domain.Flights;
+using Operations.Domain.ValueObjects;
 
 namespace Operations.Application.Features.Flights;
 
@@ -33,7 +34,8 @@ public sealed record GetFlightsQuery(
     DateTimeOffset? ToUtc = null,
     string? Sort = null,
     IReadOnlyList<FlightReportStatus>? Statuses = null,
-    FlightListType FlightType = FlightListType.All) : IQuery<PagedResult<FlightListItemDto>>;
+    FlightListType FlightType = FlightListType.All,
+    bool? HasOperationalRecords = null) : IQuery<PagedResult<FlightListItemDto>>;
 
 public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsScope scope, ICustomerLogoReader logos,
     IMasterDataReader masterData, TimeProvider? timeProvider = null)
@@ -48,12 +50,23 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
         var paging = PageRequest.From(request.Page, request.PageSize);
         var flights = FlightListQuery.ApplyScopeAndFilters(db.Flights.AsNoTracking(), scopeResult.Value,
             new FlightListFilter(request.Search, request.StationId, request.CustomerId,
-                request.OperationTypeId, request.FromUtc, request.ToUtc));
+                request.OperationTypeId, request.FromUtc, request.ToUtc,
+                SearchWorkOrderNumber: request.HasOperationalRecords is true));
         var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
+        var matches = FlightListQuery.MatchReportFilters(
+            FlightListQuery.ApplySort(flights, request.Sort), request.FlightType, request.Statuses, now,
+            request.HasOperationalRecords);
+
         var query =
-            from match in FlightListQuery.MatchReportFilters(
-                FlightListQuery.ApplySort(flights, request.Sort), request.FlightType, request.Statuses, now)
+            from match in matches
             let flight = match.Flight
+            let cancellation = flight.CancellationSubmissions.OrderByDescending(item => item.IsAccepted)
+                .ThenBy(item => item.CreatedAtUtc).ThenBy(item => item.Id)
+                .Select(item => new
+                {
+                    CanceledAtUtc = (DateTimeOffset?)item.Details.CanceledAtUtc,
+                    Type = (CancellationType?)item.Details.Type
+                }).FirstOrDefault()
             select new
             {
                 flight.Id,
@@ -72,14 +85,21 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 ActualArrivalUtc = flight.ArrivalSubmissions.OrderByDescending(arrival => arrival.IsAccepted)
                     .ThenBy(arrival => arrival.CreatedAtUtc).ThenBy(arrival => arrival.Id)
                     .Select(arrival => (DateTimeOffset?)arrival.Details.Ata).FirstOrDefault(),
+                ActualDepartureUtc = flight.DepartureSubmissions.OrderByDescending(departure => departure.IsAccepted)
+                    .ThenBy(departure => departure.CreatedAtUtc).ThenBy(departure => departure.Id)
+                    .Select(departure => (DateTimeOffset?)departure.Details.Atd).FirstOrDefault(),
+                CanceledAtUtc = cancellation == null ? null : cancellation.CanceledAtUtc,
+                CancellationType = cancellation == null ? null : cancellation.Type,
                 ReturnedToRampUtc = flight.ReturnToRamps.Where(ramp => ramp.DepartureDetails == null)
                     .Select(ramp => (DateTimeOffset?)ramp.ArrivalDetails.ArrivedAtUtc).FirstOrDefault(),
                 AircraftTypeModel = flight.AircraftType == null ? null : flight.AircraftType!.Model,
                 match.HasArrivalSubmission,
                 match.HasDepartureSubmission,
                 match.HasCancellationSubmission,
-                HasOperationalRecords = match.HasArrivalSubmission || match.HasDepartureSubmission || match.HasCancellationSubmission ||
-                    flight.ServiceRecords.Any() || flight.TaskRecords.Any() || flight.ReturnToRamps.Any(),
+                match.HasWorkOrderRecords,
+                match.HasOperationalRecords,
+                ServiceRecordCount = flight.ServiceRecords.Count,
+                TaskRecordCount = flight.TaskRecords.Count,
                 flight.ApprovalStatus,
                 flight.ApprovedByDisplayName,
                 flight.ApprovedAtUtc,
@@ -108,7 +128,9 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
             item.StationId, item.HasArrivalSubmission, item.HasDepartureSubmission, item.HasCancellationSubmission,
             item.Status.ToString(), item.ApprovalStatus, item.ApprovedByDisplayName, item.ApprovedAtUtc,
             item.ApprovedReturnToRampSequence, item.ApprovalNumber, item.IsAdHocFlight, item.ActualArrivalUtc,
-            item.ReturnedToRampUtc, item.IsOnCall, item.HasOperationalRecords)).ToList();
+            item.ReturnedToRampUtc, item.IsOnCall, item.HasOperationalRecords, item.ActualDepartureUtc,
+            item.CanceledAtUtc, item.HasWorkOrderRecords, item.CancellationType?.ToString(),
+            item.ServiceRecordCount, item.TaskRecordCount)).ToList();
         return paging.ToResult(versionedItems, total);
     }
 }
@@ -266,7 +288,8 @@ internal sealed record FlightListFilter(
     Guid? CustomerId,
     Guid? OperationTypeId,
     DateTimeOffset? FromUtc,
-    DateTimeOffset? ToUtc);
+    DateTimeOffset? ToUtc,
+    bool SearchWorkOrderNumber = false);
 
 internal static class FlightListQuery
 {
@@ -276,6 +299,8 @@ internal static class FlightListQuery
         public bool HasArrivalSubmission { get; init; }
         public bool HasDepartureSubmission { get; init; }
         public bool HasCancellationSubmission { get; init; }
+        public bool HasWorkOrderRecords { get; init; }
+        public bool HasOperationalRecords { get; init; }
         public bool IsAdHocFlight { get; init; }
         public bool IsPerLanding { get; init; }
         public bool IsOnCall { get; init; }
@@ -283,7 +308,7 @@ internal static class FlightListQuery
     }
 
     internal static IQueryable<ReportMatch> MatchReportFilters(IQueryable<Flight> flights, FlightListType type,
-        IReadOnlyList<FlightReportStatus>? statuses, DateTimeOffset now)
+        IReadOnlyList<FlightReportStatus>? statuses, DateTimeOffset now, bool? hasOperationalRecords = null)
     {
         var dueSoonBy = now.AddMinutes(30);
         // Mobile excludes auto-closed flights. Keep the remaining status rules in sync with Android.
@@ -292,6 +317,8 @@ internal static class FlightListQuery
             let hasArrival = flight.ArrivalSubmissions.Any()
             let hasDeparture = flight.DepartureSubmissions.Any()
             let hasCancellation = flight.CancellationSubmissions.Any()
+            let hasWorkOrder = hasArrival || hasDeparture ||
+                flight.ServiceRecords.Any() || flight.TaskRecords.Any() || flight.ReturnToRamps.Any()
             let isAdHoc = flight.OperationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType
             let isPerLanding = flight.PlannedServices.Any(service => service.Service.ServiceId == WellKnownMasterDataIds.AircraftPerLandingService)
             select new ReportMatch
@@ -300,6 +327,8 @@ internal static class FlightListQuery
                 HasArrivalSubmission = hasArrival,
                 HasDepartureSubmission = hasDeparture,
                 HasCancellationSubmission = hasCancellation,
+                HasWorkOrderRecords = hasWorkOrder,
+                HasOperationalRecords = hasWorkOrder || hasCancellation,
                 IsAdHocFlight = isAdHoc,
                 IsPerLanding = isPerLanding,
                 IsOnCall = !isAdHoc && isPerLanding && flight.ServiceRecords.Any(),
@@ -322,9 +351,11 @@ internal static class FlightListQuery
             FlightListType.AdHoc => query.Where(item => item.IsAdHocFlight),
             _ => query
         };
-        return statuses is { Count: > 0 }
-            ? query.Where(item => statuses.Contains(item.Status))
-            : query;
+        if (statuses is { Count: > 0 })
+            query = query.Where(item => statuses.Contains(item.Status));
+        if (hasOperationalRecords is { } required)
+            query = query.Where(item => item.HasOperationalRecords == required);
+        return query;
     }
 
     public static IQueryable<Flight> ApplyScopeAndFilters(
@@ -348,7 +379,7 @@ internal static class FlightListQuery
             query = query.Where(f => f.Schedule.Sta >= from);
         if (filter.ToUtc is { } to)
             query = query.Where(f => f.Schedule.Sta <= to);
-        return ApplySearch(query, filter.Search);
+        return ApplySearch(query, filter.Search, filter.SearchWorkOrderNumber);
     }
 
     internal static IQueryable<Flight> ApplyPortalVisibility(IQueryable<Flight> query, OperationsScopeContext scope)
@@ -367,7 +398,7 @@ internal static class FlightListQuery
             f.AssignedEmployees.Any(e => e.Employee.StaffMemberId == staffId));
     }
 
-    public static IQueryable<Flight> ApplySearch(IQueryable<Flight> query, string? search)
+    public static IQueryable<Flight> ApplySearch(IQueryable<Flight> query, string? search, bool searchWorkOrderNumber = false)
     {
         if (SearchFilter.Term(search) is { } term)
         {
@@ -377,6 +408,7 @@ internal static class FlightListQuery
             var flightId = flightIdTerm.GetValueOrDefault();
             query = query.Where(f =>
                 (hasFlightIdTerm && f.Id == flightId) ||
+                (searchWorkOrderNumber && f.ApprovalNumber != null && f.ApprovalNumber.ToLower().Contains(term)) ||
                 f.FlightNumber.Value.ToLower().Contains(term) ||
                 f.Customer.Name.ToLower().Contains(term) ||
                 (f.Customer.IataCode != null &&
@@ -412,6 +444,15 @@ internal static class FlightListQuery
             "scheduleddepartureutc" => spec.Descending
                 ? query.OrderByDescending(f => f.Schedule.Std).ThenByDescending(f => f.Id)
                 : query.OrderBy(f => f.Schedule.Std).ThenBy(f => f.Id),
+            "workordernumber" => spec.Descending
+                ? query.OrderByDescending(f => f.ApprovalNumber).ThenByDescending(f => f.Id)
+                : query.OrderBy(f => f.ApprovalNumber).ThenBy(f => f.Id),
+            "approvalstatus" => spec.Descending
+                ? query.OrderByDescending(f => f.ApprovalStatus).ThenByDescending(f => f.Id)
+                : query.OrderBy(f => f.ApprovalStatus).ThenBy(f => f.Id),
+            "approvedatutc" => spec.Descending
+                ? query.OrderByDescending(f => f.ApprovedAtUtc).ThenByDescending(f => f.Id)
+                : query.OrderBy(f => f.ApprovedAtUtc).ThenBy(f => f.Id),
             _ => DefaultSort(query)
         };
     }
