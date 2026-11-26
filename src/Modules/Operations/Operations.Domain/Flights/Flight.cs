@@ -65,10 +65,11 @@ public sealed partial class Flight : AggregateRoot<Guid>, IAuditable
         if (numberCheck.IsFailure)
             return numberCheck.Error;
 
-        var servicesCheck = PerLandingPolicy.ValidatePlannedServices(plannedServices);
+        var isAdHoc = operationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType;
+        var servicesCheck = PerLandingPolicy.ValidatePlannedServices(plannedServices, allowEmpty: isAdHoc);
         if (servicesCheck.IsFailure)
             return servicesCheck.Error;
-        if (operationType.OperationTypeId == WellKnownMasterDataIds.AdHocOperationType && assignedEmployees.Count > 0)
+        if (isAdHoc && assignedEmployees.Count > 0)
             return AdHocAssignmentError();
         if (plannedServices.Any(service => PerLandingPolicy.IsAircraftPerLanding(service.ServiceId)) && assignedEmployees.Count > 0)
             return PerLandingAssignmentError();

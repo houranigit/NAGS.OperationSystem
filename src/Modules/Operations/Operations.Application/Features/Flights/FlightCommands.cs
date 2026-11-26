@@ -38,7 +38,8 @@ public sealed class ScheduleFlightCommandValidator : AbstractValidator<ScheduleF
         RuleFor(x => x.StationId).NotEmpty();
         RuleFor(x => x.OperationTypeId).NotEmpty();
         RuleFor(x => x.FlightNumber).NotEmpty().MaximumLength(12);
-        RuleFor(x => x.PlannedServiceIds).NotEmpty();
+        RuleFor(x => x.PlannedServiceIds).NotEmpty()
+            .When(x => x.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType);
     }
 }
 
@@ -129,7 +130,8 @@ public sealed class ScheduleFlightsCommandValidator : AbstractValidator<Schedule
         RuleFor(x => x.StationId).NotEmpty();
         RuleFor(x => x.OperationTypeId).NotEmpty();
         RuleFor(x => x.FlightNumber).NotEmpty().MaximumLength(12);
-        RuleFor(x => x.PlannedServiceIds).NotEmpty();
+        RuleFor(x => x.PlannedServiceIds).NotEmpty()
+            .When(x => x.OperationTypeId != WellKnownMasterDataIds.AdHocOperationType);
         RuleFor(x => x.SelectedDates).NotEmpty();
     }
 }

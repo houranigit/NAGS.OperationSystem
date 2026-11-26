@@ -99,24 +99,43 @@ public sealed partial class FlightVisibilityScopeTests
             plannedServiceIds = new[] { refs.ServiceId }, assignedStaffMemberIds = new[] { creator.StaffId }
         });
         strictNumber.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        object PortalAdHocSchedule(Guid[] assignedStaffMemberIds) => new
+        var portalSchedule = new
         {
             customerId = refs.CustomerId, stationId = refs.StationId, operationTypeId = WellKnownMasterDataIds.AdHocOperationType,
             flightNumber = "1234", scheduledArrivalUtc = valid.ScheduledArrivalUtc, scheduledDepartureUtc = valid.ScheduledDepartureUtc,
-            plannedServiceIds = new[] { refs.ServiceId }, assignedStaffMemberIds
+            plannedServiceIds = Array.Empty<Guid>(), assignedStaffMemberIds = Array.Empty<Guid>()
         };
-        using var assignedAdHoc = await admin.PostAsJsonAsync($"{Base}/flights", PortalAdHocSchedule([creator.StaffId]));
+        using var assignedAdHoc = await admin.PostAsJsonAsync($"{Base}/flights", portalSchedule with { assignedStaffMemberIds = [creator.StaffId] });
         assignedAdHoc.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await assignedAdHoc.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()
             .ShouldBe("Operations.AdHoc.AssignmentsNotAllowed");
 
-        using var portalAdHoc = await admin.PostAsJsonAsync($"{Base}/flights", PortalAdHocSchedule([]));
+        using var regularWithoutServices = await admin.PostAsJsonAsync($"{Base}/flights", portalSchedule with { operationTypeId = refs.OperationTypeId });
+        regularWithoutServices.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var portalAdHoc = await admin.PostAsJsonAsync($"{Base}/flights", portalSchedule);
         portalAdHoc.StatusCode.ShouldBe(HttpStatusCode.Created);
         var portalId = await portalAdHoc.Content.ReadFromJsonAsync<Guid>();
         var portalSaved = (await admin.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/{portalId}"))!;
         portalSaved.IsAdHocFlight.ShouldBeTrue();
         portalSaved.AssignedEmployees.ShouldBeEmpty();
-        portalSaved.PlannedServices.ShouldHaveSingleItem().ServiceId.ShouldBe(refs.ServiceId);
+        portalSaved.PlannedServices.ShouldBeEmpty();
+
+        var bulkSchedule = new
+        {
+            portalSchedule.customerId, portalSchedule.stationId, portalSchedule.operationTypeId, flightNumber = "1235",
+            scheduledArrivalTimeUtc = new TimeOnly(10, 0), scheduledDepartureTimeUtc = new TimeOnly(12, 0),
+            selectedDates = new[] { DateOnly.FromDateTime(valid.ScheduledArrivalUtc.UtcDateTime) },
+            portalSchedule.plannedServiceIds, portalSchedule.assignedStaffMemberIds
+        };
+        using var regularBulkWithoutServices = await admin.PostAsJsonAsync($"{Base}/flights/bulk", bulkSchedule with { operationTypeId = refs.OperationTypeId });
+        regularBulkWithoutServices.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var portalAdHocBulk = await admin.PostAsJsonAsync($"{Base}/flights/bulk", bulkSchedule);
+        portalAdHocBulk.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var bulkId = (await portalAdHocBulk.Content.ReadFromJsonAsync<Guid[]>())!.ShouldHaveSingleItem();
+        var bulkSaved = (await admin.GetFromJsonAsync<FlightDetailDto>($"{Base}/flights/{bulkId}"))!;
+        bulkSaved.IsAdHocFlight.ShouldBeTrue();
+        bulkSaved.AssignedEmployees.ShouldBeEmpty();
+        bulkSaved.PlannedServices.ShouldBeEmpty();
 
         var unknown = valid with { CustomerId = WellKnownMasterDataIds.UnknownCustomer, FlightNumber = "123456789012",
             ScheduledDepartureUtc = valid.ScheduledArrivalUtc };

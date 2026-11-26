@@ -13,15 +13,15 @@ public static class PerLandingPolicy
         serviceId == WellKnownMasterDataIds.AircraftPerLandingService;
 
     /// <summary>
-    /// Validates that services are present and Aircraft Per Landing is not mixed with other services.
+    /// Validates any service requirement and keeps Aircraft Per Landing exclusive.
     /// </summary>
-    public static Result ValidatePlannedServices(IReadOnlyList<ServiceSnapshot> plannedServices)
+    public static Result ValidatePlannedServices(IReadOnlyList<ServiceSnapshot> plannedServices, bool allowEmpty = false)
     {
         if (plannedServices.Count == 0)
         {
-            return Error.Validation(
-                "At least one planned service is required.",
-                "Operations.PlannedServices.Required");
+            return allowEmpty
+                ? Result.Success()
+                : Error.Validation("At least one planned service is required.", "Operations.PlannedServices.Required");
         }
 
         var distinct = plannedServices

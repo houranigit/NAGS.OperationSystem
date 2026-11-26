@@ -311,7 +311,10 @@
     </section>;
 
     private RenderFragment ServicesStep() => @<section class="opf-step-content">
-        <div class="os-operation-section-title"><RadzenIcon Icon="settings" /><span>Planned services</span></div>
+        <div class="os-operation-section-title">
+            <RadzenIcon Icon="settings" />
+            <span>@(IsAdHocSelected && !ScheduleReadOnly ? "Planned services (optional)" : "Planned services")</span>
+        </div>
         <div class="opf-step-toolbar">
             @SearchBox(serviceSearchTerm, "Search services", OnServiceSearchInput, ClearServiceSearch)
             <span class="opf-selection-count">@model.PlannedServiceIds.Count selected</span>
@@ -1008,7 +1011,7 @@
 
     private string? ValidateServices()
     {
-        if (model.PlannedServiceIds.Count == 0)
+        if (!IsAdHocSelected && model.PlannedServiceIds.Count == 0)
             return "At least one planned service is required.";
         if (IsPerLandingMixedWithOtherServices)
             return "A Per Landing flight cannot have any other service. Aircraft Per Landing must be the only planned service.";

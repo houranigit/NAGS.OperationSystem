@@ -382,9 +382,11 @@ public sealed class FlightSchedulingTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task AdHocScheduling_PersistsAnUnassignedScheduleAndRejectsStaff(bool bulk)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task AdHocScheduling_PersistsAnUnassignedScheduleAndRejectsStaff(bool bulk, bool withPlannedServices)
     {
         await using var db = NewDb();
         var reader = new SchedulingMasterDataReader();
@@ -395,6 +397,7 @@ public sealed class FlightSchedulingTests
         var audit = new AuditActor();
         var customerId = Guid.NewGuid();
         var operationTypeId = WellKnownMasterDataIds.AdHocOperationType;
+        Guid[] plannedServiceIds = withPlannedServices ? [reader.ServiceId] : [];
         var date = new DateOnly(2026, 7, 3);
         var arrival = new DateTimeOffset(2026, 7, 3, 10, 0, 0, TimeSpan.Zero);
 
@@ -405,14 +408,14 @@ public sealed class FlightSchedulingTests
                 return await new ScheduleFlightsCommandHandler(db, AdminScope(), resolver, user, audit,
                     TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
                     .Handle(new(customerId, reader.StationId, operationTypeId, "123a", new TimeOnly(10, 0),
-                        new TimeOnly(11, 0), [date, date.AddDays(1)], null, [reader.ServiceId], staffIds),
+                        new TimeOnly(11, 0), [date, date.AddDays(1)], null, plannedServiceIds, staffIds),
                         CancellationToken.None);
             }
 
             return await new ScheduleFlightCommandHandler(db, AdminScope(), resolver, user, audit,
                 TimeProvider.System, NoopMobileSyncBroadcaster.Instance)
                 .Handle(new(customerId, reader.StationId, operationTypeId, "123a", arrival, arrival.AddHours(1),
-                    null, [reader.ServiceId], staffIds), CancellationToken.None);
+                    null, plannedServiceIds, staffIds), CancellationToken.None);
         }
 
         (await ScheduleAsync([employeeId])).Error.Code.ShouldBe("Operations.AdHoc.AssignmentsNotAllowed");
@@ -428,7 +431,7 @@ public sealed class FlightSchedulingTests
         {
             flight.OperationType.OperationTypeId.ShouldBe(operationTypeId);
             flight.FlightNumber.Value.ShouldBe("SV123A");
-            flight.PlannedServices.ShouldHaveSingleItem().Service.ServiceId.ShouldBe(reader.ServiceId);
+            flight.PlannedServices.Select(service => service.Service.ServiceId).ShouldBe(plannedServiceIds);
             flight.AssignedEmployees.ShouldBeEmpty();
         }
         (await db.OutboxMessages.CountAsync()).ShouldBe(0);
