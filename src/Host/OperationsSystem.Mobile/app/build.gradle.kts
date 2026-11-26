@@ -52,8 +52,8 @@ fun releaseApiBaseUrlError(value: String?): String? {
     }
 
     val scheme = uri.scheme?.lowercase(Locale.ROOT)
-    if (scheme != "https" && scheme != "http")
-        return "Release API URL must use http or https."
+    if (scheme != "https")
+        return "Release API URL must use HTTPS."
 
     val host = uri.host?.trim('[', ']')?.lowercase(Locale.ROOT)?.removeSuffix(".")
         ?: return "Release API URL must include a valid host."
@@ -138,8 +138,8 @@ android {
         applicationId = "com.nags.operations"
         minSdk = 26
         targetSdk = 37
-        versionCode = 9
-        versionName = "1.0.14"
+        versionCode = 10
+        versionName = "1.0.15"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
     }

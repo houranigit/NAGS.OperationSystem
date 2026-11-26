@@ -279,9 +279,15 @@ Both Docker APIs must be running. The main debug clone does not copy another
 package's Firebase configuration; its local build uses the existing debug mode
 without Firebase push registration.
 
+## Fresh rollout for 1.0.15
+
+This release uses the existing `com.nags.operations` application ID. An in-place update retains Android app storage. For a fresh rollout, first confirm Sync Hub has no pending or review items on each existing device, then uninstall the old app and install the new release. Android Settings or managed device tooling can also clear the old app's storage before installing the update. Clearing storage discards local-only drafts, queued work, saved sign-in, settings, cached data and private files. Users sign in again to fetch the records already available on the configured server. Exported PDFs saved outside the app stay in their chosen folders. The app continues to save new offline work on the device.
+
+Android backup and device-transfer rules exclude all app data domains. The clean-install step is required on devices with an existing copy. See [Android app updates](https://developer.android.com/google/play/app-updates) and [Android backup and transfer rules](https://developer.android.com/identity/data/autobackup).
+
 ## Release configuration
 
-Release does not read `local.properties`. Supply a compatible baseline backend URL with Gradle property `operations.api.release.base.url` or environment variable `OPERATIONS_API_RELEASE_BASE_URL`. The build validates an absolute HTTP/HTTPS URL, rejects emulator/loopback hosts and embedded credentials, and rejects queries/fragments.
+Supply the deployed Operations API's HTTPS URL through Gradle property `operations.api.release.base.url` or environment variable `OPERATIONS_API_RELEASE_BASE_URL`. Release ignores `local.properties`. The build requires an absolute HTTPS URL and rejects emulator or loopback hosts, embedded credentials, queries and fragments. Deploy the matching API and database migrations first, then verify API readiness and sign-in from Android over HTTPS before distribution.
 
 Provision the ignored Android Firebase client file `app/google-services.json` for application ID `com.nags.operations` before release builds. Debug/unit builds can run without it; device registration then remains disabled. Every release build validates this file. It is distinct from the backend Firebase Admin credential.
 
@@ -294,4 +300,4 @@ For distribution, provide all four signing values through CI/environment variabl
 | `operations.android.signing.key.alias` | `OPERATIONS_ANDROID_SIGNING_KEY_ALIAS` |
 | `operations.android.signing.key.password` | `OPERATIONS_ANDROID_SIGNING_KEY_PASSWORD` |
 
-`assembleRelease` can produce an unsigned verification APK; `bundleRelease` requires the complete signing configuration. Application backup/device transfer remains disabled, with auth state, databases, and legacy outbox files excluded by the existing backup rules.
+`assembleRelease` can produce an unsigned verification APK. `bundleRelease` requires the complete signing configuration.
