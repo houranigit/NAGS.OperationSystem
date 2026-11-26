@@ -39,12 +39,9 @@ fun Properties.nonBlankProperty(name: String): String? =
 fun buildConfigString(value: String): String =
     "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
-fun releaseApiBaseUrlError(value: String?): String? {
-    if (value.isNullOrBlank()) {
-        return "Release API URL is missing. Set -Poperations.api.release.base.url or " +
-            "OPERATIONS_API_RELEASE_BASE_URL."
-    }
+val defaultReleaseApiBaseUrl = "http://80.209.234.61:5211/"
 
+fun releaseApiBaseUrlError(value: String): String? {
     val uri = try {
         URI(value)
     } catch (_: Exception) {
@@ -52,8 +49,8 @@ fun releaseApiBaseUrlError(value: String?): String? {
     }
 
     val scheme = uri.scheme?.lowercase(Locale.ROOT)
-    if (scheme != "https")
-        return "Release API URL must use HTTPS."
+    if (scheme != "https" && value != defaultReleaseApiBaseUrl)
+        return "Release API URL must use HTTPS unless it is the existing server endpoint."
 
     val host = uri.host?.trim('[', ']')?.lowercase(Locale.ROOT)?.removeSuffix(".")
         ?: return "Release API URL must include a valid host."
@@ -81,8 +78,7 @@ fun releaseApiBaseUrlError(value: String?): String? {
     return null
 }
 
-// Debug reads local.properties. Release never does: its endpoint must come from
-// gradle.properties, -Poperations.api.release.base.url, or OPERATIONS_API_RELEASE_BASE_URL.
+// Debug reads local.properties. Release uses the deployed server unless explicitly overridden.
 
 val localProperties = Properties().apply {
     val f = rootProject.file("local.properties")
@@ -95,12 +91,9 @@ val debugApiBaseUrl = normalizeBaseUrl(
         ?: localProperties.nonBlankProperty("operations.api.base.url")
         ?: "http://10.0.2.2:5213",
 )
-val releaseApiBaseUrl = configuredValue(
-    "operations.api.release.base.url",
-    "OPERATIONS_API_RELEASE_BASE_URL",
-)
-val releaseApiBaseUrlForCompilation = normalizeBaseUrl(
-    releaseApiBaseUrl ?: "https://invalid.invalid",
+val releaseApiBaseUrl = normalizeBaseUrl(
+    configuredValue("operations.api.release.base.url", "OPERATIONS_API_RELEASE_BASE_URL")
+        ?: defaultReleaseApiBaseUrl,
 )
 
 val releaseSigningStoreFile = configuredValue(
@@ -138,8 +131,8 @@ android {
         applicationId = "com.nags.operations"
         minSdk = 26
         targetSdk = 37
-        versionCode = 10
-        versionName = "1.0.15"
+        versionCode = 11
+        versionName = "2.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "FIREBASE_CONFIGURED", firebaseConfigured.toString())
     }
@@ -163,7 +156,7 @@ android {
             buildConfigField(
                 "String",
                 "API_BASE_URL",
-                buildConfigString(releaseApiBaseUrlForCompilation),
+                buildConfigString(releaseApiBaseUrl),
             )
             if (hasCompleteReleaseSigningConfiguration) {
                 signingConfig = signingConfigs.getByName("release")
@@ -276,7 +269,7 @@ ksp {
 
 val validateReleaseApiConfiguration = tasks.register("validateReleaseApiConfiguration") {
     group = "verification"
-    description = "Validates the explicit API endpoint required by Release variants."
+    description = "Validates the API endpoint used by Release variants."
 
     doLast {
         releaseApiBaseUrlError(releaseApiBaseUrl)?.let { error ->

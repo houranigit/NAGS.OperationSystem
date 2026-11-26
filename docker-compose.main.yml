@@ -30,7 +30,7 @@ services:
         - firebase_admin
       labels:
         org.opencontainers.image.revision: ${MAIN_DOCKER_REVISION:-unknown}
-        org.opencontainers.image.version: "1.0.14"
+        org.opencontainers.image.version: "2.0.0"
         local.branch: main
     environment:
       ASPNETCORE_ENVIRONMENT: Development
@@ -79,7 +79,7 @@ services:
       target: portal
       labels:
         org.opencontainers.image.revision: ${MAIN_DOCKER_REVISION:-unknown}
-        org.opencontainers.image.version: "1.0.14"
+        org.opencontainers.image.version: "2.0.0"
         local.branch: main
     environment:
       ASPNETCORE_ENVIRONMENT: Development
