@@ -459,6 +459,57 @@ a {
     outline-offset: -2px;
 }
 
+/* Radzen moves the open station picker panel to the document body. */
+.rz-dropdown-panel:has(.sa-station-option) {
+    box-sizing: border-box;
+    padding: var(--os-space-1);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface);
+    box-shadow: var(--os-shadow-lg);
+}
+
+.rz-dropdown-panel:has(.sa-station-option) .rz-dropdown-items {
+    margin: 0;
+    padding: 0;
+}
+
+.rz-dropdown-panel:has(.sa-station-option) .rz-dropdown-items-wrapper {
+    margin: 0;
+    border-radius: 0;
+}
+
+.rz-dropdown-panel .rz-dropdown-item:has(.sa-station-option) {
+    display: grid;
+    align-items: center;
+    min-height: 2rem;
+    margin: 0;
+    padding: var(--os-space-1) var(--os-space-2);
+    border-radius: var(--os-radius-sm);
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    cursor: pointer;
+}
+
+.rz-dropdown-panel .rz-dropdown-item:has(.sa-station-option):hover,
+.rz-dropdown-panel .rz-dropdown-item.rz-state-highlight:not([aria-selected="true"]):has(.sa-station-option) {
+    background: var(--os-color-surface-hover);
+}
+
+.rz-dropdown-panel .rz-dropdown-item.rz-state-highlight:not([aria-selected="true"]):has(.sa-station-option) {
+    outline: 2px solid var(--os-color-primary);
+    outline-offset: -2px;
+}
+
+.rz-dropdown-panel .rz-dropdown-item[aria-selected="true"]:has(.sa-station-option) {
+    background: var(--os-color-primary-soft);
+    color: var(--os-color-primary-strong);
+}
+
+.rz-dropdown-panel .rz-dropdown-item:not([aria-selected="true"]) .sa-station-check {
+    visibility: hidden;
+}
+
 .os-row-actions-submenu > summary {
     list-style: none;
 }

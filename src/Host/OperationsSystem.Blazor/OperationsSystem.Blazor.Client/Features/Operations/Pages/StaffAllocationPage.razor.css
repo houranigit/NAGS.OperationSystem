@@ -90,25 +90,78 @@
     white-space: nowrap;
 }
 
-.sa-station-select {
+.sa-station-control ::deep .sa-station-select {
+    --rz-input-height: var(--os-list-control-height);
+    --rz-input-padding-block: var(--os-space-1);
+    --rz-input-padding-inline: var(--os-space-2);
+    --rz-input-line-height: calc(var(--rz-input-height) - 2 * var(--rz-input-padding-block) - 2 * var(--rz-border-width));
     width: min(100%, 10rem);
     height: var(--os-list-control-height);
-    padding-inline: var(--os-space-2);
     border: 1px solid var(--os-color-border-strong);
     border-radius: var(--os-radius-sm);
     background: var(--os-color-surface);
     color: var(--os-color-text);
-    font: inherit;
-    font-weight: 500;
-    cursor: pointer;
 }
 
-.sa-station-select:not(:disabled):hover {
+.sa-station-control ::deep .sa-station-select:not(.rz-state-disabled):hover,
+.sa-station-control ::deep .sa-station-select[aria-expanded="true"] {
     border-color: var(--os-color-primary);
 }
 
-.sa-page ::deep .rz-grid-table td .rz-cell-data:has(.sa-station-select) {
-    overflow: visible;
+.sa-station-control ::deep .sa-station-select:focus-visible {
+    outline: 2px solid var(--os-color-primary);
+    outline-offset: -2px;
+    box-shadow: none;
+}
+
+.sa-page ::deep .rz-data-row:has(.sa-station-select:focus-within) {
+    --rz-grid-cell-focus-background-color: var(--os-color-surface-hover);
+    --rz-grid-cell-focus-color: var(--os-color-text);
+}
+
+.sa-station-control ::deep .sa-station-select .rz-dropdown-trigger .rzi-chevron-down::before {
+    content: "expand_more";
+}
+
+.sa-station-value,
+.sa-station-option {
+    display: grid;
+    align-items: center;
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+    gap: var(--os-space-1);
+}
+
+.sa-station-value {
+    font-size: var(--os-text-sm);
+}
+
+.sa-station-option {
+    grid-template-columns: 2.25rem minmax(0, 1fr) 1rem;
+}
+
+.sa-station-value strong,
+.sa-station-option strong {
+    font-weight: 700;
+}
+
+.sa-station-place {
+    min-width: 0;
+    color: var(--os-color-text-muted);
+}
+
+.sa-station-value .sa-station-place {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sa-station-option .sa-station-place {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.sa-station-option ::deep .sa-station-check {
+    font-size: 1rem;
 }
 
 .sa-page ::deep .rz-grid-table tbody > .sa-staff-row-pending > td,
@@ -201,13 +254,11 @@
     background: var(--os-color-primary-strong);
 }
 
-.sa-station-select:disabled,
 .sa-reassign-actions > button:disabled {
     cursor: default;
     opacity: 0.7;
 }
 
-.sa-station-select:focus-visible,
 .sa-reassign-actions > button:focus-visible {
     outline: 2px solid var(--os-color-primary);
     outline-offset: 2px;

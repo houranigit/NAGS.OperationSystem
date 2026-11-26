@@ -165,7 +165,16 @@ public partial class StaffAllocationPage
     }
 
     private static string StationLabel(StaffAllocationStation station) =>
-        $"{station.IataCode} · {(string.IsNullOrWhiteSpace(station.City) ? station.Name : station.City)}";
+        $"{station.IataCode} · {StationPlace(station)}";
+
+    private static string StationPlace(StaffAllocationStation station) =>
+        string.IsNullOrWhiteSpace(station.City) ? station.Name : station.City;
+
+    private static void LabelStationOption(DropDownItemRenderEventArgs<Guid> args)
+    {
+        if (args.Item is StaffAllocationStation station)
+            args.Attributes["aria-label"] = StationLabel(station);
+    }
 
     private Guid SelectedStationId(StaffAllocationMember member) =>
         pendingMove is { } move && move.Member.Id == member.Id ? move.Destination.Id : member.StationId;
@@ -176,10 +185,9 @@ public partial class StaffAllocationPage
             args.Attributes["class"] = "sa-staff-row-pending";
     }
 
-    private async Task SelectDestinationAsync(StaffAllocationMember member, ChangeEventArgs args)
+    private async Task SelectDestinationAsync(StaffAllocationMember member, Guid stationId)
     {
         if (list is null || !CanReassignStaff || isLoading || isMoving || loadError
-            || !Guid.TryParse(args.Value?.ToString(), out var stationId)
             || !stationsById.TryGetValue(stationId, out var destination)
             || !stationsById.TryGetValue(member.StationId, out var origin))
             return;

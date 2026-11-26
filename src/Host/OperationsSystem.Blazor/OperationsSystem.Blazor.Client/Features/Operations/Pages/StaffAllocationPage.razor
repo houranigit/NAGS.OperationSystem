@@ -85,15 +85,30 @@
                             }
                             @if (CanReassignStaff && station is not null)
                             {
-                                <div @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
-                                    <select class="sa-station-select" value="@SelectedStationId(member)" disabled="@(isLoading || isMoving || stations.Count < 2)"
-                                            aria-label="@($"Primary station for {member.FullName}")" title="@station.Name"
-                                            @onchange="@(args => SelectDestinationAsync(member, args))">
-                                        @foreach (var option in stations)
-                                        {
-                                            <option value="@option.Id" title="@option.Name">@StationLabel(option)</option>
-                                        }
-                                    </select>
+                                <div class="sa-station-control" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
+                                    <RadzenDropDown TValue="Guid" class="sa-station-select" Data="@stations"
+                                                    ValueProperty="@nameof(StaffAllocationStation.Id)" TextProperty="@nameof(StaffAllocationStation.IataCode)"
+                                                    Value="@SelectedStationId(member)" ValueChanged="@(id => SelectDestinationAsync(member, id))"
+                                                    ItemRender="@LabelStationOption"
+                                                    Disabled="@(isLoading || isMoving || stations.Count < 2)"
+                                                    aria-label="@($"Primary station for {member.FullName}")"
+                                                    PopupStyle="max-height:min(16rem,60dvh);overflow-x:hidden">
+                                        <ValueTemplate Context="item">
+                                            @{ var selected = (StaffAllocationStation)item; }
+                                            <span class="sa-station-value" title="@selected.Name">
+                                                <strong>@selected.IataCode</strong>
+                                                <span class="sa-station-place">@StationPlace(selected)</span>
+                                            </span>
+                                        </ValueTemplate>
+                                        <Template Context="item">
+                                            @{ var option = (StaffAllocationStation)item; }
+                                            <span class="sa-station-option" title="@option.Name">
+                                                <strong>@option.IataCode</strong>
+                                                <span class="sa-station-place">@StationPlace(option)</span>
+                                                <RadzenIcon Icon="check" class="sa-station-check" aria-hidden="true" />
+                                            </span>
+                                        </Template>
+                                    </RadzenDropDown>
                                 </div>
                             }
                             else
