@@ -20,7 +20,8 @@ public sealed record SaveFlightReturnToRampCommand(Guid FlightId, Guid Occurrenc
 
 public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db, IMobileFlightScope scope,
     MasterDataResolver resolver, IMasterDataReader masterData, IFileStorage storage, TimeProvider clock,
-    IMobileSyncBroadcaster mobileSync, IUserDisplayNameReader? userNames = null, PortalFlightScope? portalScope = null, IUserContext? user = null)
+    IMobileSyncBroadcaster mobileSync, IFlightWorkOrderEmailQueue workOrderEmails, IUserDisplayNameReader? userNames = null,
+    PortalFlightScope? portalScope = null, IUserContext? user = null)
     : ICommandHandler<SaveFlightReturnToRampCommand, FlightDetailDto>
 {
     public async Task<Result<FlightDetailDto>> Handle(SaveFlightReturnToRampCommand request, CancellationToken ct)
@@ -239,6 +240,8 @@ public sealed class SaveFlightReturnToRampCommandHandler(IOperationsDbContext db
             db.SetOriginalRowVersion(flight, request.RowVersion);
             if (!isAdministrator)
                 await FlightActivityRecorder.TouchAsync(db, flight, access.Actor, clock.GetUtcNow(), ct, recordSearch: !request.PortalOnly);
+            var receipt = await workOrderEmails.EnqueueAsync(flight, userId, ct);
+            if (receipt.IsFailure) return receipt.Error;
             await db.SaveChangesAsync(ct);
             FlightServiceWrites.Notify(mobileSync, clock);
             return Response();

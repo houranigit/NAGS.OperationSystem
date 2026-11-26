@@ -13,10 +13,15 @@ using Operations.Domain.ValueObjects;
 
 namespace Operations.Application.Features.Flights;
 
+public interface IFlightWorkOrderPdfRenderer
+{
+    public WorkOrderPrintFile Render(WorkOrderPrintDto source);
+}
+
 public sealed record GetFlightWorkOrderPrintQuery(Guid Id, bool MobileOnly = false) : IQuery<WorkOrderPrintDto>;
 
 public sealed class GetFlightWorkOrderPrintQueryHandler(IOperationsDbContext db, IOperationsScope scope, IMobileFlightScope mobileScope,
-    IMasterDataReader masterData, IFileStorage storage, IUserDisplayNameReader userNames)
+    FlightWorkOrderPrintSource printSource)
     : IQueryHandler<GetFlightWorkOrderPrintQuery, WorkOrderPrintDto>
 {
     public async Task<Result<WorkOrderPrintDto>> Handle(GetFlightWorkOrderPrintQuery request, CancellationToken ct)
@@ -42,6 +47,14 @@ public sealed class GetFlightWorkOrderPrintQueryHandler(IOperationsDbContext db,
         if (flight is null)
             return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
 
+        return await printSource.BuildAsync(flight, ct);
+    }
+}
+
+public sealed class FlightWorkOrderPrintSource(IMasterDataReader masterData, IFileStorage storage, IUserDisplayNameReader userNames)
+{
+    public async Task<Result<WorkOrderPrintDto>> BuildAsync(Flight flight, CancellationToken ct)
+    {
         var station = await masterData.GetStationAsync(flight.Station.StationId, ct);
         if (station is null || string.IsNullOrWhiteSpace(station.TimeZoneId))
             return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");

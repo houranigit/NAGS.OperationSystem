@@ -35,6 +35,7 @@ public sealed class SaveFlightCancellationCommandHandler(
     MasterDataResolver resolver,
     TimeProvider clock,
     IMobileSyncBroadcaster mobileSync,
+    IFlightWorkOrderEmailQueue workOrderEmails,
     PortalFlightScope? portalScope = null, IUserDisplayNameReader? userNames = null) : ICommandHandler<SaveFlightCancellationCommand, FlightCancellationSavedDto>
 {
     public async Task<Result<FlightCancellationSavedDto>> Handle(SaveFlightCancellationCommand request, CancellationToken cancellationToken)
@@ -106,6 +107,8 @@ public sealed class SaveFlightCancellationCommandHandler(
         if (submitted.IsFailure) return submitted.Error;
         if (actor is not null)
             await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), cancellationToken, recordSearch: !request.PortalOnly);
+        var receipt = await workOrderEmails.EnqueueAsync(flight, access.UserId, cancellationToken);
+        if (receipt.IsFailure) return receipt.Error;
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
         catch (DbUpdateException) when (existing is null)
@@ -138,6 +141,7 @@ public sealed class RevertFlightCancellationCommandHandler(
     IMobileFlightScope scope,
     TimeProvider clock,
     IMobileSyncBroadcaster mobileSync,
+    IFlightWorkOrderEmailQueue workOrderEmails,
     PortalFlightScope? portalScope = null, IUserDisplayNameReader? userNames = null) : ICommandHandler<RevertFlightCancellationCommand, FlightCancellationRevertedDto>
 {
     public async Task<Result<FlightCancellationRevertedDto>> Handle(RevertFlightCancellationCommand request, CancellationToken cancellationToken)
@@ -146,8 +150,7 @@ public sealed class RevertFlightCancellationCommandHandler(
         if (resolved.IsFailure) return resolved.Error;
         var access = resolved.Value;
         var actor = access.StaffActor;
-        var flight = await access.Apply(db.Flights)
-            .Include(f => f.CancellationSubmissions).Include(f => f.PlannedServices).Include(f => f.AssignedEmployees)
+        var flight = await FlightServiceWrites.Load(access.Apply(db.Flights))
             .SingleOrDefaultAsync(f => f.Id == request.FlightId, cancellationToken);
         if (flight is null) return Error.NotFound("Flight not found.", "Operations.Flight.NotFound");
         var own = flight.CancellationSubmissions.SingleOrDefault(c => c.IsOwnedBy(actor?.StaffMemberId, access.UserId));
@@ -162,6 +165,8 @@ public sealed class RevertFlightCancellationCommandHandler(
             db.SetOriginalRowVersion(flight, request.RowVersion);
             if (actor is not null)
                 await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), cancellationToken, recordSearch: !request.PortalOnly);
+            var receipt = await workOrderEmails.EnqueueAsync(flight, access.UserId, cancellationToken);
+            if (receipt.IsFailure) return receipt.Error;
             try { await db.SaveChangesAsync(cancellationToken); }
             catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
             mobileSync.Enqueue(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh, null,

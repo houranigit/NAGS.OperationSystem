@@ -148,11 +148,6 @@
     color: var(--os-color-danger);
 }
 
-.notification-preferences-note a {
-    color: var(--os-color-primary-strong);
-    text-underline-offset: 0.15em;
-}
-
 @media (prefers-reduced-motion: reduce) {
     .notification-preferences-switch,
     .notification-preferences-switch::after {

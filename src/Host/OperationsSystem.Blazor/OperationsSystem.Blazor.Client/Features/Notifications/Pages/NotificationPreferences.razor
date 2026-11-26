@@ -3,7 +3,7 @@
 <PageTitle>Notification settings</PageTitle>
 
 <RequireAuth>
-    @if (Auth.User is not null)
+    @if (Auth.User is { } user)
     {
         <main class="os-list-page" lang="en" dir="ltr">
             <PageHeader Title="Notification settings" ParentTitle="@UiStrings.Account.Title" ParentHref="/account" />
@@ -48,6 +48,33 @@
                         </section>
                     }
 
+                }
+
+                @if (!isLoading)
+                {
+                    <section class="notification-preferences-group" aria-labelledby="notification-email-heading">
+                        <h2 id="notification-email-heading" dir="auto">@UiStrings.Notifications.EmailPreferences</h2>
+                        <div class="notification-preferences-rows">
+                            <button type="button" class="notification-preferences-row" role="switch"
+                                    aria-checked="@(user.ReceiveWorkOrderSubmissionEmails ? "true" : "false")"
+                                    disabled="@(savingKey is not null || !workOrderEmailLoaded || workOrderEmailError is not null)"
+                                    @onclick="() => SaveAsync(WorkOrderEmailKey, !user.ReceiveWorkOrderSubmissionEmails)">
+                                <span class="notification-preferences-copy" dir="auto">
+                                    <strong>@UiStrings.Notifications.WorkOrderEmailPreference</strong>
+                                    <span>@string.Format(UiStrings.Notifications.WorkOrderEmailPreferenceHint, user.Email)</span>
+                                </span>
+                                <span class="notification-preferences-switch" aria-hidden="true"></span>
+                            </button>
+                        </div>
+                        @if (workOrderEmailError is not null)
+                        {
+                            <div class="notification-preferences-feedback" role="status" dir="auto">
+                                <span class="notification-preferences-error">@workOrderEmailError</span>
+                                <button type="button" disabled="@(savingKey is not null)" @onclick="LoadAsync">@UiStrings.Notifications.EmailPreferenceRefresh</button>
+                            </div>
+                        }
+                    </section>
+
                     <div class="notification-preferences-feedback" role="status" aria-live="polite">
                         @if (savingKey is not null)
                         {
@@ -64,7 +91,6 @@
                         }
                     </div>
                     <p class="notification-preferences-note">Changes apply to future notifications across your account. Existing notifications stay in your inbox. Android alerts also depend on your device's notification permission.</p>
-                    <p class="notification-preferences-note">Work-order submission emails have a separate <a href="/account">email preference in My account</a>.</p>
                 }
             </div>
         </main>

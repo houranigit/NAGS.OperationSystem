@@ -1108,7 +1108,7 @@ public sealed class FlightServiceSaveTests
         {
             var handler = new SaveFlightArrivalCommandHandler(f.Writes,
                 new Scope(new(f.Reader.StationId, f.Owner.StaffMemberId, f.Owner.UserId, Now)), new MasterDataResolver(f.Reader),
-                new Clock(), NoopMobileSyncBroadcaster.Instance, f.Names);
+                new Clock(), NoopMobileSyncBroadcaster.Instance, NoopFlightWorkOrderEmailQueue.Instance, f.Names);
             (await handler.Handle(new(f.FlightId, arrival, InitialVersion), CancellationToken.None)).Error.Code
                 .ShouldBe("Operations.ArrivalDetails.RemarksRequiredForUnknownCustomer");
             f.Writes.SaveCalls.ShouldBe(0);
@@ -1143,7 +1143,7 @@ public sealed class FlightServiceSaveTests
             var current = version ?? (await Db.Flights.SingleAsync(f => f.Id == FlightId)).RowVersion;
             var handler = new SaveFlightServiceCommandHandler(Writes,
                 new Scope(new(Reader.StationId, acting.StaffMemberId, acting.UserId, Now)),
-                new MasterDataResolver(Reader), new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, Names);
+                new MasterDataResolver(Reader), new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, NoopFlightWorkOrderEmailQueue.Instance, Names);
             var result = await handler.Handle(new SaveFlightServiceCommand(FlightId, recordId, input ?? Input, current), CancellationToken.None);
             if (result.IsSuccess && RemoveCreatorAssignmentAfterFirstSave)
             {
@@ -1172,7 +1172,7 @@ public sealed class FlightServiceSaveTests
             var current = version ?? (await Db.Flights.SingleAsync(f => f.Id == FlightId)).RowVersion;
             return await new SaveFlightOperationsBatchCommandHandler(Writes,
                 new Scope(new(Reader.StationId, Owner.StaffMemberId, Owner.UserId, Now)), new MasterDataResolver(Reader),
-                Reader, new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, Names)
+                Reader, new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, NoopFlightWorkOrderEmailQueue.Instance, Names)
                 .Handle(new(FlightId, input, current), CancellationToken.None);
         }
 
@@ -1182,7 +1182,7 @@ public sealed class FlightServiceSaveTests
             var current = version ?? (await Db.Flights.SingleAsync(f => f.Id == FlightId)).RowVersion;
             var handler = new DeleteFlightServiceCommandHandler(Writes,
                 new Scope(new(Reader.StationId, acting.StaffMemberId, acting.UserId, Now)),
-                new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, new MasterDataResolver(Reader), Names);
+                new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, new MasterDataResolver(Reader), NoopFlightWorkOrderEmailQueue.Instance, Names);
             return await handler.Handle(new DeleteFlightServiceCommand(FlightId, recordId, current), CancellationToken.None);
         }
 

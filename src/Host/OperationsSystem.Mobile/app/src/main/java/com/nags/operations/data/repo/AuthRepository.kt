@@ -28,6 +28,8 @@ class AuthRepository(
 ) {
     suspend fun profile(): AuthenticatedUser = api.me()
 
+    suspend fun updateWorkOrderEmailPreference(enabled: Boolean) = api.updateWorkOrderEmailPreference(enabled)
+
     suspend fun changePassword(currentPassword: String, newPassword: String) = api.changePassword(currentPassword, newPassword)
 
     /** Identity revokes every session after a password change. Keep the remembered owner and all offline work. */

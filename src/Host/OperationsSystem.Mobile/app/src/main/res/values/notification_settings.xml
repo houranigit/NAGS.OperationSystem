@@ -13,6 +13,9 @@
     <string name="notification_settings_station_shares">Shared with my station</string>
     <string name="notification_settings_saved_work">Saved work</string>
     <string name="notification_settings_sync_issues">Sync failures and review</string>
+    <string name="notification_settings_email">Email</string>
+    <string name="notification_settings_work_order_email">Email me submitted work orders</string>
+    <string name="notification_settings_work_order_email_summary">Get the latest Work Order PDF each time you submit or update flight work.</string>
     <string name="notification_settings_device">This device</string>
     <string name="notification_settings_android">Android notification settings</string>
     <string name="notification_settings_device_allowed">Notifications allowed · Sound and permissions</string>

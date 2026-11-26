@@ -162,6 +162,12 @@ public static class UiStrings
         public static string CachedDescription => UiText.Get("Notifications.CachedDescription", "Showing saved notifications. Read status will sync when connected.");
         public static string PageSummary => UiText.Get("Notifications.PageSummary", "Page {0} of {1}");
         public static string UnreadCount => UiText.Get("Notifications.UnreadCount", "{0} unread");
+        public static string EmailPreferences => UiText.Get("Notifications.EmailPreferences", "Email");
+        public static string WorkOrderEmailPreference => UiText.Get("Notifications.WorkOrderEmailPreference", "Email me submitted work orders");
+        public static string WorkOrderEmailPreferenceHint => UiText.Get("Notifications.WorkOrderEmailPreferenceHint", "After each flight work submission or change you save, the latest Work Order PDF from Print WO is emailed to {0}.");
+        public static string EmailPreferenceLoadFailed => UiText.Get("Notifications.EmailPreferenceLoadFailed", "Could not load your current email preference. Refresh to try again.");
+        public static string EmailPreferenceRefresh => UiText.Get("Notifications.EmailPreferenceRefresh", "Refresh setting");
+        public static string EmailPreferenceSaveUnconfirmed => UiText.Get("Notifications.EmailPreferenceSaveUnconfirmed", "Could not confirm this change. The last confirmed setting is shown. Refresh to check the saved setting.");
     }
 
     public static class Auth
@@ -285,14 +291,6 @@ public static class UiStrings
         public static string Permissions => UiText.Get("Account.Permissions", "Permissions");
         public static string DisplayName => UiText.Get("Account.DisplayName", "Display name");
         public static string ProfileUpdated => UiText.Get("Account.ProfileUpdated", "Your profile has been updated.");
-        public static string WorkOrderEmailPreference => UiText.Get("Account.WorkOrderEmailPreference", "Email me submitted work orders");
-        public static string WorkOrderEmailPreferenceHint => UiText.Get("Account.WorkOrderEmailPreferenceHint", "When enabled, each work order you submit is emailed with its PDF to");
-        public static string EmailPreferenceSaving => UiText.Get("Account.EmailPreferenceSaving", "Saving email preference…");
-        public static string EmailPreferenceSaved => UiText.Get("Account.EmailPreferenceSaved", "Email preference saved.");
-        public static string EmailPreferenceLoading => UiText.Get("Account.EmailPreferenceLoading", "Loading your saved email preference…");
-        public static string EmailPreferenceLoadFailed => UiText.Get("Account.EmailPreferenceLoadFailed", "Could not load your current email preference. Refresh to try again.");
-        public static string EmailPreferenceRefresh => UiText.Get("Account.EmailPreferenceRefresh", "Refresh setting");
-        public static string EmailPreferenceSaveUnconfirmed => UiText.Get("Account.EmailPreferenceSaveUnconfirmed", "Could not confirm this change. The last confirmed setting is shown. Refresh to check the saved setting.");
         public static string ChangePassword => UiText.Get("Account.ChangePassword", "Change password");
         public static string CurrentPassword => UiText.Get("Account.CurrentPassword", "Current password");
         public static string PasswordChanged => UiText.Get("Account.PasswordChanged", "Your password has been changed. Please sign in again.");

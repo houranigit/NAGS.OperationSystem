@@ -284,7 +284,7 @@ public sealed class FlightActualServiceBoundsTests
         {
             var current = version ?? (await Db.Flights.SingleAsync(f => f.Id == FlightId)).RowVersion;
             var handler = new SaveFlightArrivalCommandHandler(Writes, new Scope(Actor), new MasterDataResolver(MasterData),
-                new Clock(), NoopMobileSyncBroadcaster.Instance);
+                new Clock(), NoopMobileSyncBroadcaster.Instance, NoopFlightWorkOrderEmailQueue.Instance);
             return await handler.Handle(new(FlightId, new(ata, MasterData.AircraftId, tail, "REF-ARR", "Arrival"), current), CancellationToken.None);
         }
 
@@ -294,7 +294,7 @@ public sealed class FlightActualServiceBoundsTests
             var own = current.DepartureSubmissions.Any(d => d.SubmittedByEmployee.StaffMemberId == Actor.StaffMemberId);
             var input = new SaveFlightDepartureRequest(atd, own ? null : Png, own ? null : Now, remarks);
             var handler = new SaveFlightDepartureCommandHandler(Writes, new Scope(Actor), new MasterDataResolver(MasterData),
-                new Clock(), NoopMobileSyncBroadcaster.Instance, Storage);
+                new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, NoopFlightWorkOrderEmailQueue.Instance);
             return await handler.Handle(new(FlightId, input, version ?? current.RowVersion), CancellationToken.None);
         }
 

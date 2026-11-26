@@ -16,7 +16,7 @@ public enum FlightOrderKind { Work, Cancellation }
 public sealed record DeletePortalFlightOrderCommand(Guid FlightId, FlightOrderKind Kind, byte[] RowVersion) : ICommand;
 
 public sealed class DeletePortalFlightOrderCommandHandler(IOperationsDbContext db, PortalFlightScope scope,
-    IAuditContext audit, IFileStorage storage, IMobileSyncBroadcaster mobileSync, TimeProvider clock)
+    IAuditContext audit, IFileStorage storage, IMobileSyncBroadcaster mobileSync, TimeProvider clock, IFlightWorkOrderEmailQueue workOrderEmails)
     : ICommandHandler<DeletePortalFlightOrderCommand>
 {
     public async Task<Result> Handle(DeletePortalFlightOrderCommand request, CancellationToken cancellationToken)
@@ -48,6 +48,8 @@ public sealed class DeletePortalFlightOrderCommandHandler(IOperationsDbContext d
         var orderType = request.Kind == FlightOrderKind.Work ? "WorkOrder" : "CancellationOrder";
         db.EnqueueAudit(audit, "operations", "Flight", flight.Id, orderType, flight.Id, AuditActions.Deleted);
         db.SetOriginalRowVersion(flight, request.RowVersion);
+        var receipt = await workOrderEmails.EnqueueAsync(flight, access.Value.UserId, cancellationToken);
+        if (receipt.IsFailure) return receipt.Error;
         try
         {
             await db.SaveChangesAsync(cancellationToken);

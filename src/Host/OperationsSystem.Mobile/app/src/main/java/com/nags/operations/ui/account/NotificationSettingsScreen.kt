@@ -52,12 +52,13 @@ fun NotificationSettingsScreen(viewModel: NotificationSettingsViewModel, onBack:
         onPauseOrDispose { }
     }
     val ground = FlightFormGround
-    val busyMessage = stringResource(if (state.savingKey != null) R.string.notification_settings_saving
+    val isSaving = state.savingKey != null || state.isSavingWorkOrderEmail
+    val busyMessage = stringResource(if (isSaving) R.string.notification_settings_saving
         else R.string.notification_settings_loading)
     Scaffold(containerColor = ground,
         topBar = { ProfilePageHeader(stringResource(R.string.profile_notifications), onBack) {
             Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                if (state.isLoading || state.savingKey != null) CircularProgressIndicator(
+                if (state.isLoading || state.isLoadingWorkOrderEmail || isSaving) CircularProgressIndicator(
                     Modifier.size(16.dp).semantics {
                         contentDescription = busyMessage
                         liveRegion = LiveRegionMode.Polite
@@ -70,7 +71,7 @@ fun NotificationSettingsScreen(viewModel: NotificationSettingsViewModel, onBack:
                 if (!state.isOnline) InlineNotice(stringResource(R.string.notification_settings_offline))
                 state.error?.let { message ->
                     InlineNotice(message, kind = InlineNoticeKind.Error,
-                        onRetry = if (state.isOnline && !state.isLoading && state.savingKey == null) viewModel::refresh else null)
+                        onRetry = if (state.isOnline && !state.isLoading && state.savingKey == null) viewModel::refreshNotifications else null)
                 }
                 val values = state.preferences
                 if (values != null) {
@@ -106,6 +107,20 @@ fun NotificationSettingsScreen(viewModel: NotificationSettingsViewModel, onBack:
                         NotificationSwitchRow(stringResource(R.string.notification_settings_sync_issues), values.syncIssues,
                             categoriesEnabled, onChange = { viewModel.setPreference(NotificationPreferenceKey.SyncIssues, it) })
                     }
+                }
+                SettingsSection(stringResource(R.string.notification_settings_email)) {
+                    NotificationSwitchRow(
+                        label = stringResource(R.string.notification_settings_work_order_email),
+                        checked = state.workOrderEmailEnabled,
+                        enabled = state.canEditWorkOrderEmail,
+                        summary = stringResource(R.string.notification_settings_work_order_email_summary),
+                        onChange = viewModel::setWorkOrderEmail,
+                    )
+                }
+                state.workOrderEmailError?.let { message ->
+                    InlineNotice(message, kind = InlineNoticeKind.Error,
+                        onRetry = if (state.isOnline && !state.isLoadingWorkOrderEmail && !state.isSavingWorkOrderEmail)
+                            viewModel::refreshWorkOrderEmail else null)
                 }
                 SettingsSection(stringResource(R.string.notification_settings_device)) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
@@ -151,7 +166,13 @@ private fun SettingsDivider() {
 }
 
 @Composable
-private fun NotificationSwitchRow(label: String, checked: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+private fun NotificationSwitchRow(
+    label: String,
+    checked: Boolean?,
+    enabled: Boolean,
+    summary: String? = null,
+    onChange: (Boolean) -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     val switchColors = if (colors.isDark) SwitchDefaults.colors(
         checkedTrackColor = Color(0xFF81C995),
@@ -168,12 +189,18 @@ private fun NotificationSwitchRow(label: String, checked: Boolean, enabled: Bool
         disabledUncheckedTrackColor = LoadingIndicatorGray, disabledUncheckedThumbColor = Color.White,
         disabledUncheckedBorderColor = Color.Transparent,
     )
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
-        .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
+    val toggle = if (checked != null) Modifier.toggleable(checked, enabled = enabled, role = Role.Switch,
+        onValueChange = onChange) else Modifier
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).then(toggle)
         .padding(horizontal = 14.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(label, Modifier.weight(1f), style = settingsLabelStyle(), fontWeight = FontWeight.Bold,
-            color = colors.onSurface.copy(alpha = if (enabled) 1f else 0.5f))
-        Switch(checked = checked, onCheckedChange = null, enabled = enabled, colors = switchColors)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, style = settingsLabelStyle(), fontWeight = FontWeight.Bold,
+                color = colors.onSurface.copy(alpha = if (enabled || checked == null) 1f else 0.5f))
+            if (summary != null)
+                Text(summary, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+        }
+        if (checked != null)
+            Switch(checked = checked, onCheckedChange = null, enabled = enabled, colors = switchColors)
     }
 }

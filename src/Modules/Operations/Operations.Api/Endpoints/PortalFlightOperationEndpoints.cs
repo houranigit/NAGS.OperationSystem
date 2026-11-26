@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Net.Http.Headers;
-using Operations.Api.Exports;
 using Operations.Application.Contracts;
 using Operations.Application.Features.Flights;
 using Operations.Domain.Authorization;
@@ -29,8 +28,8 @@ internal static class PortalFlightOperationEndpoints
         operations.MapGet("", async (Guid id, ISender sender, CancellationToken ct) =>
             (await sender.Send(new GetPortalFlightOperationsQuery(id), ct)).ToOk());
 
-        operations.MapGet("/print", (Guid id, HttpResponse response, ISender sender, CancellationToken ct) =>
-            DownloadWorkOrderAsync(id, response, sender, ct, mobileOnly: false));
+        operations.MapGet("/print", (Guid id, HttpResponse response, ISender sender, IFlightWorkOrderPdfRenderer renderer, CancellationToken ct) =>
+            DownloadWorkOrderAsync(id, response, sender, renderer, ct, mobileOnly: false));
 
         operations.MapPut("/approval", (Guid id, HttpRequest http, ISender sender, CancellationToken ct) =>
             SetApprovalAsync(id, true, http, sender, ct));
@@ -106,18 +105,14 @@ internal static class PortalFlightOperationEndpoints
         });
     }
 
-    internal static async Task<IResult> DownloadWorkOrderAsync(Guid id, HttpResponse response, ISender sender, CancellationToken ct,
-        bool mobileOnly)
+    internal static async Task<IResult> DownloadWorkOrderAsync(Guid id, HttpResponse response, ISender sender,
+        IFlightWorkOrderPdfRenderer renderer, CancellationToken ct, bool mobileOnly)
     {
         var result = await sender.Send(new GetFlightWorkOrderPrintQuery(id, MobileOnly: mobileOnly), ct);
         if (result.IsFailure)
             return ApiResults.Problem(result.Error);
 
-        var source = result.Value;
-        var zone = TimeZoneInfo.TryFindSystemTimeZoneById(source.StationTimeZoneId, out var stationZone)
-            ? stationZone
-            : TimeZoneInfo.Utc;
-        var file = WorkOrderPrintDocumentFactory.Create(source, zone);
+        var file = renderer.Render(result.Value);
         var disposition = new ContentDispositionHeaderValue("inline");
         disposition.SetHttpFileName(file.FileName);
         response.Headers.ContentDisposition = disposition.ToString();

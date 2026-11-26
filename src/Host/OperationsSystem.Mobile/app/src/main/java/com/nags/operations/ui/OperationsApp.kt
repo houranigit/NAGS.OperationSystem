@@ -182,7 +182,7 @@ fun OperationsApp() {
             val settingsFactory = remember(graph) { object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    NotificationSettingsViewModel(graph.notificationPreferences, graph.networkMonitor.isOnline) as T
+                    NotificationSettingsViewModel(graph.notificationPreferences, graph.authRepository, graph.networkMonitor.isOnline) as T
             } }
             val model: NotificationSettingsViewModel = viewModel(key = "notification-settings:$subject", factory = settingsFactory)
             NotificationSettingsScreen(model, onBack = { navController.popBackStack() })

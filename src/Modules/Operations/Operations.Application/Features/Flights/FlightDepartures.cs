@@ -40,6 +40,7 @@ public sealed class SaveFlightDepartureCommandHandler(
     TimeProvider clock,
     IMobileSyncBroadcaster mobileSync,
     IFileStorage storage,
+    IFlightWorkOrderEmailQueue workOrderEmails,
     IUserDisplayNameReader? userNames = null) : ICommandHandler<SaveFlightDepartureCommand, FlightDepartureSavedDto>
 {
     public const int MaxSignatureBytes = 2 * 1024 * 1024;
@@ -184,6 +185,12 @@ public sealed class SaveFlightDepartureCommandHandler(
         try
         {
             await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), cancellationToken);
+            var receipt = await workOrderEmails.EnqueueAsync(flight, actor.UserId, cancellationToken);
+            if (receipt.IsFailure)
+            {
+                if (stored is not null) await DeleteUnreferencedSignatureAsync(stored.StorageKey);
+                return receipt.Error;
+            }
             await db.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)

@@ -102,8 +102,8 @@ internal static class FlightEndpoints
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
-        mobile.MapGet("/{id:guid}/print", (Guid id, HttpResponse response, ISender sender, CancellationToken ct) =>
-            PortalFlightOperationEndpoints.DownloadWorkOrderAsync(id, response, sender, ct, mobileOnly: true))
+        mobile.MapGet("/{id:guid}/print", (Guid id, HttpResponse response, ISender sender, IFlightWorkOrderPdfRenderer renderer, CancellationToken ct) =>
+            PortalFlightOperationEndpoints.DownloadWorkOrderAsync(id, response, sender, renderer, ct, mobileOnly: true))
             .RequirePermission(OperationsPermissions.Flights.View);
 
         mobile.MapGet("/customer-logos/{customerId:guid}", async (Guid customerId, ISender sender, CancellationToken ct,

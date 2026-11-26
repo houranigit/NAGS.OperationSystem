@@ -373,7 +373,7 @@ public sealed class FlightTaskSaveTests
             var current = version ?? (await Db.Flights.SingleAsync(f => f.Id == FlightId)).RowVersion;
             var handler = new SaveFlightTaskCommandHandler(Writes,
                 new Scope(new(Reader.StationId, acting.StaffMemberId, acting.UserId, Now)),
-                new MasterDataResolver(Reader), Reader, new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, Names);
+                new MasterDataResolver(Reader), Reader, new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, NoopFlightWorkOrderEmailQueue.Instance, Names);
             var result = await handler.Handle(new SaveFlightTaskCommand(FlightId, recordId, input ?? Input, current), CancellationToken.None);
             if (result.IsSuccess && RemoveCreatorAssignmentAfterFirstSave)
             {
@@ -392,7 +392,7 @@ public sealed class FlightTaskSaveTests
             var current = version ?? (await Db.Flights.SingleAsync(f => f.Id == FlightId)).RowVersion;
             var handler = new DeleteFlightTaskCommandHandler(Writes,
                 new Scope(new(Reader.StationId, acting.StaffMemberId, acting.UserId, Now)),
-                new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, Names);
+                new Clock(), NoopMobileSyncBroadcaster.Instance, Storage, NoopFlightWorkOrderEmailQueue.Instance, Names);
             return await handler.Handle(new DeleteFlightTaskCommand(FlightId, recordId, current), CancellationToken.None);
         }
 

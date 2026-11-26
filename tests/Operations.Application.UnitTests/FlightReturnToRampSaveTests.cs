@@ -250,6 +250,7 @@ public sealed class FlightReturnToRampSaveTests
         {
             Db.ChangeTracker.Clear(); var rowVersion = version ?? (await Db.Flights.SingleAsync()).RowVersion;
             return await new SaveFlightReturnToRampCommandHandler(Db, scopeOverride ?? Scope(other), new(Reader), Reader, Storage, new Clock(), NoopMobileSyncBroadcaster.Instance,
+                NoopFlightWorkOrderEmailQueue.Instance,
                 new WorkUserNames(new() { [Owner] = "Original", [Other] = "Colleague" })).Handle(new(FlightId, id, input, rowVersion), default);
         }
         public Task<Result<FlightDetailDto>> Detail(bool canOperate = true) =>

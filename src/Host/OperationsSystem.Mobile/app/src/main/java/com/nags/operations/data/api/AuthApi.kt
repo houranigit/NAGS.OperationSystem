@@ -13,6 +13,7 @@ import io.ktor.client.plugins.auth.authProvider
 import io.ktor.client.plugins.auth.providers.BearerAuthProvider
 import io.ktor.client.request.get
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
@@ -56,6 +57,14 @@ class AuthApi(
         return response.bodyOrThrow()
     }
 
+    suspend fun updateWorkOrderEmailPreference(enabled: Boolean) {
+        val response = client.put(url("api/v1/identity/me/work-order-email-preference")) {
+            contentType(ContentType.Application.Json)
+            setBody(WorkOrderEmailPreferenceBody(enabled))
+        }
+        if (!response.status.isSuccess()) throw com.nags.operations.data.ApiException(response.status.value, response.bodyAsText())
+    }
+
     /** Best-effort server-side session revocation; local state is cleared regardless. */
     suspend fun logout(refreshToken: String?) {
         client.post(url("api/v1/identity/auth/mobile/logout")) {
@@ -80,3 +89,6 @@ class AuthApi(
 
 @Serializable
 private data class ChangePasswordBody(val currentPassword: String, val newPassword: String)
+
+@Serializable
+private data class WorkOrderEmailPreferenceBody(val enabled: Boolean)

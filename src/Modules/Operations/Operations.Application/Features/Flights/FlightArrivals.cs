@@ -39,6 +39,7 @@ public sealed class SaveFlightArrivalCommandHandler(
     MasterDataResolver resolver,
     TimeProvider clock,
     IMobileSyncBroadcaster mobileSync,
+    IFlightWorkOrderEmailQueue workOrderEmails,
     IUserDisplayNameReader? userNames = null) : ICommandHandler<SaveFlightArrivalCommand, FlightArrivalSavedDto>
 {
     public async Task<Result<FlightArrivalSavedDto>> Handle(SaveFlightArrivalCommand request, CancellationToken cancellationToken)
@@ -146,6 +147,8 @@ public sealed class SaveFlightArrivalCommandHandler(
                 UpdatedByDisplayName = employee.FullName, OccurredOnUtc = now
             });
         await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), cancellationToken);
+        var receipt = await workOrderEmails.EnqueueAsync(flight, actor.UserId, cancellationToken);
+        if (receipt.IsFailure) return receipt.Error;
         try
         {
             await db.SaveChangesAsync(cancellationToken);

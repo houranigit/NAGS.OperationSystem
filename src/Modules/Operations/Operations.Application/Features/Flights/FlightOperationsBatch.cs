@@ -21,7 +21,8 @@ public sealed record SaveFlightOperationsBatchCommand(Guid FlightId, SaveFlightO
 /// <summary>Prepares one flight edit in memory and publishes its entire graph and outbox in one SaveChanges.</summary>
 public sealed class SaveFlightOperationsBatchCommandHandler(
     IOperationsDbContext db, IMobileFlightScope scope, MasterDataResolver resolver, IMasterDataReader masterData,
-    TimeProvider clock, IMobileSyncBroadcaster mobileSync, IFileStorage storage, IUserDisplayNameReader? userNames = null, PortalFlightScope? portalScope = null, IUserContext? user = null)
+    TimeProvider clock, IMobileSyncBroadcaster mobileSync, IFileStorage storage, IFlightWorkOrderEmailQueue workOrderEmails,
+    IUserDisplayNameReader? userNames = null, PortalFlightScope? portalScope = null, IUserContext? user = null)
     : ICommandHandler<SaveFlightOperationsBatchCommand, FlightDetailDto>
 {
     private sealed record ServiceEdit(FlightServiceBatchChange Change, FlightService? Existing, bool Matches,
@@ -491,6 +492,8 @@ public sealed class SaveFlightOperationsBatchCommandHandler(
             db.SetOriginalRowVersion(flight, request.RowVersion);
             if (actor is not null)
                 await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), ct, recordSearch: !request.PortalOnly);
+            var receipt = await workOrderEmails.EnqueueAsync(flight, actorUserId, ct);
+            if (receipt.IsFailure) return receipt.Error;
             try { await db.SaveChangesAsync(ct); }
             catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
             catch (DbUpdateException)

@@ -5,11 +5,21 @@ using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
 using Operations.Application.Contracts;
+using Operations.Application.Features.Flights;
 using PdfSharp.Drawing;
 
 namespace Operations.Api.Exports;
 
-internal sealed record WorkOrderPrintFile(byte[] Content, string FileName);
+internal sealed class FlightWorkOrderPdfRenderer : IFlightWorkOrderPdfRenderer
+{
+    public WorkOrderPrintFile Render(WorkOrderPrintDto source)
+    {
+        var zone = TimeZoneInfo.TryFindSystemTimeZoneById(source.StationTimeZoneId, out var stationZone)
+            ? stationZone
+            : TimeZoneInfo.Utc;
+        return WorkOrderPrintDocumentFactory.Create(source, zone);
+    }
+}
 
 /// <summary>
 /// Creates a native, flow-layout A4 record for a flight work order. The document keeps

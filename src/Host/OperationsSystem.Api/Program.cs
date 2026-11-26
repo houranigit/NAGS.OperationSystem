@@ -109,6 +109,7 @@ builder.Services.AddMasterDataModule(builder.Configuration);
 builder.Services.AddNotificationsModule(builder.Configuration);
 builder.Services.AddNotificationsApi();
 builder.Services.AddOperationsModule(builder.Configuration);
+builder.Services.AddOperationsApi();
 
 // Shared MasterData catalog changes: SignalR hub + per-request broadcaster.
 builder.Services.AddMobileSync();

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using OperationsSystem.Blazor.Client.Api;
 using OperationsSystem.Blazor.Client.Auth;
+using OperationsSystem.Blazor.Client.Localization;
 
 namespace OperationsSystem.Blazor.Client.Features.Notifications.Pages;
 
@@ -11,7 +12,10 @@ public partial class NotificationPreferences : IAsyncDisposable
     [Inject] private NotificationsApiClient Api { get; set; } = default!;
     [Inject] private ILogger<NotificationPreferences> Logger { get; set; } = default!;
 
+    private const string WorkOrderEmailKey = "workOrderEmail";
     private NotificationPreferencesDto? preferences;
+    private bool workOrderEmailLoaded;
+    private string? workOrderEmailError;
     private bool isLoading = true;
     private bool saved;
     private string? savingKey;
@@ -57,18 +61,17 @@ public partial class NotificationPreferences : IAsyncDisposable
         var version = ++operationVersion;
         attemptedUserId = user.Id;
         isLoading = true;
+        workOrderEmailLoaded = false;
+        workOrderEmailError = null;
         saved = false;
         failedChange = null;
         StateHasChanged();
         try
         {
-            var loaded = await Api.GetPreferencesAsync(lifetime.Token);
-            if (IsCurrent(user.Id, version)) preferences = loaded;
+            await Task.WhenAll(LoadNotificationPreferencesAsync(user.Id, version), LoadWorkOrderEmailPreferenceAsync(user.Id, version));
         }
-        catch (Exception exception) when ((exception is ApiException or JSException or OperationCanceledException) && !lifetime.IsCancellationRequested)
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
         {
-            if (IsCurrent(user.Id, version)) preferences = null;
-            Logger.LogWarning(exception, "Could not load notification preferences");
         }
         finally
         {
@@ -80,9 +83,39 @@ public partial class NotificationPreferences : IAsyncDisposable
         }
     }
 
+    private async Task LoadNotificationPreferencesAsync(Guid userId, long version)
+    {
+        try
+        {
+            var loaded = await Api.GetPreferencesAsync(lifetime.Token);
+            if (IsCurrent(userId, version)) preferences = loaded;
+        }
+        catch (Exception exception) when ((exception is ApiException or JSException or OperationCanceledException) && !lifetime.IsCancellationRequested)
+        {
+            if (IsCurrent(userId, version)) preferences = null;
+            Logger.LogWarning(exception, "Could not load notification preferences");
+        }
+    }
+
+    private async Task LoadWorkOrderEmailPreferenceAsync(Guid userId, long version)
+    {
+        try
+        {
+            var profile = await Auth.RefreshProfileAsync(lifetime.Token);
+            if (IsCurrent(userId, version)) workOrderEmailLoaded = profile?.Id == userId;
+        }
+        catch (Exception exception) when ((exception is ApiException or JSException or OperationCanceledException) && !lifetime.IsCancellationRequested)
+        {
+            if (IsCurrent(userId, version)) workOrderEmailError = UiStrings.Notifications.EmailPreferenceLoadFailed;
+            Logger.LogWarning(exception, "Could not load the work order email preference");
+        }
+    }
+
     private async Task SaveAsync(string key, bool enabled)
     {
-        if (Auth.User is not { } user || preferences is null || savingKey is not null)
+        var isWorkOrderEmail = key == WorkOrderEmailKey;
+        if (Auth.User is not { } user || isLoading || savingKey is not null ||
+            (isWorkOrderEmail ? !workOrderEmailLoaded || workOrderEmailError is not null : preferences is null))
             return;
 
         var version = ++operationVersion;
@@ -91,17 +124,30 @@ public partial class NotificationPreferences : IAsyncDisposable
         failedChange = null;
         try
         {
-            var updated = await Api.UpdatePreferenceAsync(key, enabled, lifetime.Token);
-            if (IsCurrent(user.Id, version))
+            if (isWorkOrderEmail)
             {
-                preferences = updated;
-                saved = true;
+                await Auth.UpdateWorkOrderEmailPreferenceAsync(enabled, lifetime.Token);
             }
+            else
+            {
+                var updated = await Api.UpdatePreferenceAsync(key, enabled, lifetime.Token);
+                if (IsCurrent(user.Id, version)) preferences = updated;
+            }
+            if (IsCurrent(user.Id, version)) saved = true;
         }
         catch (Exception exception) when ((exception is ApiException or JSException or OperationCanceledException) && !lifetime.IsCancellationRequested)
         {
-            if (IsCurrent(user.Id, version)) failedChange = new(key, enabled);
+            if (IsCurrent(user.Id, version))
+            {
+                if (isWorkOrderEmail)
+                    workOrderEmailError = UiStrings.Notifications.EmailPreferenceSaveUnconfirmed;
+                else
+                    failedChange = new(key, enabled);
+            }
             Logger.LogWarning(exception, "Could not save notification preference");
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
         }
         finally
         {
@@ -125,6 +171,8 @@ public partial class NotificationPreferences : IAsyncDisposable
                     operationVersion++;
                     attemptedUserId = null;
                     preferences = null;
+                    workOrderEmailLoaded = false;
+                    workOrderEmailError = null;
                     isLoading = true;
                     savingKey = null;
                     failedChange = null;

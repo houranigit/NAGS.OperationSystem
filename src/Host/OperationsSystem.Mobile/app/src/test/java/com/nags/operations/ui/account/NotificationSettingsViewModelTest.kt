@@ -24,7 +24,7 @@ class NotificationSettingsViewModelTest {
         var writes = 0
         val model = NotificationSettingsViewModel(online, { saved }, {
             reads++; saved.copy(stationShares = false)
-        }, { _, _ -> writes++; saved }, scope)
+        }, { _, _ -> writes++; saved }, { false }, {}, scope)
         assertEquals(saved, model.state.value.preferences)
         assertFalse(model.state.value.canEdit)
         model.setPreference(NotificationPreferenceKey.Enabled, false)
@@ -40,7 +40,7 @@ class NotificationSettingsViewModelTest {
         val response = CompletableDeferred<NotificationPreferences>()
         val original = NotificationPreferences()
         val model = NotificationSettingsViewModel(MutableStateFlow(true), { null }, { original },
-            { _, _ -> response.await() }, scope)
+            { _, _ -> response.await() }, { false }, {}, scope)
         model.setPreference(NotificationPreferenceKey.Enabled, false)
         assertEquals(NotificationPreferenceKey.Enabled, model.state.value.savingKey)
         assertTrue(model.state.value.preferences!!.enabled)
@@ -49,5 +49,48 @@ class NotificationSettingsViewModelTest {
         assertNotNull(model.state.value.error)
         assertNull(model.state.value.savingKey)
         assertTrue(model.state.value.canEdit)
+    }
+
+    @Test
+    fun workOrderEmailsSaveIndependentlyOfTheNotificationsMasterSwitch() {
+        val online = MutableStateFlow(true)
+        val original = NotificationPreferences(enabled = false)
+        val writes = mutableListOf<Boolean>()
+        val response = CompletableDeferred<Unit>()
+        val model = NotificationSettingsViewModel(online, { null }, { original },
+            { _, _ -> error("Email uses the Identity setting") }, { false },
+            { enabled ->
+                writes += enabled
+                response.await()
+            }, scope)
+
+        assertTrue(model.state.value.canEditWorkOrderEmail)
+        model.setWorkOrderEmail(true)
+        assertEquals(listOf(true), writes)
+        assertEquals(false, model.state.value.workOrderEmailEnabled)
+        assertFalse(model.state.value.canEditWorkOrderEmail)
+        response.complete(Unit)
+        assertEquals(true, model.state.value.workOrderEmailEnabled)
+        assertFalse(model.state.value.preferences!!.enabled)
+
+        online.value = false
+        model.setWorkOrderEmail(false)
+        assertEquals(listOf(true), writes)
+        assertEquals(true, model.state.value.workOrderEmailEnabled)
+        assertFalse(model.state.value.canEditWorkOrderEmail)
+    }
+
+    @Test
+    fun rejectedWorkOrderEmailChangeKeepsTheLastAcknowledgedValue() {
+        val model = NotificationSettingsViewModel(MutableStateFlow(true), { null }, { NotificationPreferences() },
+            { _, _ -> error("Email uses the Identity setting") }, { true },
+            { throw java.io.IOException() }, scope)
+
+        model.setWorkOrderEmail(false)
+
+        assertEquals(true, model.state.value.workOrderEmailEnabled)
+        assertNotNull(model.state.value.workOrderEmailError)
+        assertTrue(model.state.value.canEditWorkOrderEmail)
+        assertNull(model.state.value.error)
     }
 }

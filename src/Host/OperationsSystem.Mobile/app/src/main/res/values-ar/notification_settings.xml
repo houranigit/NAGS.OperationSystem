@@ -13,6 +13,9 @@
     <string name="notification_settings_station_shares">المُشاركة مع محطتي</string>
     <string name="notification_settings_saved_work">العمل المحفوظ</string>
     <string name="notification_settings_sync_issues">فشل المزامنة والحاجة للمراجعة</string>
+    <string name="notification_settings_email">البريد الإلكتروني</string>
+    <string name="notification_settings_work_order_email">إرسال أوامر العمل المقدّمة إلى بريدي الإلكتروني</string>
+    <string name="notification_settings_work_order_email_summary">استلم أحدث نسخة PDF من أمر العمل كلما أرسلت أعمال رحلة أو حدّثتها.</string>
     <string name="notification_settings_device">هذا الجهاز</string>
     <string name="notification_settings_android">إعدادات إشعارات أندرويد</string>
     <string name="notification_settings_device_allowed">الإشعارات مسموحة · الصوت والأذونات</string>

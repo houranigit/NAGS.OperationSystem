@@ -2,6 +2,8 @@ using MasterData.Contracts.Resources;
 
 namespace Operations.Application.Contracts;
 
+public sealed record WorkOrderPrintFile(byte[] Content, string FileName);
+
 public sealed record WorkOrderPrintDto(
     WorkOrderDetailDto WorkOrder,
     WorkOrderPrintFlightDto Flight,

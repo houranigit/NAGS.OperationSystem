@@ -37,6 +37,8 @@ public static class OperationsInfrastructureExtensions
         services.AddScoped<IOperationsScope, OperationsScope>();
         services.AddScoped<IMobileFlightScope, MobileFlightScope>();
         services.AddScoped<PortalFlightScope>();
+        services.AddScoped<FlightWorkOrderPrintSource>();
+        services.AddScoped<IFlightWorkOrderEmailQueue, FlightWorkOrderEmailQueue>();
         services.AddScoped<MasterDataResolver>();
         services.AddScoped<IFlightReminderEligibilityReader, FlightReminderEligibilityReader>();
 

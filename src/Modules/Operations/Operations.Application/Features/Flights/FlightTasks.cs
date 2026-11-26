@@ -39,7 +39,8 @@ public sealed class DeleteFlightTaskCommandValidator : AbstractValidator<DeleteF
 }
 
 public sealed class SaveFlightTaskCommandHandler(IOperationsDbContext db, IMobileFlightScope scope, MasterDataResolver resolver,
-    IMasterDataReader masterData, TimeProvider clock, IMobileSyncBroadcaster mobileSync, IFileStorage storage, IUserDisplayNameReader? userNames = null)
+    IMasterDataReader masterData, TimeProvider clock, IMobileSyncBroadcaster mobileSync, IFileStorage storage,
+    IFlightWorkOrderEmailQueue workOrderEmails, IUserDisplayNameReader? userNames = null)
     : ICommandHandler<SaveFlightTaskCommand, FlightTaskSavedDto>
 {
     public async Task<Result<FlightTaskSavedDto>> Handle(SaveFlightTaskCommand request, CancellationToken ct)
@@ -155,6 +156,12 @@ public sealed class SaveFlightTaskCommandHandler(IOperationsDbContext db, IMobil
                 });
             db.SetOriginalRowVersion(flight, request.RowVersion);
             await FlightActivityRecorder.TouchAsync(db, flight, actor, clock.GetUtcNow(), ct);
+            var receipt = await workOrderEmails.EnqueueAsync(flight, actor.UserId, ct);
+            if (receipt.IsFailure)
+            {
+                await FlightTaskFiles.DeleteUnreferencedAsync(db, storage, createdKeys);
+                return receipt.Error;
+            }
             await db.SaveChangesAsync(ct);
         }
         catch (DbUpdateConcurrencyException)
@@ -191,7 +198,8 @@ public sealed class SaveFlightTaskCommandHandler(IOperationsDbContext db, IMobil
 }
 
 public sealed class DeleteFlightTaskCommandHandler(IOperationsDbContext db, IMobileFlightScope scope, TimeProvider clock,
-    IMobileSyncBroadcaster mobileSync, IFileStorage storage, IUserDisplayNameReader? userNames = null) : ICommandHandler<DeleteFlightTaskCommand, FlightTaskRemovedDto>
+    IMobileSyncBroadcaster mobileSync, IFileStorage storage, IFlightWorkOrderEmailQueue workOrderEmails,
+    IUserDisplayNameReader? userNames = null) : ICommandHandler<DeleteFlightTaskCommand, FlightTaskRemovedDto>
 {
     public async Task<Result<FlightTaskRemovedDto>> Handle(DeleteFlightTaskCommand request, CancellationToken ct)
     {
@@ -231,6 +239,8 @@ public sealed class DeleteFlightTaskCommandHandler(IOperationsDbContext db, IMob
             }
             db.SetOriginalRowVersion(flight, request.RowVersion);
             await FlightActivityRecorder.TouchAsync(db, flight, resolved.Value, clock.GetUtcNow(), ct);
+            var receipt = await workOrderEmails.EnqueueAsync(flight, resolved.Value.UserId, ct);
+            if (receipt.IsFailure) return receipt.Error;
             try { await db.SaveChangesAsync(ct); }
             catch (DbUpdateConcurrencyException) { return ConcurrencyErrors.Stale; }
             catch { await FlightTaskFiles.DeleteUnreferencedAsync(db, storage, keys); throw; }

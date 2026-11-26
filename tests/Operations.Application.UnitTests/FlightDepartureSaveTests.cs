@@ -195,7 +195,7 @@ public sealed class FlightDepartureSaveTests
             return new Fixture { Db = db, Writes = writes, Storage = storage, Flight = flight, StaffId = staffId,
                 Handler = new SaveFlightDepartureCommandHandler(writes,
                     new Scope(new(reader.StationId, staffId, userId, Now)), new MasterDataResolver(reader),
-                    new Clock(), NoopMobileSyncBroadcaster.Instance, storage) };
+                    new Clock(), NoopMobileSyncBroadcaster.Instance, storage, NoopFlightWorkOrderEmailQueue.Instance) };
         }
 
         public ValueTask DisposeAsync() => Db.DisposeAsync();

@@ -255,10 +255,12 @@ public sealed class FlightSearchTests
         public async Task<Flight> ReadAsync(Guid id) { Db.ChangeTracker.Clear(); return await Db.Flights.Include(item => item.ServiceRecords).ThenInclude(item => item.Performers).SingleAsync(item => item.Id == id); }
         private async Task<byte[]> CurrentVersion(Guid id) => (await Db.Flights.SingleAsync(item => item.Id == id)).RowVersion;
         public async Task<Result<FlightServiceSavedDto>> SaveServiceAsync(Guid flight, Guid record, SaveFlightServiceRequest input, byte[]? version = null) =>
-            await new SaveFlightServiceCommandHandler(Writes, Scope, new(Reader), new Clock(), NoopMobileSyncBroadcaster.Instance, new Storage())
+            await new SaveFlightServiceCommandHandler(Writes, Scope, new(Reader), new Clock(), NoopMobileSyncBroadcaster.Instance,
+                    new Storage(), NoopFlightWorkOrderEmailQueue.Instance)
                 .Handle(new(flight, record, input, version ?? await CurrentVersion(flight)), CancellationToken.None);
         public async Task<Result<FlightDetailDto>> BatchAsync(Guid id, SaveFlightOperationsBatchRequest input) =>
-            await new SaveFlightOperationsBatchCommandHandler(Writes, Scope, new(Reader), Reader, new Clock(), NoopMobileSyncBroadcaster.Instance, new Storage())
+            await new SaveFlightOperationsBatchCommandHandler(Writes, Scope, new(Reader), Reader, new Clock(), NoopMobileSyncBroadcaster.Instance,
+                    new Storage(), NoopFlightWorkOrderEmailQueue.Instance)
                 .Handle(new(id, input, await CurrentVersion(id)), CancellationToken.None);
         public Task<Result<FlightDetailDto>> DetailAsync(Guid id) => new GetMobileFlightByIdQueryHandler(Db, Scope, Reader, new User(Actor.UserId)).Handle(new(id), CancellationToken.None);
         public ValueTask DisposeAsync() => Db.DisposeAsync();

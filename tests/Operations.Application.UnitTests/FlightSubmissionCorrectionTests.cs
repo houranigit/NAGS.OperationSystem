@@ -421,11 +421,11 @@ public sealed class FlightSubmissionCorrectionTests
             return new Fixture { Db = db, Writes = writes, Storage = storage, Actor = actor, Author = author, Receiver = receiver,
                 AuthorUserId = authorUserId, FlightId = flight.Id, AircraftId = aircraft.AircraftTypeId, ArrivalId = arrival.Id, DepartureId = departure.Id,
                 OtherDepartureId = otherDepartureId,
-                Arrivals = new(writes, new Scope(actor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, names),
-                Departures = new(writes, new Scope(actor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, storage, names),
-                AuthorBatch = new(writes, new Scope(authorActor), new MasterDataResolver(reader), reader, new Clock(), NoopMobileSyncBroadcaster.Instance, storage, names),
-                AuthorArrivals = new(writes, new Scope(authorActor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, names),
-                AuthorDepartures = new(writes, new Scope(authorActor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, storage, names) };
+                Arrivals = new(writes, new Scope(actor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, NoopFlightWorkOrderEmailQueue.Instance, names),
+                Departures = new(writes, new Scope(actor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, storage, NoopFlightWorkOrderEmailQueue.Instance, names),
+                AuthorBatch = new(writes, new Scope(authorActor), new MasterDataResolver(reader), reader, new Clock(), NoopMobileSyncBroadcaster.Instance, storage, NoopFlightWorkOrderEmailQueue.Instance, names),
+                AuthorArrivals = new(writes, new Scope(authorActor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, NoopFlightWorkOrderEmailQueue.Instance, names),
+                AuthorDepartures = new(writes, new Scope(authorActor), new MasterDataResolver(reader), new Clock(), NoopMobileSyncBroadcaster.Instance, storage, NoopFlightWorkOrderEmailQueue.Instance, names) };
         }
         public ValueTask DisposeAsync() => Db.DisposeAsync();
     }
