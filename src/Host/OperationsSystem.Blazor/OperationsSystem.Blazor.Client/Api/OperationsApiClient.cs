@@ -9,32 +9,33 @@ public sealed class OperationsApiClient(BrowserApiClient api)
         int page, int pageSize, string? search = null, Guid? stationId = null, Guid? customerId = null,
         Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null,
         string? sort = null, CancellationToken ct = default, IReadOnlyList<string>? statuses = null, string? flightType = null,
-        bool workOrdersOnly = false)
+        bool workOrdersOnly = false, string? workOrderStatus = null)
     {
         var query = WithFlightFilters(new QueryBuilder().Add("page", page).Add("pageSize", pageSize),
-            search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, flightType, workOrdersOnly).Build();
+            search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, flightType, workOrdersOnly, workOrderStatus).Build();
         return api.GetAsync<PagedResult<FlightListItem>>($"/operations/flights{query}", ct);
     }
 
     public Task DownloadFlightsExportAsync(string format, string? search, Guid? stationId, Guid? customerId,
         Guid? operationTypeId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, string? sort,
         IReadOnlyList<string>? statuses, string? flightType, string? report = null, CancellationToken ct = default,
-        bool workOrdersOnly = false)
+        bool workOrdersOnly = false, string? workOrderStatus = null)
     {
         var query = WithFlightFilters(new QueryBuilder().Add("format", format),
-            search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, flightType, workOrdersOnly)
+            search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, flightType, workOrdersOnly, workOrderStatus)
             .Add("report", report).Build();
         return api.DownloadFileAsync($"/operations/flights/export{query}", cancellationToken: ct);
     }
 
     private static QueryBuilder WithFlightFilters(QueryBuilder query, string? search, Guid? stationId, Guid? customerId,
         Guid? operationTypeId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc, string? sort,
-        IReadOnlyList<string>? statuses, string? flightType, bool workOrdersOnly) => query
+        IReadOnlyList<string>? statuses, string? flightType, bool workOrdersOnly, string? workOrderStatus) => query
             .Add("search", search)
             .Add("stationId", stationId).Add("customerId", customerId).Add("operationTypeId", operationTypeId)
             .Add("status", statuses is { Count: > 0 } ? string.Join(',', statuses) : null)
             .Add("flightType", flightType)
             .Add("hasOperationalRecords", workOrdersOnly ? "true" : null)
+            .Add("workOrderStatus", workOrderStatus)
             .Add("fromUtc", fromUtc).Add("toUtc", toUtc).Add("sort", sort);
 
     public Task<FlightDetail> GetFlightAsync(Guid id, CancellationToken ct = default) =>

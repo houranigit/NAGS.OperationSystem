@@ -51,7 +51,7 @@
     color: var(--os-color-danger);
 }
 
-.ofl-flight-type {
+.ofl-quick-filter {
     --rz-selectbar-background-color: var(--os-color-surface);
     --rz-selectbar-color: var(--os-color-text);
     --rz-selectbar-border: 1px solid var(--os-color-border);
@@ -61,24 +61,24 @@
     --rz-selectbar-border-radius: var(--os-radius-sm);
 }
 
-.ofl-flight-type ::deep .rz-button {
+.ofl-quick-filter ::deep .rz-button {
     min-height: var(--os-list-control-height);
     padding: var(--os-space-1) var(--os-space-2);
     white-space: nowrap;
 }
 
 @container flights-list (width < 21rem) {
-    .ofl-flight-type {
+    .ofl-quick-filter {
         width: 100%;
     }
 
-    .ofl-flight-type ::deep .rz-selectbar-horizontal {
+    .ofl-quick-filter ::deep .rz-selectbar-horizontal {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: var(--os-space-1);
     }
 
-    .ofl-flight-type ::deep .rz-selectbar-horizontal .rz-button {
+    .ofl-quick-filter ::deep .rz-selectbar-horizontal .rz-button {
         margin-inline-start: 0;
         border-radius: var(--os-radius-sm);
     }

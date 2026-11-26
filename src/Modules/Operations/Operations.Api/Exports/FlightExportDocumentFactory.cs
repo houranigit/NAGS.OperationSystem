@@ -26,7 +26,8 @@ internal sealed record FlightExportCriteria(
     IReadOnlyList<FlightReportStatus>? Statuses,
     DateTimeOffset? FromUtc,
     DateTimeOffset? ToUtc,
-    FlightListType FlightType);
+    FlightListType FlightType,
+    WorkOrderStatusFilter? WorkOrderStatus = null);
 
 internal sealed record FlightExportFile(byte[] Content, string ContentType, string FileName);
 
@@ -1367,6 +1368,8 @@ internal static class FlightExportDocumentFactory
 
         if (criteria.FlightType != FlightListType.All)
             filters.Add($"Flight type: {FlightTypeLabel(criteria.FlightType)}");
+        if (criteria.WorkOrderStatus is { } orderStatus)
+            filters.Add(WorkOrderStatusFilterLabel(orderStatus));
         if (criteria.Statuses is { Count: > 0 } statuses)
             filters.Add($"Status: {string.Join(", ", statuses.Select(status => StatusLabel(status.ToString())))}");
 
@@ -1536,12 +1539,17 @@ internal static class FlightExportDocumentFactory
             lines.Add(rows.FirstOrDefault() is { } row ? $"Operation: {row.OperationTypeName}" : "Operation filter applied");
         if (criteria.FlightType != FlightListType.All)
             lines.Add($"Flight type: {FlightTypeLabel(criteria.FlightType)}");
+        if (criteria.WorkOrderStatus is { } orderStatus)
+            lines.Add(WorkOrderStatusFilterLabel(orderStatus));
         if (criteria.Statuses is { Count: > 0 } statuses)
             lines.Add($"Status: {string.Join(", ", statuses.Select(status => StatusLabel(status.ToString())))}");
         if (!string.IsNullOrWhiteSpace(criteria.Search))
             lines.Add($"Search: {criteria.Search.Trim()}");
         return lines;
     }
+
+    private static string WorkOrderStatusFilterLabel(WorkOrderStatusFilter status) =>
+        $"Work order status: {(status == WorkOrderStatusFilter.NotApproved ? "Not Approved" : status.ToString())}";
 
     private static string GetLogoDataUri()
     {

@@ -23,6 +23,14 @@ public enum FlightListType
     OnCall
 }
 
+public enum WorkOrderStatusFilter
+{
+    NotApproved,
+    Approved,
+    Unlocked,
+    Conflict
+}
+
 public sealed record GetFlightsQuery(
     int Page = 1,
     int PageSize = 20,
@@ -35,7 +43,8 @@ public sealed record GetFlightsQuery(
     string? Sort = null,
     IReadOnlyList<FlightReportStatus>? Statuses = null,
     FlightListType FlightType = FlightListType.All,
-    bool? HasOperationalRecords = null) : IQuery<PagedResult<FlightListItemDto>>;
+    bool? HasOperationalRecords = null,
+    WorkOrderStatusFilter? WorkOrderStatus = null) : IQuery<PagedResult<FlightListItemDto>>;
 
 public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsScope scope, ICustomerLogoReader logos,
     IMasterDataReader masterData, TimeProvider? timeProvider = null)
@@ -55,7 +64,7 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
         var now = (timeProvider ?? TimeProvider.System).GetUtcNow();
         var matches = FlightListQuery.MatchReportFilters(
             FlightListQuery.ApplySort(flights, request.Sort), request.FlightType, request.Statuses, now,
-            request.HasOperationalRecords);
+            request.HasOperationalRecords, request.WorkOrderStatus);
 
         var query =
             from match in matches
@@ -310,7 +319,8 @@ internal static class FlightListQuery
     }
 
     internal static IQueryable<ReportMatch> MatchReportFilters(IQueryable<Flight> flights, FlightListType type,
-        IReadOnlyList<FlightReportStatus>? statuses, DateTimeOffset now, bool? hasOperationalRecords = null)
+        IReadOnlyList<FlightReportStatus>? statuses, DateTimeOffset now, bool? hasOperationalRecords,
+        WorkOrderStatusFilter? workOrderStatus)
     {
         var dueSoonBy = now.AddMinutes(30);
         // Mobile excludes auto-closed flights. Keep the remaining status rules in sync with Android.
@@ -357,6 +367,20 @@ internal static class FlightListQuery
             query = query.Where(item => statuses.Contains(item.Status));
         if (hasOperationalRecords is { } required)
             query = query.Where(item => item.HasOperationalRecords == required);
+        if (workOrderStatus is { } orderStatus)
+        {
+            var conflictsOnly = orderStatus == WorkOrderStatusFilter.Conflict;
+            // Work Orders also flags work records paired with cancellation, even when the flight's operational status is Canceled.
+            query = query.Where(item => (item.Status == FlightReportStatus.Conflict ||
+                (item.HasCancellationSubmission && item.HasWorkOrderRecords)) == conflictsOnly);
+            query = orderStatus switch
+            {
+                WorkOrderStatusFilter.NotApproved => query.Where(item => item.Flight.ApprovalStatus == FlightApprovalStatus.NotApproved),
+                WorkOrderStatusFilter.Approved => query.Where(item => item.Flight.ApprovalStatus == FlightApprovalStatus.Approved),
+                WorkOrderStatusFilter.Unlocked => query.Where(item => item.Flight.ApprovalStatus == FlightApprovalStatus.Unlocked),
+                _ => query
+            };
+        }
         return query;
     }
 

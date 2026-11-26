@@ -335,7 +335,9 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
             ("7707", "Canceled", -60),
             ("7708", "Conflict", -60),
             ("7709", "ArrivalNotRecorded", -60),
-            ("7710", "ArrivalNotRecorded", -60)
+            ("7710", "ArrivalNotRecorded", -60),
+            ("7711", "Canceled", -60),
+            ("7712", "Canceled", -60)
         };
         var flights = new List<Flight>();
         foreach (var (number, status, minutesUntilSta) in scenarios)
@@ -388,6 +390,10 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
                     : CancellationDetails.Create(now, null);
                 flight.SubmitCancellation(cancelingEmployee, cancellationDetails.Value, userId, now).IsSuccess.ShouldBeTrue();
             }
+            if (number is "7707" or "7711")
+                flight.Approve(userId, "Reviewer", now, number == "7707" ? 3 : 4).IsSuccess.ShouldBeTrue();
+            if (number == "7711")
+                flight.Unlock(now).IsSuccess.ShouldBeTrue();
             if (number == "7709")
                 flight.AddService(new(refs.ServiceId, "Service"), null,
                     TimeWindow.Create(now.AddMinutes(-5), null).Value, null, userId, now).IsSuccess.ShouldBeTrue();
@@ -400,7 +406,13 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<OperationsDbContext>();
+            // Seed the legacy cancellation-plus-service combination that current aggregate writes reject.
+            var legacyService = flights.Single(flight => flight.FlightNumber.Value == "7703")
+                .AddService(new(refs.ServiceId, "Service"), null, TimeWindow.Create(now.AddMinutes(-10), null).Value,
+                    null, userId, now).Value;
             db.Flights.AddRange(flights);
+            db.Entry(legacyService).Property(service => service.FlightId).CurrentValue =
+                flights.Single(flight => flight.FlightNumber.Value == "7712").Id;
             await db.SaveChangesAsync();
         }
 
@@ -409,7 +421,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         unfiltered.Items.Select(item => (item.FlightNumber, item.Status))
             .ShouldBe(scenarios.Select(scenario => (scenario.Number, scenario.Status)));
         unfiltered.Items.Where(item => item.HasOperationalRecords).Select(item => item.FlightNumber)
-            .ShouldBe(["7704", "7705", "7706", "7707", "7708", "7709", "7710"]);
+            .ShouldBe(["7704", "7705", "7706", "7707", "7708", "7709", "7710", "7711", "7712"]);
         unfiltered.Items.Single(item => item.Status == "OnGround").ActualArrivalUtc.ShouldBe(actualArrival);
         unfiltered.Items.Where(item => item.Status == "ArrivalNotRecorded").ShouldAllBe(item => item.ActualArrivalUtc == null);
         unfiltered.Items.Single(item => item.Status == "ReturnedToRamp").ReturnedToRampUtc.ShouldBe(actualReturn);
@@ -417,7 +429,7 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
 
         var ordersPath = $"{path}&hasOperationalRecords=true";
         var orderPage = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{ordersPath}&pageSize=4"))!;
-        orderPage.TotalCount.ShouldBe(7);
+        orderPage.TotalCount.ShouldBe(9);
         orderPage.Items.Select(item => item.FlightNumber).ShouldBe(["7704", "7705", "7706", "7707"]);
         var completeWork = orderPage.Items.Single(item => item.FlightNumber == "7705");
         completeWork.ActualDepartureUtc.ShouldBe(now.AddMinutes(-30));
@@ -437,11 +449,11 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         cancellation.CanceledAtUtc.ShouldBe(now);
         cancellation.CancellationType.ShouldBe(nameof(CancellationType.Planned));
         var nextOrders = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{ordersPath}&pageSize=4&page=2"))!;
-        nextOrders.TotalCount.ShouldBe(7);
-        nextOrders.Items.Select(item => item.FlightNumber).ShouldBe(["7708", "7709", "7710"]);
+        nextOrders.TotalCount.ShouldBe(9);
+        nextOrders.Items.Select(item => item.FlightNumber).ShouldBe(["7708", "7709", "7710", "7711"]);
         nextOrders.Items.First().HasCancellationSubmission.ShouldBeTrue();
         nextOrders.Items.First().CancellationType.ShouldBe(nameof(CancellationType.Unplanned));
-        nextOrders.Items.ShouldAllBe(item => item.HasWorkOrderRecords);
+        nextOrders.Items.Take(3).ShouldAllBe(item => item.HasWorkOrderRecords);
         var serviceOnly = nextOrders.Items.Single(item => item.FlightNumber == "7709");
         serviceOnly.ServiceRecordCount.ShouldBe(1);
         serviceOnly.HasOpenServiceRecords.ShouldBeTrue();
@@ -459,10 +471,28 @@ public sealed partial class FlightVisibilityScopeTests(OperationsApiFactory fact
         var ordinarySearch = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{Base}/flights?{numberQuery}"))!;
         ordinarySearch.Items.ShouldBeEmpty();
 
-        var exportText = await admin.GetStringAsync($"{Base}/flights/export?stationId={refs.StationId}&sort=flightnumber:asc&hasOperationalRecords=true&format=csv");
-        var exportedFlights = exportText.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Skip(1).Select(line => line.Split(',')[2].Trim('"'));
-        exportedFlights.ShouldBe(["7704", "7705", "7706", "7707", "7708", "7709", "7710"]);
+        var exportPath = $"{Base}/flights/export?stationId={refs.StationId}&sort=flightnumber:asc&hasOperationalRecords=true&format=csv";
+        async Task<string[]> ExportedFlightNumbersAsync(string url) => (await admin.GetStringAsync(url))
+            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Skip(1).Select(line => line.Split(',')[2].Trim('"')).ToArray();
+
+        (await ExportedFlightNumbersAsync(exportPath)).ShouldBe(["7704", "7705", "7706", "7707", "7708", "7709", "7710", "7711", "7712"]);
+
+        var notApprovedPath = $"{ordersPath}&workOrderStatus=NotApproved&pageSize=2";
+        var notApproved = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>(notApprovedPath))!;
+        notApproved.TotalCount.ShouldBe(3);
+        notApproved.Items.Select(item => item.FlightNumber).ShouldBe(["7704", "7709"]);
+        var nextNotApproved = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{notApprovedPath}&page=2"))!;
+        nextNotApproved.TotalCount.ShouldBe(3);
+        nextNotApproved.Items.ShouldHaveSingleItem().FlightNumber.ShouldBe("7710");
+
+        var approved = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{ordersPath}&workOrderStatus=Approved"))!;
+        approved.Items.ShouldHaveSingleItem().FlightNumber.ShouldBe("7707");
+        var unlocked = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{ordersPath}&workOrderStatus=Unlocked"))!;
+        unlocked.Items.ShouldHaveSingleItem().FlightNumber.ShouldBe("7711");
+        var conflicts = (await admin.GetFromJsonAsync<PagedList<FlightListItemDto>>($"{ordersPath}&workOrderStatus=Conflict"))!;
+        conflicts.Items.Select(item => item.FlightNumber).ShouldBe(["7708", "7712"]);
+        (await ExportedFlightNumbersAsync($"{exportPath}&workOrderStatus=Conflict")).ShouldBe(["7708", "7712"]);
 
         var filter = $"{path}&status=duesoon,%20ReturnedToRamp,DueSoon&pageSize=1";
         var first = (await admin.GetFromJsonAsync<PagedList<PortalFlightStatus>>($"{filter}&page=1"))!;

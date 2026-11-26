@@ -286,7 +286,7 @@ internal static class FlightEndpoints
         flights.MapGet("/", async (ISender sender, CancellationToken ct,
             int page = 1, int pageSize = 20, string? search = null, Guid? stationId = null, Guid? customerId = null,
             Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null,
-            string? status = null, string? flightType = null, bool? hasOperationalRecords = null) =>
+            string? status = null, string? flightType = null, bool? hasOperationalRecords = null, string? workOrderStatus = null) =>
         {
             var statuses = ParseStatuses(status);
             if (statuses is null)
@@ -294,10 +294,12 @@ internal static class FlightEndpoints
 
             if (!TryParseFlightType(flightType, out var type))
                 return ApiResults.Problem(Error.Validation("Choose All, Scheduled, PerLanding, OnCall, or AdHoc.", "Operations.Flight.TypeInvalid"));
+            if (!TryParseWorkOrderStatus(workOrderStatus, out var orderStatus))
+                return ApiResults.Problem(WorkOrderStatusInvalid());
 
             var result = await sender.Send(new GetFlightsQuery(
                 page, pageSize, search, stationId, customerId, operationTypeId, fromUtc, toUtc, sort, statuses, type,
-                hasOperationalRecords), ct);
+                hasOperationalRecords, orderStatus), ct);
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
@@ -392,7 +394,7 @@ internal static class FlightEndpoints
         string? format = null, string? search = null, Guid? stationId = null, Guid? customerId = null,
         Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? sort = null,
         string? status = null, string? flightType = null, string? timeZoneId = null, string? report = null,
-        bool? hasOperationalRecords = null)
+        bool? hasOperationalRecords = null, string? workOrderStatus = null)
     {
         if (!FlightExportDocumentFactory.TryParseFormat(format, out var exportFormat))
             return ApiResults.Problem(Error.Validation(
@@ -416,9 +418,12 @@ internal static class FlightEndpoints
             return ApiResults.Problem(Error.Validation("One or more flight statuses are invalid.", "Operations.Flight.StatusInvalid"));
         if (!TryParseFlightType(flightType, out var type))
             return ApiResults.Problem(Error.Validation("Choose All, Scheduled, PerLanding, OnCall, or AdHoc.", "Operations.Flight.TypeInvalid"));
+        if (!TryParseWorkOrderStatus(workOrderStatus, out var orderStatus))
+            return ApiResults.Problem(WorkOrderStatusInvalid());
 
         var result = await sender.Send(new GetFlightsExportQuery(search, stationId, customerId, operationTypeId,
-            fromUtc, toUtc, sort, statuses, type, IncludeManpower: billing, HasOperationalRecords: hasOperationalRecords), ct);
+            fromUtc, toUtc, sort, statuses, type, IncludeManpower: billing, HasOperationalRecords: hasOperationalRecords,
+            WorkOrderStatus: orderStatus), ct);
         if (result.IsFailure)
             return ApiResults.Problem(result.Error);
 
@@ -439,7 +444,7 @@ internal static class FlightEndpoints
                 ? await legacySystemIds.GetAsync(FlightExportDocumentFactory.CollectLegacySystemIdRequest(result.Value), ct)
                 : null;
             var criteria = new FlightExportCriteria(search, stationId is { } station ? [station] : [],
-                customerId is { } customer ? [customer] : [], operationTypeId, statuses, fromUtc, toUtc, type);
+                customerId is { } customer ? [customer] : [], operationTypeId, statuses, fromUtc, toUtc, type, orderStatus);
             file = FlightExportDocumentFactory.Create(exportFormat, result.Value, criteria, generatedAtUtc, timeZone, legacyIds);
         }
 
@@ -454,6 +459,22 @@ internal static class FlightEndpoints
             Enum.TryParse(value, ignoreCase: true, out type) &&
             string.Equals(Enum.GetName(type), value.Trim(), StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool TryParseWorkOrderStatus(string? value, out WorkOrderStatusFilter? status)
+    {
+        status = null;
+        if (string.IsNullOrWhiteSpace(value))
+            return true;
+        if (!Enum.TryParse<WorkOrderStatusFilter>(value, ignoreCase: true, out var parsed) ||
+            !string.Equals(Enum.GetName(parsed), value.Trim(), StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        status = parsed;
+        return true;
+    }
+
+    private static Error WorkOrderStatusInvalid() =>
+        Error.Validation("Choose Not Approved, Approved, Unlocked, or Conflict.", "Operations.Flight.WorkOrderStatusInvalid");
 
     private static IReadOnlyList<FlightReportStatus>? ParseStatuses(string? value)
     {

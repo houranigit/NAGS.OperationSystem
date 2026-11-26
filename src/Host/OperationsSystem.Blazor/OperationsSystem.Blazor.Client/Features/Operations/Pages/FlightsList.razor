@@ -38,17 +38,33 @@
                       UseCollapsibleFilters="true" ActiveFilterCount="@ActiveFilterCount" OnClearFilters="@ClearFiltersAsync"
                       ToolbarPanelLabel="@(CanExport ? UiStrings.Flights.Export : null)" ToolbarPanelIcon="download">
             <Toolbar>
-                <div class="ofl-flight-type">
-                    <RadzenSelectBar TValue="FlightType" Value="@flightType" ValueChanged="@OnFlightTypeChangedAsync"
-                                     AriaLabel="@UiStrings.Flights.FlightType">
-                        <Items>
-                            <RadzenSelectBarItem Value="@FlightType.All" Text="@UiStrings.Flights.TypeAll" />
-                            <RadzenSelectBarItem Value="@FlightType.Scheduled" Text="@UiStrings.Flights.TypeScheduled" />
-                            <RadzenSelectBarItem Value="@FlightType.PerLanding" Text="@UiStrings.Flights.TypePerLanding" />
-                            <RadzenSelectBarItem Value="@FlightType.OnCall" Text="@UiStrings.Flights.TypeOnCall" />
-                            <RadzenSelectBarItem Value="@FlightType.AdHoc" Text="@UiStrings.Flights.TypeAdHoc" />
-                        </Items>
-                    </RadzenSelectBar>
+                <div class="ofl-quick-filter">
+                    @if (WorkOrdersOnly)
+                    {
+                        <RadzenSelectBar TValue="WorkOrderStatus" Value="@workOrderStatus" ValueChanged="@OnWorkOrderStatusChangedAsync"
+                                         AriaLabel="Work order status">
+                            <Items>
+                                <RadzenSelectBarItem Value="@WorkOrderStatus.All" Text="@UiStrings.Flights.TypeAll" />
+                                <RadzenSelectBarItem Value="@WorkOrderStatus.NotApproved" Text="Not Approved" />
+                                <RadzenSelectBarItem Value="@WorkOrderStatus.Approved" Text="Approved" />
+                                <RadzenSelectBarItem Value="@WorkOrderStatus.Unlocked" Text="Unlocked" />
+                                <RadzenSelectBarItem Value="@WorkOrderStatus.Conflict" Text="Conflict" />
+                            </Items>
+                        </RadzenSelectBar>
+                    }
+                    else
+                    {
+                        <RadzenSelectBar TValue="FlightType" Value="@flightType" ValueChanged="@OnFlightTypeChangedAsync"
+                                         AriaLabel="@UiStrings.Flights.FlightType">
+                            <Items>
+                                <RadzenSelectBarItem Value="@FlightType.All" Text="@UiStrings.Flights.TypeAll" />
+                                <RadzenSelectBarItem Value="@FlightType.Scheduled" Text="@UiStrings.Flights.TypeScheduled" />
+                                <RadzenSelectBarItem Value="@FlightType.PerLanding" Text="@UiStrings.Flights.TypePerLanding" />
+                                <RadzenSelectBarItem Value="@FlightType.OnCall" Text="@UiStrings.Flights.TypeOnCall" />
+                                <RadzenSelectBarItem Value="@FlightType.AdHoc" Text="@UiStrings.Flights.TypeAdHoc" />
+                            </Items>
+                        </RadzenSelectBar>
+                    }
                 </div>
             </Toolbar>
             <ToolbarPanel>
@@ -261,6 +277,7 @@
     ];
 
     private enum FlightType { All, Scheduled, PerLanding, OnCall, AdHoc }
+    private enum WorkOrderStatus { All, NotApproved, Approved, Unlocked, Conflict }
 
     private DataListCard<FlightListItem>? list;
     private IReadOnlyList<FlightListItem> items = [];
@@ -270,6 +287,7 @@
     private DateTimeOffset statusTimeUtc = DateTimeOffset.UtcNow;
     private long loadRequest;
     private FlightType flightType = FlightType.All;
+    private WorkOrderStatus workOrderStatus = WorkOrderStatus.All;
     private bool isLoading;
     private bool loadError;
     private bool isExporting;
@@ -294,7 +312,8 @@
     private bool CanExport => Auth.HasPermission(OperationsPermissions.FlightsExport);
     private bool ExportAvailable => CanExport && !isExporting && !isLoading && !loadError && totalCount > 0;
     private string? SearchFilter => string.IsNullOrWhiteSpace(searchTerm) ? null : searchTerm;
-    private string? FlightTypeFilter => flightType == FlightType.All ? null : flightType.ToString();
+    private string? FlightTypeFilter => !WorkOrdersOnly && flightType != FlightType.All ? flightType.ToString() : null;
+    private string? WorkOrderStatusFilter => WorkOrdersOnly && workOrderStatus != WorkOrderStatus.All ? workOrderStatus.ToString() : null;
     private bool CanOpenFlightOperations => Auth.IsSystemAdministrator
         ? Auth.HasPermission(OperationsPermissions.FlightsView)
         : Auth.HasPermission(OperationsPermissions.FlightsApprove)
@@ -608,6 +627,15 @@
         await ReloadAsync();
     }
 
+    private async Task OnWorkOrderStatusChangedAsync(WorkOrderStatus value)
+    {
+        if (workOrderStatus == value)
+            return;
+
+        workOrderStatus = value;
+        await ReloadAsync();
+    }
+
     private async Task ExportAsync(string format, string formatLabel, string? report = null)
     {
         if (!ExportAvailable)
@@ -620,7 +648,7 @@
         {
             await Operations.DownloadFlightsExportAsync(format, SearchFilter, stationFilter, customerFilter, operationTypeFilter,
                 DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort, statusFilters, FlightTypeFilter, report,
-                workOrdersOnly: WorkOrdersOnly);
+                workOrdersOnly: WorkOrdersOnly, workOrderStatus: WorkOrderStatusFilter);
             exportMessage = string.Format(UiStrings.Flights.ExportReadyDetail, formatLabel);
         }
         catch (ApiException ex)
@@ -668,7 +696,7 @@
             var result = await Operations.GetFlightsAsync(currentPage, currentPageSize,
                 SearchFilter, stationFilter, customerFilter, operationTypeFilter,
                 DateBoundaryUtc(fromFilter, false), DateBoundaryUtc(toFilter, true), currentSort, statuses: statusFilters,
-                flightType: FlightTypeFilter, workOrdersOnly: WorkOrdersOnly);
+                flightType: FlightTypeFilter, workOrdersOnly: WorkOrdersOnly, workOrderStatus: WorkOrderStatusFilter);
             if (request != loadRequest)
                 return;
 
