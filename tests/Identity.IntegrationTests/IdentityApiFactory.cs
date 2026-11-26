@@ -36,6 +36,7 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncL
         var connectionString = _sql.GetConnectionString().Replace("Database=master", "Database=IdentityTests");
 
         builder.UseSetting("ConnectionStrings:Default", connectionString);
+        builder.UseSetting("Database:ApplyMigrationsOnStartup", "true");
         builder.UseSetting("Identity:DemoData:Enabled", "false");
         builder.UseSetting("Messaging:OutboxDispatchEnabled", "false");
         builder.UseSetting("Notifications:Fcm:Enabled", "false");
@@ -47,6 +48,12 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>, IAsyncL
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Default"] = connectionString,
+                ["ConnectionStrings:Audit"] = connectionString,
+                ["ConnectionStrings:Identity"] = connectionString,
+                ["ConnectionStrings:MasterData"] = connectionString,
+                ["ConnectionStrings:Operations"] = connectionString,
+                ["ConnectionStrings:Notifications"] = connectionString,
+                ["Database:ApplyMigrationsOnStartup"] = "true",
                 ["Identity:Jwt:Issuer"] = "operations-system",
                 ["Identity:Jwt:Audience"] = "operations-system",
                 ["Identity:Jwt:SigningKey"] = "integration-tests-signing-key-must-be-long-enough-1234567890",
