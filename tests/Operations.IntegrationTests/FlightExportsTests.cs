@@ -56,23 +56,27 @@ public sealed partial class FlightVisibilityScopeTests
     }
 
     [Fact]
-    public async Task Flight_billing_export_includes_current_performed_services()
+    public async Task Flight_billing_export_bands_performed_services_by_flight_occurrence()
     {
         using var admin = await factory.CreateAuthenticatedAdminClientAsync();
         var refs = await SetupMasterDataAsync(admin);
         var operatorAccount = await CreateStaffLoginAsync(admin, refs, PortalOperatorPermissions);
         using var operatorClient = operatorAccount.Client;
         var arrival = DateTimeOffset.UtcNow.AddHours(-2);
-        var id = await SchedulePortalFlightAtAsync(admin, refs, "9305", arrival, [operatorAccount.StaffId]);
-        var flight = await PortalOperationsDetailAsync(operatorClient, id);
         var aircraft = await OperationsBatchAircraftAsync(admin);
-        var service = OperationsBatchClosedService(refs.ServiceId, operatorAccount.StaffId, arrival.AddMinutes(5), arrival.AddMinutes(25));
-        using var saved = await WritePortalOperationsAsync(operatorClient, id, HttpMethod.Put, "batch",
-            OperationsBatchInput(new(arrival, aircraft, "HZ-EXPORT", null, null), new(arrival.AddHours(1), null, null, null),
-                [new(Guid.NewGuid(), service)]), flight.RowVersion);
-        saved.StatusCode.ShouldBe(HttpStatusCode.OK);
+        foreach (var scheduledArrival in new[] { arrival, arrival.AddDays(-1) })
+        {
+            var id = await SchedulePortalFlightAtAsync(admin, refs, "9305", scheduledArrival, [operatorAccount.StaffId]);
+            var flight = await PortalOperationsDetailAsync(operatorClient, id);
+            var service = OperationsBatchClosedService(refs.ServiceId, operatorAccount.StaffId,
+                scheduledArrival.AddMinutes(5), scheduledArrival.AddMinutes(25));
+            using var saved = await WritePortalOperationsAsync(operatorClient, id, HttpMethod.Put, "batch",
+                OperationsBatchInput(new(scheduledArrival, aircraft, "HZ-EXPORT", null, null),
+                    new(scheduledArrival.AddHours(1), null, null, null), [new(Guid.NewGuid(), service)]), flight.RowVersion);
+            saved.StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
 
-        using var billing = await admin.GetAsync($"{Base}/flights/export?format=xlsx&report=billing&search={id}");
+        using var billing = await admin.GetAsync($"{Base}/flights/export?format=xlsx&report=billing&customerId={refs.CustomerId}");
         billing.StatusCode.ShouldBe(HttpStatusCode.OK);
         billing.Content.Headers.ContentDisposition!.FileNameStar!.ShouldStartWith("billing-report-");
         using var workbook = new XLWorkbook(new MemoryStream(await billing.Content.ReadAsByteArrayAsync()));
@@ -81,5 +85,13 @@ public sealed partial class FlightVisibilityScopeTests
         sheet.Cell(2, 6).GetString().ShouldBe("9305");
         sheet.Cell(2, 15).GetString().ShouldBe("Service");
         sheet.Cell(2, 16).GetString().ShouldStartWith("Marshalling");
+        sheet.Cell(4, 6).GetString().ShouldBe("9305");
+        sheet.Cell(4, 7).GetDateTime().ShouldNotBe(sheet.Cell(2, 7).GetDateTime());
+        sheet.LastRowUsed()!.RowNumber().ShouldBe(5);
+        var firstFill = sheet.Cell(2, 1).Style.Fill.BackgroundColor;
+        var secondFill = sheet.Cell(4, 1).Style.Fill.BackgroundColor;
+        firstFill.ShouldNotBe(secondFill);
+        sheet.Range(2, 1, 3, 20).Cells().ShouldAllBe(cell => cell.Style.Fill.BackgroundColor == firstFill);
+        sheet.Range(4, 1, 5, 20).Cells().ShouldAllBe(cell => cell.Style.Fill.BackgroundColor == secondFill);
     }
 }

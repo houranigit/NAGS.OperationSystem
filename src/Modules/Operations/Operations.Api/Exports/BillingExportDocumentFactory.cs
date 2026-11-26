@@ -38,11 +38,14 @@ internal static class BillingExportDocumentFactory
         sheet.Row(1).Height = 28;
 
         var rowNumber = 2;
+        var alternateFill = XLColor.FromHtml("#F6F8FB");
+        var shadeFlight = false;
         foreach (var flight in flights)
         {
             if (flight.ApprovedWorkOrder is not { } workOrder)
                 continue;
 
+            var firstRow = rowNumber;
             var stationTimeZone = TimeZoneInfo.TryFindSystemTimeZoneById(flight.StationTimeZoneId, out var zone)
                 ? zone
                 : TimeZoneInfo.Utc;
@@ -66,6 +69,13 @@ internal static class BillingExportDocumentFactory
                 SetDateAndTime(sheet, rowNumber, 19, activity.ToUtc, stationTimeZone);
                 rowNumber++;
             }
+
+            if (rowNumber == firstRow)
+                continue;
+
+            if (shadeFlight)
+                sheet.Range(firstRow, 1, rowNumber - 1, Headers.Length).Style.Fill.BackgroundColor = alternateFill;
+            shadeFlight = !shadeFlight;
         }
 
         sheet.Columns(1, Headers.Length).Width = 16;
