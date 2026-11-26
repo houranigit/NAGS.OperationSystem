@@ -27,7 +27,8 @@ internal sealed record FlightExportCriteria(
     DateTimeOffset? FromUtc,
     DateTimeOffset? ToUtc,
     FlightListType FlightType,
-    WorkOrderStatusFilter? WorkOrderStatus = null);
+    WorkOrderStatusFilter? WorkOrderStatus = null,
+    IReadOnlyList<Guid>? PerformedServiceIds = null);
 
 internal sealed record FlightExportFile(byte[] Content, string ContentType, string FileName);
 
@@ -1358,6 +1359,8 @@ internal static class FlightExportDocumentFactory
 
         if (criteria.OperationTypeId is not null)
             filters.Add(rows.FirstOrDefault() is { } row ? $"Operation: {row.OperationTypeName}" : "Operation filter applied");
+        if (criteria.PerformedServiceIds is { Count: > 0 } services)
+            filters.Add($"Performed services: {services.Count} selected");
 
         if (criteria.FromUtc is { } from && criteria.ToUtc is { } to)
             filters.Add($"Scheduled arrival: {DisplayDate(from, timeZone)} to {DisplayDate(to, timeZone)}{ZoneSuffix(timeZone)}");
@@ -1537,6 +1540,8 @@ internal static class FlightExportDocumentFactory
             lines.Add($"Stations: {criteria.StationIds.Count} selected");
         if (criteria.OperationTypeId is not null)
             lines.Add(rows.FirstOrDefault() is { } row ? $"Operation: {row.OperationTypeName}" : "Operation filter applied");
+        if (criteria.PerformedServiceIds is { Count: > 0 } services)
+            lines.Add($"Performed services: {services.Count} selected");
         if (criteria.FlightType != FlightListType.All)
             lines.Add($"Flight type: {FlightTypeLabel(criteria.FlightType)}");
         if (criteria.WorkOrderStatus is { } orderStatus)

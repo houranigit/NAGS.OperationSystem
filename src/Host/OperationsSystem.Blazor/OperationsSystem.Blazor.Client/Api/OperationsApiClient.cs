@@ -5,6 +5,83 @@ namespace OperationsSystem.Blazor.Client.Api;
 
 public sealed class OperationsApiClient(BrowserApiClient api)
 {
+    public Task<OperationsDashboard> GetOperationsDashboardAsync(
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
+        IReadOnlyList<Guid>? stationIds = null,
+        IReadOnlyList<Guid>? customerIds = null,
+        IReadOnlyList<Guid>? serviceIds = null,
+        int topCount = 4,
+        bool includeOptions = true,
+        CancellationToken ct = default,
+        string? timeZoneId = null)
+    {
+        var query = new QueryBuilder()
+            .Add("fromUtc", fromUtc)
+            .Add("toUtc", toUtc)
+            .Add("stationIds", JoinIds(stationIds))
+            .Add("customerIds", JoinIds(customerIds))
+            .Add("serviceIds", JoinIds(serviceIds))
+            .Add("topCount", topCount)
+            .Add("includeOptions", includeOptions ? "true" : "false")
+            .Add("timeZoneId", timeZoneId)
+            .Build();
+        return api.GetAsync<OperationsDashboard>($"/operations/analytics-dashboard{query}", ct);
+    }
+
+    public Task<PagedResult<DashboardFlightRow>> GetOperationsDashboardFlightsAsync(
+        int page,
+        int pageSize,
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
+        IReadOnlyList<Guid>? stationIds = null,
+        IReadOnlyList<Guid>? customerIds = null,
+        IReadOnlyList<Guid>? serviceIds = null,
+        string? sort = null,
+        CancellationToken ct = default)
+    {
+        var query = new QueryBuilder()
+            .Add("page", page)
+            .Add("pageSize", pageSize)
+            .Add("fromUtc", fromUtc)
+            .Add("toUtc", toUtc)
+            .Add("stationIds", JoinIds(stationIds))
+            .Add("customerIds", JoinIds(customerIds))
+            .Add("serviceIds", JoinIds(serviceIds))
+            .Add("sort", sort)
+            .Build();
+        return api.GetAsync<PagedResult<DashboardFlightRow>>($"/operations/analytics-dashboard/flights{query}", ct);
+    }
+
+    public Task ExportOperationsDashboardFlightsAsync(
+        string format,
+        DateTimeOffset? fromUtc,
+        DateTimeOffset? toUtc,
+        IReadOnlyList<Guid>? stationIds = null,
+        IReadOnlyList<Guid>? customerIds = null,
+        IReadOnlyList<Guid>? serviceIds = null,
+        string? sort = null,
+        CancellationToken ct = default,
+        string? timeZoneId = null)
+    {
+        var query = new QueryBuilder()
+            .Add("format", format)
+            .Add("fromUtc", fromUtc)
+            .Add("toUtc", toUtc)
+            .Add("stationIds", JoinIds(stationIds))
+            .Add("customerIds", JoinIds(customerIds))
+            .Add("serviceIds", JoinIds(serviceIds))
+            .Add("sort", sort)
+            .Add("timeZoneId", timeZoneId)
+            .Build();
+        return api.DownloadFileAsync(
+            $"/operations/analytics-dashboard/flights/export{query}",
+            fallbackFileName: $"flights-report.{format}",
+            cancellationToken: ct);
+    }
+
+    private static string? JoinIds(IReadOnlyList<Guid>? ids) => ids is { Count: > 0 } ? string.Join(',', ids) : null;
+
     public Task<PagedResult<FlightListItem>> GetFlightsAsync(
         int page, int pageSize, string? search = null, Guid? stationId = null, Guid? customerId = null,
         Guid? operationTypeId = null, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null,

@@ -2,6 +2,12 @@ namespace Operations.Domain.Authorization;
 
 public static class OperationsPermissions
 {
+    public static class Dashboard
+    {
+        public const string ViewAnalytics = "operations.dashboard.view-analytics";
+        public const string Export = "operations.dashboard.export";
+    }
+
     public static class Flights
     {
         public const string View = "operations.flights.view";

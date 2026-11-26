@@ -2,6 +2,63 @@ namespace OperationsSystem.Blazor.Client.Api;
 
 // Client-side mirrors of flight scheduling API contracts.
 
+public sealed record OperationsDashboard(
+    DateTimeOffset GeneratedAtUtc,
+    DateTimeOffset? FromUtc,
+    DateTimeOffset? ToUtc,
+    long TotalFlights,
+    long FlightsWithPerformedServices,
+    IReadOnlyList<DashboardStatusItem> Statuses,
+    IReadOnlyList<DashboardBreakdownItem> Stations,
+    IReadOnlyList<DashboardBreakdownItem> Customers,
+    IReadOnlyList<DashboardBreakdownItem> Services,
+    IReadOnlyList<DashboardBreakdownItem> OperationTypes,
+    IReadOnlyList<DashboardBreakdownItem> ServiceCategories,
+    IReadOnlyList<DashboardTimelinePoint> Timeline,
+    string TimelineGranularity,
+    IReadOnlyList<DashboardTrendPoint> Hourly,
+    IReadOnlyList<DashboardTrendPoint> Monthly,
+    IReadOnlyList<DashboardTrendPoint> Yearly,
+    IReadOnlyList<DashboardFilterOption> StationOptions,
+    IReadOnlyList<DashboardFilterOption> CustomerOptions,
+    IReadOnlyList<DashboardFilterOption> ServiceOptions);
+
+public sealed record DashboardStatusItem(string Status, long FlightCount, double Percentage);
+
+public sealed record DashboardBreakdownItem(
+    Guid? Id,
+    string Label,
+    string? Code,
+    long FlightCount,
+    double Percentage,
+    bool IsOther,
+    int GroupedItemCount);
+
+public sealed record DashboardTrendPoint(string Key, string Label, int SortOrder, long FlightCount);
+
+public sealed record DashboardTimelinePoint(DateTimeOffset BucketUtc, long FlightCount)
+{
+    public DateTime BucketDateUtc => BucketUtc.UtcDateTime;
+}
+
+public sealed record DashboardFilterOption(Guid Id, string Label, string? Code);
+
+public sealed record DashboardFlightRow(
+    Guid Id,
+    string FlightNumber,
+    string? CustomerIataCode,
+    string CustomerName,
+    Guid StationId,
+    string StationIata,
+    string StationName,
+    string OperationTypeName,
+    DateTimeOffset ScheduledArrivalUtc,
+    DateTimeOffset ScheduledDepartureUtc,
+    string Status,
+    IReadOnlyList<string> PerformedServiceNames,
+    string? WorkOrderNumber = null,
+    string? WorkOrderStatus = null);
+
 public sealed record FlightListItem(
     Guid Id,
     string FlightNumber,

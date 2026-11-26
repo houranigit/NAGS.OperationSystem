@@ -54,6 +54,17 @@ public sealed class PortalNavigationPolicyTests
     }
 
     [Fact]
+    public void Dashboard_viewer_can_open_the_dashboard_with_analytics_permission()
+    {
+        const string route = "/operations/dashboard";
+        var permissions = new[] { OperationsPermissions.DashboardAnalyticsView };
+
+        PortalNavigationPolicy.ResolvePostLogin(UserTypes.ViewerOnly, permissions, null).ShouldBe(route);
+        PortalNavigationPolicy.IsRouteAuthorized(route, permissions).ShouldBeTrue();
+        PortalNavigationPolicy.IsRouteAuthorized(route, [OperationsPermissions.DashboardExport]).ShouldBeFalse();
+    }
+
+    [Fact]
     public void Landing_order_is_deterministic_and_follows_the_navigation_catalog()
     {
         var permissions = new[]

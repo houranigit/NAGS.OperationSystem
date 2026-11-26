@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using OperationsSystem.Blazor.Api;
 using OperationsSystem.Blazor.Client;
+using OperationsSystem.Blazor.Client.Features.Operations;
 using OperationsSystem.Blazor.Components;
 using OperationsSystem.Blazor.UserManual;
 
@@ -21,6 +22,12 @@ builder.Services.AddSingleton<IValidateOptions<ApiProxyOptions>, ApiProxyOptions
 builder.Services.AddOptions<ApiProxyOptions>()
     .Bind(builder.Configuration.GetSection(ApiProxyOptions.SectionName))
     .ValidateOnStart();
+
+// Interactive Server reaches the API through the configured backend origin. WebAssembly
+// connects through the browser's same-origin hub proxy.
+builder.Services.AddSingleton(services => new OperationsDashboardServerHub(new Uri(
+    new Uri(services.GetRequiredService<IOptions<ApiProxyOptions>>().Value.BaseUrl.Trim()),
+    OperationsDashboardRealtimeClient.HubPath)));
 
 // Shared portal client services (Radzen, API client, auth/locale state) so prerender and the
 // interactive-server render use the same services as the WebAssembly runtime.
@@ -51,6 +58,7 @@ app.UseWebSockets();
 app.MapStaticAssets();
 app.MapApiProxy();
 app.MapNotificationsHubProxy();
+app.MapOperationsDashboardHubProxy();
 app.MapUserManual();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()

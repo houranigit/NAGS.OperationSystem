@@ -37,8 +37,18 @@ public sealed class GetFlightsExportQueryHandler(
         var visible = FlightListQuery.ApplyScopeAndFilters(db.Flights.AsNoTracking(), resolved.Value,
             new FlightListFilter(request.Search, request.StationId, request.CustomerId, request.OperationTypeId,
                 request.FromUtc, request.ToUtc, SearchWorkOrderNumber: request.HasOperationalRecords is true));
-        var matches = await FlightListQuery.MatchReportFilters(FlightListQuery.ApplySort(visible, request.Sort),
-                request.FlightType, request.Statuses, clock.GetUtcNow(), request.HasOperationalRecords, request.WorkOrderStatus)
+        var matches = FlightListQuery.MatchReportFilters(FlightListQuery.ApplySort(visible, request.Sort),
+            request.FlightType, request.Statuses, clock.GetUtcNow(), request.HasOperationalRecords, request.WorkOrderStatus);
+        return await new FlightExportRows(masterData).LoadAsync(visible, matches, request.IncludeManpower, ct);
+    }
+}
+
+internal sealed class FlightExportRows(IMasterDataReader masterData)
+{
+    internal async Task<Result<IReadOnlyList<FlightExportRowDto>>> LoadAsync(
+        IQueryable<Flight> visible, IQueryable<FlightListQuery.ReportMatch> sortedMatches, bool includeManpower, CancellationToken ct)
+    {
+        var matches = await sortedMatches
             .Select(item => new { item.Flight.Id, item.Status, item.IsPerLanding }).ToListAsync(ct);
         if (matches.Count == 0)
             return Array.Empty<FlightExportRowDto>();
@@ -64,7 +74,7 @@ public sealed class GetFlightsExportQueryHandler(
         if (flights.Values.Any(flight => !stationZones.TryGetValue(flight.Station.StationId, out var zone) || string.IsNullOrWhiteSpace(zone)))
             return Error.Failure("Flight data could not be loaded. Please try again.", "Operations.Flight.StationDataUnavailable");
 
-        var manpower = request.IncludeManpower ? await LoadManpowerTypesAsync(flights.Values, ct) : null;
+        var manpower = includeManpower ? await LoadManpowerTypesAsync(flights.Values, ct) : null;
         return matches.Where(match => flights.ContainsKey(match.Id)).Select(match =>
         {
             var flight = flights[match.Id];

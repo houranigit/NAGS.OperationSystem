@@ -25,6 +25,8 @@ using Notifications.Api;
 using Notifications.Api.Realtime;
 using Notifications.Infrastructure;
 using Operations.Api;
+using Operations.Api.Realtime;
+using Operations.Application.Behaviors;
 using OperationsSystem.Api.Mobile;
 using Operations.Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -88,7 +90,8 @@ var moduleApplicationAssemblies = new[]
 builder.Services.AddMediatR(cfg =>
 {
     cfg.RegisterServicesFromAssemblies(moduleApplicationAssemblies);
-    // Catalog changes are broadcast after a successful command commits.
+    // Live updates are sent after the command commits.
+    cfg.AddOpenBehavior(typeof(OperationsDashboardRealtimeBehavior<,>));
     cfg.AddOpenBehavior(typeof(BuildingBlocks.Application.Mobile.MobileSyncBroadcastBehavior<,>));
     cfg.AddOpenBehavior(typeof(ValidationPipelineBehavior<,>));
 });
@@ -110,6 +113,7 @@ builder.Services.AddNotificationsModule(builder.Configuration);
 builder.Services.AddNotificationsApi();
 builder.Services.AddOperationsModule(builder.Configuration);
 builder.Services.AddOperationsApi();
+builder.Services.AddOperationsDashboardRealtime();
 
 // Shared MasterData catalog changes: SignalR hub + per-request broadcaster.
 builder.Services.AddMobileSync();
@@ -251,6 +255,7 @@ new OperationsEndpointModule().MapEndpoints(app);
 
 app.MapHub<MobileSyncHub>(MobileSyncHub.Path);
 app.MapHub<NotificationsHub>(NotificationsHub.Path);
+app.MapHub<OperationsDashboardHub>(OperationsDashboardHub.Path, options => options.CloseOnAuthenticationExpiration = true);
 
 var applyMigrationsOnStartup = app.Configuration.GetValue<bool?>("Database:ApplyMigrationsOnStartup")
     ?? app.Environment.IsDevelopment();

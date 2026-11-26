@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Operations.Application.Abstractions;
 using Operations.Application.Features.Flights;
 using Operations.Domain.Flights;
 using Operations.Infrastructure.Persistence;
@@ -84,6 +85,18 @@ public sealed class FlightAutoCloseBackgroundService(
 
         if (changed)
         {
+            if (scanScope.ServiceProvider.GetService<IOperationsDashboardRealtimeNotifier>() is { } dashboard)
+            {
+                try
+                {
+                    await dashboard.NotifyChangedAsync(cancellationToken);
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    logger.LogWarning(exception, "Could not refresh the operations dashboard after auto-close.");
+                }
+            }
+
             var mobileSync = scanScope.ServiceProvider.GetRequiredService<IMobileSyncBroadcaster>();
             await mobileSync.BroadcastNowAsync(new MobileSyncChange(MobileSyncTables.Flights, MobileSyncOps.Refresh,
                 null, MobileSyncAudience.AllStations, timeProvider.GetUtcNow()), cancellationToken);

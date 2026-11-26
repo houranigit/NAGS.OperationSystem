@@ -79,6 +79,10 @@ public static class UiStrings
         public static string TypeScheduled => UiText.Get("Flights.TypeScheduled", "Scheduled");
         public static string TypePerLanding => UiText.Get("Flights.TypePerLanding", "Per Landing");
         public static string TypeOnCall => UiText.Get("Flights.TypeOnCall", "On Call");
+        public static string WorkOrderDownloadReady => UiText.Get("Flights.WorkOrderDownloadReady", "Work order ready");
+        public static string WorkOrderDownloadReadyDetail => UiText.Get("Flights.WorkOrderDownloadReadyDetail", "The approved work order has been downloaded.");
+        public static string WorkOrderDownloadFailed => UiText.Get("Flights.WorkOrderDownloadFailed", "Work order download failed");
+        public static string WorkOrderDownloadFailedDetail => UiText.Get("Flights.WorkOrderDownloadFailedDetail", "The approved work order could not be generated. Please try again.");
         public static string PrintWorkOrder => UiText.Get("Flights.PrintWorkOrder", "Print WO");
         public static string TypeAdHoc => UiText.Get("Flights.TypeAdHoc", "Ad Hoc");
         public static string AwaitingAta => UiText.Get("Flights.AwaitingAta", "Awaiting ATA");
@@ -281,6 +285,92 @@ public static class UiStrings
         public static string DetailsTitle => UiText.Get("Audit.DetailsTitle", "Audit details");
         public static string CorrelationId => UiText.Get("Audit.CorrelationId", "Correlation ID");
         public static string Metadata => UiText.Get("Audit.Metadata", "Additional details");
+    }
+
+    public static class OperationsDashboard
+    {
+        public static string NavLabel => UiText.Get("OperationsDashboard.NavLabel", "Operations dashboard");
+        public static string Title => UiText.Get("OperationsDashboard.Title", "Operations dashboard");
+        public static string ExecutiveOverview => UiText.Get("OperationsDashboard.ExecutiveOverview", "Executive overview");
+        public static string Description => UiText.Get("OperationsDashboard.Description", "Monitor flight activity, service delivery, and performance across your operational scope.");
+        public static string RealtimeDescription => UiText.Get("OperationsDashboard.RealtimeDescription", "Operational changes appear here as they happen.");
+        public static string LastUpdated => UiText.Get("OperationsDashboard.LastUpdated", "Last updated");
+        public static string LiveConnected => UiText.Get("OperationsDashboard.LiveConnected", "Live connection");
+        public static string LiveConnecting => UiText.Get("OperationsDashboard.LiveConnecting", "Connecting live");
+        public static string TimeZoneReporting(string timeZoneId) => string.Format(
+            UiText.Get("OperationsDashboard.TimeZoneReporting", "All times are shown in {0}"), timeZoneId);
+        public static string TotalFlights => UiText.Get("OperationsDashboard.TotalFlights", "Total flights");
+        public static string Refresh => UiText.Get("OperationsDashboard.Refresh", "Refresh data");
+        public static string UpdatingDashboard => UiText.Get("OperationsDashboard.UpdatingDashboard", "Updating dashboard...");
+        public static string GlobalFilter => UiText.Get("OperationsDashboard.GlobalFilter", "Global filter");
+        public static string PeriodShortcuts => UiText.Get("OperationsDashboard.PeriodShortcuts", "Period shortcuts");
+        public static string Today => UiText.Get("OperationsDashboard.Today", "Today");
+        public static string LastMonth => UiText.Get("OperationsDashboard.LastMonth", "Last month");
+        public static string LastThreeMonths => UiText.Get("OperationsDashboard.LastThreeMonths", "Last 3 months");
+        public static string Max => UiText.Get("OperationsDashboard.Max", "Max");
+        public static string AllAvailableHistory => UiText.Get("OperationsDashboard.AllAvailableHistory", "All available history");
+        public static string DateMode => UiText.Get("OperationsDashboard.DateMode", "Date range");
+        public static string Day => UiText.Get("OperationsDashboard.Day", "Day");
+        public static string Range => UiText.Get("OperationsDashboard.Range", "Range");
+        public static string SelectDay => UiText.Get("OperationsDashboard.SelectDay", "Select a day to update the dashboard.");
+        public static string Date => UiText.Get("OperationsDashboard.Date", "Date");
+        public static string FromDate => UiText.Get("OperationsDashboard.FromDate", "From date");
+        public static string ToDate => UiText.Get("OperationsDashboard.ToDate", "To date");
+        public static string Stations => UiText.Get("OperationsDashboard.Stations", "Stations");
+        public static string AllStations => UiText.Get("OperationsDashboard.AllStations", "All stations");
+        public static string Customers => UiText.Get("OperationsDashboard.Customers", "Customers");
+        public static string AllCustomers => UiText.Get("OperationsDashboard.AllCustomers", "All customers");
+        public static string PerformedServices => UiText.Get("OperationsDashboard.PerformedServices", "Performed services");
+        public static string AllServices => UiText.Get("OperationsDashboard.AllServices", "All performed services");
+        public static string ItemsSelected => UiText.Get("OperationsDashboard.ItemsSelected", "items selected");
+        public static string ClearFilters => UiText.Get("OperationsDashboard.ClearFilters", "Clear filters");
+        public static string DataUnavailable => UiText.Get("OperationsDashboard.DataUnavailable", "Dashboard data is currently unavailable.");
+        public static string StaleWarning => UiText.Get("OperationsDashboard.StaleWarning", "We couldn't refresh the latest data. The last successful results remain displayed.");
+        public static string Retry => UiText.Get("OperationsDashboard.Retry", "Retry");
+        public static string FlightStatus => UiText.Get("OperationsDashboard.FlightStatus", "Flight status");
+        public static string FlightsWithPerformedServices => UiText.Get("OperationsDashboard.FlightsWithPerformedServices", "Flights with performed services");
+        public static string FlightDistribution => UiText.Get("OperationsDashboard.FlightDistribution", "Flight distribution");
+        public static string StationDistribution => UiText.Get("OperationsDashboard.StationDistribution", "Flights by station");
+        public static string StationDistributionDescription => UiText.Get("OperationsDashboard.StationDistributionDescription", "Each station's share of the matching flights.");
+        public static string LandingMode => UiText.Get("OperationsDashboard.LandingMode", "Per Landing vs On Call");
+        public static string LandingModeDescription => UiText.Get("OperationsDashboard.LandingModeDescription", "Landing mode for flights assigned to aircraft services.");
+        public static string DesignatedFlights => UiText.Get("OperationsDashboard.DesignatedFlights", "Designated flights");
+        public static string PerLanding => UiText.Get("OperationsDashboard.PerLanding", "Per Landing");
+        public static string OnCall => UiText.Get("OperationsDashboard.OnCall", "On Call");
+        public static string NoLandingModeFlights => UiText.Get("OperationsDashboard.NoLandingModeFlights", "No Per Landing or On Call flights match these filters.");
+        public static string OperationTypeDistribution => UiText.Get("OperationsDashboard.OperationTypeDistribution", "Flights by operation type");
+        public static string OperationTypeDistributionDescription => UiText.Get("OperationsDashboard.OperationTypeDistributionDescription", "Operation mix with Ad Hoc flights listed first.");
+        public static string TopFourCustomers => UiText.Get("OperationsDashboard.TopFourCustomers", "Top 4 customers");
+        public static string TopFourCustomersDescription => UiText.Get("OperationsDashboard.TopFourCustomersDescription", "Flight count and share for the leading four customers; all others are grouped.");
+        public static string TopFourServices => UiText.Get("OperationsDashboard.TopFourServices", "Top 4 services");
+        public static string TopFourServicesDescription => UiText.Get("OperationsDashboard.TopFourServicesDescription", "Flight usage for the leading four performed services; all others are grouped.");
+        public static string NoMatchingActivity => UiText.Get("OperationsDashboard.NoMatchingActivity", "No activity matches the selected dashboard filters.");
+        public static string Other => UiText.Get("OperationsDashboard.Other", "Other");
+        public static string TotalServiceUses => UiText.Get("OperationsDashboard.TotalServiceUses", "Total service uses");
+        public static string FlightTrends => UiText.Get("OperationsDashboard.FlightTrends", "Flight trends");
+        public static string FlightTrendsDescription => UiText.Get("OperationsDashboard.FlightTrendsDescription", "Flight volume automatically grouped by hour, day, or month for the selected range.");
+        public static string ZoomHint => UiText.Get("OperationsDashboard.ZoomHint", "Scroll to zoom · drag to pan");
+        public static string NoTrendData => UiText.Get("OperationsDashboard.NoTrendData", "No flight data is available for this view.");
+        public static string FlightRegister => UiText.Get("OperationsDashboard.FlightRegister", "Flight register");
+        public static string FlightsTable => UiText.Get("OperationsDashboard.FlightsTable", "Flights");
+        public static string FlightsTableDescription => UiText.Get("OperationsDashboard.FlightsTableDescription", "View-only flight records matching the active dashboard filters.");
+        public static string TableUnavailable => UiText.Get("OperationsDashboard.TableUnavailable", "Flight records are currently unavailable.");
+        public static string Flights => UiText.Get("OperationsDashboard.Flights", "Flights");
+        public static string NoFlights => UiText.Get("OperationsDashboard.NoFlights", "No flights match the selected filters.");
+        public static string Export => UiText.Get("OperationsDashboard.Export", "Export");
+        public static string Exporting => UiText.Get("OperationsDashboard.Exporting", "Exporting...");
+        public static string FlightNumber => UiText.Get("OperationsDashboard.FlightNumber", "Flight number");
+        public static string Customer => UiText.Get("OperationsDashboard.Customer", "Customer");
+        public static string Station => UiText.Get("OperationsDashboard.Station", "Station");
+        public static string OperationType => UiText.Get("OperationsDashboard.OperationType", "Operation type");
+        public static string Services => UiText.Get("OperationsDashboard.Services", "Services");
+        public static string NoPerformedServices => UiText.Get("OperationsDashboard.NoPerformedServices", "No performed services");
+        public static string Status => UiText.Get("OperationsDashboard.Status", "Status");
+        public static string PeriodFormat => UiText.Get("OperationsDashboard.PeriodFormat", "{0} – {1}");
+        public static string ExportReady => UiText.Get("OperationsDashboard.ExportReady", "Export ready");
+        public static string ExportReadyDescription => UiText.Get("OperationsDashboard.ExportReadyDescription", "Your dashboard flight export has been downloaded.");
+        public static string ExportFailed => UiText.Get("OperationsDashboard.ExportFailed", "Export failed");
+        public static string ExportFailedDescription => UiText.Get("OperationsDashboard.ExportFailedDescription", "The dashboard flight export could not be generated. Please try again.");
     }
 
     public static class Account

@@ -6,6 +6,8 @@ namespace OperationsSystem.Blazor.Client.Auth;
 /// </summary>
 public static class OperationsPermissions
 {
+    public const string DashboardAnalyticsView = "operations.dashboard.view-analytics";
+    public const string DashboardExport = "operations.dashboard.export";
     public const string FlightsView = "operations.flights.view";
     public const string FlightsViewStation = "operations.flights.view-station";
     public const string FlightsSchedule = "operations.flights.schedule";

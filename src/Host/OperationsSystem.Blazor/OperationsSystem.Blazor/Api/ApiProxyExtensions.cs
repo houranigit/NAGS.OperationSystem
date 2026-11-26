@@ -75,6 +75,14 @@ public static class ApiProxyExtensions
         return endpoints;
     }
 
+    public static IEndpointRouteBuilder MapOperationsDashboardHubProxy(this IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapMethods("/hubs/operations-dashboard/{**path}", ProxiedMethods, ProxyOperationsDashboardHubAsync)
+            .AllowAnonymous()
+            .DisableAntiforgery();
+        return endpoints;
+    }
+
     private static async Task ProxyAsync(
         HttpContext context,
         IHttpClientFactory httpClientFactory,
@@ -128,6 +136,12 @@ public static class ApiProxyExtensions
             httpClientFactory,
             BuildNotificationsHubTargetUri(context, options.Value));
     }
+
+    private static Task ProxyOperationsDashboardHubAsync(
+        HttpContext context,
+        IHttpClientFactory httpClientFactory,
+        IOptions<ApiProxyOptions> options) =>
+        ProxyHubAsync(context, httpClientFactory, BuildHubTargetUri(context, options.Value, "operations-dashboard"));
 
     private static async Task ProxyHubAsync(
         HttpContext context,

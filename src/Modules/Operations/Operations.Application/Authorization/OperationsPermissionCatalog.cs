@@ -13,6 +13,8 @@ public sealed class OperationsPermissionCatalog : IPermissionCatalog
 
     public IReadOnlyList<PermissionDescriptor> Permissions { get; } =
     [
+        new(OperationsPermissions.Dashboard.ViewAnalytics, AdminStationViewer, GrantsPortalPage: true),
+        new(OperationsPermissions.Dashboard.Export, AdminStationViewer),
         new(OperationsPermissions.Flights.View, AdminStationViewer, GrantsPortalPage: true),
         new(OperationsPermissions.Flights.Export, AdminStationViewer),
         new(OperationsPermissions.Flights.ViewStation, AdminAndStation),
