@@ -41,6 +41,23 @@ public sealed record FlightListItem(
     internal bool IsAutoClosed => Status == AutoClosedStatus;
 }
 
+public sealed record CalendarFlight(
+    Guid Id,
+    string FlightNumber,
+    string CustomerName,
+    string StationIata,
+    string StationName,
+    string StationTimeZoneId,
+    string Status,
+    bool IsAdHocFlight,
+    bool IsPerLanding,
+    bool IsOnCall,
+    DateTimeOffset ScheduledArrivalUtc,
+    DateTimeOffset ScheduledDepartureUtc,
+    string ApprovalStatus = FlightApprovalStatuses.NotApproved,
+    DateTimeOffset? ActualArrivalUtc = null,
+    DateTimeOffset? ActualDepartureUtc = null);
+
 internal static class FlightApprovalStatuses
 {
     public const string NotApproved = "NotApproved";

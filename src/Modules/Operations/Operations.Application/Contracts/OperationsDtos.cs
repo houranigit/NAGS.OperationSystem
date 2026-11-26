@@ -56,6 +56,24 @@ public sealed record FlightListItemDto(
     bool HasOpenServiceRecords = false,
     bool HasOpenTaskRecords = false);
 
+public sealed record CalendarFlightDto(
+    Guid Id,
+    string FlightNumber,
+    string CustomerName,
+    string StationIata,
+    string StationName,
+    string StationTimeZoneId,
+    string Status,
+    bool IsAdHocFlight,
+    bool IsPerLanding,
+    bool IsOnCall,
+    DateTimeOffset ScheduledArrivalUtc,
+    DateTimeOffset ScheduledDepartureUtc,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<FlightApprovalStatus>))]
+    FlightApprovalStatus ApprovalStatus = FlightApprovalStatus.NotApproved,
+    DateTimeOffset? ActualArrivalUtc = null,
+    DateTimeOffset? ActualDepartureUtc = null);
+
 public sealed record PlannedServiceDto(Guid ServiceId, string Name, bool IsAircraftPerLanding);
 public sealed record AssignedEmployeeDto(Guid StaffMemberId, string FullName, string EmployeeId)
 {

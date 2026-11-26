@@ -303,6 +303,13 @@ internal static class FlightEndpoints
             return result.ToOk();
         }).RequirePermission(OperationsPermissions.Flights.View);
 
+        flights.MapGet("/calendar", async (ISender sender, CancellationToken ct, DateTimeOffset fromUtc, DateTimeOffset toUtc,
+            Guid? stationId = null, Guid? customerId = null) =>
+        {
+            var result = await sender.Send(new GetFlightCalendarQuery(fromUtc, toUtc, stationId, customerId), ct);
+            return result.ToOk();
+        }).RequirePermission(OperationsPermissions.Flights.View);
+
         flights.MapGet("/export", ExportFlightsAsync)
             .RequirePermission(OperationsPermissions.Flights.View)
             .RequirePermission(OperationsPermissions.Flights.Export)

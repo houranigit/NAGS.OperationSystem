@@ -91,12 +91,8 @@ public sealed class GetFlightsQueryHandler(IOperationsDbContext db, IOperationsS
                 match.IsAdHocFlight,
                 match.IsPerLanding,
                 match.IsOnCall,
-                ActualArrivalUtc = flight.ArrivalSubmissions.OrderByDescending(arrival => arrival.IsAccepted)
-                    .ThenBy(arrival => arrival.CreatedAtUtc).ThenBy(arrival => arrival.Id)
-                    .Select(arrival => (DateTimeOffset?)arrival.Details.Ata).FirstOrDefault(),
-                ActualDepartureUtc = flight.DepartureSubmissions.OrderByDescending(departure => departure.IsAccepted)
-                    .ThenBy(departure => departure.CreatedAtUtc).ThenBy(departure => departure.Id)
-                    .Select(departure => (DateTimeOffset?)departure.Details.Atd).FirstOrDefault(),
+                match.ActualArrivalUtc,
+                match.ActualDepartureUtc,
                 CanceledAtUtc = cancellation == null ? null : cancellation.CanceledAtUtc,
                 CancellationType = cancellation == null ? null : cancellation.Type,
                 ReturnedToRampUtc = flight.ReturnToRamps.Where(ramp => ramp.DepartureDetails == null)
@@ -309,6 +305,8 @@ internal static class FlightListQuery
         public required Flight Flight { get; init; }
         public bool HasArrivalSubmission { get; init; }
         public bool HasDepartureSubmission { get; init; }
+        public DateTimeOffset? ActualArrivalUtc { get; init; }
+        public DateTimeOffset? ActualDepartureUtc { get; init; }
         public bool HasCancellationSubmission { get; init; }
         public bool HasWorkOrderRecords { get; init; }
         public bool HasOperationalRecords { get; init; }
@@ -338,6 +336,12 @@ internal static class FlightListQuery
                 Flight = flight,
                 HasArrivalSubmission = hasArrival,
                 HasDepartureSubmission = hasDeparture,
+                ActualArrivalUtc = flight.ArrivalSubmissions.OrderByDescending(arrival => arrival.IsAccepted)
+                    .ThenBy(arrival => arrival.CreatedAtUtc).ThenBy(arrival => arrival.Id)
+                    .Select(arrival => (DateTimeOffset?)arrival.Details.Ata).FirstOrDefault(),
+                ActualDepartureUtc = flight.DepartureSubmissions.OrderByDescending(departure => departure.IsAccepted)
+                    .ThenBy(departure => departure.CreatedAtUtc).ThenBy(departure => departure.Id)
+                    .Select(departure => (DateTimeOffset?)departure.Details.Atd).FirstOrDefault(),
                 HasCancellationSubmission = hasCancellation,
                 HasWorkOrderRecords = hasWorkOrder,
                 HasOperationalRecords = hasWorkOrder || hasCancellation,

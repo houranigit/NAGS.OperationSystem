@@ -1,0 +1,449 @@
+@page "/operations/calendar"
+@using System.Globalization
+@using OperationsSystem.Blazor.Client.Features.Operations
+@implements IAsyncDisposable
+@inject OperationsApiClient Operations
+@inject MasterDataApiClient MasterData
+@inject DialogService DialogService
+@inject AuthSession Auth
+@inject UserTimeZone UserTimeZone
+
+<PageTitle>Flight calendar</PageTitle>
+
+<RequirePermission Permission="@OperationsPermissions.FlightsView">
+    <div class="os-list-page ofc-page">
+        <PageHeader Title="Flight calendar" Section="@UiStrings.Nav.Operations">
+            <Actions>
+                <div class="ofc-filters">
+                    <DataListFilter TValue="string" Data="@statusOptions" Value="@statusFilter"
+                                    ValueChanged="@(value => statusFilter = value)" Placeholder="All statuses" />
+                    <DataListFilter TValue="Guid?" Data="@stationOptions" Value="@stationFilter"
+                                    ValueChanged="@OnStationFilterChangedAsync" Placeholder="All stations" />
+                    <DataListFilter TValue="Guid?" Data="@customerOptions" Value="@customerFilter"
+                                    ValueChanged="@OnCustomerFilterChangedAsync" AllowFiltering="true" Placeholder="All customers" />
+                </div>
+            </Actions>
+        </PageHeader>
+
+        <RadzenCard class="ofc-card" aria-busy="@isLoading.ToString().ToLowerInvariant()">
+            <div class="ofc-calendar-toolbar">
+                <div class="ofc-calendar-nav">
+                    <button type="button" class="ofc-icon-button" aria-label="Previous period" disabled="@(!timeZoneReady)" @onclick="@(() => MoveRangeAsync(-1))">
+                        <RadzenIcon Icon="chevron_left" />
+                    </button>
+                    <button type="button" class="ofc-icon-button" aria-label="Next period" disabled="@(!timeZoneReady)" @onclick="@(() => MoveRangeAsync(1))">
+                        <RadzenIcon Icon="chevron_right" />
+                    </button>
+                    <button type="button" class="ofc-today-button" disabled="@(!timeZoneReady)" @onclick="@GoTodayAsync">Today</button>
+                </div>
+                <strong class="ofc-range-label">@CalendarRangeLabel</strong>
+                <div class="ofc-view-tabs" role="group" aria-label="Calendar view">
+                    <button type="button" class="@ViewButtonClass(CalendarViewMode.Agenda)"
+                            aria-pressed="@(activeView == CalendarViewMode.Agenda ? "true" : "false")" @onclick="@(() => SelectViewAsync(CalendarViewMode.Agenda))">
+                        <RadzenIcon Icon="view_agenda" />
+                        <span>Agenda</span>
+                    </button>
+                    <button type="button" class="@ViewButtonClass(CalendarViewMode.Day)"
+                            aria-pressed="@(activeView == CalendarViewMode.Day ? "true" : "false")" @onclick="@(() => SelectViewAsync(CalendarViewMode.Day))">
+                        <RadzenIcon Icon="calendar_view_day" />
+                        <span>Day</span>
+                    </button>
+                    <button type="button" class="@ViewButtonClass(CalendarViewMode.Month)"
+                            aria-pressed="@(activeView == CalendarViewMode.Month ? "true" : "false")" @onclick="@(() => SelectViewAsync(CalendarViewMode.Month))">
+                        <RadzenIcon Icon="calendar_month" />
+                        <span>Month</span>
+                    </button>
+                </div>
+            </div>
+
+            @if (isLoading)
+            {
+                <div class="ofc-calendar-state">
+                    <LoadingCard />
+                </div>
+            }
+            else if (loadError)
+            {
+                <div class="ofc-calendar-state">
+                    <ErrorState Message="Could not load the calendar." OnRetry="@ReloadAsync" />
+                </div>
+            }
+            else if (activeView is CalendarViewMode.Agenda or CalendarViewMode.Day)
+            {
+                <div class="@CalendarListClass">
+                    @if (VisibleItems.Count == 0)
+                    {
+                        <div class="ofc-agenda-empty">
+                            <RadzenIcon Icon="event_busy" />
+                            <strong>@CalendarEmptyMessage</strong>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var group in CalendarGroups)
+                        {
+                            <section class="@CalendarDayClass" @key="group.Key">
+                                <div class="ofc-agenda-date">
+                                    <strong>@group.Key.ToString("dd")</strong>
+                                    <span>@group.Key.ToString("ddd")</span>
+                                </div>
+                                <div class="ofc-agenda-items">
+                                    @foreach (var item in group)
+                                    {
+                                        <button type="button"
+                                                class="ofc-agenda-action"
+                                                data-ofc-status="@item.Status.Value"
+                                                data-ofc-tone="@item.Status.Tone"
+                                                @key="item.Flight.Id"
+                                                @onclick="@(() => OpenFlightAsync(item.Flight.Id))">
+                                            @RenderAppointment(item)
+                                        </button>
+                                    }
+                                </div>
+                            </section>
+                        }
+                    }
+                </div>
+            }
+            else
+            {
+                <RadzenScheduler @key="visibleDate" TItem="CalendarItem" Data="@VisibleItems" class="ofc-scheduler"
+                                 StartProperty="Start" EndProperty="CalendarEnd" TextProperty="Text"
+                                 Date="@visibleDate" ShowHeader="false"
+                                 AppointmentSelect="@OnAppointmentSelect" AppointmentRender="@OnAppointmentRender">
+                    <Template Context="item">
+                        @RenderAppointment(item)
+                    </Template>
+                    <ChildContent>
+                        <RadzenMonthView />
+                    </ChildContent>
+                </RadzenScheduler>
+            }
+
+            <div class="ofc-legend">
+                @foreach (var status in statusOptions)
+                {
+                    <span class="ofc-legend-item" data-ofc-tone="@status.Tone" @key="status.Value">
+                        <span class="ofc-dot" aria-hidden="true"></span>
+                        @status.Label
+                    </span>
+                }
+            </div>
+        </RadzenCard>
+    </div>
+</RequirePermission>
+
+@code {
+    private readonly FlightStatusOption[] statusOptions = FlightStatusOption.CreateOptions();
+    private readonly CancellationTokenSource lifetime = new();
+    private IReadOnlyList<CalendarItem> items = [];
+    private IReadOnlyList<StationFilterOption> stationOptions = [];
+    private IReadOnlyList<CustomerFilterOption> customerOptions = [];
+    private StationTimeZone? stationZone;
+    private Guid? stationFilter;
+    private Guid? customerFilter;
+    private string? statusFilter;
+    private CalendarViewMode activeView = CalendarViewMode.Agenda;
+    private DateTime visibleDate = DateTime.UtcNow.Date;
+    private long loadVersion;
+    private bool timeZoneReady;
+    private bool isLoading = true;
+    private bool loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cancellationToken = lifetime.Token;
+        try
+        {
+            await UserTimeZone.InitializeAsync();
+            await Task.WhenAll(LoadStationOptionsAsync(cancellationToken), LoadCustomerOptionsAsync(cancellationToken));
+            if (cancellationToken.IsCancellationRequested)
+                return;
+
+            visibleDate = Today();
+            timeZoneReady = true;
+            await ReloadAsync();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private IReadOnlyList<CalendarItem> VisibleItems => string.IsNullOrEmpty(statusFilter)
+        ? items
+        : items.Where(item => item.Status.Value == statusFilter).ToArray();
+
+    private IEnumerable<IGrouping<DateTime, CalendarItem>> CalendarGroups =>
+        VisibleItems.GroupBy(item => item.Start.Date);
+
+    private string CalendarListClass =>
+        activeView == CalendarViewMode.Day ? "ofc-agenda ofc-day-list" : "ofc-agenda";
+
+    private string CalendarDayClass =>
+        activeView == CalendarViewMode.Day ? "ofc-agenda-day ofc-agenda-day-single" : "ofc-agenda-day";
+
+    private string CalendarEmptyMessage =>
+        activeView == CalendarViewMode.Day ? "No flights match your filters for this day." : "No flights match your filters.";
+
+    private string CalendarRangeLabel => activeView switch
+    {
+        CalendarViewMode.Day => visibleDate.ToString("M/d/yyyy"),
+        CalendarViewMode.Month => visibleDate.ToString("MMMM yyyy"),
+        _ => $"{StartOfWeek(visibleDate, DayOfWeek.Sunday):M/d/yyyy} - {StartOfWeek(visibleDate, DayOfWeek.Sunday).AddDays(6):M/d/yyyy}"
+    };
+
+    private bool CanLoadLookup(string resourceViewPermission) =>
+        Auth.HasPermission(MasterDataPermissions.ReferenceViewOptions) || Auth.HasPermission(resourceViewPermission);
+
+    private async Task LoadStationOptionsAsync(CancellationToken cancellationToken)
+    {
+        if (!CanLoadLookup(MasterDataPermissions.StationsView))
+            return;
+
+        try
+        {
+            stationOptions = (await MasterData.GetStationOptionsAsync(cancellationToken))
+                .Select(station => new StationFilterOption($"{station.IataCode} · {station.Name}", station.Id, station.TimeZoneId))
+                .ToArray();
+        }
+        catch (ApiException)
+        {
+            stationOptions = [];
+        }
+    }
+
+    private async Task LoadCustomerOptionsAsync(CancellationToken cancellationToken)
+    {
+        if (!CanLoadLookup(MasterDataPermissions.CustomersView))
+            return;
+
+        try
+        {
+            customerOptions = (await MasterData.GetCustomerOptionsAsync(cancellationToken))
+                .Select(customer => new CustomerFilterOption(CustomerFilterLabel(customer), customer.Id))
+                .ToArray();
+        }
+        catch (ApiException)
+        {
+            customerOptions = [];
+        }
+    }
+
+    private async Task SelectViewAsync(CalendarViewMode view)
+    {
+        if (activeView == view)
+            return;
+
+        activeView = view;
+        await ReloadAsync();
+    }
+
+    private async Task MoveRangeAsync(int direction)
+    {
+        visibleDate = activeView switch
+        {
+            CalendarViewMode.Day => visibleDate.AddDays(direction),
+            CalendarViewMode.Month => visibleDate.AddMonths(direction),
+            _ => visibleDate.AddDays(direction * 7)
+        };
+
+        await ReloadAsync();
+    }
+
+    private DateTime Today()
+    {
+        var now = DateTimeOffset.UtcNow;
+        return (stationZone?.ToLocalDateTime(now) ?? UserTimeZone.ToLocalDateTime(now)).Date;
+    }
+
+    private async Task GoTodayAsync()
+    {
+        visibleDate = Today();
+        await ReloadAsync();
+    }
+
+    private async Task OnStationFilterChangedAsync(Guid? value)
+    {
+        stationFilter = value;
+        var station = stationOptions.FirstOrDefault(option => option.Value == value);
+        stationZone = station is null ? null : StationTimeZone.FromId(station.TimeZoneId);
+        await ReloadAsync();
+    }
+
+    private async Task OnCustomerFilterChangedAsync(Guid? value)
+    {
+        customerFilter = value;
+        await ReloadAsync();
+    }
+
+    private static (DateTime Start, DateTime End) GetRange(CalendarViewMode view, DateTime date)
+    {
+        if (view == CalendarViewMode.Day)
+            return (date, date.AddDays(1));
+
+        if (view == CalendarViewMode.Month)
+        {
+            var monthStart = new DateTime(date.Year, date.Month, 1);
+            var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+            var firstDay = CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+            return (StartOfWeek(monthStart, firstDay), StartOfWeek(monthEnd, firstDay).AddDays(7));
+        }
+
+        var weekStart = StartOfWeek(date, DayOfWeek.Sunday);
+        return (weekStart, weekStart.AddDays(7));
+    }
+
+    private static DateTime StartOfWeek(DateTime date, DayOfWeek firstDay) =>
+        date.AddDays(-((7 + (int)date.DayOfWeek - (int)firstDay) % 7));
+
+    private async Task ReloadAsync()
+    {
+        if (!timeZoneReady || lifetime.IsCancellationRequested)
+            return;
+
+        var request = ++loadVersion;
+        var cancellationToken = lifetime.Token;
+        var (start, end) = GetRange(activeView, visibleDate);
+        // Across stations, query a UTC range wide enough to cover all local dates, then trim by local arrival.
+        var fromUtc = stationZone?.DateBoundaryUtc(start, endOfDay: false) ?? new DateTimeOffset(start, TimeSpan.Zero).AddDays(-1);
+        var toUtc = stationZone?.DateBoundaryUtc(end, endOfDay: false) ?? new DateTimeOffset(end, TimeSpan.Zero).AddDays(1);
+        isLoading = true;
+        loadError = false;
+
+        try
+        {
+            var flights = await Operations.GetCalendarAsync(fromUtc, toUtc, stationFilter, customerFilter, cancellationToken);
+            if (request != loadVersion || cancellationToken.IsCancellationRequested)
+                return;
+
+            items = flights.Select(ToCalendarItem)
+                .Where(item => item.Start >= start && item.Start < end)
+                .OrderBy(item => item.Start)
+                .ThenBy(item => item.Flight.FlightNumber, StringComparer.Ordinal)
+                .ToArray();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (ApiException)
+        {
+            if (request == loadVersion && !cancellationToken.IsCancellationRequested)
+                loadError = true;
+        }
+        finally
+        {
+            if (request == loadVersion && !cancellationToken.IsCancellationRequested)
+                isLoading = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await lifetime.CancelAsync();
+        lifetime.Dispose();
+    }
+
+    private Task OnAppointmentSelect(SchedulerAppointmentSelectEventArgs<CalendarItem> args) =>
+        args.Data is { } item ? OpenFlightAsync(item.Flight.Id) : Task.CompletedTask;
+
+    private Task OpenFlightAsync(Guid flightId) =>
+        DialogService.OpenAsync<ScheduleFlightDialog>("Flight details",
+            new Dictionary<string, object?>
+            {
+                [nameof(ScheduleFlightDialog.FlightId)] = flightId,
+                [nameof(ScheduleFlightDialog.ViewOnly)] = true
+            },
+            new DialogOptions { Width = "760px" });
+
+    private static void OnAppointmentRender(SchedulerAppointmentRenderEventArgs<CalendarItem> args)
+    {
+        if (args.Data is { } item)
+        {
+            args.Attributes["data-ofc-status"] = item.Status.Value;
+            args.Attributes["data-ofc-tone"] = item.Status.Tone;
+        }
+    }
+
+    private CalendarItem ToCalendarItem(CalendarFlight flight)
+    {
+        var stationTimeZone = StationTimeZone.FromId(flight.StationTimeZoneId);
+        return new CalendarItem(flight, stationTimeZone,
+            statusOptions.FirstOrDefault(option => option.Value == flight.Status) ?? statusOptions[0]);
+    }
+
+    private static string CustomerFilterLabel(CustomerOption customer) =>
+        string.IsNullOrWhiteSpace(customer.IataCode)
+            ? customer.Name
+            : $"{customer.IataCode.Trim().ToUpperInvariant()} · {customer.Name}";
+
+    private static string? FlightTypeLabel(CalendarFlight flight) =>
+        flight.IsAdHocFlight ? UiStrings.Flights.TypeAdHoc
+        : flight.IsOnCall ? UiStrings.Flights.TypeOnCall
+        : flight.IsPerLanding ? UiStrings.Flights.TypePerLanding
+        : null;
+
+    private string ViewButtonClass(CalendarViewMode view) =>
+        activeView == view ? "ofc-view-tab ofc-view-tab-active" : "ofc-view-tab";
+
+    private RenderFragment RenderAppointment(CalendarItem item) => @<div class="ofc-appointment">
+        <span class="ofc-flight-icon" aria-hidden="true"><RadzenIcon Icon="flight" /></span>
+        <div class="ofc-flight-main">
+            <div class="ofc-flight-heading">
+                <strong>@item.Flight.FlightNumber</strong>
+                @if (FlightTypeLabel(item.Flight) is { } flightType)
+                {
+                    <span class="ofc-heading-sep" aria-hidden="true">•</span>
+                    <span class="ofc-per-landing">@flightType</span>
+                }
+            </div>
+            <span class="ofc-station-name">@item.Flight.StationName</span>
+        </div>
+        @RenderTimeCell("From", item.Flight.ScheduledArrivalUtc, item.Flight.ActualArrivalUtc, item.Zone)
+        @RenderTimeCell("To", item.Flight.ScheduledDepartureUtc, item.Flight.ActualDepartureUtc, item.Zone)
+        <span class="ofc-status-pill">
+            <span class="ofc-status-dot" aria-hidden="true"></span>
+            @item.Status.Label
+        </span>
+        <span class="ofc-approval"><FlightApprovalBadge Status="@item.Flight.ApprovalStatus" Compact="true" /></span>
+        <span class="ofc-agenda-more" aria-hidden="true"><RadzenIcon Icon="chevron_right" /></span>
+    </div>;
+
+    private static RenderFragment RenderTimeCell(string label, DateTimeOffset scheduled, DateTimeOffset? actual, StationTimeZone zone) =>
+        @<div class="ofc-time-cell">
+            <span>@label</span>
+            <div class="ofc-time-values">
+                <time class="ofc-time-scheduled" datetime="@scheduled.ToString("O")"
+                      title="@($"Scheduled {zone.Format(scheduled)}")">@zone.Format(scheduled, "HH:mm")</time>
+                @if (actual is { } value)
+                {
+                    var difference = FlightScheduleDifference.From(value - scheduled);
+                    var timing = difference is { } delta ? (delta.IsLate ? "late" : "early") : null;
+                    <span class="ofc-time-actual" data-timing="@timing">
+                        <time datetime="@value.ToString("O")" title="@($"Actual {zone.Format(value)}")">@zone.Format(value, "HH:mm")</time>
+                        @if (difference is { } actualDelta)
+                        {
+                            <span title="@actualDelta.Description">@actualDelta.Text</span>
+                        }
+                    </span>
+                }
+            </div>
+        </div>;
+
+    private enum CalendarViewMode
+    {
+        Agenda,
+        Day,
+        Month
+    }
+
+    private sealed record CalendarItem(CalendarFlight Flight, StationTimeZone Zone, FlightStatusOption Status)
+    {
+        public DateTime Start { get; } = Zone.ToLocalDateTime(Flight.ScheduledArrivalUtc);
+        private DateTime End { get; } = Zone.ToLocalDateTime(Flight.ScheduledDepartureUtc);
+        public string Text => $"{Flight.FlightNumber} · {Flight.StationIata} · {Flight.CustomerName}";
+        public DateTime CalendarEnd => End > Start ? End : Start.AddMinutes(1);
+    }
+
+    private sealed record StationFilterOption(string Label, Guid? Value, string TimeZoneId);
+    private sealed record CustomerFilterOption(string Label, Guid? Value);
+}

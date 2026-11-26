@@ -14,7 +14,7 @@ public sealed class PortalNavigationPolicyTests
     }
 
     [Fact]
-    public void Flights_viewer_lands_on_flights_and_can_navigate_to_work_orders()
+    public void Flights_viewer_lands_on_flights_and_can_navigate_to_work_orders_and_calendar()
     {
         var permissions = new[] { OperationsPermissions.FlightsView };
 
@@ -22,23 +22,22 @@ public sealed class PortalNavigationPolicyTests
             .ShouldBe("/operations/flights");
         PortalNavigationPolicy.GetPrimaryDestinations(permissions)
             .Select(destination => destination.Path)
-            .ShouldBe(["/operations/flights", "/operations/work-orders"]);
+            .ShouldBe(["/operations/flights", "/operations/work-orders", "/operations/calendar"]);
         PortalNavigationPolicy.ShouldShowSidebar(UserTypes.ViewerOnly, permissions)
             .ShouldBeTrue();
     }
 
-    [Fact]
-    public void Work_orders_direct_link_requires_the_flights_view_permission()
+    [Theory]
+    [InlineData("/operations/work-orders?search=123")]
+    [InlineData("/operations/calendar")]
+    public void Operations_direct_link_requires_the_flights_view_permission(string returnUrl)
     {
-        const string route = "/operations/work-orders";
-        const string returnUrl = route + "?search=123";
-
         PortalNavigationPolicy.ResolvePostLogin(
                 UserTypes.ViewerOnly,
                 [OperationsPermissions.FlightsView],
                 returnUrl)
             .ShouldBe(returnUrl);
-        PortalNavigationPolicy.IsRouteAuthorized(route, [MasterDataPermissions.StaffAllocationView])
+        PortalNavigationPolicy.IsRouteAuthorized(returnUrl, [MasterDataPermissions.StaffAllocationView])
             .ShouldBeFalse();
     }
 
@@ -66,7 +65,7 @@ public sealed class PortalNavigationPolicyTests
 
         PortalNavigationPolicy.GetPrimaryDestinations(permissions)
             .Select(destination => destination.Path)
-            .ShouldBe(["/users", "/operations/flights", "/operations/work-orders", "/master-data/customers"]);
+            .ShouldBe(["/users", "/operations/flights", "/operations/work-orders", "/operations/calendar", "/master-data/customers"]);
         PortalNavigationPolicy.ResolveLandingPage(permissions).ShouldBe("/users");
     }
 
@@ -86,7 +85,6 @@ public sealed class PortalNavigationPolicyTests
     [InlineData("/users")]
     [InlineData("/users/not-a-guid")]
     [InlineData("/operations/dashboard")]
-    [InlineData("/operations/calendar")]
     [InlineData("/operations/staff-allocation")]
     [InlineData("/operations/flights/00000000-0000-0000-0000-000000000001")]
     [InlineData("/unknown")]

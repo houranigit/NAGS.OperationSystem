@@ -196,8 +196,7 @@
                     <Template Context="flight">
                         @if (!WorkOrdersOnly || !IsConflict(flight))
                         {
-                            var approval = ApprovalBadge(flight.ApprovalStatus);
-                            <StatusBadge Label="@approval.Label" Tone="@approval.Tone" Icon="@approval.Icon" />
+                            <FlightApprovalBadge Status="@flight.ApprovalStatus" />
                         }
                     </Template>
                 </RadzenDataGridColumn>
@@ -263,18 +262,7 @@
     private const string ActualTimesColumnId = "recorded-times";
     private const string RecordedWorkColumnId = "recorded-work";
     private static readonly int[] PageSizes = [10, 25, 50, 100];
-    private readonly StatusFilterOption[] statusOptions =
-    [
-        new("Scheduled", "Scheduled", "gray"),
-        new("Due soon", "DueSoon", "warning"),
-        new(UiStrings.Flights.AwaitingAta, "ArrivalNotRecorded", "orange"),
-        new("On ground", "OnGround", "info"),
-        new("RTR", "ReturnedToRamp", "purple"),
-        new("Departed", "Departed", "slate"),
-        new(UiStrings.Flights.AutoClosed, FlightListItem.AutoClosedStatus, "slate"),
-        new("Canceled", "Canceled", "danger"),
-        new("Conflict", "Conflict", "critical")
-    ];
+    private readonly FlightStatusOption[] statusOptions = FlightStatusOption.CreateOptions();
 
     private enum FlightType { All, Scheduled, PerLanding, OnCall, AdHoc }
     private enum WorkOrderStatus { All, NotApproved, Approved, Unlocked, Conflict }
@@ -329,14 +317,6 @@
             ? ("PL", UiStrings.Flights.TypePerLanding, "orange")
             : ("S", UiStrings.Flights.TypeScheduled, "info");
     }
-
-    private static (string Label, string Tone, string? Icon) ApprovalBadge(string? status) => status switch
-    {
-        FlightApprovalStatuses.Approved => ("Approved", "success", "lock"),
-        FlightApprovalStatuses.Unlocked => ("Unlocked", "info", "lock_open"),
-        FlightApprovalStatuses.PendingRtr => ("Pending RTR", "warning", "lock"),
-        _ => ("Not Approved", "gray", null)
-    };
 
     private string ResultCountText => WorkOrdersOnly ? $"{totalCount:N0} {CountLabel}" : UiStrings.Flights.TotalCount(totalCount);
 
@@ -406,9 +386,10 @@
             @if (timestamp is { } value)
             {
                 <time datetime="@value.ToString("O")">@zone.Format(value, "dd MMM yyyy HH:mm")</time>
-                @if (scheduled is { } scheduledTime)
+                @if (scheduled is { } scheduledTime && FlightScheduleDifference.From(value - scheduledTime) is { } difference)
                 {
-                    @ScheduleDifference(value - scheduledTime)
+                    <span class="ofl-order-difference @(difference.IsLate ? "ofl-order-late" : "ofl-order-early")"
+                          title="@difference.Description">@difference.Text</span>
                 }
             }
             else if (showOngoing)
@@ -420,20 +401,6 @@
                 <span>—</span>
             }
         </div>;
-
-    private static RenderFragment ScheduleDifference(TimeSpan difference) =>
-        @<text>
-            @{
-                var minutes = (long)Math.Round(difference.TotalMinutes, MidpointRounding.AwayFromZero);
-            }
-            @if (minutes != 0)
-            {
-                var duration = FlightStatusTime.Elapsed(TimeSpan.FromMinutes(Math.Abs(minutes)));
-                var late = minutes > 0;
-                <span class="ofl-order-difference @(late ? "ofl-order-late" : "ofl-order-early")"
-                      title="@($"{duration} {(late ? "late" : "early")}")">@(late ? "+" : "−")@duration</span>
-            }
-        </text>;
 
     private int ActiveFilterCount =>
         (stationFilter.HasValue ? 1 : 0)
@@ -802,6 +769,5 @@
 
     private sealed record StationFilterOption(string Label, Guid? Value, string TimeZoneId);
     private sealed record CustomerFilterOption(string Label, Guid? Value);
-    private sealed record StatusFilterOption(string Label, string Value, string Tone);
     private sealed record OperationTypeFilterOption(string Label, Guid? Value);
 }

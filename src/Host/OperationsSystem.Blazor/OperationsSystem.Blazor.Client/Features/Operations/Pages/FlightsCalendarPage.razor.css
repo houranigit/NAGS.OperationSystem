@@ -1,0 +1,716 @@
+.ofc-page {
+    container: flight-calendar / inline-size;
+    flex: 1;
+    gap: var(--os-space-3);
+    min-inline-size: 0;
+    min-block-size: 0;
+}
+
+.ofc-page ::deep .os-page-header {
+    flex-shrink: 0;
+}
+
+.ofc-page ::deep .ofc-card {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-block-size: 21rem;
+    padding: var(--os-space-2);
+    overflow: hidden;
+}
+
+.ofc-page ::deep [data-ofc-tone] {
+    --ofc-event-accent: var(--os-color-gray);
+    --ofc-event-soft: var(--os-color-gray-bg);
+    --ofc-event-border: color-mix(in srgb, var(--ofc-event-accent) 34%, var(--os-color-border));
+}
+
+.ofc-page ::deep [data-ofc-tone="warning"] {
+    --ofc-event-accent: var(--os-color-warning);
+    --ofc-event-soft: var(--os-color-warning-bg);
+}
+
+.ofc-page ::deep [data-ofc-tone="orange"] {
+    --ofc-event-accent: var(--os-color-orange);
+    --ofc-event-soft: var(--os-color-orange-bg);
+}
+
+.ofc-page ::deep [data-ofc-tone="info"] {
+    --ofc-event-accent: var(--os-color-flight-on-ground);
+    --ofc-event-soft: var(--os-color-info-bg);
+}
+
+.ofc-page ::deep [data-ofc-tone="purple"] {
+    --ofc-event-accent: var(--os-color-purple);
+    --ofc-event-soft: var(--os-color-purple-bg);
+}
+
+.ofc-page ::deep [data-ofc-tone="slate"] {
+    --ofc-event-accent: var(--os-color-slate);
+    --ofc-event-soft: var(--os-color-neutral-bg);
+}
+
+.ofc-page ::deep [data-ofc-tone="danger"] {
+    --ofc-event-accent: var(--os-color-danger);
+    --ofc-event-soft: var(--os-color-danger-bg);
+}
+
+.ofc-page ::deep [data-ofc-tone="critical"] {
+    --ofc-event-accent: var(--os-color-danger-strong);
+    --ofc-event-soft: color-mix(in srgb, var(--ofc-event-accent) 14%, var(--os-color-surface));
+}
+
+.ofc-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--os-space-2);
+    justify-content: flex-end;
+}
+
+.ofc-filters ::deep .os-filter {
+    inline-size: 9rem;
+    min-inline-size: 0;
+}
+
+.ofc-filters ::deep .rz-dropdown {
+    min-block-size: var(--os-list-control-height);
+}
+
+.ofc-calendar-state {
+    flex: 1;
+}
+
+.ofc-calendar-toolbar {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--os-space-2);
+    margin-block-end: var(--os-space-2);
+    padding: var(--os-space-2);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+}
+
+.ofc-calendar-nav,
+.ofc-view-tabs {
+    display: inline-flex;
+    align-items: center;
+}
+
+.ofc-calendar-nav {
+    gap: var(--os-space-1);
+}
+
+.ofc-icon-button,
+.ofc-today-button,
+.ofc-view-tab {
+    border: 0;
+    font: inherit;
+    cursor: pointer;
+}
+
+.ofc-icon-button {
+    display: inline-grid;
+    place-items: center;
+    inline-size: var(--os-list-control-height);
+    block-size: var(--os-list-control-height);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-primary);
+    color: var(--os-color-primary-contrast);
+}
+
+.ofc-icon-button ::deep .rzi {
+    font-size: 1.25rem;
+}
+
+.ofc-today-button {
+    min-block-size: var(--os-list-control-height);
+    padding-inline: var(--os-space-3);
+    border-radius: var(--os-radius-sm);
+    background: var(--os-color-primary);
+    color: var(--os-color-primary-contrast);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.ofc-range-label {
+    justify-self: center;
+    color: var(--os-color-text);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+    text-align: center;
+}
+
+.ofc-view-tabs {
+    justify-self: end;
+    overflow: hidden;
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface);
+}
+
+.ofc-view-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+    min-block-size: var(--os-list-control-height);
+    padding-inline: var(--os-space-2);
+    border-inline-end: 1px solid var(--os-color-border);
+    background: transparent;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+}
+
+.ofc-view-tab:last-child {
+    border-inline-end: 0;
+}
+
+.ofc-view-tab-active {
+    background: var(--os-color-primary);
+    color: var(--os-color-primary-contrast);
+}
+
+.ofc-view-tab ::deep .rzi {
+    font-size: 1.1rem;
+}
+
+.os-list-page ::deep .ofc-card .ofc-scheduler {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-block-size: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #f9fafc;
+}
+
+.os-list-page ::deep .ofc-card .ofc-scheduler > .rz-view {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    height: 100%;
+}
+
+.os-list-page ::deep .ofc-card .ofc-scheduler .rz-view-content {
+    flex: 1 1 auto;
+    min-block-size: 0;
+}
+
+.os-list-page ::deep .ofc-card .rz-event:has(.rz-event-content[data-ofc-status]) {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    color: var(--os-color-text);
+    overflow: visible;
+}
+
+.os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status] {
+    height: 100%;
+    padding: 0;
+    background: transparent !important;
+    color: var(--os-color-text);
+    overflow: hidden;
+}
+
+.os-list-page ::deep .ofc-card .rz-event-content[data-ofc-status] .ofc-appointment {
+    min-block-size: 0;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event:has(.rz-event-content[data-ofc-status]) {
+    margin: 0.1rem 0.2rem;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-appointment {
+    display: grid;
+    grid-template-columns: 0.95rem minmax(0, 1fr) 0.45rem;
+    align-items: center;
+    gap: 0.2rem;
+    min-block-size: 1.2rem;
+    padding: 0 var(--os-space-1);
+    border: 1px solid var(--ofc-event-soft);
+    border-radius: var(--os-radius-sm);
+    background: var(--ofc-event-soft);
+    color: var(--os-color-text);
+    overflow: hidden;
+    margin: 0px 5px 0px 2px;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-flight-icon {
+    display: inline-grid;
+    place-items: center;
+    inline-size: 0.95rem;
+    block-size: 0.95rem;
+    color: var(--ofc-event-accent);
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-flight-icon .rz-icon,
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-flight-icon .rzi {
+    font-size: small;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-flight-main,
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-flight-heading {
+    min-width: 0;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-flight-heading strong {
+    color: var(--ofc-event-accent);
+    font-size: 0.68rem;
+    line-height: 1;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-heading-sep,
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-per-landing,
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-station-name {
+    display: none;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-status-pill {
+    display: block;
+    justify-self: end;
+    inline-size: 0.45rem;
+    block-size: 0.45rem;
+    min-block-size: 0;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--ofc-event-accent);
+    color: transparent;
+    font-size: 0;
+}
+
+.os-list-page ::deep .ofc-card .rz-month-view .rz-event-content[data-ofc-status] .ofc-status-pill > * {
+    display: none;
+}
+
+.ofc-agenda {
+    --ofc-badge-column-size: 7rem;
+    flex: 1 1 auto;
+    min-block-size: 0;
+    padding: var(--os-space-2);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface-muted);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.ofc-agenda-empty {
+    display: grid;
+    min-block-size: 10rem;
+    place-items: center;
+    align-content: center;
+    gap: var(--os-space-3);
+    color: var(--os-color-text-muted);
+}
+
+.ofc-agenda-empty .rz-icon {
+    color: var(--os-color-primary);
+    font-size: 2rem;
+}
+
+.ofc-agenda-day {
+    display: grid;
+    grid-template-columns: 3rem minmax(0, 1fr);
+    gap: var(--os-space-2);
+}
+
+.ofc-agenda-day + .ofc-agenda-day {
+    margin-block-start: var(--os-space-2);
+}
+
+.ofc-agenda-day-single {
+    grid-template-columns: 1fr;
+}
+
+.ofc-agenda-date {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-block-start: var(--os-space-2);
+    color: var(--os-color-text-muted);
+}
+
+.ofc-agenda-date strong {
+    color: var(--os-color-text-subtle);
+    font-size: var(--os-text-lg);
+    line-height: 1;
+}
+
+.ofc-agenda-date span {
+    margin-block-start: 0.25rem;
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+}
+
+.ofc-day-list .ofc-agenda-date {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--os-space-2);
+    padding: 0 var(--os-space-1);
+}
+
+.ofc-day-list .ofc-agenda-date strong {
+    color: var(--os-color-text);
+    font-size: var(--os-text-lg);
+}
+
+.ofc-day-list .ofc-agenda-date span {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-sm);
+    text-transform: uppercase;
+}
+
+.ofc-agenda-items {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--os-space-1);
+}
+
+.ofc-agenda-action {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    text-align: inherit;
+}
+
+.ofc-appointment {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.1rem;
+    color: inherit;
+    font-size: var(--os-text-xs);
+    line-height: 1.25;
+}
+
+.ofc-agenda-action:hover .ofc-appointment {
+    border-color: var(--ofc-event-border);
+    box-shadow: var(--os-shadow-md);
+}
+
+.ofc-flight-icon,
+.ofc-time-cell,
+.ofc-status-pill,
+.ofc-approval,
+.ofc-agenda-more,
+.ofc-heading-sep,
+.ofc-per-landing {
+    display: none;
+}
+
+.ofc-flight-main,
+.ofc-flight-heading,
+.ofc-station-name {
+    min-width: 0;
+}
+
+.ofc-flight-heading {
+    display: flex;
+    align-items: center;
+    gap: var(--os-space-2);
+}
+
+.ofc-flight-heading strong,
+.ofc-station-name,
+.ofc-per-landing {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ofc-flight-heading strong {
+    color: inherit;
+    font-size: var(--os-text-sm);
+    font-weight: 700;
+}
+
+.ofc-station-name {
+    color: inherit;
+    font-size: var(--os-text-xs);
+    opacity: 0.9;
+}
+
+.ofc-agenda-action .ofc-appointment {
+    position: relative;
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1.4fr) repeat(2, minmax(9.25rem, 0.7fr)) repeat(2, var(--ofc-badge-column-size)) 1rem;
+    align-items: center;
+    gap: var(--os-space-2);
+    min-block-size: 3rem;
+    padding: var(--os-space-1) var(--os-space-2) var(--os-space-1) var(--os-space-3);
+    border: 1px solid var(--os-color-border);
+    border-radius: var(--os-radius-md);
+    background: var(--os-color-surface);
+    box-shadow: var(--os-shadow-sm);
+    color: var(--os-color-text);
+    overflow: hidden;
+}
+
+.ofc-agenda-action .ofc-appointment::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    inline-size: 3px;
+    background: var(--ofc-event-accent);
+}
+
+.ofc-agenda-action .ofc-flight-icon {
+    display: inline-grid;
+    place-items: center;
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    border-radius: var(--os-radius-sm);
+    background: var(--ofc-event-soft);
+    color: var(--ofc-event-accent);
+    border: 1px solid var(--ofc-event-border);
+}
+
+.ofc-agenda-action .ofc-flight-icon .rz-icon {
+    font-size: 1.25rem;
+}
+
+.ofc-agenda-action .ofc-flight-heading strong {
+    color: var(--ofc-event-accent);
+    font-size: var(--os-text-sm);
+}
+
+.ofc-agenda-action .ofc-heading-sep {
+    display: inline;
+    color: var(--os-color-text-muted);
+}
+
+.ofc-agenda-action .ofc-per-landing {
+    display: inline-block;
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    font-weight: 700;
+}
+
+.ofc-agenda-action .ofc-station-name {
+    display: block;
+    color: var(--os-color-text);
+    font-size: var(--os-text-xs);
+    font-weight: 600;
+    opacity: 1;
+}
+
+.ofc-agenda-action .ofc-time-cell {
+    display: flex;
+    align-self: start;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0;
+}
+
+.ofc-agenda-action .ofc-time-cell > span {
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+    font-weight: 600;
+}
+
+.ofc-time-values {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: var(--os-space-2);
+    font-size: var(--os-text-sm);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.ofc-time-scheduled {
+    color: var(--os-color-text-muted);
+}
+
+.ofc-time-actual {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--os-space-1);
+}
+
+.ofc-time-actual > span {
+    font-size: var(--os-text-xs);
+}
+
+.ofc-time-actual[data-timing="early"] > span {
+    color: color-mix(in srgb, var(--os-color-success) 90%, var(--os-color-text));
+}
+
+.ofc-time-actual[data-timing="late"] > span {
+    color: var(--os-color-danger);
+}
+
+.ofc-agenda-action .ofc-status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-self: end;
+    gap: var(--os-space-1);
+    min-block-size: 1.375rem;
+    padding: 0 var(--os-space-2);
+    border-radius: var(--os-radius-sm);
+    background: var(--ofc-event-soft);
+    color: var(--ofc-event-accent);
+    border: 1px solid var(--ofc-event-border);
+    font-size: var(--os-text-xs);
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.ofc-status-dot {
+    inline-size: 0.45rem;
+    block-size: 0.45rem;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.ofc-agenda-action .ofc-approval {
+    display: inline-flex;
+    justify-self: start;
+}
+
+.ofc-agenda-action .ofc-agenda-more {
+    display: inline-grid;
+    place-items: center;
+    color: var(--os-color-text-muted);
+}
+
+.ofc-agenda-action .ofc-agenda-more .rz-icon {
+    font-size: 1.25rem;
+}
+
+.ofc-legend {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--os-space-1) var(--os-space-3);
+    margin-block-start: var(--os-space-2);
+    color: var(--os-color-text-muted);
+    font-size: var(--os-text-xs);
+}
+
+.ofc-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--os-space-1);
+}
+
+.ofc-dot {
+    inline-size: 0.65rem;
+    block-size: 0.65rem;
+    border-radius: 50%;
+    display: inline-block;
+    background: var(--ofc-event-accent);
+}
+
+@container flight-calendar (width < 52rem) {
+    .ofc-agenda-action .ofc-appointment {
+        grid-template-columns: 1.75rem repeat(2, minmax(0, 1fr)) repeat(2, var(--ofc-badge-column-size)) 1rem;
+        gap: var(--os-space-1) var(--os-space-2);
+    }
+
+    .ofc-agenda-action .ofc-flight-main {
+        grid-area: 1 / 2 / 2 / 4;
+    }
+
+    .ofc-agenda-action .ofc-time-cell {
+        grid-area: 2 / 2 / 3 / 4;
+    }
+
+    .ofc-agenda-action .ofc-time-cell + .ofc-time-cell {
+        grid-area: 2 / 4 / 3 / 6;
+    }
+
+    .ofc-agenda-action .ofc-status-pill {
+        grid-area: 1 / 4;
+    }
+
+    .ofc-agenda-action .ofc-approval {
+        grid-area: 1 / 5;
+    }
+
+    .ofc-agenda-action .ofc-agenda-more {
+        grid-area: 1 / 6;
+    }
+}
+
+@container flight-calendar (width < 36rem) {
+    .ofc-calendar-toolbar {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .ofc-view-tabs {
+        grid-column: 1 / -1;
+        justify-self: stretch;
+    }
+
+    .ofc-view-tab {
+        flex: 1;
+        justify-content: center;
+    }
+
+    .ofc-agenda-day {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--os-space-1);
+    }
+
+    .ofc-agenda-date {
+        flex-direction: row;
+        align-items: baseline;
+        gap: var(--os-space-2);
+        padding: 0 var(--os-space-1);
+    }
+
+    .ofc-agenda-date span {
+        margin-block-start: 0;
+    }
+
+    .ofc-agenda-action .ofc-appointment {
+        grid-template-columns: 1.75rem repeat(2, minmax(0, 1fr)) 1rem;
+    }
+
+    .ofc-agenda-action .ofc-time-cell {
+        grid-area: 2 / 2;
+    }
+
+    .ofc-agenda-action .ofc-time-cell + .ofc-time-cell {
+        grid-area: 2 / 3;
+    }
+
+    .ofc-agenda-action .ofc-status-pill {
+        grid-area: 3 / 2;
+        justify-self: start;
+        padding-inline: var(--os-space-1);
+    }
+
+    .ofc-agenda-action .ofc-approval {
+        grid-area: 3 / 3;
+    }
+
+    .ofc-agenda-action .ofc-agenda-more {
+        grid-area: 1 / 4;
+    }
+}
+
+@container flight-calendar (width < 28rem) {
+    .ofc-filters {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        inline-size: 100%;
+    }
+
+    .ofc-filters ::deep .os-filter {
+        inline-size: 100%;
+    }
+}

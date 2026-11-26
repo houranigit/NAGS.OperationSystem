@@ -209,6 +209,8 @@ Arrival/departure DTOs expose creator/updater display names; work DTOs retain th
 
 The portal flight register offers separate Per Landing and On Call filters. Per Landing selects flights with the Per Landing designation and no recorded performed services. On Call selects flights with that designation and at least one recorded performed service, including a service recorded during a return to ramp.
 
+**Calendar** under Operations shows the flights you can view in weekly Agenda, Day, and Month views. It filters by station, customer, and operational status and uses the same status labels and colors as the Flights register. Agenda and Day show approval status and place recorded arrival and departure times beside their scheduled times, with signed schedule differences. Flight times and calendar dates use each flight’s station time zone. Selecting a flight opens its read-only details dialog within Calendar.
+
 **Export** beside Filters opens the Excel workbook, CSV file, PDF report, and Export Billing actions. Exports require both `operations.flights.view` and `operations.flights.export` and use the caller's flight visibility scope. The register passes its current search, filters, and sort and exports all matching flights across pages. The portal exports operational timestamps in each flight's station time zone. The Billing workbook lists recorded activities and manpower when available. Billing rates and calculations remain outside the export.
 
 **Edit schedule** is available on flights the user can update. After any arrival, departure, cancellation, service, task, or return to ramp has been recorded, schedule fields open read-only. Users with Flight Assign permission can update the roster on eligible flights in **Not Approved** or **Unlocked** status. The roster is read-only in **Approved** and **Pending RTR** status.
@@ -246,6 +248,7 @@ All flight routes are under `/api/v1/operations/flights`:
 | Method | Route | Behavior |
 |---|---|---|
 | GET | `/` | Filtered, sorted, paged flight register with optional `flightType` (`All`, `Scheduled`, `PerLanding`, `OnCall`, or `AdHoc`) and `hasOperationalRecords` |
+| GET | `/calendar` | Calendar flights in the same visibility scope, with scheduled arrival in the requested UTC range and optional station and customer filters |
 | GET | `/{id}` | Flight planning details, arrival/departure/cancellation submissions, and rowversion |
 | GET | `/{id}/operations` | Portal work and cancellation editor details within the register scope |
 | GET | `/{id}/operations/print` | Work Order PDF with available saved details within the portal flight register scope |

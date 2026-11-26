@@ -43,7 +43,7 @@
             <div class="opf-actions">
                 @if (step == 0)
                 {
-                    <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
+                    <RadzenButton Text="@CloseButtonText" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(false))" />
                 }
                 else
                 {
@@ -52,7 +52,7 @@
                 <div class="opf-actions-end">
                     @if (step > 0)
                     {
-                        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => DialogService.Close(false))" />
+                        <RadzenButton Text="@CloseButtonText" ButtonStyle="ButtonStyle.Light" ButtonType="ButtonType.Button" Click="@(() => DialogService.Close(false))" />
                     }
                     @if (step < LastStep)
                     {
@@ -72,6 +72,7 @@
 @code {
     [Parameter] public Guid? FlightId { get; set; }
     [Parameter] public bool BulkMode { get; set; }
+    [Parameter] public bool ViewOnly { get; set; }
 
     private FlightFormModel model = new();
     private IReadOnlyList<CustomerOption> customers = [];
@@ -104,15 +105,16 @@
 
     private bool IsBulkCreate => BulkMode && FlightId is null;
     private bool ApprovalLocked => FlightApprovalStatuses.IsLocked(original?.ApprovalStatus);
-    private bool ScheduleReadOnly => ApprovalLocked || original?.CanEditSchedule == false;
+    private bool ScheduleReadOnly => ViewOnly || ApprovalLocked || original?.CanEditSchedule == false;
     private bool IsAdHocSelected => model.OperationTypeId == AdHocOperationTypeId;
-    private bool CanAssignStaff => Auth.HasPermission(OperationsPermissions.FlightsAssign) && !IsAdHocSelected;
+    private bool CanAssignStaff => !ViewOnly && Auth.HasPermission(OperationsPermissions.FlightsAssign) && !IsAdHocSelected;
     private bool CanEditRoster => !ApprovalLocked && CanAssignStaff && !IsPerLandingSelected;
-    private bool ShowStaffStep => CanAssignStaff || ApprovalLocked && original?.AssignedEmployees.Count > 0;
-    private bool CanSubmit => FlightId is null || original is not null && (!ScheduleReadOnly || CanEditRoster);
+    private bool ShowStaffStep => CanAssignStaff || (ViewOnly || ApprovalLocked) && original?.AssignedEmployees.Count > 0;
+    private bool CanSubmit => !ViewOnly && (FlightId is null || original is not null && (!ScheduleReadOnly || CanEditRoster));
     private bool HasRosterChanges => original is not null &&
         !model.AssignedStaffMemberIds.SetEquals(original.AssignedEmployees.Select(member => member.StaffMemberId));
     private int LastStep => (IsBulkCreate ? 3 : 2) - (ShowStaffStep ? 0 : 1);
+    private string CloseButtonText => ViewOnly ? "Close" : "Cancel";
     private string SubmitButtonText => FlightId is null
         ? (IsBulkCreate ? "Schedule flights" : "Schedule flight")
         : "Save changes";
@@ -353,7 +355,7 @@
 
     private RenderFragment StaffStep() => @<section class="opf-step-content">
         <div class="os-operation-section-title"><RadzenIcon Icon="groups" /><span>Assigned staff</span></div>
-        @if (ApprovalLocked && original is { } saved)
+        @if ((ViewOnly || ApprovalLocked) && original is { } saved)
         {
             @if (saved.AssignedEmployees.Count == 0)
             {

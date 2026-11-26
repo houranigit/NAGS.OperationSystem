@@ -1,0 +1,15 @@
+@{
+    var (label, tone, icon) = Status switch
+    {
+        FlightApprovalStatuses.Approved => ("Approved", "success", "lock"),
+        FlightApprovalStatuses.Unlocked => ("Unlocked", "info", "lock_open"),
+        FlightApprovalStatuses.PendingRtr => ("Pending RTR", "warning", "lock"),
+        _ => ("Not Approved", "gray", (string?)null)
+    };
+}
+<StatusBadge Label="@label" Tone="@tone" Icon="@icon" Compact="@Compact" />
+
+@code {
+    [Parameter] public string? Status { get; set; }
+    [Parameter] public bool Compact { get; set; }
+}
